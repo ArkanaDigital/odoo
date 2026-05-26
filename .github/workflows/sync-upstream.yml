@@ -1,0 +1,47 @@
+name: Sync upstream branches
+
+  on:
+    schedule:
+      - cron: "0 */6 * * *" # tiap 6 jam
+    workflow_dispatch: {}
+
+  permissions:
+    contents: write
+
+  jobs:
+    sync:
+      runs-on: ubuntu-latest
+      strategy:
+        fail-fast: false
+        matrix:
+          branch: ["17.0", "18.0", "19.0"]
+
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            fetch-depth: 0
+
+        - name: Configure git
+          run: |
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        - name: Add upstream
+          run: |
+            git remote add upstream https://github.com/odoo/odoo.git
+            git remote -v
+
+        - name: Sync branch (ff-only)
+          run: |
+            BR="${{ matrix.branch }}"
+            git fetch upstream "$BR" || exit 0
+            git fetch origin "$BR" || true
+
+            if git show-ref --verify --quiet "refs/remotes/origin/$BR"; then
+              git checkout -B "$BR" "origin/$BR"
+            else
+              git checkout -B "$BR" "upstream/$BR"
+            fi
+
+            git merge --ff-only "upstream/$BR"
+            git push origin "$BR"
