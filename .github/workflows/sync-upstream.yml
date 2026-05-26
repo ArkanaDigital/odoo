@@ -1,9 +1,9 @@
-name: Sync upstream branches
+  name: Sync upstream branches
 
   on:
     schedule:
-      - cron: "0 */6 * * *" # tiap 6 jam
-    workflow_dispatch: {}
+      - cron: "0 */6 * * *"
+    workflow_dispatch:
 
   permissions:
     contents: write
@@ -29,12 +29,11 @@ name: Sync upstream branches
         - name: Add upstream
           run: |
             git remote add upstream https://github.com/odoo/odoo.git
-            git remote -v
 
         - name: Sync branch (ff-only)
           run: |
             BR="${{ matrix.branch }}"
-            git fetch upstream "$BR" || exit 0
+            git fetch upstream "$BR"
             git fetch origin "$BR" || true
 
             if git show-ref --verify --quiet "refs/remotes/origin/$BR"; then
