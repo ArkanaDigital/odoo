@@ -98,7 +98,7 @@ class ProjectProject(models.Model):
     partner_phone = fields.Char(related='partner_id.phone', readonly=False, export_string_translation=False)
     partner_email = fields.Char(related='partner_id.email', readonly=False, export_string_translation=False)
     company_id = fields.Many2one('res.company', string='Company', compute="_compute_company_id", inverse="_inverse_company_id", store=True, readonly=False)
-    currency_id = fields.Many2one('res.currency', compute="_compute_currency_id", string="Currency", readonly=True, export_string_translation=False)
+    currency_id = fields.Many2one('res.currency', compute="_compute_currency_id", compute_sql="_compute_sql_currency_id", compute_sudo=True, string="Currency", readonly=True, export_string_translation=False)
     analytic_account_balance = fields.Monetary(related="account_id.balance")
     account_id = fields.Many2one('account.analytic.account', copy=False, domain="['|', ('company_id', '=', False), ('company_id', '=?', company_id)]", ondelete='set null')
 
@@ -169,7 +169,7 @@ class ProjectProject(models.Model):
 
     update_ids = fields.One2many('project.update', 'project_id', export_string_translation=False)
     update_count = fields.Integer(compute='_compute_total_update_ids', export_string_translation=False)
-    last_update_id = fields.Many2one('project.update', string='Last Update', copy=False, export_string_translation=False)
+    last_update_id = fields.Many2one('project.update', string='Last Update', copy=False, index='btree_not_null', export_string_translation=False)
     last_update_status = fields.Selection(selection=[
         ('on_track', 'On Track'),
         ('at_risk', 'At Risk'),
@@ -367,6 +367,9 @@ class ProjectProject(models.Model):
         for project in self:
             project.currency_id = project.company_id.currency_id or default_currency_id
 
+    def _compute_sql_currency_id(self, table):
+        return SQL("COALESCE(%s, %s)", table.company_id.currency_id, self.env.company.currency_id.id)
+
     @api.model
     def _search_is_milestone_exceeded(self, operator, value):
         if operator != 'in':
@@ -473,8 +476,8 @@ class ProjectProject(models.Model):
         res = self._check_project_group_with_field('allow_task_dependencies', 'project.group_project_task_dependencies')
         # Hide/Show task waiting subtype when task dependencies feature is disabled/enabled
         if res or res is False:
-            self.env.ref('project.mt_task_waiting').hidden = not res
-            self.env.ref('project.mt_project_task_waiting').hidden = not res
+            self.env.ref('project.mt_task_waiting').sudo().hidden = not res
+            self.env.ref('project.mt_project_task_waiting').sudo().hidden = not res
 
     def _inverse_allow_milestones(self):
         self._check_project_group_with_field('allow_milestones', 'project.group_project_milestone')
@@ -710,7 +713,7 @@ class ProjectProject(models.Model):
                 # This does not benefit from multi create, this is to allow the default description from being built.
                 # This does seem ok since last_update_status should only be updated on one record at once.
                 self.env['project.update'].with_context(default_project_id=project.id).create({
-                    'name': _('Status Update - %(date)s', date=fields.Date.today().strftime(get_lang(self.env).date_format)),
+                    'name': _('Status Update - %(date)s', date=fields.Date.context_today(self).strftime(get_lang(self.env).date_format)),
                     'status': vals.get('last_update_status'),
                 })
             vals.pop('last_update_status')
@@ -848,7 +851,7 @@ class ProjectProject(models.Model):
         has_user_group = bool(self.env.user.has_group(group_name))
         group = self.env.ref(group_name)
         base_group_user = self.env.ref('base.group_user')
-        has_project_field_set = bool(self.env['project.project'].search_count([(field_name, '=', True)], limit=1))
+        has_project_field_set = bool(self.env['project.project'].sudo().search_count([(field_name, '=', True)], limit=1))
         res = None
 
         if not has_user_group and has_project_field_set:
@@ -916,9 +919,9 @@ class ProjectProject(models.Model):
                 res -= waiting_subtype
         return res
 
-    def _notify_get_recipients_groups(self, message, model_description, msg_vals=False):
+    def _notify_get_recipients_groups(self, message, model_description):
         """ Give access to the portal user/customer if the project visibility is portal. """
-        groups = super()._notify_get_recipients_groups(message, model_description, msg_vals=msg_vals)
+        groups = super()._notify_get_recipients_groups(message, model_description)
         if not self:
             return groups
 
@@ -1345,7 +1348,7 @@ class ProjectProject(models.Model):
 
         if self.date_start and self.date:
             if not values.get("date_start"):
-                values["date_start"] = fields.Date.today()
+                values["date_start"] = fields.Date.context_today(self)
             if not values.get("date"):
                 values["date"] = values["date_start"] + (self.date - self.date_start)
 

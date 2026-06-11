@@ -746,7 +746,6 @@ patch(PosStore.prototype, {
         const order = course.order_id;
         course.fired = true;
         order.deselectCourse();
-        await this.data.call("pos.prep.order", "fire_course", [order.id, course.id]);
         await this.printCourseTicket(course);
         return true;
     },
@@ -895,6 +894,10 @@ patch(PosStore.prototype, {
 
     get showEditPlanButton() {
         return true;
+    },
+
+    get showSaveOrderButton() {
+        return !this.getOrder().table_id && super.showSaveOrderButton;
     },
 
     async onFloorPlanUpdate(payload) {

@@ -46,7 +46,7 @@ from odoo.exceptions import AccessError, LockError, MissingError, ValidationErro
 from odoo.tools import (
     clean_context, format_list,
     frozendict, get_lang, OrderedSet,
-    ormcache, partition, split_every, unique,
+    partition, split_every, unique,
     SQL, sql, groupby,
 )
 from odoo.tools.constants import PREFETCH_MAX
@@ -1095,8 +1095,6 @@ class BaseModel(metaclass=MetaModel):
         if any(message['type'] == 'error' for message in messages):
             savepoint.rollback()
             ids = False
-            # cancel all changes done to the registry/ormcache
-            self.pool.reset_changes()
         savepoint.close(rollback=False)
 
         nextrow = info['rows']['to'] + 1
@@ -1349,7 +1347,7 @@ class BaseModel(metaclass=MetaModel):
                 continue
 
             # 5. delegate to parent model
-            if field.inherited:
+            if field.inherited and self.has_field_access(field, 'write'):
                 field = field.related_field
                 parent_fields[field.model_name].append(field.name)
 
@@ -2435,7 +2433,7 @@ class BaseModel(metaclass=MetaModel):
                 value=value,
             ))
 
-    @ormcache()
+    @api.ormcache()
     def _table_has_rows(self) -> bool:
         """ Return whether the model's table has rows. This method should only
             be used when updating the database schema (:meth:`~._auto_init`).
@@ -3574,6 +3572,7 @@ class BaseModel(metaclass=MetaModel):
             return True
 
         self.check_access('unlink')
+        self.env.transaction._wrote__ = True
 
         for func in self._ondelete_methods:
             # func._ondelete is True => should be called during uninstallation
@@ -3703,7 +3702,7 @@ class BaseModel(metaclass=MetaModel):
         if ir_attachment_unlink:
             ir_attachment_unlink.unlink()
         if cache_name := self._clear_cache_name:
-            self.env.registry.clear_cache(cache_name)
+            self.env.transaction.invalidate_ormcache(cache_name)
 
         # auditing: deletions are infrequent and leave no trace in the database
         _unlink.info('User #%s deleted %s records with IDs: %r', self.env.uid, self._name, self.ids)
@@ -3894,7 +3893,7 @@ class BaseModel(metaclass=MetaModel):
                 self._clear_cache_on_fields is None
                 or not vals.keys().isdisjoint(self._clear_cache_on_fields)
             ):
-                self.env.registry.clear_cache(cache_name)
+                self.env.transaction.invalidate_ormcache(cache_name)
 
             # validate inversed fields
             real_recs._validate_fields(inverse_fields)
@@ -3913,6 +3912,7 @@ class BaseModel(metaclass=MetaModel):
 
         if not self:
             return
+        self.env.transaction._wrote__ = True
 
         # determine records that require updating parent_path
         parent_records = self._parent_store_update_prepare(vals_list)
@@ -4130,7 +4130,7 @@ class BaseModel(metaclass=MetaModel):
 
         # invalidate the cache
         if cache_name := self._clear_cache_name:
-            self.env.registry.clear_cache(cache_name)
+            self.env.transaction.invalidate_ormcache(cache_name)
 
         # check Python constraints for non-stored inversed fields
         for data in data_list:
@@ -4246,6 +4246,7 @@ class BaseModel(metaclass=MetaModel):
         """ Create records from the stored field values in ``data_list``. """
         assert data_list
         cr = self.env.cr
+        self.env.transaction._wrote__ = True
 
         # insert rows in batches of maximum INSERT_BATCH_SIZE
         ids: list[int] = []                     # ids of created records
@@ -4994,7 +4995,7 @@ class BaseModel(metaclass=MetaModel):
         :param allow_referencing: Acquire a row lock which allows for other
             transactions to reference this record. Use only when modifying
             values that are not identifiers.
-        :raises: ``LockError`` when some records could not be locked
+        :raise LockError: when some records could not be locked
         """
         ids = {id_ for id_ in self._ids if id_}
         if not ids:

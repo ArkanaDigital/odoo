@@ -1,11 +1,12 @@
-import { useState } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { Dialog } from "@web/core/dialog/dialog";
 import { useService } from "@web/core/utils/hooks";
-import { Component, onWillDestroy, markup } from "@odoo/owl";
+import { Component, onWillDestroy, markup, proxy } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { GoogleTranslator, ChatGPTTranslator } from "./translator";
+
+const RTL_LANGUAGES = new Set(["ar", "he", "fa", "ur", "yi", "ps", "ku", "sd", "ug", "dv", "ha"]);
 
 const POSTPROCESS_GENERATED_CONTENT = (content, baseContainer) => {
     let lines = content.split("\n");
@@ -78,12 +79,17 @@ export class TranslateDialog extends Component {
             this.translators.push(chatgpt_translate);
         }
 
+        // check if it's a RTL language to adapt the dialog display accordingly
+        const lang_base = this.props.targetLang.languageCode.split(/[-_]/)[0].toLowerCase();
+        const isRTL = RTL_LANGUAGES.has(lang_base);
+
         this.notificationService = useService("notification");
-        this.state = useState({
+        this.state = proxy({
             selectedMessageId: null,
             selectedTranslator: google_translate,
             messages: new Map(),
             translationInProgress: true,
+            isRTL,
         });
         this.translate();
         onWillDestroy(() => {

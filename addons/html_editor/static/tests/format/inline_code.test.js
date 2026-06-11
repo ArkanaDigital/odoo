@@ -1,4 +1,4 @@
-import { animationFrame, expect, test } from "@odoo/hoot";
+import { animationFrame, delay, expect, test } from "@odoo/hoot";
 import { setupEditor, testEditor } from "../_helpers/editor";
 import { deleteBackward, deleteForward, insertText } from "../_helpers/user_actions";
 import { getContent } from "../_helpers/selection";
@@ -6,6 +6,7 @@ import { contains } from "@web/../tests/web_test_helpers";
 import { expectElementCount } from "../_helpers/ui_expectations";
 import { click } from "@odoo/hoot-dom";
 import { expandToolbar } from "../_helpers/toolbar";
+import { DELAY_TOOLBAR_OPEN } from "@html_editor/main/toolbar/toolbar_plugin";
 
 test("should merge successive inline code", async () => {
     await testEditor({
@@ -109,6 +110,14 @@ test("should not open toolbar when selection is inside inline code", async () =>
     await expectElementCount(".o-we-toolbar", 0);
 });
 
+test("should not open toolbar when selection is around inline code", async () => {
+    await setupEditor(
+        `<p>abc[\ufeff<code class="o_inline_code">\ufefftest\ufeff</code>\ufeff]def</p>`
+    );
+    await delay(DELAY_TOOLBAR_OPEN);
+    await expectElementCount(".o-we-toolbar", 0);
+});
+
 test("should open toolbar for mixed selection and apply formatting outside inline code", async () => {
     const { el } = await setupEditor(`<p>abc<code class="o_inline_code">t[est</code>de]f</p>`);
 
@@ -136,5 +145,17 @@ test("should open toolbar for mixed selection and apply formatting outside inlin
     await contains(`.o_font_size_selector_menu .dropdown-item:contains('80')`).click();
     expect(getContent(el)).toBe(
         `<p>abc\ufeff<code class="o_inline_code">\ufefft[est\ufeff</code>\ufeff<span class="display-1-fs"><font style="color: rgb(0, 0, 255);"><strong>de]</strong></font></span>f</p>`
+    );
+});
+
+test("hint should not be visible if inline code has a space", async () => {
+    const { el, editor } = await setupEditor(`<p><code class="o_inline_code"> a[]</code></p>`);
+    await animationFrame();
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<code class="o_inline_code">\ufeff a[]\ufeff</code>\ufeff</p>`
+    );
+    deleteBackward(editor);
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<code class="o_inline_code">\ufeff&nbsp;[]\ufeff</code>\ufeff<br></p>`
     );
 });

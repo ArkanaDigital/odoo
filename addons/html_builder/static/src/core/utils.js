@@ -4,7 +4,6 @@ import {
     useEnv,
     useLayoutEffect,
     useRef,
-    useState,
     useSubEnv,
 } from "@web/owl2/utils";
 import { isElement, isTextNode } from "@html_editor/utils/dom_info";
@@ -13,6 +12,7 @@ import {
     onWillDestroy,
     onWillStart,
     onWillUpdateProps,
+    proxy,
     status,
     toRaw,
     useEffect,
@@ -28,6 +28,7 @@ import { BuilderAction } from "./builder_action";
 export const BLOCKQUOTE_PARENT_HANDLERS = ".s_reviews_wall .row > div";
 export const CARD_PARENT_HANDLERS =
     ".s_three_columns .row > div, .s_comparisons .row > div, .s_cards_grid .row > div, .s_cards_soft .row > div, .s_product_list .row > div, .s_newsletter_centered .row > div, .s_company_team_spotlight .row > div, .s_comparisons_horizontal .row > div, .s_company_team_grid .row > div, .s_company_team_card .row > div, .s_carousel_cards_item";
+export const SPECIAL_CARD_SELECTOR = `div:is(${CARD_PARENT_HANDLERS}) > .s_card`;
 
 /**
  * @typedef {((reload_context: Object, editingElement: HTMLElement) => reload_context)[]} reload_context_processors
@@ -65,7 +66,7 @@ export function useDomState(getState, { checkEditingElement = true } = {}) {
             }
         }
     };
-    const state = useState({});
+    const state = proxy({});
     onWillStart(() => handler());
     useBus(env.editorBus, "DOM_UPDATED", handler);
     return state;
@@ -404,7 +405,7 @@ export function useSelectableItemComponent(id, { getLabel = () => {} } = {}) {
         };
 
         env.selectableContext.addSelectableItem(selectableItem);
-        state = useState({
+        state = proxy({
             isActive: false,
         });
         useEffect(() => {
@@ -507,7 +508,11 @@ function usePrepareAction(getAllActions) {
             resolve = r;
         });
         onWillStart(async function () {
-            await Promise.all(asyncActions.map((obj) => obj.action.prepare(obj.descr)));
+            await Promise.all(
+                asyncActions.map((obj) =>
+                    obj.action.prepare({ ...obj.descr, editingElement: env.getEditingElement() })
+                )
+            );
             resolve();
         });
         onWillUpdateProps(async ({ actionParam, actionValue }) => {
@@ -520,6 +525,7 @@ function usePrepareAction(getAllActions) {
                     obj.action.prepare({
                         ...obj.descr,
                         actionParam: convertParamToObject(actionParam),
+                        editingElement: env.getEditingElement(),
                         actionValue,
                     })
                 )
@@ -775,7 +781,7 @@ export function useOperationWithReload(callApply, reload) {
         try {
             const applyResults = await callApply(...args);
             if (!applyResults.includes(BuilderAction.cancelReload)) {
-                env.editor.shared.history.addStep();
+                env.editor.shared.history.commit();
                 await env.editor.shared.savePlugin.save();
                 const url = reload.getReloadUrl?.();
                 await env.editor.config.reloadEditor({ url, editingElement });
@@ -956,7 +962,8 @@ export function useInputBuilderComponent({
 
     const applyOperation = comp.env.editor.shared.history.makePreviewableAsyncOperation(callApply);
     const operationWithReload = useOperationWithReload(callApply, reload);
-    function getState(editingElement) {
+    async function getState(editingElement) {
+        await onReady;
         if (!isConnectedElement(editingElement)) {
             // TODO try to remove it. We need to move hook in BuilderComponent
             return {};
@@ -1090,7 +1097,7 @@ export function useInputDebouncedCommit(ref) {
     }, 550);
     // ↑ 500 is the delay when holding keydown between the 1st and 2nd event
     // fired. Some additional delay by the browser may add another ~5-10ms.
-    // We debounce above that threshold to keep a single history step when
+    // We debounce above that threshold to keep a single history commit when
     // holding up/down on a number or range input.
 }
 
@@ -1118,7 +1125,13 @@ export const clickableBuilderComponentProps = {
     inverseAction: { type: Boolean, optional: true },
 
     actionValue: {
-        type: [Boolean, String, Number, { type: Array, element: [Boolean, String, Number] }],
+        type: [
+            Boolean,
+            String,
+            Number,
+            validateIsNull,
+            { type: Array, element: [Boolean, String, Number] },
+        ],
         optional: true,
     },
 

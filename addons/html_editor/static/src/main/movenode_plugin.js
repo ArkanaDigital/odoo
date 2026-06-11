@@ -1,6 +1,6 @@
 import { useNativeDraggable } from "@html_editor/utils/drag_and_drop";
-import { childNodeIndex, endPos, leftPos, nodeSize, rightPos } from "@html_editor/utils/position";
-import { xml } from "@odoo/owl";
+import { childNodeIndex, leftPos, nodeSize, rightPos } from "@html_editor/utils/position";
+import { htmlEscape, xml } from "@odoo/owl";
 import { Plugin } from "../plugin";
 import { closestElement } from "../utils/dom_traversal";
 import { _t } from "@web/core/l10n/translation";
@@ -299,11 +299,13 @@ export class MoveNodePlugin extends Plugin {
         this.moveWidget.style.top = `${anchorY - containerRect.y - moveWidgetOffsetTop}px`;
         this.moveWidget.style.left = `${moveWidgetLeftPos - containerRect.x}px`;
 
+        const dragToMoveTooltip = htmlEscape(_t("Drag to move"));
+        const clickToSelectTooltip = htmlEscape(_t("Click to select"));
         this.services.tooltip.add(this.moveWidget, {
             template: xml`
                 <div class="o-tooltip tooltip-inner text-start px-3">
-                    ${_t("Drag to move")}<br/>
-                    ${_t("Click to select")}
+                    ${dragToMoveTooltip}<br/>
+                    ${clickToSelectTooltip}
                 </div>`,
             arrow: true,
         });
@@ -470,6 +472,7 @@ export class MoveNodePlugin extends Plugin {
         this.dropzoneHintContainer.replaceChildren();
 
         if (this._currentDropHintElementPosition) {
+            const cursors = this.dependencies.selection.preserveSelection();
             const [position, focusElelement] = this._currentDropHintElementPosition;
             this._currentDropHintElementPosition = undefined;
             const previousParent = movableElement.parentElement;
@@ -499,12 +502,22 @@ export class MoveNodePlugin extends Plugin {
                     previousParent.append(baseContainer);
                 }
             }
-            const selectionPosition = endPos(movableElement);
-            this.dependencies.selection.setSelection({
-                anchorNode: selectionPosition[0],
-                anchorOffset: selectionPosition[1],
-            });
-            this.dependencies.history.addStep();
+            // Preserve the selection if it was inside the moved element,
+            // otherwise place the caret at the start of the moved element.
+            const isSelectionInsideMovedNode =
+                movableElement.contains(cursors.anchor.node) &&
+                movableElement.contains(cursors.focus.node);
+            if (isSelectionInsideMovedNode) {
+                cursors.restore();
+            } else {
+                const selectionPosition = getDeepestPosition(movableElement, 0);
+                this.dependencies.selection.setSelection({
+                    anchorNode: selectionPosition[0],
+                    anchorOffset: selectionPosition[1],
+                });
+            }
+            this.dependencies.selection.focusEditable();
+            this.dependencies.history.commit();
         }
     }
     onMousemove(e) {

@@ -1,5 +1,5 @@
-import { useRef, useState } from "@web/owl2/utils";
-import { Component, onMounted, onWillDestroy } from "@odoo/owl";
+import { useRef } from "@web/owl2/utils";
+import { Component, onMounted, onWillDestroy, proxy } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { Tooltip } from "@web/core/tooltip/tooltip";
 import { closestScrollableY, getScrollingElement, isScrollableY } from "@web/core/utils/scrolling";
@@ -28,7 +28,7 @@ export class BlockTab extends Component {
     static components = { Snippet, CustomInnerSnippet };
     static props = {
         snippetsName: String,
-        newInstalledModule: { type: String, optional: true }
+        newInstalledModule: { type: String, optional: true },
     };
 
     setup() {
@@ -40,7 +40,7 @@ export class BlockTab extends Component {
         this.groupSnippetsContainer = useRef("group-snippets-container");
         this.innerSnippetsContainer = useRef("inner-snippets-container");
         // Needed to avoid race condition in tours.
-        this.state = useState({ ongoingInsertion: false });
+        this.state = proxy({ ongoingInsertion: false });
 
         this.onSnippetKeydown = useMatrixKeyNavigation(
             () => [this.groupSnippetsContainer.el, this.innerSnippetsContainer.el],
@@ -51,7 +51,7 @@ export class BlockTab extends Component {
         onMounted(() => {
             this.makeSnippetDraggable();
             if (this.props.newInstalledModule) {
-                this.handlePostModuleInstall(this.props.newInstalledModule)
+                this.handlePostModuleInstall(this.props.newInstalledModule);
             }
         });
 
@@ -203,9 +203,8 @@ export class BlockTab extends Component {
                 draggedEl.style.position = "fixed";
                 document.body.append(draggedEl);
                 // Center the helper on the thumbnail image.
-                const thumbnailImgEl = element.querySelector(".o_snippet_thumbnail_img");
-                helperOffset.x = thumbnailImgEl.offsetWidth / 2;
-                helperOffset.y = thumbnailImgEl.offsetHeight / 2;
+                helperOffset.x = draggedEl.offsetWidth / 2;
+                helperOffset.y = draggedEl.offsetHeight / 2;
                 return draggedEl;
             },
             onDragStart: ({ element }) => {
@@ -456,9 +455,7 @@ export class BlockTab extends Component {
      * the snippet group to open.
      */
     async handlePostModuleInstall(newInstalledModule) {
-        const { snippetTitle } = JSON.parse(
-            decodeURIComponent(newInstalledModule)
-        );
+        const { snippetTitle } = JSON.parse(decodeURIComponent(newInstalledModule));
         if (snippetTitle) {
             const snippet = this.snippetModel.snippetGroups.find(
                 (snippetEl) => snippetEl.title === snippetTitle

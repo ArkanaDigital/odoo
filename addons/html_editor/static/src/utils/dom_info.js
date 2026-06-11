@@ -38,19 +38,34 @@ export function isEmptyTextNode(node) {
 
 /**
  * Return true if the given node appears bold. The node is considered to appear
- * bold if its font weight is bigger than 500 (eg.: Heading 1), or if its font
- * weight is bigger than that of its closest block.
+ * bold if its font weight is bigger than the regular font weight configured
+ * for its context, or if its font weight is bigger than that of its closest
+ * block.
  *
  * @param {Node} node
  * @returns {boolean}
  */
 export function isBold(node) {
-    const fontWeight = +getComputedStyle(closestElement(node)).fontWeight;
+    const element = closestElement(node);
+    let regularFontWeightVariable = "--font-weight-normal";
+    if (element.closest(".btn")) {
+        regularFontWeightVariable = "--btn-font-weight";
+    } else if (element.closest(".display-1, .display-2, .display-3, .display-4")) {
+        regularFontWeightVariable = "--display-font-weight";
+    } else if (element.closest("h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6")) {
+        regularFontWeightVariable = "--headings-font-weight";
+    }
+    const style = getComputedStyle(element);
+    const fontWeight = +style.fontWeight;
+    const regularFontWeight = +style.getPropertyValue(regularFontWeightVariable) || 500;
     const referenceElement = closestElement(
         node,
         (el) => isBlock(el) || +getComputedStyle(el).fontWeight !== fontWeight
     );
-    return fontWeight > 500 || fontWeight > +getComputedStyle(referenceElement).fontWeight;
+    return (
+        fontWeight > regularFontWeight ||
+        fontWeight > +getComputedStyle(referenceElement).fontWeight
+    );
 }
 
 /**
@@ -179,7 +194,7 @@ export function isWhitespace(value) {
 }
 
 // eslint-disable-next-line no-control-regex
-const visibleCharRegex = /[^\s\u200b]|[\u00A0\u0009]$/; // contains at least a char that is always visible (TODO: 0009 shouldn't be included)
+const visibleCharRegex = /[^\s\u200b]|[\u00A0\u0009]/; // contains at least a char that is always visible (TODO: 0009 shouldn't be included)
 export function isVisibleTextNode(testedNode) {
     if (!testedNode || !testedNode.length || testedNode.nodeType !== Node.TEXT_NODE) {
         return false;
@@ -536,7 +551,7 @@ export function isEmbeddedComponent(node) {
 
 /**
  * A "protected" node will have its mutations filtered and not be registered
- * in an history step. Some editor features like selection handling, command
+ * in an history commit. Some editor features like selection handling, command
  * hint, toolbar, tooltip, etc. are also disabled. Protected roots have their
  * data-oe-protected attribute set to either "" or "true". If the closest parent
  * with a data-oe-protected attribute has the value "false", it is not
@@ -1045,4 +1060,61 @@ export function isElementOverlappingAnyFloatingImage(element) {
     }
 
     return false;
+}
+
+/**
+ * Returns the bounding rect of the iframe containing the given document.
+ * If the document is not inside an iframe, returns `{ top: 0, left: 0 }`.
+ *
+ * @param {Document} document
+ * @returns {{ top: number, left: number } | DOMRect}
+ */
+function getIframeBoundingRect(document) {
+    let frameRect = { top: 0, left: 0 };
+    let frameElement;
+    try {
+        frameElement = document.defaultView.frameElement;
+    } catch {
+        // We don't access the frameElement if we don't have access to it.
+        // (i.e. iframe origin or sandbox restriction)
+    }
+    if (frameElement) {
+        frameRect = frameElement.getBoundingClientRect();
+    }
+    return frameRect;
+}
+
+/**
+ * Returns an element's bounding rect adjusted by its iframe's offset.
+ *
+ * @param {Element} el
+ * @returns {DOMRect} Adjusted rectangle
+ */
+export function getIframeAdjustedBoundingRect(el) {
+    const frameRect = getIframeBoundingRect(el.ownerDocument);
+    let rect = el.getBoundingClientRect();
+    rect = {
+        top: rect.top + frameRect.top,
+        bottom: rect.bottom + frameRect.top,
+        left: rect.left + frameRect.left,
+        right: rect.right + frameRect.left,
+        width: rect.width,
+        height: rect.height,
+    };
+    return rect;
+}
+
+/**
+ * Computes client (viewport) coordinates for an event, adjusted to account
+ * for an iframe offset if the event originates from within one.
+ *
+ * @param {MouseEvent | PointerEvent} ev - The event object
+ * @returns {{ clientX: number, clientY: number }} Adjusted coordinates
+ */
+export function getIframeAdjustedClientCoords(ev) {
+    let { clientX, clientY, target } = ev;
+    const frameRect = getIframeBoundingRect(target.ownerDocument);
+    clientX += frameRect.left;
+    clientY += frameRect.top;
+    return { clientX, clientY };
 }

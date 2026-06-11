@@ -1,5 +1,5 @@
-import { useRef, useState, useSubEnv } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
+import { useRef, useSubEnv } from "@web/owl2/utils";
+import { Component, proxy } from "@odoo/owl";
 import { useSelfOrder } from "@pos_self_order/app/services/self_order_service";
 import { useService } from "@web/core/utils/hooks";
 import { AttributeSelection } from "@pos_self_order/app/components/attribute_selection/attribute_selection";
@@ -27,7 +27,7 @@ export class ComboPage extends Component {
         }
         useSubEnv({ selectedValues: {} });
         this.selfOrder = useSelfOrder();
-        this.state = useState({
+        this.state = proxy({
             selectedChoiceIndex: 0,
             choices: [],
             showResume: false,
@@ -68,7 +68,9 @@ export class ComboPage extends Component {
     }
 
     get comboItems() {
-        return this.selectedChoice.combo_item_ids;
+        return this.selectedChoice.combo_item_ids.filter(
+            (item) => item.product_id.self_order_available
+        );
     }
 
     get currentChoiceState() {
@@ -86,7 +88,7 @@ export class ComboPage extends Component {
 
     selectItem(item) {
         const product = item.product_id;
-        if (!product.self_order_available) {
+        if (this.selfOrder.isProductSnoozed(product.product_tmpl_id)) {
             return;
         }
 
@@ -117,12 +119,13 @@ export class ComboPage extends Component {
     }
 
     hasAttribute(product) {
-        return (
-            product.attribute_line_ids.length > 0 &&
-            product.attribute_line_ids.some(
-                (line) => line.attribute_id?.create_variant === "no_variant"
-            )
-        );
+        const isKiosk = this.selfOrder.kioskMode;
+        return product.attribute_line_ids.some((line) => {
+            if (line.attribute_id?.create_variant !== "no_variant") {
+                return false;
+            }
+            return line.product_template_value_ids.some((a) => !(isKiosk && a.is_custom));
+        });
     }
 
     getSelectedItems(choiceState = undefined) {

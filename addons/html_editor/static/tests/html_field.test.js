@@ -23,7 +23,7 @@ import {
     advanceTime,
 } from "@odoo/hoot-dom";
 import { Deferred, animationFrame, mockSendBeacon, tick } from "@odoo/hoot-mock";
-import { onWillDestroy, xml } from "@odoo/owl";
+import { onWillDestroy, proxy, signal, xml } from "@odoo/owl";
 import {
     clickSave,
     contains,
@@ -45,7 +45,7 @@ import { FormController } from "@web/views/form/form_controller";
 import { Counter, EmbeddedWrapperMixin } from "./_helpers/embedded_component";
 import { moveSelectionOutsideEditor, setSelection } from "./_helpers/selection";
 import {
-    ensureDistinctHistoryStep,
+    ensureDistinctHistoryCommit,
     insertText,
     pasteHtml,
     pasteOdooEditorHtml,
@@ -671,7 +671,36 @@ test("edit a html field with `o-contenteditable-true` or `o-contenteditable-fals
             '<div class="o-paragraph" data-selection-placeholder=""><br></div>'
     );
     await clickSave();
-    expect.verifySteps(["update_value", "web_save"]);
+    expect.verifySteps(["update_value", "update_value", "web_save"]);
+});
+
+test("blurring an inner contenteditable field by clicking outside should trigger update_value", async () => {
+    patchWithCleanup(HtmlField.prototype, {
+        updateValue() {
+            expect.step("update_value");
+            super.updateValue(...arguments);
+        },
+    });
+    Partner._records = [
+        {
+            id: 1,
+            txt: `<div contenteditable="false">outside<div contenteditable="true"><p class="inner">inside</p></div></div>`,
+        },
+    ];
+    await mountView({
+        type: "form",
+        resId: 1,
+        resModel: "partner",
+        arch: `
+            <form>
+                <field name="txt" widget="html"/>
+            </form>`,
+    });
+    setSelection({ anchorNode: queryOne(".inner"), anchorOffset: 0 });
+    await tick();
+    await insertText(htmlEditor, "a");
+    await click(document.body);
+    expect.verifySteps(["update_value"]);
 });
 
 test.tags("focus required");
@@ -852,7 +881,7 @@ test("undo after discard html field changes in form", async () => {
     await click(".odoo-editor-editable");
     setSelectionInHtmlField();
     await insertText(htmlEditor, "tes");
-    await ensureDistinctHistoryStep();
+    await ensureDistinctHistoryCommit();
     await insertText(htmlEditor, "t");
     await animationFrame();
     expect(".odoo-editor-editable p").toHaveText("testfirst");
@@ -880,7 +909,10 @@ test("A new MediaDialog after switching record in a Form view should have the co
             this.contentClass = "o_select_media_dialog";
             this.title = "TEST";
             this.tabs = [];
-            this.state = {};
+            this.notebookPages = [];
+            this.activeTab = signal(null);
+            this.isSaving = signal(false);
+            this.selectedMedia = proxy({});
             // no call to super to avoid services dependencies
             // this test only cares about the props given to the dialog
         },
@@ -920,12 +952,6 @@ test("Embed video by pasting video URL", async () => {
     ];
     const videoId = "qxb74CMR748";
     const videoURL = `https://www.youtube.com/watch?v=${videoId}`;
-
-    onRpc("/html_editor/video_url/data", async () => ({
-        platform: "youtube",
-        video_id: videoId,
-    }));
-
     await mountView({
         type: "form",
         resId: 1,
@@ -943,14 +969,14 @@ test("Embed video by pasting video URL", async () => {
     await animationFrame();
     expect(anchorNode.outerHTML).toBe(`<p>${videoURL}</p>`);
     await expectElementCount(".o-we-powerbox", 1);
-    expect(queryAllTexts(".o-we-command-name")).toEqual(["Embed Youtube Video", "Paste as URL"]);
+    expect(queryAllTexts(".o-we-command-name")).toEqual(["Embed YouTube Video", "Paste as URL"]);
 
     // Press Enter to select first option in the powerbox ("Embed Youtube Video").
     await press("Enter");
-    // Insertion triggers selectionchange & addStep creates selection
-    // placeholder.fixSelectionInsideEditableRoot moves selection into it,
-    // trigger another selectionchange that removes selection placeholder.
-    // So we must wait for the o-we-hint.
+    // Insertion triggers `selectionchange` and `commit` creates a selection
+    // placeholder. `fixSelectionInsideEditableRoot` moves the selection into it
+    // and triggers another `selectionchange` that removes the selection
+    // placeholder. So we must wait for the `.o-we-hint`.
     await waitFor(".o-we-hint");
     await animationFrame();
     const videoIframe = queryOne("div[data-embedded='video']");
@@ -958,19 +984,13 @@ test("Embed video by pasting video URL", async () => {
         `<div class="o-paragraph o-we-hint" o-we-hint-text="Type &quot;/&quot; for commands"><br></div>`
     );
     expect(
-        `div[data-embedded='video'] iframe[data-src="https://www.youtube.com/embed/${videoId}"]`
+        `div[data-embedded='video'] iframe[data-src="https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0"]`
     ).toHaveCount(1);
 });
 
 test("Embedded video shouldn't have the 'media_iframe_video' class", async () => {
-    const videoId = "qxb74CMR748";
+    const videoId = "nbso3NVz3p8";
     const videoURL = `https://www.youtube.com/watch?v=${videoId}`;
-
-    onRpc("/html_editor/video_url/data", async () => ({
-        platform: "youtube",
-        video_id: videoId,
-        embed_url: `https://www.youtube.com/embed/${videoId}`,
-    }));
 
     await mountView({
         type: "form",
@@ -1058,11 +1078,11 @@ test("isDirty should not be reset to false if onChange fired between getEditorCo
     expect(`.o_form_button_save`).not.toBeVisible();
     const p = htmlField.editor.editable.querySelector("p");
     p.append(htmlField.editor.document.createTextNode("Second"));
-    htmlField.editor.shared.history.addStep();
+    htmlField.editor.shared.history.commit();
     await clickSave();
     await firstStep;
     p.append(htmlField.editor.document.createTextNode("Third"));
-    htmlField.editor.shared.history.addStep();
+    htmlField.editor.shared.history.commit();
     resolveSecond();
     await thirdStep;
     await animationFrame();
@@ -1192,32 +1212,6 @@ test("should display overlay on video hover and handle video replacement and rem
     });
     setSelectionInHtmlField();
 
-    await onRpc("/html_editor/video_url/data", async (request) => {
-        const videoUrl = (await request.json()).params.video_url;
-
-        if (videoUrl === "https://www.youtube.com/embed/qxb74CMR748?rel=0&autoplay=0") {
-            return {
-                video_id: "qxb74CMR748",
-                platform: "youtube",
-                embed_url: "https://www.youtube.com/embed/qxb74CMR748?rel=0&autoplay=0",
-                params: {
-                    rel: 0,
-                    autoplay: 0,
-                },
-            };
-        } else {
-            return {
-                video_id: "gbE3azm_Io0",
-                platform: "youtube",
-                embed_url: "https://www.youtube.com/embed/gbE3azm_Io0?rel=0&autoplay=0",
-                params: {
-                    rel: 0,
-                    autoplay: 0,
-                },
-            };
-        }
-    });
-
     // Insert video
     await insertText(htmlEditor, "/video");
     await waitFor(".o-we-powerbox");
@@ -1228,7 +1222,7 @@ test("should display overlay on video hover and handle video replacement and rem
     await waitFor("textarea[id='o_video_text']");
 
     const input = queryOne("textarea[id='o_video_text']");
-    input.value = "https://www.youtube.com/embed/qxb74CMR748?rel=0&autoplay=0";
+    input.value = "https://www.youtube.com/embed/nbso3NVz3p8?rel=0&autoplay=0";
     manuallyDispatchProgrammaticEvent(input, "input", {
         inputType: "insertText",
     });
@@ -1255,13 +1249,13 @@ test("should display overlay on video hover and handle video replacement and rem
         inputType: "insertText",
     });
     await waitFor(
-        '.o_video_dialog_iframe[data-src="https://www.youtube.com/embed/gbE3azm_Io0?rel=0&autoplay=0"]',
+        '.o_video_dialog_iframe[data-src="https://www.youtube.com/embed/gbE3azm_Io0?enablejsapi=1&rel=0"]',
         { timeout: 1500 }
     );
     await click(queryOne(".modal-footer").firstChild);
 
     await waitFor(
-        `div[data-embedded='video'] iframe[data-src="https://www.youtube.com/embed/gbE3azm_Io0?rel=0&autoplay=0"]`
+        `div[data-embedded='video'] iframe[data-src="https://www.youtube.com/embed/gbE3azm_Io0?enablejsapi=1&rel=0"]`
     );
     const iframeSrcAfter = embeddedVideoEl.dataset.src;
     expect(iframeSrcBefore).not.toBe(iframeSrcAfter);
@@ -1277,15 +1271,8 @@ test("should display overlay on video hover and handle video replacement and rem
 });
 
 test("should preserve vertical video setting when reopening media dialog", async () => {
-    const videoId = "qxb74CMR748";
+    const videoId = "nbso3NVz3p8";
     const videoURL = `https://www.youtube.com/watch?v=${videoId}`;
-
-    onRpc("/html_editor/video_url/data", async () => ({
-        video_id: videoId,
-        platform: "youtube",
-        embed_url: `https://www.youtube.com/embed/${videoId}`,
-        params: {},
-    }));
 
     await mountView({
         type: "form",
@@ -1309,17 +1296,21 @@ test("should preserve vertical video setting when reopening media dialog", async
     await contains(".o_video_dialog_form textarea").edit(videoURL);
 
     // Wait for options to be rendered before interaction
-    await waitFor(".o_video_dialog_form .o_video_dialog_options", { timeout: 1500 });
+    await waitFor(".o_video_dialog_form .o_video_dialog_options");
     await contains(
         ".o_video_dialog_form .o_video_dialog_options label:contains(Vertical) input"
     ).click();
+    await advanceTime(200); // debounce
 
     // Confirm vertical class is applied in the preview area
-    await waitFor(".modal-content .media_iframe_video .media_iframe_video_size_for_vertical", {
-        timeout: 1500,
-    });
+    await waitFor(".modal-content .media_iframe_video .media_iframe_video_size_for_vertical");
     queryOne(".modal-content footer button:contains(Add)").click();
     await animationFrame();
+
+    // In order to test the media dialog, we need to provide a real src for the iframe,
+    // otherwise the media dialog won't recognize the existing video as valid.
+    const iframeToFix = htmlEditor.editable.querySelector("iframe");
+    iframeToFix.src = iframeToFix.dataset.src;
 
     // Hover on VideoBlock shows overlay
     await hover(queryOne("div[data-embedded='video']"));
@@ -1332,51 +1323,10 @@ test("should preserve vertical video setting when reopening media dialog", async
     await click(".o-dropdown-item .fa-exchange");
 
     // Ensure the vertical setting is still active
-    await waitFor(".o_video_dialog_form .o_video_dialog_options label:contains(Vertical) input", {
-        timeout: 1500,
-    });
+    await waitFor(".o_video_dialog_form .o_video_dialog_options label:contains(Vertical) input");
     expect(
         ".o_video_dialog_form .o_video_dialog_options label:contains(Vertical) input"
     ).toBeChecked();
-});
-
-test.tags("desktop");
-test("add Vimeo video link in 'Videos' tab of MediaDialog", async () => {
-    const vimeoVideoLink = "https://vimeo.com/1128489814?fl=wc";
-    await mountView({
-        type: "form",
-        resId: 1,
-        resModel: "partner",
-        arch: `
-            <form>
-                <field name="txt" widget="html"/>
-            </form>`,
-    });
-    setSelectionInHtmlField();
-
-    await onRpc("/html_editor/video_url/data", async () => ({
-        video_id: "1128489814",
-        platform: "vimeo",
-        embed_url: vimeoVideoLink,
-    }));
-
-    // Insert Vimeo video link
-    await insertText(htmlEditor, "/video");
-    await waitFor(".o-we-powerbox");
-    expect(queryAllTexts(".o-we-command-name")[0]).toBe("Media");
-
-    await press("Enter");
-    await contains(".modal-body .nav-link:contains('Videos')").click();
-    await waitFor("textarea[id='o_video_text']");
-
-    const input = queryOne("textarea[id='o_video_text']");
-    input.value = vimeoVideoLink;
-    manuallyDispatchProgrammaticEvent(input, "input", {
-        inputType: "insertText",
-    });
-    await waitFor(".o_video_dialog_options", { timeout: 1500 });
-    expect(input).toHaveClass("is-valid");
-    await click(queryOne(".modal-footer").firstChild);
 });
 
 test("MediaDialog contains 'Videos' tab by default in html field", async () => {
@@ -1700,9 +1650,9 @@ test("edit and enable/disable codeview with editor toolbar", async () => {
 
     setSelectionInHtmlField();
     await insertText(htmlEditor, "Hello");
-    await ensureDistinctHistoryStep();
+    await ensureDistinctHistoryCommit();
     await insertText(htmlEditor, " ");
-    await ensureDistinctHistoryStep();
+    await ensureDistinctHistoryCommit();
     expect("[name='txt'] .odoo-editor-editable").toHaveInnerHTML("<p>Hello first </p>");
 
     // Switch to code view
@@ -1739,8 +1689,8 @@ test("edit and save a html field in collaborative should keep the same wysiwyg",
         expect(normalizeHTML(txt, stripHistoryIds)).toBe("<p>Hello first</p>");
         expect.step("web_save");
         args[1].txt = txt.replace(
-            /\sdata-last-history-steps="[^"]*?"/,
-            ' data-last-history-steps="12345"'
+            /\sdata-last-history-commits="[^"]*?"/,
+            ' data-last-history-commits="12345"'
         );
     });
     onRpc("/html_editor/get_ice_servers", () => []);
@@ -2449,7 +2399,7 @@ describe("save image", () => {
         sendBeaconDef = new Deferred();
         setSelectionInHtmlField(".test_target");
         await insertText(htmlEditor, "a");
-        htmlEditor.shared.history.addStep();
+        htmlEditor.shared.history.commit();
         await formController.beforeUnload();
         await sendBeaconDef;
 
@@ -2458,7 +2408,7 @@ describe("save image", () => {
         const imageContainerElement = parseHTML(htmlEditor.document, imageContainerHTML).firstChild;
         const paragraph = htmlEditor.editable.querySelector(".test_target");
         htmlEditor.editable.replaceChild(imageContainerElement, paragraph);
-        htmlEditor.shared.history.addStep();
+        htmlEditor.shared.history.commit();
 
         // Simulate an urgent save before the end of the RPC roundtrip for the
         // image.
@@ -2928,7 +2878,7 @@ test("should not render xml template as html in specific invalid cases", async (
         [`<table><t><tr><td></td></tr></t></table>`, false],
         [`<table><tr><t><td></td></t></tr></table>`, false],
         [`<table><tr><t><td></td></t></tr></table>`, false],
-        [`<table><tr><td><table><t/></table></td></tr></table>`, false]
+        [`<table><tr><td><table><t/></table></td></tr></table>`, false],
     ];
     for (const [xmlString, expected] of values) {
         var isValid = canRenderAsHTML(xmlString);

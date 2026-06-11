@@ -1,4 +1,4 @@
-import { onWillRender, useRef, useState } from "@web/owl2/utils";
+import { onWillRender, useRef } from "@web/owl2/utils";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { useTrackedAsync } from "@point_of_sale/app/hooks/hooks";
@@ -7,7 +7,7 @@ import { useBarcodeReader } from "@point_of_sale/app/hooks/barcode_reader_hook";
 import { _t } from "@web/core/l10n/translation";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { user } from "@web/core/user";
-import { Component, onMounted, onWillUnmount, computed } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, computed, proxy } from "@odoo/owl";
 import { CategorySelector } from "@point_of_sale/app/components/category_selector/category_selector";
 import { Input } from "@point_of_sale/app/components/inputs/input/input";
 import {
@@ -58,7 +58,7 @@ export class ProductScreen extends Component {
         this.dialog = useService("dialog");
         this.notification = useService("notification");
         this.numberBuffer = useService("number_buffer");
-        this.state = useState({
+        this.state = proxy({
             quantityByProductTmplId: {},
         });
 
@@ -170,6 +170,9 @@ export class ProductScreen extends Component {
         while (next) {
             if (next == element) {
                 next = next.nextElementSibling;
+                if (!next) {
+                    break;
+                }
             }
             const nextSeq = Number(next.dataset.pos_sequence);
             if (nextSeq > currentSeq) {
@@ -339,6 +342,10 @@ export class ProductScreen extends Component {
         }
         this.sound.play("beep");
 
+        if (!(await this.pos.canAddProductToCurrentOrder(product.product_tmpl_id))) {
+            return;
+        }
+
         await this.pos.addLineToCurrentOrder(
             { product_id: product, product_tmpl_id: product.product_tmpl_id },
             { code },
@@ -392,6 +399,11 @@ export class ProductScreen extends Component {
             return;
         }
         this.sound.play("beep");
+
+        if (!(await this.pos.canAddProductToCurrentOrder(product.product_tmpl_id))) {
+            return;
+        }
+
         const vals = { product_id: product, product_tmpl_id: product.product_tmpl_id };
         if (
             qty &&
@@ -424,6 +436,9 @@ export class ProductScreen extends Component {
     }
 
     async addProductToOrder(product) {
+        if (!(await this.pos.canAddProductToCurrentOrder(product))) {
+            return;
+        }
         const options = {};
         if (this.searchWord && product.isConfigurable()) {
             const barcode = this.searchWord;

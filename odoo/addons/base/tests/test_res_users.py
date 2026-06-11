@@ -7,7 +7,7 @@ from unittest.mock import patch
 from odoo.api import SUPERUSER_ID
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.fields import Command
-from odoo.http.requestlib import _request_stack
+from odoo.http import request_var
 from odoo.tests import (
     Form,
     HttpCase,
@@ -278,15 +278,15 @@ class TestUsers(UsersCommonCase):
         request_patch.start()
 
         self.assertEqual(user.context_get()['lang'], 'fr_FR')
-        self.env.registry.clear_cache()
+        self.env.transaction.invalidate_ormcache()
         user.lang = False
 
         self.assertEqual(user.context_get()['lang'], 'es_ES')
-        self.env.registry.clear_cache()
+        self.env.transaction.invalidate_ormcache()
         request_patch.stop()
 
         self.assertEqual(user.context_get()['lang'], 'de_DE')
-        self.env.registry.clear_cache()
+        self.env.transaction.invalidate_ormcache()
         company.lang = False
 
         self.assertEqual(user.context_get()['lang'], 'en_US')
@@ -465,7 +465,7 @@ class TestUsers2(UsersCommonCase):
         self.assertEqual(view_group_hierarchy_fr['groups'][group_system.id]['name'], 'Administrateur')
 
         # Should work the other way around too
-        self.env.registry.clear_cache('groups')
+        self.env.transaction.invalidate_ormcache('groups')
         view_group_hierarchy_fr = self.env['res.groups'].with_context(lang='fr_FR')._get_view_group_hierarchy()
         view_group_hierarchy_en = self.env['res.groups']._get_view_group_hierarchy()
         self.assertNotEqual(view_group_hierarchy_en['groups'][group_system.id]['name'], 'Administrateur')
@@ -705,8 +705,8 @@ class TestUsersIdentitycheck(HttpCase):
 
         # Push a fake request to the request stack, because @check_identity requires a request.
         # Use the first session created above, used to invalid other sessions than itself.
-        _request_stack.push(SimpleNamespace(session=session, env=self.env))
-        self.addCleanup(_request_stack.pop)
+        request_reset = request_var.set(SimpleNamespace(session=session, env=self.env))
+        self.addCleanup(request_var.reset, request_reset)
         # The user clicks the button logout from all devices from his profile
         action = self.env.user.action_revoke_all_devices()
         # The form of the check identity wizard opens

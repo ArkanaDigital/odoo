@@ -237,10 +237,15 @@ export class SplitPlugin extends Plugin {
      * @returns {[HTMLElement, HTMLElement]}
      */
     splitElement(element, offset) {
+        const cursor = this.dependencies.selection.preserveSelection();
         /** @type {HTMLElement} **/
         const secondPart = element.cloneNode();
         const children = childNodes(element);
-        secondPart.append(...children.slice(offset));
+        for (const node of children.slice(offset)) {
+            cursor.update(callbacksForCursorUpdate.append(secondPart, node));
+            secondPart.appendChild(node);
+        }
+        cursor.update(callbacksForCursorUpdate.after(element, secondPart));
         element.after(secondPart);
         this.trigger("on_element_split_handlers", { element, secondPart });
         return [element, secondPart];
@@ -457,10 +462,15 @@ export class SplitPlugin extends Plugin {
             // Now let's split at the line break.
             const cursors = this.dependencies.selection.preserveSelection();
             let { anchorNode, anchorOffset, focusNode, focusOffset } = getEditableSelection();
-            const brIndex = childNodeIndex(br);
+            const isVisibleEmptyLine = br.previousSibling && isLineBreak(br.previousSibling);
+            const brIndex = childNodeIndex(br) + (isVisibleEmptyLine ? 1 : 0);
             const oldParent = br.parentElement;
             const [before, after] = this.splitElementUntil(oldParent, brIndex, block.parentElement);
-            br.remove();
+            // If the `br` if after another it means it is showing an empty like break
+            // so we don't remove it.
+            if (!isVisibleEmptyLine) {
+                br.remove();
+            }
             [before, after].forEach(fillEmpty);
 
             // Restore the selection.
@@ -488,7 +498,7 @@ export class SplitPlugin extends Plugin {
         if (e.inputType === "insertParagraph") {
             e.preventDefault();
             this.splitBlock();
-            this.dependencies.history.addStep();
+            this.dependencies.history.commit();
         }
     }
 }

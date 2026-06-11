@@ -98,7 +98,7 @@ function encodeRaster(rasterData) {
 /**
  * Create the raster data from a canvas
  */
-function processCanvas(canvas) {
+export function processCanvas(canvas) {
     const rasterData = canvasToRaster(canvas);
     const encodedData = encodeRaster(rasterData);
     return ePOSPrint([
@@ -125,6 +125,7 @@ export class EpsonPrinter extends BasePrinter {
         if (this.use_lna) {
             this.lnaTargetAddressSpace = getLNATargetAddressSpace(this.address);
         }
+        this.timeout = printer.timeout || 15000;
     }
 
     get address() {

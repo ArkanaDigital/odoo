@@ -130,6 +130,7 @@
             "website/static/src/interactions/multirange_input.js",
             "website_sale/static/src/xml/website_sale_image_viewer.xml",
             "website_sale/static/src/xml/website_sale_product_availability.xml",
+            "website_sale/static/src/js/components/alert_banner/*",
             "website_sale/static/src/js/components/website_sale_image_viewer.js",
             "website_sale/static/src/js/cart_notification/item_added_notification/item_added_notification.js",
             "website_sale/static/src/js/cart_notification/item_added_notification/item_added_notification.xml",
@@ -174,7 +175,6 @@
         ],
         "web.assets_web_dark": ["website_sale/static/src/js/dashboard/**/*.dark.scss"],
         "website.website_builder_assets": [
-            "website_sale/static/src/js/website_sale_form_editor.js",
             "website_sale/static/src/website_builder/**/*",
             "website_sale/static/src/js/website_sale_utils.js",
             ("remove", "website_sale/static/src/**/*.edit.*"),
@@ -208,15 +208,14 @@
             "website_sale/static/src/js/comparison_utils.js",
             "website_sale/static/src/js/wishlist_utils.js",
             "website_sale/static/src/js/website_sale_utils.js",
+            "website_sale/static/src/js/components/alert_banner/*",
             "website_sale/static/src/js/components/website_sale_image_viewer.js",
             # TODO Find out why these do not work:
             #'website_sale/static/src/snippets/**/*.js',
             # TODO Re-activate when testing edit mode
             # ('remove', 'website_sale/static/src/snippets/**/*.edit.js'),
         ],
-        "html_builder.iframe_add_dialog": [
-            "website_sale/static/src/snippets/**/*.preview.scss",
-        ],
+        "html_builder.iframe_add_dialog": ["website_sale/static/src/snippets/**/*.preview.scss"],
     },
     "author": "Odoo S.A.",
     "license": "LGPL-3",

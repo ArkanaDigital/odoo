@@ -25,7 +25,6 @@ from lxml.html import (
     _looks_like_full_html_unicode,
     clean,
     defs,
-    document_fromstring,
     html_parser,
 )
 from werkzeug import urls
@@ -70,7 +69,7 @@ safe_attrs = defs.safe_attrs | frozenset(
     ['style',
      'data-o-mail-quote', 'data-o-mail-quote-node',  # quote detection
      'data-oe-model', 'data-oe-id', 'data-oe-field', 'data-oe-type', 'data-oe-expression', 'data-oe-translation-source-sha', 'data-oe-nodeid',
-     'data-last-history-steps', 'data-oe-protected', 'data-embedded', 'data-embedded-editable', 'data-embedded-props', 'data-oe-version',
+     'data-last-history-commits', 'data-oe-protected', 'data-embedded', 'data-embedded-editable', 'data-embedded-props', 'data-oe-version',
      'data-oe-transient-content', 'data-behavior-props', 'data-prop-name', 'data-width', 'data-height', 'data-scale-x', 'data-scale-y', 'data-x', 'data-y',  # legacy editor
      'data-oe-role', 'data-oe-aria-label', 'data-o-datetime',
      'data-publish', 'data-id', 'data-res_id', 'data-interval', 'data-member_id', 'data-scroll-background-ratio', 'data-view-id',
@@ -83,6 +82,9 @@ safe_attrs = defs.safe_attrs | frozenset(
      'data-language-id',
      'data-bs-toggle',  # support nav-tabs
      ])
+
+defs.link_attrs |= {'xlink:href'}
+
 SANITIZE_TAGS = {
     # allow new semantic HTML5 tags
     'allow_tags': defs.tags | frozenset('article bdi section header footer hgroup nav aside figure main'.split() + [etree.Comment]),
@@ -222,7 +224,11 @@ def tag_quote(el):
             sibling.set('data-o-mail-quote', '1')
 
     # odoo, gmail and outlook automatic signature wrapper
-    is_signature_wrapper = 'odoo_signature_wrapper' in el_class or 'gmail_signature' in el_class or el_id == "Signature"
+    is_signature_wrapper = (
+        'odoo_signature_wrapper' in el_class or
+        # gmail
+        'gmail_signature' in el_class or el_id == "Signature" or el.get('data-smartmail')
+    )
     is_outlook_auto_message = 'appendonsend' in el_id
     # gmail and outlook reply quote
     is_outlook_reply_quote = 'divRplyFwdMsg' in el_id
@@ -297,7 +303,7 @@ def fromstring(html_, base_url=None, parser=None, **kw):
         is_full_html = _looks_like_full_html_bytes(bytes(html_))
     else:
         is_full_html = _looks_like_full_html_unicode(html_)
-    doc = document_fromstring(html_, parser=parser, base_url=base_url, **kw)
+    doc = html.document_fromstring(html_, parser=parser, base_url=base_url, **kw)
     if is_full_html:
         return doc, False
     # otherwise, lets parse it out...

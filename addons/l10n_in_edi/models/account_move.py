@@ -5,9 +5,10 @@ from collections import defaultdict
 
 
 from markupsafe import Markup
+from requests import RequestException
 
 from odoo import Command, _, api, fields, models
-from odoo.exceptions import AccessError, LockError, UserError
+from odoo.exceptions import LockError, UserError
 from odoo.tools import float_is_zero, float_compare
 
 from odoo.addons.l10n_in.models.account_invoice import EDI_CANCEL_REASON
@@ -338,6 +339,7 @@ class AccountMove(models.Model):
             'mimetype': 'application/json',
             'company_id': self.company_id.id,
         })
+        self.l10n_in_edi_attachment_id = attachment.id
         self.l10n_in_edi_status = 'sent'
         message = []
         for partner in partners:
@@ -502,7 +504,7 @@ class AccountMove(models.Model):
                 line.price_unit,
                 line.company_currency_id,
                 line.company_id,
-                line.date or fields.Date.context_today(self)
+                line.date,
             )
         else:
             unit_price_in_inr = ((sign * line.balance) / (1 - (line.discount / 100))) / quantity
@@ -814,7 +816,7 @@ class AccountMove(models.Model):
                 f"/iap/l10n_in_edi/1/{url_end_point}",
                 'l10n_in_edi.endpoint'
             )
-        except AccessError as e:
+        except RequestException as e:
             _logger.warning("Connection error: %s", e.args[0])
             return {
                 'error': [{

@@ -33,11 +33,6 @@ class ProductTemplate(models.Model):
         compute='_compute_lot_valuated', store=True, readonly=False,
         help="If checked, the valuation will be specific by Lot/Serial number.",
     )
-    # TODO remove in master
-    property_price_difference_account_id = fields.Many2one(
-        'account.account', 'Price Difference Account', company_dependent=True, ondelete='restrict',
-        check_company=True,
-        help="""With perpetual valuation, this account will hold the price difference between the standard price and the bill price.""")
 
     def _search_valuation(self, operator, value):
         if operator != '=':
@@ -198,7 +193,7 @@ class ProductProduct(models.Model):
 
             if lot_valuated_products_ids:
                 domain = Domain([('product_id', 'in', lot_valuated_products_ids)])
-                if not self.env.context.get('warehouse_id'):
+                if not at_date and not self.env.context.get('warehouse_id'):
                     domain &= Domain([('product_qty', '!=', 0)])
                 lots_by_product = env['stock.lot']._read_group(
                     domain,
@@ -313,7 +308,7 @@ class ProductProduct(models.Model):
     def _get_standard_price_at_date(self, date=None):
         """ Get Last Price History """
         self.ensure_one()
-        if not date or date == fields.Date.today():
+        if not date or date == fields.Date.context_today(self):
             return self.standard_price
         if self.cost_method != 'standard':
             raise ValidationError(_("You can only get the standard price at a given date for products with 'Standard Price' as cost method."))
@@ -349,7 +344,9 @@ class ProductProduct(models.Model):
         return last_in
 
     def _with_valuation_context(self):
-        valued_locations = self.env['stock.location'].search([('is_valued_internal', '=', True)])
+        valued_locations = self.env['stock.location'].with_context(active_test=False).search(
+            [('is_valued_internal', '=', True)]
+        )
         return self.with_context(location=valued_locations.ids, strict=True, owners=[False, self.env.company.partner_id.id])
 
     def _get_remaining_moves(self):
@@ -448,11 +445,13 @@ class ProductProduct(models.Model):
             self.env['stock.move'].invalidate_model()
 
         for product, move_ids in move_ids_by_product.items():
+            product_moves = self.env['stock.move'].browse(move_ids)
+
+            first_move = product_moves[0]
             quantity = quantity_by_product_id.get(product.id, 0)
-            average_cost = std_price_by_product_id.get(product.id, 0)
+            average_cost = std_price_by_product_id.get(product.id, first_move.value / first_move._get_valued_qty() if first_move._get_valued_qty() else 0)
             value = value_by_product_id.get(product.id, 0)
 
-            product_moves = self.env['stock.move'].browse(move_ids)
             for moves_batch in split_every(batch_size, product_moves.ids):
                 moves_batch = self.env['stock.move'].browse(moves_batch)
                 moves_batch.fetch(move_fields)
@@ -462,7 +461,7 @@ class ProductProduct(models.Model):
                         in_qty = move._get_valued_qty()
                         in_value = move.value
                         if at_date or move.is_dropship:
-                            in_value = move._get_value(at_date=at_date)
+                            in_value = move._get_value(at_date=at_date, forced_std_price=average_cost)
                         if lot:
                             lot_qty = move._get_valued_qty(lot)
                             in_value = (in_value * lot_qty / in_qty) if in_qty else 0
@@ -607,29 +606,30 @@ class ProductProduct(models.Model):
     def _update_standard_price(self, extra_value=None, extra_quantity=None):
         # TODO: Add extra value and extra quantity kwargs to avoid total recomputation
         products_by_cost_method = defaultdict(set)
-        for product in self:
-            if product.lot_valuated:
-                product.sudo().with_context(disable_auto_revaluation=True).standard_price = product.avg_cost
+        self_ctx = self.with_context(disable_auto_revaluation=True, mail_notrack=True)
+        for product in self_ctx:
+            if product.lot_valuated and product.cost_method != 'standard':
+                product.sudo().standard_price = product.avg_cost
                 continue
             products_by_cost_method[product.cost_method].add(product.id)
         for cost_method, product_ids in products_by_cost_method.items():
-            products = self.env['product.product'].browse(product_ids)
+            products = self_ctx.env['product.product'].browse(product_ids)
             if cost_method == 'standard':
                 continue
             if cost_method == 'fifo':
                 for product in products:
                     qty_available = product._with_valuation_context().qty_available
                     if product.uom_id.compare(qty_available, 0) > 0:
-                        product.sudo().with_context(disable_auto_revaluation=True).standard_price = product.total_value / qty_available
+                        product.sudo().standard_price = product.total_value / qty_available
                     elif last_in := product._get_last_in():
                         if last_in_price_unit := last_in._get_price_unit():
-                            product.sudo().with_context(disable_auto_revaluation=True).standard_price = last_in_price_unit
+                            product.sudo().standard_price = last_in_price_unit
                 continue
             if cost_method == 'average':
                 new_standard_price_by_product = self._run_average_batch(force_recompute=True)[0]
                 for product in products:
                     if product.id in new_standard_price_by_product:
-                        product.with_context(disable_auto_revaluation=True).sudo().standard_price = new_standard_price_by_product[product.id]
+                        product.sudo().standard_price = new_standard_price_by_product[product.id]
 
     # -------------------------------------------------------------------------
     # Old to remove

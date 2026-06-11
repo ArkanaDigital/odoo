@@ -3,16 +3,17 @@
 import re
 import urllib.parse
 
-from odoo import api, fields, models, _
-from odoo.fields import Domain
-from odoo.addons.website.tools import text_from_html
-from odoo.http import request
+from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
+from odoo.fields import Domain
+from odoo.http import request
 from odoo.models import Query
-from odoo.tools import SQL, escape_psql
 from odoo.tools import split_every
-from odoo.tools.urls import urljoin as url_join
 from odoo.tools.json import scriptsafe as json_safe
+from odoo.tools.sql import SQL, escape_like_value
+from odoo.tools.urls import urljoin as url_join
+
+from odoo.addons.website.tools import text_from_html
 
 
 class WebsiteSeoMetadata(models.AbstractModel):
@@ -42,22 +43,24 @@ class WebsiteSeoMetadata(models.AbstractModel):
             images instead of default images
         """
         self.ensure_one()
-        title = request.website.name
+        website = self.env["website"].get_current_website()
+        title = website.name
         if 'name' in self:
             title = '%s | %s' % (self.name, title)
 
-        img_field = 'social_default_image' if request.website.has_social_default_image else 'logo'
+        img_field = 'social_default_image' if website.has_social_default_image else 'logo'
 
         # Default meta for OpenGraph
         default_opengraph = {
             'og:type': 'website',
             'og:title': title,
-            'og:site_name': request.website.name,
-            'og:url': url_join(request.website.domain or request.httprequest.url_root, self.env['ir.http']._url_for(request.httprequest.path)),
-            'og:image': request.website.image_url(request.website, img_field),
+            'og:site_name': website.name,
+            'og:url': url_join(website.domain or request.httprequest.url_root, self.env['ir.http']._url_for(request.httprequest.path)),
+            'og:image': website.image_url(website, img_field),
         }
         default_twitter = {
             'twitter:card': 'summary_large_image',
+            'twitter:image': default_opengraph['og:image'],
         }
 
         return {
@@ -74,7 +77,8 @@ class WebsiteSeoMetadata(models.AbstractModel):
             override `_default_website_meta` method instead of this method. This
             method only replaces user custom values in defaults.
         """
-        root_url = request.website.domain or request.httprequest.url_root.strip('/')
+        website = self.env["website"].get_current_website()
+        root_url = website.domain or request.httprequest.url_root.strip('/')
         default_meta = self._default_website_meta()
         opengraph_meta, twitter_meta = default_meta['default_opengraph'], default_meta['default_twitter']
         if self.website_meta_title:
@@ -85,11 +89,58 @@ class WebsiteSeoMetadata(models.AbstractModel):
             ["", "", *urllib.parse.urlsplit(self.website_meta_og_img)[2:]]
         )
         opengraph_meta['og:image'] = url_join(root_url, self.env['ir.http']._url_for(og_image or opengraph_meta['og:image']))
+        twitter_meta['twitter:image'] = url_join(root_url, self.env['ir.http']._url_for(og_image or twitter_meta['twitter:image']))
         return {
             'opengraph_meta': opengraph_meta,
             'twitter_meta': twitter_meta,
-            'meta_description': default_meta.get('default_meta_description')
+            'meta_description': self.website_meta_description or default_meta.get('default_meta_description'),
+            'default_meta_description': default_meta.get('default_meta_description'),
         }
+
+    def _get_website_meta_translations(self):
+        """Return raw stored translations for meta fields with per-request caching."""
+        self.ensure_one()
+        cr = self.env.cr
+        lang_cache = cr.cache.setdefault('website_meta_i18n', {})
+        cache_key = (self._name, self.id)
+        if cache_key in lang_cache:
+            return lang_cache[cache_key]
+
+        stored_fields = [
+            name
+            for name in ('website_meta_description', 'website_meta_keywords')
+            if name in self._fields and self._fields[name].store and self._fields[name].translate
+        ]
+        translations = {}
+        if stored_fields:
+            cr = self.env.cr
+            fields_sql = SQL(', ').join(SQL.identifier(field) for field in stored_fields)
+            cr.execute(
+                SQL(
+                    "SELECT %s FROM %s WHERE id = %s",
+                    fields_sql,
+                    SQL.identifier(self._table),
+                    self.id
+                )
+            )
+            row = cr.fetchone() or ()
+            for idx, field_name in enumerate(stored_fields):
+                value = row[idx] if idx < len(row) else None
+                translations[field_name] = value if isinstance(value, dict) else {}
+
+        lang_cache[cache_key] = translations
+        return translations
+
+    def get_website_meta_i18n_value(self, field_name, lang_code):
+        """Return the translation for the given SEO meta field in lang_code, or ''. """
+        if not lang_code or field_name not in self._fields:
+            return ''
+        field = self._fields[field_name]
+        if not field.translate or not field.store:
+            return self[field_name] or ''
+
+        translations = self._get_website_meta_translations()
+        return translations.get(field_name, {}).get(lang_code) or ''
 
 
 class WebsiteCover_PropertiesMixin(models.AbstractModel):
@@ -189,14 +240,6 @@ class WebsiteMultiMixin(models.AbstractModel):
         help="Restrict to a specific website.",
         index=True,
     )
-
-    def can_access_from_current_website(self, website_id=False):
-        can_access = True
-        for record in self:
-            if (website_id or record.website_id.id) not in (False, request.env['website'].get_current_website().id):
-                can_access = False
-                continue
-        return can_access
 
 
 class WebsiteLocatedMixin(models.AbstractModel):
@@ -442,6 +485,8 @@ class WebsitePublishedMixin(models.AbstractModel):
         transaction. This prevents long-lived transactions and stale cache
         issues, while keeping publish behavior identical whether it's triggered
         manually or via cron.
+
+        TDE: FIXME, lot of issues here
         """
 
         # Exit early if this call is explicitly skipped by context.
@@ -486,23 +531,12 @@ class WebsitePublishedMixin(models.AbstractModel):
             if not target_sudo:
                 continue
 
-            # Rebuild values similar to those passed by the mail composer.
-            msg_vals = {
-                'partner_ids': message.partner_ids.ids,
-                'message_type': message.message_type,
-                'subtype_id': message.subtype_id.id,
-                'author_id': message.author_id.id,
-                'incoming_email_to': message.incoming_email_to,
-                'incoming_email_cc': message.incoming_email_cc,
-                'outgoing_email_to': message.outgoing_email_to,
-            }
-
             # Compute recipients (followers, partners, etc.)
-            recipients = target_sudo._notify_get_recipients(message_sudo, msg_vals=msg_vals)
+            recipients = target_sudo._notify_get_recipients(message_sudo)
             if recipients:
                 # Mirror the UI path so followers receive the same notifications
                 # they would if the message had been posted manually.
-                target_sudo._notify_thread(message_sudo, msg_vals=msg_vals, skip_existing=True)
+                target_sudo._notify_thread(message_sudo, skip_existing=True)
 
                 # We've just sent notifications → clear caches again so
                 # message.notified_partner_ids and message.notification_ids
@@ -673,7 +707,7 @@ class WebsiteSearchableMixin(models.AbstractModel):
         if not search:
             return domain
 
-        search_terms = [escape_psql(t) for t in search.split()]
+        search_terms = [escape_like_value(t) for t in search.split()]
         # less number of terms - each term must match at least one field
         if len(search_terms) <= 2:
             for search_term in search_terms:
@@ -833,7 +867,8 @@ class WebsiteSearchableMixin(models.AbstractModel):
         parts, has_highlight = self._split_for_highlight(value, term)
 
         if has_highlight:
-            value = self.env['ir.ui.view'].sudo()._render_template(
+            website = self.env["website"].get_current_website()
+            value = website._render_template(
                 "website.search_text_with_highlight",
                 {'parts': parts}
             )
@@ -863,7 +898,8 @@ class WebsiteSearchableMixin(models.AbstractModel):
                 highlighted_tags.append(tag)
 
         if highlighted_tags:
-            value = self.env['ir.ui.view'].sudo()._render_template(
+            website = self.env["website"].get_current_website()
+            value = website.sudo()._render_template(
                 "website.search_tags_highlight",
                 {'tags': highlighted_tags}
             )

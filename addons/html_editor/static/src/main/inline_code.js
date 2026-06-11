@@ -1,7 +1,7 @@
 import { Plugin } from "@html_editor/plugin";
 import { isBlock, closestBlock } from "@html_editor/utils/blocks";
 import { splitTextNode, unwrapContents } from "@html_editor/utils/dom";
-import { isElement, isTextNode, isZwnbsp } from "@html_editor/utils/dom_info";
+import { isElement, isTextNode, isVisible, isZwnbsp } from "@html_editor/utils/dom_info";
 import { closestElement, selectElements, findFurthest } from "@html_editor/utils/dom_traversal";
 import { DIRECTIONS, nodeSize } from "@html_editor/utils/position";
 import { withSequence } from "@html_editor/utils/resource";
@@ -24,9 +24,15 @@ export class InlineCodePlugin extends Plugin {
                 this.dependencies.feff.surroundWithFeffs(code, cursors)
             ),
         toolbar_namespace_providers: withSequence(70, (targetedNodes) => {
+            const hasInlineCode = targetedNodes.some((node) =>
+                closestElement(node, "code.o_inline_code")
+            );
             if (
                 targetedNodes.length &&
-                targetedNodes.every((node) => closestElement(node, "code.o_inline_code"))
+                hasInlineCode &&
+                targetedNodes.every(
+                    (node) => closestElement(node, "code.o_inline_code") || !isVisible(node)
+                )
             ) {
                 return DISABLED_NAMESPACE;
             }
@@ -158,7 +164,7 @@ export class InlineCodePlugin extends Plugin {
                 anchorNode: codeElement,
                 anchorOffset: nodeSize(codeElement),
             });
-            this.dependencies.history.addStep();
+            this.dependencies.history.commit();
             delete this.historySavePointRestore;
             return;
         }
@@ -167,7 +173,7 @@ export class InlineCodePlugin extends Plugin {
         // one in the text.
         let textNode = selection.startContainer;
         const wholeText = textNode.wholeText;
-        const textHasTwoTicks = /`[^`]+`/.test(wholeText);
+        const textHasTwoTicks = /`[^ `][^`]*`/.test(wholeText);
         // We don't apply the code tag if there is no content between the two `
         if (textHasTwoTicks && wholeText.replace(/`/g, "").length) {
             let offset = selection.startOffset;
@@ -193,7 +199,7 @@ export class InlineCodePlugin extends Plugin {
                 anchorNode: textNode,
                 anchorOffset: offset,
             });
-            this.dependencies.history.addStep();
+            this.dependencies.history.commit();
             const insertedBacktickIndex = offset - 1;
             const textBeforeInsertedBacktick = textNode.textContent.substring(
                 0,
@@ -231,20 +237,20 @@ export class InlineCodePlugin extends Plugin {
             );
             splitNode.replaceWith(codeElement);
             if (!codeElement.textContent.length) {
-                this.dependencies.history.addStep();
+                this.dependencies.history.commit();
                 this.dependencies.selection.setSelection({
                     anchorNode: codeElement.firstChild,
                     anchorOffset: 1,
                 });
             } else if (isClosingForward) {
                 // Move selection out of code element.
-                this.dependencies.history.addStep();
+                this.dependencies.history.commit();
                 this.dependencies.selection.setSelection({
                     anchorNode: codeElement.nextSibling,
                     anchorOffset: 1,
                 });
             } else {
-                this.dependencies.history.addStep();
+                this.dependencies.history.commit();
                 this.dependencies.selection.setSelection({
                     anchorNode: codeElement.firstChild,
                     anchorOffset: 0,

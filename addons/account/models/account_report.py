@@ -90,7 +90,7 @@ class AccountReport(models.Model):
     search_bar = fields.Boolean(string="Search Bar")
     integer_rounding = fields.Selection(string="Integer Rounding", selection=[('HALF-UP', "Nearest"), ('UP', "Up"), ('DOWN', "Down")])
     allow_foreign_vat = fields.Boolean(
-        string="Allow Foreign VAT",
+        string="Allow Foreign Tax ID",
         compute=lambda x: x._compute_report_option_filter('allow_foreign_vat'),
         precompute=True, readonly=False, store=True, depends=['root_report_id', 'section_main_report_ids'],
     )
@@ -180,6 +180,11 @@ class AccountReport(models.Model):
     filter_growth_comparison = fields.Boolean(
         string="Growth Comparison",
         compute=lambda x: x._compute_report_option_filter('filter_growth_comparison', True),
+        precompute=True, readonly=False, store=True, depends=['root_report_id', 'section_main_report_ids'],
+    )
+    filter_line_comparison = fields.Boolean(
+        string="Report Line Comparison",
+        compute=lambda x: x._compute_report_option_filter('filter_line_comparison', False),
         precompute=True, readonly=False, store=True, depends=['root_report_id', 'section_main_report_ids'],
     )
     filter_journals = fields.Boolean(

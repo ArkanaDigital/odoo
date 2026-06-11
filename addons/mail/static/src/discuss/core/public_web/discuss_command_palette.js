@@ -1,7 +1,6 @@
 import { cleanTerm } from "@mail/utils/common/format";
-import { useState } from "@web/owl2/utils";
 
-import { Component } from "@odoo/owl";
+import { Component, proxy } from "@odoo/owl";
 
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { Dialog } from "@web/core/dialog/dialog";
@@ -25,7 +24,7 @@ class CreateChannelDialog extends Component {
         super.setup();
         this.store = useService("mail.store");
         this.orm = useService("orm");
-        this.state = useState({
+        this.state = proxy({
             name: this.props.name || "",
             isInvalid: false,
             is_readonly: false,
@@ -173,33 +172,28 @@ export class DiscussCommandPalette {
             })
             .slice(0, TOTAL_LIMIT);
         // balance remaining: half personas, half channels
-        const elligiblePersonas = [];
-        const elligibleChannels = [];
-        let i = 0;
-        while ((channels.length || partners.length) && i < remaining) {
-            const p = partners.shift();
-            const c = channels.shift();
-            if (p) {
-                elligiblePersonas.push(p);
-                i++;
-            }
-            if (i >= remaining) {
-                break;
-            }
-            if (c) {
-                elligibleChannels.push(c);
-                i++;
-            }
+        const numberOfChannels = Math.floor(remaining / 2);
+        const numberOfPersonas = numberOfChannels + (remaining % 2);
+        const elligiblePersonas = partners.slice(0, numberOfPersonas);
+        const elligibleChannels = channels.slice(0, numberOfChannels);
+        elligiblePersonas.push(
+            ...partners.slice(
+                numberOfPersonas,
+                numberOfPersonas + elligibleChannels.length - numberOfChannels
+            )
+        );
+        elligibleChannels.push(
+            ...channels.slice(
+                numberOfChannels,
+                numberOfChannels + elligiblePersonas.length - numberOfPersonas
+            )
+        );
+        const records = [...elligiblePersonas, ...elligibleChannels];
+        if (selfPartner && elligiblePersonas.length + elligibleChannels.length < remaining) {
+            records.push(selfPartner);
         }
-        for (const persona of elligiblePersonas) {
-            this.commands.push(this.makeDiscussCommand(persona));
-        }
-        for (const channel of elligibleChannels) {
-            this.commands.push(this.makeDiscussCommand(channel));
-        }
-        if (selfPartner && i < remaining) {
-            // put self persona as lowest priority item
-            this.commands.push(this.makeDiscussCommand(selfPartner));
+        for (const record of records) {
+            this.commands.push(this.makeDiscussCommand(record));
         }
     }
 

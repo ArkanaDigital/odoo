@@ -8,13 +8,13 @@ import json
 import logging
 import re
 import requests
-import threading
 import types
 import werkzeug.routing
 
 from collections import defaultdict
 from lxml import etree, html
 from markupsafe import Markup
+from requests import RequestException
 from urllib.parse import urlparse, urlsplit
 from werkzeug import urls
 
@@ -28,9 +28,9 @@ from odoo.fields import Domain
 from odoo.http import request
 from odoo.models import Query
 from odoo.modules.module import get_manifest
-from odoo.tools import BinaryBytes, file_open
+from odoo.tools import BinaryBytes, file_open, lazy
 from odoo.tools.image import image_process
-from odoo.tools.sql import SQL, escape_psql
+from odoo.tools.sql import SQL, escape_like_value
 from odoo.tools.translate import _
 
 logger = logging.getLogger(__name__)
@@ -93,54 +93,12 @@ DEFAULT_BLOCKED_THIRD_PARTY_DOMAINS = '\n'.join([  # noqa: FLY002
     'google.com.vn', 'google.vu', 'google.ws', 'google.rs', 'google.co.za', 'google.co.zm',
     'google.co.zw', 'google.cat',
 ])
-# Used to fetch all dynamic snippet occurrences. A filter on `class` containing
-# "s_dynamic" would also match the dynamic snippets base template
-# (`website.s_dynamic_snippet_template`), which should not be counted as an
-# asset snippet occurrence. To avoid this, we restrict the filter to elements
-# that do not have `t-att-data-vcss`.
-ALL_DYNAMIC_SNIPPET_REGEX = '<section((?![^>]*t-att-data-vcss)[^>]*class="[^"]*(^|\\s)s_dynamic(\\s|$)[^"]*"[^>]*)>'
-# TODO: Replace `data-carousel-interval` with a better carousel snippet filter.
-ALL_DYNAMIC_SNIPPET_CAROUSEL_REGEX = '<section(?=[^>]*class="[^"]*(^|\\s)s_dynamic(\\s|$)[^"]*")(?=[^>]*data-carousel-interval)[^>]*>'
-DYNAMIC_SNIPPET_SHARED_ASSETS_CONFIG = [
-    {
-        'id': 's_dynamic_snippet',
-        'snippet_filter': ALL_DYNAMIC_SNIPPET_REGEX,
-    },
-    {
-        'id': 's_dynamic_snippet_carousel',
-        'snippet_filter': ALL_DYNAMIC_SNIPPET_CAROUSEL_REGEX,
-    },
-]
 
 
 class Website(models.CachedModel):
-    _name = 'website'
+    _inherit = 'website'
     _description = "Website"
     _order = "sequence, id"
-
-    # ir.http:_match is called by ir.http:_serve_db at a time when the
-    # environment hasn't been completely initialized (i.e. before the method
-    # ir.http:_authenticate is called by ir.http:_serve_ir_http), and its
-    # context language hasn't been checked against activated languages yet.
-    #
-    # Inside ir.http:_match, the http_routing module is trying to retrieve the
-    # default language via _get_default_lang, which is overridden by the
-    # website module and accesses website.default_lang_id.
-    #
-    # Here, we cache the needed fields only to avoid prefetching any
-    # translatable field, such as contact_us_link_url by website_sale, as
-    # translating to an invalid language would result in an error.
-    _clear_cache_name = 'default'
-    _cached_data_fields = (
-        'user_id', 'company_id', 'default_lang_id', 'homepage_url',
-        'domain', 'cookies_bar', 'sequence',
-    )
-
-    @tools.ormcache(cache='default')
-    def _cached_data(self):
-        # method is overridden to use cache 'default' instead of 'stable'
-        # hack: retrieve the original method to skip the ormcache wrapper
-        return super()._cached_data.__cache__.method(self)
 
     def website_domain(self):
         return Domain('website_id', 'in', [False, *self.ids])
@@ -153,15 +111,6 @@ class Website(models.CachedModel):
         def_lang_id = self.env['res.lang']._get_data(code=lang_code).id
         return def_lang_id or self._active_languages()[0]
 
-    name = fields.Char('Website Name', required=True)
-    sequence = fields.Integer(default=10)
-    domain = fields.Char('Website Domain', help='E.g. https://www.mydomain.com')
-    domain_punycode = fields.Char(
-        string="Punycode Domain",
-        compute="_compute_domain_punycode",
-        store=False,
-        readonly=True)
-    company_id = fields.Many2one('res.company', string="Company", default=lambda self: self.env.company, required=True)
     language_ids = fields.Many2many(
         'res.lang', 'website_lang_rel', 'website_id', 'lang_id', string="Languages",
         default=_active_languages, required=True)
@@ -203,7 +152,6 @@ class Website(models.CachedModel):
     plausible_shared_key = fields.Char()
     plausible_site = fields.Char()
 
-    user_id = fields.Many2one('res.users', string='Public User', required=True)
     cdn_activated = fields.Boolean('Content Delivery Network (CDN)')
     cdn_url = fields.Char('CDN Base URL', default='')
     cdn_filters = fields.Text('CDN Filters', default=lambda s: '\n'.join(DEFAULT_CDN_FILTERS), help="URL matching those filters will be rewritten using the CDN Base URL")
@@ -228,28 +176,11 @@ class Website(models.CachedModel):
         ('b2c', 'Free sign up'),
     ], string='Customer Account', default='b2b')
 
-    _domain_unique = models.Constraint(
-        'unique(domain)',
-        'Website Domain should be unique.',
-    )
-
     @api.onchange('language_ids')
     def _onchange_language_ids(self):
         language_ids = self.language_ids._origin
         if language_ids and self.default_lang_id not in language_ids:
             self.default_lang_id = language_ids[0]
-
-    @api.depends('domain')
-    def _compute_domain_punycode(self):
-        """Compute the punycode (ASCII-safe) version of the domain."""
-        for website in self:
-            website_domain = website.domain or ''
-            hostname = urlparse(website_domain).hostname or ''
-            try:
-                punycode_hostname = hostname.encode('idna').decode('ascii')
-                website.domain_punycode = website_domain.replace(hostname, punycode_hostname)
-            except UnicodeError:
-                website.domain_punycode = website_domain
 
     @api.depends('social_default_image')
     def _compute_has_social_default_image(self):
@@ -263,10 +194,19 @@ class Website(models.CachedModel):
 
     def _compute_menu(self):
         # prefetch all accessible menus at once
-        all_menus = self.env['website.menu'].search_fetch(Domain('website_id', 'in', self.ids))
+        all_menus = self.env['website.menu'].search_fetch(Domain('website_id', 'in', self.ids + [False]))
 
         for website in self:
             menus = all_menus.filtered(lambda m: m.website_id == website)
+
+            # add the child menu without contained into menu with a website
+            for menu in all_menus.filtered(lambda m: not m.website_id):
+                parent = menu.parent_id
+                while parent:
+                    if parent.website_id == website:
+                        menus += menu
+                        break
+                    parent = parent.parent_id
 
             # use field parent_id (1 query) to determine field child_id (2 queries by level)"
             children = dict.fromkeys(menus, ())
@@ -314,7 +254,7 @@ class Website(models.CachedModel):
         }
 
     # self.env.uid for ir.rule groups on menu
-    @tools.ormcache('self.env.uid', 'self.id', cache='templates')
+    @api.ormcache('self.env.uid', 'self.id', cache='templates')
     def is_menu_cache_disabled(self):
         """
         Checks if the website menu contains a record like url.
@@ -329,6 +269,8 @@ class Website(models.CachedModel):
         for vals in vals_list:
             self._handle_create_write(vals)
 
+            if 'default_lang_id' not in vals:
+                vals['default_lang_id'] = self._default_language()
             if 'user_id' not in vals:
                 company = self.env['res.company'].browse(vals.get('company_id'))
                 vals['user_id'] = company._get_public_user().id if company else self.env.ref('base.public_user').id
@@ -382,10 +324,10 @@ class Website(models.CachedModel):
 
         result = super(Website, self - public_user_to_change_websites).write(values)
 
-        if 'cdn_activated' in values or 'cdn_url' in values or 'cdn_filters' in values:
+        if any(key in values for key in ["cdn_activated", "cdn_url", "cdn_filters", "domain"]):
             # invalidate the caches from static node at compile time
             if any(self._ids):
-                self.env.registry.clear_cache()
+                self.env.transaction.invalidate_ormcache()
 
         # invalidate cache for `company.website_id` to be recomputed
         if 'sequence' in values or 'company_id' in values:
@@ -435,8 +377,8 @@ class Website(models.CachedModel):
 
             try:
                 parsed = urlparse(record.domain)
-            except ValueError:
-                raise ValidationError(_("The provided website domain is not a valid URL."))
+            except ValueError as e:
+                raise ValidationError(_("The provided website domain is not a valid URL.")) from e
 
             if tools.urls._contains_dot_segments(parsed.path):
                 raise ValidationError(_("The domain path cannot contain relative path segments like '/./' or '/../'."))
@@ -449,7 +391,7 @@ class Website(models.CachedModel):
 
     @api.ondelete(at_uninstall=False)
     def _unlink_except_default_website(self):
-        default_website = self.env.ref('website.default_website', raise_if_not_found=False)
+        default_website = self.env.ref('base.default_website', raise_if_not_found=False)
         if default_website and default_website in self:
             raise UserError(_("You cannot delete default website %s. Try to change its settings instead", default_website.name))
 
@@ -458,7 +400,7 @@ class Website(models.CachedModel):
 
         companies = self.company_id
         res = super().unlink()
-        self.env.registry.clear_cache()
+        self.env.transaction.invalidate_ormcache()
         companies._compute_website_id()
         return res
 
@@ -676,7 +618,7 @@ class Website(models.CachedModel):
     @api.model
     def configurator_init(self):
         r = dict()
-        current_website = self.get_current_website()
+        current_website = self.get_current_website(fallback=True)
         company = current_website.company_id
         configurator_features = self.env['website.configurator.feature'].search([])
         r['features'] = [{
@@ -695,14 +637,14 @@ class Website(models.CachedModel):
         try:
             result = self._website_api_rpc('/api/website/1/configurator/industries', {'lang': self.env.context.get('lang')})
             r['industries'] = result['industries']
-        except AccessError as e:
+        except RequestException as e:
             logger.warning(e.args[0])
             r['industries'] = []
         return r
 
     @api.model
     def configurator_recommended_themes(self, industry_id, palette, result_nbr_max=3):
-        Module = request.env['ir.module.module']
+        Module = self.env['ir.module.module']
         domain = Module.get_themes_domain()
         domain = Domain.AND([[('name', '!=', 'theme_default')], domain])
         client_themes = Module.search(domain).mapped('name')
@@ -738,7 +680,7 @@ class Website(models.CachedModel):
 
     @api.model
     def configurator_apply(self, **kwargs):
-        website = self.get_current_website()
+        website = self.get_current_website(fallback=True)
         theme_name = kwargs['theme_name']
         theme = self.env['ir.module.module'].search([('name', '=', theme_name)])
         redirect_url = theme.button_choose_theme()
@@ -908,7 +850,7 @@ class Website(models.CachedModel):
         industry = kwargs['industry_name']
 
         IrQweb = self.env['ir.qweb'].with_context(website_id=website.id, lang=website.default_lang_id.code)
-        text_generation_target_lang = self.get_current_website().default_lang_id.code
+        text_generation_target_lang = self.get_current_website(fallback=True).default_lang_id.code
         # If the target language is not English, we need a good translation
         # coverage. But if the target lang is en_XX it's ok to have en_US text.
         text_must_be_translated_for_openai = not text_generation_target_lang.startswith('en_')
@@ -953,7 +895,7 @@ class Website(models.CachedModel):
                 for key in generated_content:
                     if response.get(key):
                         generated_content[key] = (name_replace_parser.sub(website_name, response[key], 0))
-            except AccessError:
+            except RequestException:
                 # If IAP is broken continue normally (without generating text)
                 pass
         else:
@@ -1227,7 +1169,8 @@ class Website(models.CachedModel):
             name = 'Home'
             page_key = 'home'
 
-        template_record = self.env.ref(template)
+        website = self.get_current_website()
+        template_record = self.env.ref(template).with_context(website_id=website.id)
         arch = template_record.arch
         if sections_arch:
             tree = html.fromstring(arch)
@@ -1235,9 +1178,8 @@ class Website(models.CachedModel):
             for section in html.fromstring(f'<wrap>{sections_arch}</wrap>'):
                 wrap.append(section)
             arch = etree.tostring(tree, encoding="unicode")
-        website_id = self.env.context.get('website_id')
         key = self.get_unique_key(page_key, template_module)
-        view = template_record.copy({'website_id': website_id, 'key': key})
+        view = template_record.copy({'website_id': website.id, 'key': key})
 
         view.with_context(lang=None).write({
             'arch': arch.replace(template, key),
@@ -1412,127 +1354,65 @@ class Website(models.CachedModel):
     # ----------------------------------------------------------
 
     @api.model
-    def get_current_website(self, fallback=True):
-        """ The current website is returned in the following order:
+    def get_current_website(self, fallback: bool | None = None):
+        """Return the current website record, or an empty recordset.
 
-        - the website forced in session `force_website_id`
-        - the website set in context
-        - (if frontend or fallback) the website matching the request's "domain"
-        - arbitrary the first website found in the database if `fallback` is set
-          to `True`
-        - empty browse record
+        We look for the current website (or a good enough one) looking
+        at, in order:
+
+        1. The ``website_id`` context.
+        2. The ``host_id`` context or ``ir.http._get_host_id()`` (domain
+           lookup), if ``fallback`` is ``None`` or ``True``
+        3. The first installed website, if ``fallback`` is ``True``.
+
+        Otherwise, if the contexts are missing, or contain a bad id, and
+        we can't fallback further: it returns an empty recordset.
+
+        ==============  ==============  =============  =============
+        Lookup order    fallback=False  fallback=None  fallback=True
+        ==============  ==============  =============  =============
+        website_id      Yes             Yes            Yes
+        host_id         No              Yes            Yes
+        first website   No              No             Yes
+        ==============  ==============  =============  =============
         """
-        is_frontend_request = request and getattr(request, 'is_frontend', False)
-        if request and request.session.get('force_website_id'):
-            website_id = self.browse(request.session['force_website_id']).exists()
-            if not website_id:
-                # Don't crash is session website got deleted
-                request.session.pop('force_website_id')
+        existing_ids = self.get_all().ids
+        if website_id := self.env.context.get('website_id'):
+            # during the match of env['ir.http'], the website information was
+            # added from the request.
+            if website_id in existing_ids:
+                return self.browse(website_id)
+
+        if fallback is False:
+            return self.browse(False).with_context(website_id=False)
+
+        if 'host_id' in self.env.context:
+            # during the match of env['ir.http'], the website information was
+            # added from the request.
+            website_id = self.env.context.get('host_id')
+        else:
+            # The request is not currently accessible for this route; you must
+            # call the fallback which will be done with respect to the URL on
+            # the current thread.
+            website_id = self.env['ir.http']._get_host_id()
+
+        if website_id not in existing_ids:
+            if fallback and existing_ids:
+                # TODO: check if we can remove it
+                website_id = existing_ids[0]
             else:
-                return website_id
+                website_id = False
 
-        website_id = self.env.context.get('website_id')
-        if website_id:
-            return self.browse(website_id)
-
-        if not is_frontend_request and not fallback:
-            # It's important than backend requests with no fallback requested
-            # don't go through
-            return self.browse(False)
-
-        # Reaching this point means that:
-        # - We didn't find a website in the session or in the context.
-        # - And we are either:
-        #   - in a frontend context
-        #   - in a backend context (or early in the dispatch stack) and a
-        #     fallback website is requested.
-        # We will now try to find a website matching the request host/domain (if
-        # there is one on request) or return a random one.
-
-        # The format of `httprequest.host` is `domain:port`
-        domain_name = (
-            request and request.httprequest.host
-            or hasattr(threading.current_thread(), 'url') and threading.current_thread().url
-            or '')
-        website_id = self.sudo()._get_current_website_id(domain_name, fallback=fallback)
-        return self.browse(website_id)
-
-    @api.model
-    @tools.ormcache('domain_name', 'fallback')
-    def _get_current_website_id(self, domain_name, fallback=True):
-        """Get the current website id.
-
-        First find the website for which the configured `domain` (after
-        ignoring a potential scheme) is equal to the given
-        `domain_name`. If a match is found, return it immediately.
-
-        If there is no website found for the given `domain_name`, either
-        fallback to the first found website (no matter its `domain`) or return
-        False depending on the `fallback` parameter.
-
-        :param domain_name: the domain for which we want the website.
-            In regard to the `url_parse` method, only the `netloc` part should
-            be given here, no `scheme`.
-        :type domain_name: string
-
-        :param fallback: if True and no website is found for the specificed
-            `domain_name`, return the first website (without filtering them)
-        :type fallback: bool
-
-        :return: id of the found website, or False if no website is found and
-            `fallback` is False
-        :rtype: int or False
-
-        :raises: if `fallback` is True but no website at all is found
-        """
-        def _remove_port(domain_name):
-            return (domain_name or '').split(':')[0]
-
-        def _filter_domain(website, domain_name, ignore_port=False):
-            """Ignore `scheme` from the `domain`, just match the `netloc` which
-            is host:port in the version of `url_parse` we use."""
-            website_domain = get_base_domain(website.domain_punycode)
-            if ignore_port:
-                website_domain = _remove_port(website_domain)
-                domain_name = _remove_port(domain_name)
-            return website_domain.lower() == (domain_name or '').lower()
-
-        # We need to test two possibilities unicode or punycode (safety guard)
-        domain_name = domain_name.encode("idna").decode("ascii")
-        domain_name_idna = domain_name.encode("ascii").decode("idna")
-
-        # TODO: in master, store the computed field domain_punycode to avoid
-        #       the need to search on domain_name and domain_name_idna.
-        found_websites = self.search([
-            '|',
-            ('domain', 'ilike', _remove_port(domain_name)),
-            ('domain', 'ilike', _remove_port(domain_name_idna)),
-        ])
-        # Filter for the exact domain (to filter out potential subdomains) due
-        # to the use of ilike.
-        # `domain_name` could be an empty string, in that case multiple website
-        # without a domain will be returned
-        websites = found_websites.filtered(lambda w: _filter_domain(w, domain_name))
-        # If there is no domain matching for the given port, ignore the port.
-        websites = websites or found_websites.filtered(lambda w: _filter_domain(w, domain_name, ignore_port=True))
-
-        if not websites:
-            if not fallback:
-                return False
-            return self.search([], limit=1).id
-
-        return websites[0].id
+        return self.browse(website_id).with_context(website_id=website_id)
 
     def _force(self):
-        self._force_website(self.id)
-
-    def _force_website(self, website_id):
         if request:
-            request.session['force_website_id'] = website_id and str(website_id).isdigit() and int(website_id)
+            request.session['force_website_id'] = self.id
 
     @api.model
     def is_public_user(self):
-        return request.env.user == request.website.user_id
+        website = self.get_current_website()
+        return self.env.user == website.user_id
 
     @api.model
     def viewref(self, view_id, raise_if_not_found=True):
@@ -1551,17 +1431,89 @@ class Website(models.CachedModel):
         return self.env['ir.ui.view'].sudo().with_context(active_test=False)._get_template_view(view_id, raise_if_not_found=raise_if_not_found)
 
     @api.model
+    def _render_template(self, template, values=None):
+        """ Render the template. If website is enabled on request, then extend rendering context with website values. """
+        self.ensure_one()
+
+        user = self.env.user
+        IrUiView = self.env['ir.ui.view'].with_context(website_id=self.id)
+        IrHttp = self.env['ir.http'].with_context(website_id=self.id)
+
+        view = IrUiView._get_template_view(template).sudo()
+        if isinstance(template, int) and view.key:
+            view = IrUiView._get_template_view(view.key).sudo()
+        view._handle_visibility(do_raise=True)
+
+        if values is None:
+            values = {}
+        if 'main_object' not in values:
+            values['main_object'] = view
+
+        editable = user.has_group('website.group_website_designer')
+        has_group_restricted_editor = user.has_group('website.group_website_restricted_editor')
+        if not editable and has_group_restricted_editor and 'main_object' in values:
+            try:
+                main_object = values['main_object'].with_user(user.id)
+                self._check_user_can_modify(main_object)
+                editable = True
+            except AccessError:
+                pass
+        translatable = has_group_restricted_editor and self.env.context.get('lang') != IrHttp._get_default_lang().code
+        editable = editable and not translatable
+
+        if has_group_restricted_editor and user.has_group('website.group_multi_website'):
+            values['multi_website_websites_current'] = self.name
+            values['multi_website_websites'] = [
+                {'website_id': website.id, 'name': website.name, 'domain': website.domain}
+                for website in self.get_all() if website != self
+            ]
+
+            cur_company = self.env.company
+            values['multi_website_companies_current'] = {'company_id': cur_company.id, 'name': cur_company.name}
+            values['multi_website_companies'] = lazy(lambda: [
+                {'company_id': comp.id, 'name': comp.name}
+                for comp in user.company_ids if comp != cur_company
+            ])
+
+        # update values
+
+        values.update(dict(
+            website=self,
+            is_view_active=self.is_view_active,
+            translatable=translatable,
+            editable=editable,
+        ))
+
+        if editable:
+            # form editable object, add the backend configuration link
+            if 'main_object' in values and has_group_restricted_editor:
+                func = getattr(values['main_object'], 'get_backend_menu_id', False)
+                values['backend_menu_id'] = lazy(lambda: func and func() or self.env['ir.model.data']._xmlid_to_res_id('website.menu_website_configuration'))
+
+        # update context
+
+        # Avoid cache inconsistencies: if the cookies have been accepted, the
+        # DOM structure should reflect it after a reload and not be stuck in its
+        # previous state (see the part related to cookies in
+        # `_post_processing_att`).
+        is_allowed_optional_cookies = self.env['ir.http']._is_allowed_cookie('optional')
+        context = {'website_id': self.id, 'cookies_allowed': is_allowed_optional_cookies}
+        if 'inherit_branding' not in self.env.context and not self.env.context.get('rendering_bundle'):
+            if editable:
+                # in edit mode add branding on ir.ui.view tag nodes
+                context['inherit_branding'] = True
+            elif has_group_restricted_editor:
+                # will add the branding on fields (into values)
+                context['inherit_branding_auto'] = True
+
+        return self.env['ir.qweb'].with_context(**context)._render(view.id, values)
+
+    @api.model
     def is_view_active(self, key):
         """
             Return True if active, False if not active, None if not found
         """
         return self.env['ir.ui.view'].with_context(active_test=False)._get_cached_template_info(key).get('active')
-
-    @api.model
-    def get_template(self, template):
-        if isinstance(template, str) and '.' not in template:
-            template = 'website.%s' % template
-        return self.env['ir.ui.view']._get_template_view(template).sudo()
 
     @api.model
     def pager(self, url, total, page=1, step=30, scope=5, url_args=None):
@@ -1599,8 +1551,10 @@ class Website(models.CachedModel):
             generation and can be overridden by modules setting up new HTML
             controllers for dynamic pages (e.g. blog).
             By default, returns template views marked as pages.
+
             :param str query_string: a (user-provided) string, fetches pages
                                      matching the string
+
             :param boolean ignore_custom_homepage: used to exclude the hompage url
                 from the page list if the homepage is not ``/``
             :returns: a list of mappings with two keys: ``name`` is the displayable
@@ -1956,58 +1910,39 @@ class Website(models.CachedModel):
 
     def _is_snippet_used(self, snippet_module, snippet_id, asset_version, asset_type, html_fields):
         snippet_occurences = []
-        # Retrieve the asset configuration used to identify all snippet
-        # occurrences, including assets shared across multiple snippets
-        # (e.g., dynamic snippets).
-        snippet_asset_config = next(
-            (config for config in DYNAMIC_SNIPPET_SHARED_ASSETS_CONFIG
-                if config['id'] == snippet_id),
-            {
-                'id': snippet_id,
-                'snippet_filter': f'<([^>]*data-snippet="{snippet_id}"[^>]*)>'
-            }
-        )
-        # 1. Check snippet template definition to avoid disabling its related
-        # assets. This special case is needed because snippet template
-        # definitions do not have a `data-snippet` attribute (which is added
-        # during drag&drop).
+        # Check snippet template definition to avoid disabling its related assets.
+        # This special case is needed because snippet template definitions do not
+        # have a `data-snippet` attribute (which is added during drag&drop).
         snippet_template_html = self.env['ir.qweb']._render(f'{snippet_module}.{snippet_id}', raise_if_not_found=False)
         if snippet_template_html:
             match = re.search('<([^>]*class="[^>]*)>', snippet_template_html)
             snippet_occurences.append(match.group())
 
-        if self._check_snippet_used(snippet_occurences, asset_type, asset_version, snippet_asset_config["id"]):
+        if self._check_snippet_used(snippet_occurences, asset_type, asset_version):
             return True
 
         html_fields = [(self.env[model_name], field_name) for model_name, field_name in html_fields]
-        # 2. As well as every snippet dropped in html fields
+        # As well as every snippet dropped in html fields
         self.env.cr.execute(SQL(" UNION ").join(
-            SQL(
-                "SELECT regexp_matches(%s, %s, 'g') FROM %s",
+            SQL("SELECT regexp_matches(%s, %s, 'g') FROM %s",
                 model._field_to_sql(model._table, field_name),
-                snippet_asset_config.get('snippet_filter'),
+                f'<([^>]*data-snippet="{snippet_id}"[^>]*)>',
                 SQL.identifier(model._table)
             )
             for model, field_name in html_fields
         ))
-        snippet_occurences = [r[0][0] for r in self.env.cr.fetchall()]
-        return self._check_snippet_used(snippet_occurences, asset_type, asset_version, snippet_asset_config["id"])
 
-    def _check_snippet_used(self, snippet_occurences, asset_type, asset_version, snippet_id):
-        def _check_snippet_version(snippet, version_attribute, asset_version):
+        snippet_occurences = [r[0][0] for r in self.env.cr.fetchall()]
+        return self._check_snippet_used(snippet_occurences, asset_type, asset_version)
+
+    def _check_snippet_used(self, snippet_occurences, asset_type, asset_version):
+        for snippet in snippet_occurences:
             if asset_version == '000':
-                if version_attribute not in snippet:
+                if f'data-v{asset_type}' not in snippet:
                     return True
             else:
-                if f'{version_attribute}="{asset_version}"' in snippet:
+                if f'data-v{asset_type}="{asset_version}"' in snippet:
                     return True
-        for snippet in snippet_occurences:
-            # Check whether the asset belongs to the current snippet or shared
-            # from another one.
-            check_shared_snippet_asset = 'data-snippet=' in snippet and snippet.split('data-snippet=')[1].split('"')[1] != snippet_id
-            version_attribute_prefix = f'data-{snippet_id + "-v" if check_shared_snippet_asset else "v"}'
-            if _check_snippet_version(snippet, f'{version_attribute_prefix}{asset_type}', asset_version):
-                return True
         return False
 
     def _check_user_can_modify(self, record):
@@ -2055,7 +1990,7 @@ class Website(models.CachedModel):
         Builds a search domain AND-combining a base domain with partial matches of each term in
         the search expression in any of the fields.
 
-        :param domain: base domain combined in the search expression
+        :param domain_list: base domain combined in the search expression
         :param search: search expression string
         :param fields: list of field names to match the terms of the search expression with
         :param extra: function that returns an additional subdomain for a search term
@@ -2066,7 +2001,7 @@ class Website(models.CachedModel):
         domain = Domain.AND(domain_list)
         if search:
             for search_term in search.split(' '):
-                subdomains = [Domain(field, 'ilike', escape_psql(search_term)) for field in fields]
+                subdomains = [Domain(field, 'ilike', escape_like_value(search_term)) for field in fields]
                 if extra:
                     subdomains.append(extra(self.env, search_term))
                 domain &= Domain.OR(subdomains)
@@ -2100,8 +2035,7 @@ class Website(models.CachedModel):
         return result
 
     def _search_with_fuzzy(self, search_type, search, offset, limit, order, options):
-        """
-        Performs a search with a search text or with a resembling word
+        """ Performs a search with a search text or with a resembling word
 
         :param search_type: indicates what to search within, 'all' matches all available types
         :param search: text against which to match results
@@ -2109,14 +2043,16 @@ class Website(models.CachedModel):
         :param limit: maximum number of results per model type involved in the result
         :param order: order on which to sort results within a model type
         :param options: search options from the submitted form containing:
+
             - allowFuzzy: boolean indicating whether the fuzzy matching must be done
             - other options used by `_search_get_details()`
 
         :return: tuple containing:
+
             - count: total number of results across all involved models
             - results: list of results per model (see _search_exact)
             - fuzzy_term: similar word against which results were obtained, indicates there were
-                no results for the initially requested search
+              no results for the initially requested search
         """
         fuzzy_term = False
         search_details = self._search_get_details(search_type, order, options)
@@ -2141,6 +2077,7 @@ class Website(models.CachedModel):
         :param order: order on which to sort results within a model type
 
         :return: tuple containing:
+
             - total number of results across all involved models
             - list of results per model made of:
                 - initial search_detail for the model
@@ -2372,7 +2309,7 @@ class Website(models.CachedModel):
         :return: yields words
         """
         match_pattern = r'[\w./-]{%s,}' % min(4, len(search) - 3)
-        first = escape_psql(search[0])
+        first = escape_like_value(search[0])
         for search_detail in search_details:
             model_name, fields = search_detail['model'], search_detail['search_fields']
             model = self.env[model_name]

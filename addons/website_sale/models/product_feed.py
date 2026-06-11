@@ -169,7 +169,7 @@ class ProductFeed(models.Model):
             "items": self._prepare_gmc_items(),
         }
 
-        return self.env["ir.ui.view"].sudo()._render_template("website_sale.gmc_xml", gmc_data)
+        return self.website_id.sudo()._render_template("website_sale.gmc_xml", gmc_data)
 
     def _prepare_gmc_items(self):
         """Prepare Google Merchant Center items' fields.
@@ -228,7 +228,7 @@ class ProductFeed(models.Model):
         # Send an early warning to the website manager if the number of products exceeds the
         # midpoint between the soft and hard limit.
         if len(products) > (const.PRODUCT_FEED_SOFT_LIMIT + const.PRODUCT_FEED_HARD_LIMIT) / 2:
-            today = fields.Date.today()
+            today = fields.Date.context_today(self)
             if (
                 not self.last_notification_date
                 or relativedelta(today, self.last_notification_date).weeks > 0
@@ -359,7 +359,7 @@ class ProductFeed(models.Model):
         return {}
 
     def _prepare_gmc_stock_info(self, product):
-        """ Prepare availability info for Google Merchant Center. """
+        """Prepare availability info for Google Merchant Center."""
         return {"availability": "out_of_stock" if product._is_sold_out() else "in_stock"}
 
     def _prepare_gmc_additional_info(self, product):

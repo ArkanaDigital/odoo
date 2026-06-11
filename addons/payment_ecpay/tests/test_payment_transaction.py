@@ -37,7 +37,7 @@ class TestPaymentTransaction(EcpayCommon):
         ignored_payment_methods = "#".join(
             all_payment_methods.difference(const.PAYMENT_METHODS_MAPPING[tx.payment_method_code])
         )
-        expected_values = {
+        expected_url_params = {
             "MerchantID": self.provider.ecpay_merchant_id,
             "MerchantTradeNo": tx.reference,
             "MerchantTradeDate": (
@@ -59,11 +59,15 @@ class TestPaymentTransaction(EcpayCommon):
             "Language": "ENG",
         }
         # The CheckMacValue must be computed using the provider's method
-        expected_values["CheckMacValue"] = tx.provider_id._ecpay_calculate_signature(
-            expected_values
+        expected_url_params["CheckMacValue"] = tx.provider_id._ecpay_calculate_signature(
+            expected_url_params
         )
-        expected_values["api_url"] = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5"
-        self.assertEqual(tx._get_specific_rendering_values(None), expected_values)
+        expected_values = {
+            "api_url": "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5",
+            "url_params": expected_url_params,
+        }
+        self.maxDiff = None
+        self.assertDictEqual(tx._get_specific_rendering_values(None), expected_values)
 
     def test_extract_reference_finds_reference(self):
         """Test that the transaction reference is found in the payment data."""
@@ -84,17 +88,17 @@ class TestPaymentTransaction(EcpayCommon):
     def test_apply_updates_confirms_transaction(self):
         """Test that the transaction state is set to 'done' on successful payment."""
         tx = self._create_transaction("redirect")
-        tx._apply_updates(self.payment_result_data)
+        tx.with_context(payment_safe_write=True)._apply_updates(self.payment_result_data)
         self.assertEqual(tx.state, "done")
 
     def test_apply_updates_sets_provider_reference(self):
         """Test that the provider reference is updated from the payment data."""
         tx = self._create_transaction("redirect")
-        tx._apply_updates(self.payment_result_data)
+        tx.with_context(payment_safe_write=True)._apply_updates(self.payment_result_data)
         self.assertEqual(tx.provider_reference, self.payment_result_data["TradeNo"])
 
     def test_apply_updates_sets_payment_method(self):
         """Test that the payment method is updated from the payment data."""
         tx = self._create_transaction("redirect")
-        tx._apply_updates(self.payment_result_data)
+        tx.with_context(payment_safe_write=True)._apply_updates(self.payment_result_data)
         self.assertEqual(tx.payment_method_id, self.env.ref("payment.payment_method_ipass_money"))

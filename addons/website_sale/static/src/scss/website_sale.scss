@@ -31,6 +31,7 @@
         }
 
         .o_wsale_products_grid_before_rail{
+            height: calc(100vh - var(--o_ws_sidebar_top_gap));
             scrollbar-width: none;
             -ms-overflow-style: none;
         }
@@ -55,7 +56,7 @@
     // === Content (Right) =====================================================
     // == Main content wrapper
     #products_grid {
-        overflow: auto;
+        overflow: visible;
         container-type: inline-size;
         container-name: o-wsale-grid;
         grid-template-rows: minmax(auto, auto);

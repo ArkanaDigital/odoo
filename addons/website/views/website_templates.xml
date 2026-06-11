@@ -132,14 +132,22 @@
         "/>
         <meta t-if="no_index" name="robots" content="noindex"/>
         <t t-set="seo_object" t-value="seo_object or main_object"/>
-        <t t-set="meta_description" t-value="seo_object and 'website_meta_description' in seo_object
-            and seo_object.sudo().website_meta_description or website_meta_description or website_meta.get('meta_description', '')"/>
-        <t t-set="meta_keywords" t-value="seo_object and 'website_meta_keywords' in seo_object
-            and seo_object.sudo().website_meta_keywords or website_meta_keywords"/>
+        <t t-set="record" t-value="seo_object.view_id.sudo() if seo_object._name in ('website.page', 'website.controller.page') else seo_object.sudo()"/>
+        <t t-set="needs_translation" t-value="request.lang and website and request.lang.id != website.default_lang_id.id"/>
+        <t t-set="meta_description" t-value="(website_meta.get('meta_description') or '').strip() if not needs_translation else (website_meta.get('default_meta_description') or '').strip()"/>
+        <t t-if="record and needs_translation and 'website_meta_description' in record._fields">
+            <t t-set="translated_description" t-value="(record.get_website_meta_i18n_value('website_meta_description', request.lang.code) or '').strip()"/>
+            <t t-if="translated_description">
+                <t t-set="meta_description" t-value="translated_description"/>
+            </t>
+        </t>
+        <t t-set="meta_keywords" t-value="(record.website_meta_keywords or '').strip() if record and not needs_translation and 'website_meta_keywords' in record._fields else ''"/>
+        <t t-if="record and needs_translation and 'website_meta_keywords' in record._fields">
+            <t t-set="meta_keywords" t-value="(record.get_website_meta_i18n_value('website_meta_keywords', request.lang.code) or '').strip()"/>
+        </t>
         <meta t-if="meta_description or editable" name="description" t-att-content="meta_description"/>
         <meta t-if="meta_keywords or editable" name="keywords" t-att-content="meta_keywords"/>
         <t t-if="seo_object and not disable_opengraph">
-        <meta name="default_description" t-att-content="website_meta_description or website_meta.get('meta_description')" groups="website.group_website_designer"/>
             <!-- OpenGraph tags for Facebook sharing -->
             <t t-set="opengraph_meta" t-value="website_meta.get('opengraph_meta')"/>
             <t t-if="opengraph_meta">
@@ -156,7 +164,7 @@
             </t>
             <!-- Twitter tags for sharing -->
             <t t-set="twitter_meta" t-value="website_meta.get('twitter_meta')"/>
-            <t t-if="opengraph_meta">
+            <t t-if="twitter_meta">
                 <t t-foreach="twitter_meta" t-as="t_meta">
         <meta t-att-name="t_meta" t-att-content="twitter_meta[t_meta]"/>
                 </t>
@@ -1720,7 +1728,7 @@
 
 <template id="header_hoverable_dropdown" inherit_id="website.layout" name="Header Hoverable Dropdown" active="False">
     <xpath expr="//header" position="attributes">
-        <attribute name="t-attf-class" add="o_hoverable_dropdown" separator=" "/>
+        <attribute name="t-attf-class" add="#{'' if is_view_active('website.template_header_hamburger') else 'o_hoverable_dropdown'}" separator=" "/>
     </xpath>
 </template>
 
@@ -3028,17 +3036,23 @@
     <xpath expr="//style" position="after">
         <t t-if='view'>
             <script>
-                $(document).ready(function() {
-                    var button = $('.reset_templates_button');
-                    button.click(function() {
-                        $('#reset_templates_mode').val($(this).data('mode'));
-                        var dialog = $('#reset_template_confirmation').modal('show');
-                        var input = dialog.find('input[type="text"]').val('').focus();
-                        var dialog_form = dialog.find('form');
-                        dialog_form.submit(function() {
-                            if (input.val() == dialog.find('.confirm_word').text()) {
-                                dialog.modal('hide');
-                                button.prop('disabled', true).text('Working...');
+                document.addEventListener('DOMContentLoaded', () =&gt; {
+                    const buttons = document.querySelectorAll('.reset_templates_button');
+                    const onClick = (event) =&gt; {
+                        event.preventDefault();
+                        const button = event.currentTarget;
+                        document.getElementById('reset_templates_mode').value = button.dataset.mode;
+                        const dialog = document.getElementById('reset_template_confirmation');
+                        window.Modal.getOrCreateInstance(dialog).show();
+                        const input = dialog.querySelector('input[type="text"]');
+                        input.value = '';
+                        input.focus();
+                        dialog.querySelector('form').addEventListener('submit', (event) =&gt; {
+                            event.preventDefault();
+                            if (input.value == dialog.querySelector('.confirm_word').textContent) {
+                                window.Modal.getInstance(dialog).hide();
+                                button.disabled = true;
+                                button.textContent = 'Working...';
                                 const id = document.querySelector('input[id="reset_templates_view_id"]').value;
                                 const redirect = document.querySelector('input[name="redirect"]').value;
                                 const mode = document.querySelector('input[id="reset_templates_mode"]').value;
@@ -3050,12 +3064,13 @@
                                     'body': JSON.stringify({'params': {'view_id': id, 'mode': mode}})
                                 }).then(() =&gt; window.location = redirect);
                             } else {
-                                input.val('').focus();
+                                input.value = '';
+                                input.focus();
                             }
                             return false;
                         });
-                        return false;
-                    });
+                    };
+                    buttons.forEach(button =&gt; button.addEventListener("click", onClick));
                 });
             </script>
         </t>
@@ -3136,7 +3151,7 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
 #   custom   #
 ##############
 
-<t t-out="request.website.sudo().robots_txt" />
+<t t-out="website.sudo().robots_txt" />
 </t>
 </t>
 </template>

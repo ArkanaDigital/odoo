@@ -355,7 +355,7 @@ class StockWarehouseOrderpoint(models.Model):
         for orderpoint in self:
             orderpoint.qty_to_order = orderpoint.qty_to_order_manual or orderpoint.qty_to_order_to_max
         try:
-            self._procure_orderpoint_confirm(company_id=self.env.company)
+            self.with_context(manual_replenishment=True)._procure_orderpoint_confirm(company_id=self.env.company)
         except UserError as e:
             if len(self) != 1:
                 raise e
@@ -811,7 +811,7 @@ class StockWarehouseOrderpoint(models.Model):
 
     def _get_multiple_rounded_qty(self, qty_to_order):
         replenishment_multiple = self.replenishment_uom_id or self._get_replenishment_multiple_alternative(qty_to_order)
-        if replenishment_multiple and replenishment_multiple != self.product_id.uom_id:
+        if replenishment_multiple:
             # Replace the UP by DOWN if we don't want to order more quantity than product_max_qty
             qty_to_order = self.product_id.uom_id._compute_quantity(qty_to_order, replenishment_multiple)
             qty_to_order = fields.Float.round(qty_to_order, precision_digits=0, rounding_method="UP")

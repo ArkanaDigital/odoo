@@ -165,12 +165,6 @@ const chatterPatch = {
             },
             () => [this.state.thread?.status, this.attachments.length]
         );
-        useLayoutEffect(
-            () => {
-                this.state.aside = this.props.isChatterAside;
-            },
-            () => [this.props.isChatterAside]
-        );
     },
 
     async updateRecipients(record, mode = this.state.composerType) {
@@ -270,10 +264,6 @@ const chatterPatch = {
         return !this.state.thread.id || !this.state.thread?.hasReadAccess;
     },
 
-    get onCloseFullComposerRequestList() {
-        return [...super.onCloseFullComposerRequestList, "scheduledMessages"];
-    },
-
     get requestList() {
         return [
             ...super.requestList,
@@ -345,7 +335,7 @@ const chatterPatch = {
         }
         this.state.isAttachmentBoxOpened = !this.state.isAttachmentBoxOpened;
         if (this.state.isAttachmentBoxOpened) {
-            this.rootRef.el.scrollTop = 0;
+            this.rootRef().scrollTop = 0;
             this.state.thread.scrollTop = "bottom";
         }
     },
@@ -417,8 +407,8 @@ const chatterPatch = {
                         self.reloadParentView();
                     }
                     self.state.isAttachmentBoxOpened = true;
-                    if (self.rootRef.el) {
-                        self.rootRef.el.scrollTop = 0;
+                    if (self.rootRef()) {
+                        self.rootRef().scrollTop = 0;
                     }
                     self.state.thread.scrollTop = "bottom";
                 } finally {

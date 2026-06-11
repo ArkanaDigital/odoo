@@ -1,9 +1,9 @@
-import { useExternalListener, useLayoutEffect, useRef, useState } from "@web/owl2/utils";
+import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { onExternalClick } from "@mail/utils/common/hooks";
 import { markEventHandled, isEventHandled } from "@web/core/utils/misc";
 
-import { Component } from "@odoo/owl";
+import { Component, props, proxy, types, useListener } from "@odoo/owl";
 
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
 import { usePosition } from "@web/core/position/position_hook";
@@ -12,33 +12,34 @@ import { useService } from "@web/core/utils/hooks";
 export class NavigableList extends Component {
     static components = { DiscussAvatar };
     static template = "mail.NavigableList";
-    static props = {
-        anchorRef: { optional: true },
-        class: { type: String, optional: true },
-        onSelect: { type: Function },
-        options: { type: Array },
-        optionTemplate: { type: String, optional: true },
-        position: { type: String, optional: true },
-        closeOnSelect: { type: Boolean, optional: true },
-        isLoading: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        position: "bottom",
-        closeOnSelect: true,
-        isLoading: false,
-    };
-
     setup() {
         super.setup();
+        this.props = props(
+            {
+                "anchorRef?": types.signal(types.instanceOf(HTMLElement)),
+                "class?": types.string(),
+                "closeOnSelect?": types.boolean(),
+                "isLoading?": types.boolean(),
+                onSelect: types.function([types.instanceOf(Event), types.object(), types.object()]),
+                options: types.array(types.object()),
+                "optionTemplate?": types.string(),
+                "position?": types.string(),
+            },
+            {
+                closeOnSelect: true,
+                isLoading: false,
+                position: "bottom",
+            }
+        );
         this.rootRef = useRef("root");
-        this.state = useState({
+        this.state = proxy({
             activeIndex: null,
             open: false,
             showLoading: false,
         });
         this.hotkey = useService("hotkey");
         this.hotkeysToRemove = [];
-        useExternalListener(window, "keydown", this.onKeydown, true);
+        useListener(window, "keydown", (ev) => this.onKeydown(ev), true);
         onExternalClick("root", async (ev) => {
             // Let event be handled by bubbling handlers first.
             await new Promise(setTimeout);
@@ -48,7 +49,7 @@ export class NavigableList extends Component {
             this.close();
         });
         // position and size
-        usePosition("root", () => this.props.anchorRef, { position: this.props.position });
+        usePosition("root", () => this.props.anchorRef?.(), { position: this.props.position });
         useLayoutEffect(
             () => {
                 this.open();

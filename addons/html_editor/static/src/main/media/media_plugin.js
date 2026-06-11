@@ -19,6 +19,8 @@ import { closestElement } from "@html_editor/utils/dom_traversal";
 import { fuzzyLookup } from "@web/core/utils/search";
 import { FORMATTABLE_TAGS } from "@html_editor/utils/formatting";
 
+export const ATTACHMENT_PENDING_RECORD_ID = "o_attachment_pending_record_id";
+
 /**
  * @typedef { Object } MediaShared
  * @property { MediaPlugin['openMediaDialog'] } openMediaDialog
@@ -41,7 +43,7 @@ import { FORMATTABLE_TAGS } from "@html_editor/utils/formatting";
 export class MediaPlugin extends Plugin {
     static id = "media";
     static dependencies = ["selection", "history", "dom", "dialog"];
-    static shared = ["openMediaDialog"];
+    static shared = ["openMediaDialog", "extractUnmappedAttachmentsIds"];
     static defaultConfig = {
         allowImage: true,
         allowMediaDocuments: true,
@@ -195,6 +197,9 @@ export class MediaPlugin extends Plugin {
             throw new Error("Element is required: onSaveMediaDialog");
             // return;
         }
+        if (element.dataset?.attachmentId) {
+            element.classList.add(ATTACHMENT_PENDING_RECORD_ID);
+        }
         if (node) {
             const changedIcon = isIconElement(node) && isIconElement(element);
             if (changedIcon) {
@@ -215,7 +220,7 @@ export class MediaPlugin extends Plugin {
         const [anchorNode, anchorOffset] = rightPos(element);
         this.dependencies.selection.setSelection({ anchorNode, anchorOffset });
         this.trigger("on_media_dialog_saved_handlers", element);
-        this.dependencies.history.addStep();
+        this.dependencies.history.commit();
     }
 
     async addMedia(element) {
@@ -223,11 +228,21 @@ export class MediaPlugin extends Plugin {
         this.trigger("on_media_added_handlers", { newMediaEl: element });
     }
 
+    extractUnmappedAttachmentsIds(content = this.editable) {
+        return [...content.getElementsByClassName(ATTACHMENT_PENDING_RECORD_ID)]
+            .map((attachment) => {
+                attachment.classList.remove(ATTACHMENT_PENDING_RECORD_ID);
+                return attachment.dataset?.attachmentId;
+            })
+            .filter(Boolean)
+            .map((id) => parseInt(id));
+    }
+
     openMediaDialog(params = {}, editableEl = null) {
         const oldSave =
             params.save ||
             ((...args) => {
-                // The media dialog calls the save function with 4 params: this.props.save(elements, selectedMedia, this.state.activeTab, this.props.media)
+                // The media dialog calls the save function with 4 params: this.props.save(elements, selectedMedia, this.activeTab(), this.props.media)
                 const [elements, , , oldMediaNode] = args;
                 const node = oldMediaNode || params.node;
                 this.onSaveMediaDialog(elements, { node });
@@ -257,6 +272,9 @@ export class MediaPlugin extends Plugin {
             onAttachmentChange: this.config.onAttachmentChange || (() => {}),
             noImages: !this.config.allowImage,
             extraTabs: this.getResource("media_dialog_extra_tabs"),
+            pendingAttachments: this.config.getPendingAttachmentsIds
+                ? this.config.getPendingAttachmentsIds()
+                : [],
             ...this.config.mediaModalParams,
             ...params,
         });

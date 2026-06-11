@@ -30,7 +30,6 @@ from contextlib import ContextDecorator, contextmanager
 from difflib import HtmlDiff
 from functools import lru_cache, reduce, wraps
 from itertools import islice, groupby as itergroupby
-from operator import itemgetter
 from types import MappingProxyType
 from zoneinfo import ZoneInfo
 
@@ -63,11 +62,11 @@ __all__ = [
     'babel_locale_parse',
     'clean_context',
     'consteq',
-    'discardattr',
     'exception_to_unicode',
     'file_open',
     'file_open_temporary_directory',
     'file_path',
+    'find_circular_dependency',
     'find_in_path',
     'formatLang',
     'format_amount',
@@ -372,6 +371,39 @@ def topological_sort[T](elems: Mapping[T, Collection[T]]) -> list[T]:
     return result
 
 
+def find_circular_dependency[T](elems: Mapping[T, Collection[T]]) -> list[T]:
+    """
+    Check for circular dependencies in the given mapping.
+
+    Uses procedural DFS implementation.
+
+    :param elems: Mapping of elements to their dependencies. See also :func:`topological_sort`.
+    :return: List representing the circular dependency chain if found, empty list otherwise
+    """
+    visited: set[T] = set()
+    path: list[T] = []
+    deps_iters = [iter(elems)]
+
+    while True:
+        node = next(deps_iters[-1], SENTINEL)
+
+        if node is SENTINEL:  # Backtrack
+            if not path:
+                return []
+
+            path.pop()
+            deps_iters.pop()
+
+        elif node in visited:
+            if node in path:  # Cycle found
+                return path[path.index(node):] + [node]
+
+        else:  # Traverse
+            visited.add(node)
+            path.append(node)
+            deps_iters.append(iter(elems.get(node, ())))
+
+
 def merge_sequences[T](*iterables: Iterable[T]) -> list[T]:
     """ Merge several iterables into a list. The result is the union of the
         iterables, ordered following the partial order given by the iterables,
@@ -631,13 +663,6 @@ def split_every[T](n: int, iterable: Iterable[T], piece_maker=tuple):
         yield piece
         piece = piece_maker(islice(iterator, n))
 
-
-def discardattr(obj: object, key: str) -> None:
-    """ Perform a ``delattr(obj, key)`` but without crashing if ``key`` is not present. """
-    try:
-        delattr(obj, key)
-    except AttributeError:
-        pass
 
 # ---------------------------------------------
 # String management
@@ -1030,7 +1055,9 @@ class OrderedSet[T](MutableSet[T]):
         return reduce(OrderedSet.__and__, others, self)
 
     def copy(self):
-        return self.__class__(self)
+        new_set = OrderedSet()
+        new_set._map = self._map.copy()  # Atomic dict copy
+        return new_set
 
 
 class LastOrderedSet[T](OrderedSet[T]):
@@ -1038,6 +1065,11 @@ class LastOrderedSet[T](OrderedSet[T]):
     def add(self, elem):
         self.discard(elem)
         super().add(elem)
+
+    def copy(self):
+        new_set = LastOrderedSet()
+        new_set._map = self._map.copy()  # Atomic dict copy
+        return new_set
 
 
 class Callbacks:
@@ -1926,11 +1958,6 @@ def get_flag(country_code: str) -> str:
     This emoji is composed of the two regional indicator emoji of the country code.
     """
     return "".join(chr(int(f"1f1{ord(c)+165:02x}", base=16)) for c in country_code)
-
-
-def format_frame(frame) -> str:
-    code = frame.f_code
-    return f'{code.co_name} {code.co_filename}:{frame.f_lineno}'
 
 
 def named_to_positional_printf(string: str, args: Mapping) -> tuple[str, tuple]:

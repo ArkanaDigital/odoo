@@ -771,6 +771,11 @@ class TestFrontend(TestFrontendCommon):
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_tour(f"/pos/ui/{self.pos_config.id}", 'test_combo_preparation_receipt_layout', login="pos_user")
 
+    def test_combo_apply_after_preparation(self):
+        setup_product_combo_items(self)
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('test_combo_apply_after_preparation', login="pos_user")
+
     def test_tip_after_payment(self):
         self.pos_config.write({'iface_tipproduct': True, 'tip_product_id': self.tip.id})
         self.pos_config.with_user(self.pos_user).open_ui()
@@ -1043,3 +1048,31 @@ class TestFrontend(TestFrontendCommon):
     def test_add_new_table_number_with_multi_floor(self):
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('test_add_new_table_number_with_multi_floor', login="pos_admin")
+
+    def test_floating_order_name_change_partner(self):
+        # Create partners
+        self.env['res.partner'].create([
+            {'name': 'Abigael', 'street': '123 Fake St'},
+            {'name': 'Deco Addict', 'street': '456 Real St'},
+        ])
+
+        # Create presets
+        self.preset_eat_in = self.env['pos.preset'].create({
+            'name': 'Eat in',
+        })
+        self.preset_delivery = self.env['pos.preset'].create({
+            'name': 'Delivery',
+            'identification': 'address',
+        })
+
+        self.main_pos_config.write({
+            'use_presets': True,
+            'default_preset_id': self.preset_eat_in.id,
+            'available_preset_ids': [(6, 0, [
+                self.preset_eat_in.id,
+                self.preset_delivery.id,
+            ])],
+        })
+
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('test_floating_order_name_change_partner', login="pos_user")

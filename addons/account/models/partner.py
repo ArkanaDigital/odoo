@@ -53,8 +53,8 @@ class AccountFiscalPosition(models.Model):
     )
     tax_map = fields.Json(compute='_compute_tax_map')
     note = fields.Html('Notes', translate=True, help="Legal mentions that have to be printed on the invoices.")
-    auto_apply = fields.Boolean(string='Detect Automatically', help="Apply tax & account mappings on invoices automatically if the matching criterias (VAT/Country) are met.")
-    vat_required = fields.Boolean(string='VAT required', help="Apply only if partner has a VAT number.")
+    auto_apply = fields.Boolean(string='Detect Automatically', help="Apply tax & account mappings on invoices automatically if the matching criterias (Tax ID/Country) are met.")
+    vat_required = fields.Boolean(string='Tax ID required', help="Apply only if partner has a Tax ID.")
     company_country_id = fields.Many2one(string="Company Country", related='company_id.account_fiscal_country_id')
     fiscal_country_codes = fields.Char(string="Company Fiscal Country Code", related='company_country_id.code')
     country_id = fields.Many2one('res.country', string='Country', inverse='_inverse_foreign_vat',
@@ -124,11 +124,11 @@ class AccountFiscalPosition(models.Model):
         for record in self:
             if record.foreign_vat:
                 if not record.country_id:
-                    raise ValidationError(_("The country of the foreign VAT number could not be detected. Please assign a country to the fiscal position."))
+                    raise ValidationError(_("The country of the foreign Tax ID could not be detected. Please assign a country to the fiscal position."))
                 if record.country_id == record.company_id.account_fiscal_country_id:
                     if not record.state_ids:
                         if record.company_id.account_fiscal_country_id.state_ids:
-                            raise ValidationError(_("You cannot create a fiscal position with a foreign VAT within your fiscal country without assigning it a state."))
+                            raise ValidationError(_("You cannot create a fiscal position with a foreign Tax ID within your fiscal country without assigning it a state."))
                 if record.country_group_id and record.country_id:
                     if record.country_id not in record.country_group_id.country_ids:
                         raise ValidationError(_("You cannot create a fiscal position with a country outside of the selected country group."))
@@ -140,7 +140,7 @@ class AccountFiscalPosition(models.Model):
                     ('country_id', '=', record.country_id.id),
                 ])
                 if similar_fpos_count:
-                    raise ValidationError(_("A fiscal position with a foreign VAT already exists in this country."))
+                    raise ValidationError(_("A fiscal position with a foreign Tax ID already exists in this country."))
 
     @api.onchange('country_id', 'foreign_vat')
     def _onchange_foreign_vat(self):
@@ -217,7 +217,7 @@ class AccountFiscalPosition(models.Model):
         return super(AccountFiscalPosition, self).write(vals)
 
     def _get_first_matching_fpos(self, partner):
-        sorted_fpos = self.sorted(key=lambda f: (-len(f.company_id.parent_ids), f.sequence))  # company specific first, then sequence
+        sorted_fpos = self.sorted(key=lambda f: (-len(f.company_id.sudo().parent_ids), f.sequence))  # company specific first, then sequence
         for fpos in sorted_fpos:
             if all(fn(fpos) for fn in self._get_fpos_validation_functions(partner)):
                 return fpos
@@ -505,10 +505,10 @@ class ResPartner(models.Model):
 
     def _get_company_currency(self):
         for partner in self:
-            if partner.company_id:
-                partner.currency_id = partner.sudo().company_id.currency_id
-            else:
-                partner.currency_id = self.env.company.currency_id
+            partner.currency_id = partner.sudo().company_id.currency_id or self.env.company.currency_id
+
+    def _get_company_currency_sql(self, table):
+        return SQL("COALESCE(%s, %s)", table.company_id.currency_id, self.env.company.currency_id.id)
 
     def _default_display_invoice_template_pdf_report_id(self):
         """ Show PDF template selection if there are more than 1 template available for invoices. """
@@ -542,7 +542,9 @@ class ResPartner(models.Model):
         groups='account.group_account_invoice,account.group_account_readonly')
     total_invoiced = fields.Monetary(compute='_invoice_total', string="Total Invoiced",
         groups='account.group_account_invoice,account.group_account_readonly')
-    currency_id = fields.Many2one('res.currency', compute='_get_company_currency', readonly=True,
+    currency_id = fields.Many2one('res.currency',
+        compute='_get_company_currency', compute_sql='_get_company_currency_sql', compute_sudo=True,
+        readonly=True,
         string="Currency") # currency of amount currency
     property_account_payable_id = fields.Many2one('account.account', company_dependent=True,
         check_company=True,
@@ -1216,7 +1218,7 @@ class ResPartner(models.Model):
                         full_domain = Domain.AND([static_domain, domain])
                         partner = self.search(
                             full_domain,
-                            order='company_id, parent_id DESC, id DESC',
+                            order='is_company DESC, supplier_rank DESC, company_id, parent_id DESC, id DESC',
                             limit=1,
                         )
                     elif search_method:

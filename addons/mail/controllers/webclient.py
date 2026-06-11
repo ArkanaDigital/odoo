@@ -17,13 +17,21 @@ class WebclientController(ThreadController):
     @mail_route("/mail/store", methods=["POST"], type="jsonrpc", auth="public", readonly=lambda self, *_: self._is_mail_fetch_readonly())
     def mail_store(self, fetch_params, context=None):
         """Returns store data for the given fetch_params."""
+        context_user_id = context.get("uid") if context else None
         store = Store()
+        if context_user_id and (not self.env.user or context_user_id != self.env.user.id):
+            # The user has been logged out in the meantime
+            return store
+
         if context:
             request.update_context(**context)
         self._process_request_loop(store, fetch_params)
         return store
 
     def _is_mail_fetch_readonly(self):
+        if request.httprequest.method == "OPTIONS":
+            # CORS preflight request has an empty body, nothing to parse
+            return True
         fetch_params = request.get_json_data().get("params", {}).get("fetch_params", [])
         return store_handler_registry.is_fetch_readonly(fetch_params)
 
@@ -92,6 +100,13 @@ class WebclientController(ThreadController):
     def store_get_res_users(self, store: Store, id):
         user = request.env["res.users"].search_fetch([("id", "=", id)])
         store.add(user, "_store_user_fields")
+
+    @store_handler("mail.activity")
+    def store_get_mail_activity(self, store: Store, ids):
+        activities = request.env["mail.activity"].with_context(active_test=False).search_fetch(
+            [("id", "in", ids)]
+        )
+        store.add(activities, "_store_activity_fields")
 
     @store_handler("/mail/poll_option/votes", audience="everyone")
     def store_poll_option_votes(self, store: Store, poll_option_id):

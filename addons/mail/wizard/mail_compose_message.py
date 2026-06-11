@@ -90,6 +90,7 @@ class MailComposeMessage(models.TransientModel):
     subject = fields.Char(
         'Subject',
         compute='_compute_subject', readonly=False, store=True)
+    subject_placeholder = fields.Char('Subject Placeholder', compute='_compute_subject_placeholder')
     body = fields.Html(
         'Contents',
         render_engine='qweb', render_options={'post_process': True},
@@ -252,6 +253,19 @@ class MailComposeMessage(models.TransientModel):
                     else:
                         subject = ''
                 composer.subject = subject
+
+    @api.depends('composition_mode', 'model', 'res_domain', 'res_ids')
+    def _compute_subject_placeholder(self):
+        """Show what the subject will fallback to in single-recipient mode."""
+        for composer in self:
+            subject = None
+            if composer.composition_mode == 'comment' and not composer.composition_batch:
+                res_ids = composer._evaluate_res_ids()
+                if record := res_ids and self.env[composer.model].browse(res_ids[0]):
+                    subject = record._message_compute_subject() or record.display_name
+            if not subject:
+                subject = _('e.g. Welcome to MyCompany!')
+            composer.subject_placeholder = subject
 
     @api.depends('composition_mode', 'model', 'res_domain', 'res_ids',
                  'template_id')
@@ -1305,12 +1319,12 @@ class MailComposeMessage(models.TransientModel):
             if email_mode and self.email_layout_xmlid and mail_values['recipient_ids']:
                 lang = langs[res_id]
                 recipient_ids = [command[1] for command in mail_values['recipient_ids']]
-                msg_vals = {
+                new_mail_message_values = {
+                    'body': mail_values['body'],
                     'email_layout_xmlid': self.email_layout_xmlid,
                     'model': self.model,
                     'res_id': res_id,
                 }
-                new_mail_message_values = {'body': mail_values['body']}
                 if self.template_id:
                     new_mail_message_values['email_add_signature'] = False
                 message_inmem = self.env['mail.message'].new(new_mail_message_values)
@@ -1330,14 +1344,12 @@ class MailComposeMessage(models.TransientModel):
                         'uid': False,
                         'ushare': False,
                     } for pid in recipient_ids],
-                    msg_vals=msg_vals,
                     model_description=False,  # force dynamic computation
                     force_email_lang=lang,
                 ):
                     mail_body = record._notify_by_email_render_layout(
                         message_inmem,
                         recipients_group_data,
-                        msg_vals=msg_vals,
                         render_values=render_values,
                     )
                     mail_values['body_html'] = mail_body

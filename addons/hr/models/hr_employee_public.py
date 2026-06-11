@@ -27,6 +27,12 @@ class HrEmployeePublic(models.Model):
     address_id = fields.Many2one('res.partner', readonly=True)
     mobile_phone = fields.Char(readonly=True)
     work_phone = fields.Char(readonly=True)
+    phone_sanitized = fields.Char(readonly=True)
+    phone_formatted = fields.Char(related='employee_id.phone_formatted')
+    work_phone_sanitized = fields.Char(related='employee_id.work_phone_sanitized')
+    work_phone_formatted = fields.Char(related='employee_id.work_phone_formatted')
+    mobile_phone_sanitized = fields.Char(related='employee_id.mobile_phone_sanitized')
+    mobile_phone_formatted = fields.Char(related='employee_id.mobile_phone_formatted')
     work_email = fields.Char(readonly=True)
     share = fields.Boolean(related='employee_id.share')
     phone = fields.Char(related='employee_id.phone')
@@ -109,12 +115,13 @@ class HrEmployeePublic(models.Model):
     @api.depends('user_id')
     def _compute_last_activity(self):
         for employee in self:
+            today = fields.Date.context_today(self)
             tz = employee.tz
             # sudo: res.users - can access presence of accessible user
             if last_presence := employee.user_id.sudo().presence_ids.last_presence:
                 last_activity_datetime = last_presence.replace(tzinfo=UTC).astimezone(ZoneInfo(tz)).replace(tzinfo=None)
                 employee.last_activity = last_activity_datetime.date()
-                if employee.last_activity == fields.Date.today():
+                if employee.last_activity == today:
                     employee.last_activity_time = format_time(self.env, last_presence, time_format='short')
                 else:
                     employee.last_activity_time = False

@@ -1,12 +1,10 @@
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { ChannelMember } from "@mail/discuss/core/common/channel_member";
-import { ChannelActionDialog } from "@mail/discuss/core/common/channel_action_dialog";
-import { ChannelInvitation } from "@mail/discuss/core/common/channel_invitation";
+import { openChannelInvitationDialog } from "@mail/discuss/core/common/channel_invitation";
 import { SearchInput } from "@mail/core/common/search_input";
 
-import { Component, onWillUpdateProps, onWillStart } from "@odoo/owl";
+import { Component, computed, onWillUpdateProps, onWillStart, props, types } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
-import { onWillRender } from "@web/owl2/utils";
 
 import { useService } from "@web/core/utils/hooks";
 import { useSearch } from "@mail/utils/common/hooks";
@@ -28,33 +26,26 @@ export const MEMBER_CATEGORIES = [
     { sequence: 30, getMembers: (ch) => ch.unknownStatusMembers, label: _t("Others") },
 ];
 
-/**
- * @typedef {Object} Props
- * @property {import("models").DiscussChannel} channel
- * @property {string} [className]
- * @property {Function} [openChannelInvitePanel]
- * @property {Function} [close]
- * @extends {Component<Props, Env>}
- */
 export class ChannelMemberList extends Component {
-    static components = { ActionPanel, ChannelActionDialog, ChannelMember, SearchInput };
-    static props = ["channel", "close?", "openChannelInvitePanel", "className?"];
+    static components = { ActionPanel, ChannelMember, SearchInput };
     static template = "discuss.ChannelMemberList";
 
     setup() {
         super.setup();
         this.store = useService("mail.store");
+        this.props = props({
+            channel: types.instanceOf(this.store["discuss.channel"].Class),
+            "close?": types.function([]),
+        });
         this.dialogService = useService("dialog");
+        this.openChannelInvitationDialog = openChannelInvitationDialog;
         this.search = useSearch({
             fetch: async (term) => {
                 await this.props.channel.searchChannelMembers(term);
                 return this.hasFilteredMembers(this.computeCategories(term));
             },
         });
-        this.categories = [];
-        onWillRender(() => {
-            this.categories = this.computeCategories(this.search.searchTerm);
-        });
+        this.categories = computed(() => this.computeCategories(this.search.searchTerm));
         onWillStart(() => {
             if (this.props.channel.fetchMembersState === "not_fetched") {
                 this.props.channel.fetchChannelMembers();
@@ -80,7 +71,7 @@ export class ChannelMemberList extends Component {
             return false;
         }
         return (
-            this.categories.reduce((sum, c) => sum + c.matching.length, 0) >= SEARCH_RESULT_LIMIT
+            this.categories().reduce((sum, c) => sum + c.matching.length, 0) >= SEARCH_RESULT_LIMIT
         );
     }
 
@@ -105,21 +96,5 @@ export class ChannelMemberList extends Component {
                 remaining -= filtered.length;
                 return { label, matching, filtered, showCount };
             });
-    }
-
-    onClickInviteButton() {
-        if (this.env.inMeetingView) {
-            this.props.openChannelInvitePanel?.({ keepPrevious: true });
-        } else {
-            this.dialogService.add(ChannelActionDialog, {
-                contentClass: "o-discuss-ChannelInvitation",
-                contentComponent: ChannelInvitation,
-                contentProps: {
-                    channel: this.props.channel,
-                    close: () => this.store.env.services.dialog.closeAll(),
-                },
-                title: this.props.channel.displayName,
-            });
-        }
     }
 }

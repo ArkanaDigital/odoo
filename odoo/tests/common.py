@@ -58,7 +58,8 @@ import odoo.orm.registry
 from odoo import api
 from odoo.exceptions import AccessError
 from odoo.fields import Command
-from odoo.http.requestlib import Request, _request_stack, request
+from odoo.http import request, request_var
+from odoo.http.requestlib import Request
 from odoo.http.session import (
     DEFAULT_LANG,
     get_default_session,
@@ -67,12 +68,13 @@ from odoo.http.session import (
     session_store,
 )
 from odoo.http.session import Session as OdooHttpSession
+from odoo.orm.environments import CacheLayer
 from odoo.modules.registry import Registry
 from odoo.sql_db import Cursor
 from odoo.tools import SQL, DotDict, config, file_open, float_compare, mute_logger, profiler
 from odoo.tools.binary import BinaryBytes
 from odoo.tools.mail import single_email_re
-from odoo.tools.misc import diff_zip, find_in_path, str2bool
+from odoo.tools.misc import diff_zip, find_in_path, real_time, str2bool
 from odoo.tools.safe_eval import safe_whitelist
 from odoo.tools.xml_utils import _validate_xml
 
@@ -171,29 +173,58 @@ def flushing_cursor(cr: Cursor):
     changes made on the main cursor. You can still continue using the main
     cursor inside the block, it will be flushed on exit and then reset.
     """
+    assert isinstance(odoo.modules.module.current_test, TransactionCase), "only available for TransactionCase"
+
     if _disable_flushing_cursor:
         # execution of wkhtml happens in parallel, we don't want to flush the
         # cursor in that case
         yield
         return
 
-    # simulating a cr.commit()
-    cr.flush()
     if cr.transaction is None:  # no environment to clear
+        cr.flush()
         yield
         return
 
-    registry = cr.transaction.registry
-    if registry.cache_invalidated:
-        registry.signal_changes()
-    cr.transaction.clear()
+    # simluate cr.commit()
+    state_stack = cr.transaction._state_stack__
+    registry_invalidated = cr.transaction._registry_invalidated
+    closing = cr._closing
+    # preserve registry_invalidated flag which is reset when committing
+    # sum them after yielding
+    try:
+        # Since we simulate an empty stack, make sure the parent layer is set as
+        # the cache on the registry. This ensures that existing caches are not
+        # affected by updating parent layers.
+        registry_caches = cr.transaction.registry.registry_caches__
+        for name in registry_caches:
+            registry_caches[name] = (registry_caches[name][0], cr.transaction.ormcaches__[name].parent)
+        cr._closing = True  # do a quick clean
+        cr.transaction._state_stack__ = []  # replace the stack
+        with cr.transaction.committing():
+            pass  # no real commit
+        # restore the stack
+        cr.transaction._state_stack__ = state_stack
+        cr._closing = closing
 
-    yield
+        try:
+            yield
+        finally:
+            # the registry may be invalidated during the yield
+            registry_invalidated += cr.transaction._registry_invalidated
 
-    # flush and invalidate changes made by the main cursor
-    cr.transaction.default_env.invalidate_all(flush=True)
-    # then reset it to start fresh
-    cr.transaction.reset()
+        # simulate cr.commit() again to flush changes made by the main cursor
+        state_stack = cr.transaction._state_stack__
+        closing = cr._closing
+
+        cr._closing = False  # do a reset
+        cr.transaction._state_stack__ = []  # replace the stack
+        with cr.transaction.committing():
+            pass  # no real commit
+    finally:
+        cr.transaction._state_stack__ = state_stack
+        cr._closing = closing
+        cr.transaction._registry_invalidated = registry_invalidated
 
 
 def standalone(*tags):
@@ -732,16 +763,19 @@ class BaseCase(case.TestCase):
             env=self.env,
             session=DotDict(get_default_session(), debug='1', sid=''),
         )
+        reset_req = None
         try:
             self.env.flush_all()
             self.env.invalidate_all()
-            _request_stack.push(request)
+            reset_req = request_var.set(request)
             yield
             self.env.flush_all()
             self.env.invalidate_all()
         finally:
-            popped_request = _request_stack.pop()
-            if popped_request is not request:
+            current_request = request_var.get()
+            if reset_req is not None:
+                request_var.reset(reset_req)
+            if current_request is not request:
                 raise Exception('Wrong request stack cleanup.')
 
     @contextmanager
@@ -1066,8 +1100,6 @@ class BaseCase(case.TestCase):
             # Disable locking and signaling
             patch.object(Registry, '_lock', DummyRLock()),
             patch.object(registry, 'setup_signaling', return_value=None),  # noop
-            patch.object(registry, 'check_signaling', return_value=registry),
-            patch.object(registry, 'get_sequences', get_sequences),
         ):
             yield
 
@@ -1243,7 +1275,7 @@ class TransactionCase(BaseCase):
     After being run, each test method cleans up the record cache and the
     registry cache. However, there is no cleanup of the registry models and
     fields. If a test modifies the registry (custom models and/or fields), it
-    should prepare the necessary cleanup (`self.registry.reset_changes()`).
+    should prepare the necessary cleanup (`self.env.transaction.will_change_registry()`).
     """
     muted_registry_logger = mute_logger(odoo.orm.registry._logger.name)
     freeze_time = None
@@ -1255,46 +1287,45 @@ class TransactionCase(BaseCase):
         # they can addup during test and take some disc space.
         # since cron are not running during tests, we need to gc manually
         # We need to check the status of the file system outside of the test cursor
-        with Registry(get_db_name()).cursor() as cr:
+        with cls.registry.cursor() as cr:
             gc_env = api.Environment(cr, api.SUPERUSER_ID, {})
             gc_env['ir.attachment']._gc_file_store_unsafe()
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.addClassCleanup(cls._gc_filestore)
         cls.registry = Registry(get_db_name())
-        cls.registry_start_invalidated = cls.registry.registry_invalidated
-        cls.registry_start_sequence = cls.registry.registry_sequence
-        cls.registry_cache_sequences = dict(cls.registry.cache_sequences)
 
-        def reset_changes():
-            if (cls.registry_start_sequence != cls.registry.registry_sequence) or cls.registry.registry_invalidated:
-                with cls.registry.cursor() as cr:
-                    cls.registry._setup_models__(cr)
-            cls.registry.registry_invalidated = cls.registry_start_invalidated
-            cls.registry.registry_sequence = cls.registry_start_sequence
-            with cls.muted_registry_logger:
-                cls.registry.clear_all_caches()
-            cls.registry.cache_invalidated.clear()
-            cls.registry.cache_sequences = cls.registry_cache_sequences
-        cls.addClassCleanup(reset_changes)
-
-        def signal_changes():
-            if not cls.registry.ready:
-                _logger.info('Skipping signal changes during tests')
-                return
-            if cls.registry.registry_invalidated or cls.registry.cache_invalidated:
+        def signal_changes(cr, names):
+            if 'registry' in names:
+                if not cls.registry.ready:
+                    _logger.info('Skipping signal changes during tests')
+                    return
                 _logger.info('Simulating signal changes during tests')
-            if cls.registry.registry_invalidated:
                 cls.registry.registry_sequence += 1
-            for cache_name in cls.registry.cache_invalidated or ():
-                cls.registry.cache_sequences[cache_name] += 1
-            cls.registry.registry_invalidated = False
-            cls.registry.cache_invalidated.clear()
+                for key, (seq, data) in cls.registry.registry_caches__.items():
+                    cls.registry.registry_caches__[key] = (seq + 1, {})
+            elif names:
+                _logger.debug('Simulating signal changes during tests')
+                for name in names:
+                    cls.registry.registry_caches__[name] = (cls.registry.registry_caches__[name][0] + 1, {})
 
-        cls._signal_changes_patcher = patch.object(cls.registry, 'signal_changes', signal_changes)
-        cls.startClassPatcher(cls._signal_changes_patcher)
+        def get_sequences(cr):
+            return cls.registry.registry_sequence, {name: val[0] for name, val in cls.registry.registry_caches__.items()}
+
+        def reset_registry(registry, *, registry_sequence, caches):
+            registry.registry_sequence = registry_sequence
+            registry.registry_caches__ = caches
+
+        cls.addClassCleanup(
+            reset_registry, cls.registry,
+            registry_sequence=cls.registry.registry_sequence,
+            caches=cls.registry.registry_caches__.copy(),
+        )
+
+        cls.startClassPatcher(patch.object(cls.registry, '_signal_changes', signal_changes))
+        cls.startClassPatcher(patch.object(cls.registry, 'get_sequences', get_sequences))
+        cls.addClassCleanup(cls._gc_filestore)
 
         cls.cr = cls.registry.cursor()
         cls.addClassCleanup(typing.cast('Cursor', cls.cr).close)
@@ -1322,6 +1353,7 @@ class TransactionCase(BaseCase):
         cls.startClassPatcher(cls.close_patcher)
 
         cls.env = api.Environment(cls.cr, api.SUPERUSER_ID, {})
+        cls.env.transaction._wrote__ = True  # isolate tests: avoid propagating cache on rollback
 
         # speedup CryptContext. Many user an password are done during tests, avoid spending time hasing password with many rounds
         def _crypt_context(self):  # noqa: ARG001
@@ -1335,6 +1367,17 @@ class TransactionCase(BaseCase):
     def setUp(self):
         super().setUp()
 
+        def reset_registry(registry, *, registry_sequence, caches):
+            registry.registry_sequence = registry_sequence
+            registry.registry_caches__ = caches
+
+        self.addCleanup(
+            # for flushing cursor
+            reset_registry, self.registry,
+            registry_sequence=self.registry.registry_sequence,
+            caches=self.registry.registry_caches__.copy(),
+        )
+
         def _check_registry_lock():
             if _registry_test_lock.count == 0:
                 _logger.warning('The registry test lock is still released at the end of %s', self.canonical_tag)
@@ -1345,8 +1388,6 @@ class TransactionCase(BaseCase):
                 )
 
         self.addCleanup(_check_registry_lock)
-
-        self.addCleanup(self.muted_registry_logger(self.registry.clear_all_caches))
 
         # flush everything in setUpClass before introducing a savepoint
         cr = self.cr
@@ -1367,6 +1408,16 @@ class TransactionCase(BaseCase):
             self.addCleanup(_reset, callback, deque(callback._funcs), deepcopy(callback.data))
 
         self.addCleanup(self.savepoint.rollback)
+
+        # To keep tests isolated, add a CacheLayer.
+        # - L1: cursor cache
+        # - L2: savepoint cache
+        # - L3: this isolation layer
+        # flushing_cursor() may push data from the current to the parent layer
+        # (from L3 to L2) and we need L1 to be unaffected by tests.
+        transaction = self.env.transaction
+        for name, layer in transaction.ormcaches__.items():
+            transaction.ormcaches__[name] = CacheLayer(layer)
 
     @classmethod
     @contextmanager
@@ -2605,17 +2656,21 @@ class HttpCase(TransactionCase):
     def _wait_remaining_requests(self, timeout=10):
 
         def get_http_request_threads():
-            return [t for t in threading.enumerate() if t.name.startswith('odoo.service.http.request.')]
+            return [
+                t for t in threading.enumerate()
+                if t.name.startswith('odoo.service.http.request')
+                if getattr(t, 'processing_http', False)
+            ]
 
-        start_time = time.time()
+        end_time = real_time() + timeout
         request_threads = get_http_request_threads()
         if not request_threads:
             return
 
         self._logger.info('waiting for threads: %s', request_threads)
 
-        for thread in request_threads:
-            thread.join(timeout - (time.time() - start_time))
+        while real_time() < end_time:
+            time.sleep(0.1)
 
         request_threads = get_http_request_threads()
         for thread in request_threads:

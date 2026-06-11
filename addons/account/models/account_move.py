@@ -465,7 +465,7 @@ class AccountMove(models.Model):
         'account.fiscal.position',
         string='Fiscal Position',
         check_company=True,
-        compute='_compute_fiscal_position_id', store=True, readonly=False, precompute=True,
+        compute='_compute_fiscal_position_id', store=True, readonly=False, index=True, precompute=True,
         ondelete="restrict",
         help="Fiscal positions are used to adapt taxes and accounts for particular "
              "customers or sales orders/invoices. The default value comes from the customer.",
@@ -696,6 +696,10 @@ class AccountMove(models.Model):
         compute='_compute_invoice_default_sale_person',
         store=True,
         readonly=False,
+    )
+    import_source_attachment_id = fields.Many2one(
+        comodel_name='ir.attachment',
+        copy=False,
     )
     # Technical field used to fit the generic behavior in mail templates.
     user_id = fields.Many2one(string='User', related='invoice_user_id')
@@ -1061,9 +1065,10 @@ class AccountMove(models.Model):
                 move.partner_bank_id = payment_method.journal_id.bank_account_id
                 continue
 
-            move.partner_bank_id = move.bank_partner_id.bank_ids.filtered(
-                lambda bank: not bank.company_id or bank.company_id == move.company_id
-            ).sorted(lambda b: not b.allow_out_payment)[:1]
+            move.partner_bank_id = move.bank_partner_id.bank_ids.filtered_domain([
+                *self.env['res.partner.bank']._check_company_domain(move.company_id),
+                ('active', '=', True),  # active_test could be False in the context
+            ]).sorted(lambda b: not b.allow_out_payment)[:1]
 
     @api.depends('partner_id')
     def _compute_invoice_payment_term_id(self):
@@ -1621,16 +1626,23 @@ class AccountMove(models.Model):
         is_invoice = self.is_invoice(include_receipts=True)
         sign = self.direction_sign if is_invoice else 1
 
-        return self.env['account.tax']._prepare_base_line_for_taxes_computation(
-            product_line,
-            price_unit=product_line.price_unit if is_invoice else product_line.amount_currency,
-            quantity=product_line.quantity if is_invoice else 1.0,
-            discount=product_line.discount if is_invoice else 0.0,
-            rate=self._get_product_base_line_currency_rate(product_line),
-            sign=sign,
-            special_mode=False if is_invoice else 'total_excluded',
-            name=product_line.name,
-        )
+        kwargs = {
+            'price_unit': product_line.price_unit if is_invoice else product_line.amount_currency,
+            'quantity': product_line.quantity if is_invoice else 1.0,
+            'discount': product_line.discount if is_invoice else 0.0,
+            'rate': self._get_product_base_line_currency_rate(product_line),
+            'sign': sign,
+            'special_mode': False if is_invoice else 'total_excluded',
+            'name': product_line.name,
+        }
+
+        computation_key = (product_line.extra_tax_data or {}).get('computation_key', '')
+        if computation_key.startswith('global_discount'):
+            kwargs['special_type'] = 'global_discount'
+        elif computation_key.startswith('down_payment'):
+            kwargs['special_type'] = 'down_payment'
+
+        return self.env['account.tax']._prepare_base_line_for_taxes_computation(product_line, **kwargs)
 
     def _prepare_epd_base_line_for_taxes_computation(self, epd_line):
         """ Convert an account.move.line having display_type='epd' into a base line for the taxes computation.
@@ -3491,7 +3503,7 @@ class AccountMove(models.Model):
         def has_non_deductible_lines(move):
             return (
                 move.state == 'draft'
-                and move.is_purchase_document()
+                and move.is_purchase_document(include_receipts=True)
                 and any(move.line_ids.filtered(lambda line: line.display_type == 'product' and line.deductible_percentage < 1))
             )
 
@@ -4884,9 +4896,40 @@ class AccountMove(models.Model):
     # EDI
     # -------------------------------------------------------------------------
 
+    @api.model
+    def _get_import_source_attachment(self, selected_file_data):
+        """
+        Return the attachment to keep as source for reloading imported data.
+        The selected file may be an embedded file without its own attachment record.
+        In that case, keep the origin attachment so it can be unwrapped again when reloading.
+
+        :param dict selected_file_data: The file data selected for import.
+        :return: The selected source attachment, or its origin attachment when the selected file is embedded.
+        """
+        return selected_file_data.get('attachment') or selected_file_data.get('origin_attachment')
+
+    def _should_store_import_source_attachment(self, selected_file_data):
+        """
+        Hook to decide whether the import source attachment should be stored.
+        Modules can override this to opt out of generic reload behavior.
+
+        :param dict selected_file_data: The file data selected for import.
+        :return: True if ``import_source_attachment_id`` should be stored.
+        """
+        return True
+
+    def _set_import_source_attachment(self, file_data_group, new=False):
+        self.ensure_one()
+        selected_file_data = self._get_selected_import_file_data(file_data_group, new=new)
+        if self._should_store_import_source_attachment(selected_file_data):
+            self.import_source_attachment_id = self._get_import_source_attachment(selected_file_data)
+
     def _extend_with_attachments(self, files_data, new=False):
         existing_lines = self.invoice_line_ids
         res = super()._extend_with_attachments(files_data, new)
+
+        if res:
+            self._set_import_source_attachment(files_data, new=new)
 
         if new_lines := (self.invoice_line_ids - existing_lines):
             new_lines.is_imported = True
@@ -5112,13 +5155,11 @@ class AccountMove(models.Model):
             return res
 
         # Get the current tax amounts in the current invoice.
-        tax_amounts = {
-            inverse_tax_rep(line.tax_repartition_line_id).id: {
-                'amount_currency': line.amount_currency,
-                'balance': line.balance,
-            }
-            for line in tax_lines
-        }
+        tax_amounts = defaultdict(lambda: {'amount_currency': 0.0, 'balance': 0.0})
+        for line in tax_lines:
+            tax_rep_id = inverse_tax_rep(line.tax_repartition_line_id).id
+            tax_amounts[tax_rep_id]['amount_currency'] += line.amount_currency
+            tax_amounts[tax_rep_id]['balance'] += line.balance
 
         base_lines = [
             {
@@ -5885,7 +5926,8 @@ class AccountMove(models.Model):
         to_post.line_ids._create_analytic_lines()
 
         # Trigger copying for recurring invoices
-        to_post.filtered(lambda m: m.auto_post not in ('no', 'at_date'))._copy_recurring_entries()
+        if not self.env.context.get('skip_recurring_copy'):
+            to_post.filtered(lambda m: m.auto_post not in ('no', 'at_date'))._copy_recurring_entries()
 
         for invoice in to_post:
             # Fix inconsistencies that may occure if the OCR has been editing the invoice at the same time of a user. We force the
@@ -6007,7 +6049,11 @@ class AccountMove(models.Model):
             return sequence_mixin_cache.get(cache_key) is not None
 
         def browse(ids=()):
-            return self.browse(ids).with_prefetch(all_ids)
+            # Use sudo() because the SQL query above has no company filter and may
+            # return IDs from a parent/sibling company that the current user cannot
+            # access.  made_sequence_gap is a purely technical housekeeping flag, so
+            # bypassing record rules here is safe.
+            return self.sudo().browse(ids).with_prefetch(all_ids)
 
         sequence_mixin_cache = self._get_sequence_cache()
         self.env['account.move'].flush_model(['name', 'sequence_prefix', 'sequence_number', 'journal_id'])
@@ -6290,16 +6336,28 @@ class AccountMove(models.Model):
         }
 
     def action_move_download_all(self):
+        moves_to_export = self.filtered(lambda m: m._get_move_zip_export_docs())
+
+        if not moves_to_export:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'message': _('No files found to download'),
+                    'type': 'warning',
+                    'sticky': False
+                }
+            }
         return {
             'type': 'ir.actions.act_url',
-            'url': f'/account/download_move_attachments/{",".join(str(move_id) for move_id in self.ids)}',
+            'url': f'/account/download_move_attachments/{",".join(str(move_id) for move_id in moves_to_export.ids)}',
             'target': 'download',
         }
 
     def action_print_pdf(self):
         self.ensure_one()
         invoice_template = self.env['account.move.send']._get_default_pdf_report_id(self)
-        report_action = invoice_template.report_action(self.id, config=False)
+        report_action = invoice_template.with_context(proforma_invoice=not self.invoice_pdf_report_id).report_action(self.id, config=False)
         return self._get_action_with_base_document_layout_configurator(report_action)
 
     def preview_invoice(self):
@@ -6550,6 +6608,38 @@ class AccountMove(models.Model):
         for move in self:
             move.duplicated_ref_ids.unlink()
 
+    def _reset_fields_for_reload(self):
+        with self._get_edi_creation() as move_form:
+            move_form.partner_id = False
+            move_form.invoice_date = False
+            move_form.invoice_payment_term_id = False
+            move_form.invoice_date_due = False
+
+            if move_form.is_purchase_document(include_receipts=True):
+                move_form.ref = False
+            elif move_form.is_sale_document(include_receipts=True) and move_form.quick_edit_mode:
+                move_form.name = False
+
+            move_form.payment_reference = False
+            move_form.currency_id = move_form.company_currency_id
+            move_form.invoice_line_ids = [Command.clear()]
+
+    def action_reload_imported_data(self):
+        self.ensure_one()
+        self = self.with_context(skip_is_manually_modified=True)  # noqa: PLW0642
+
+        try:
+            self._reset_fields_for_reload()
+
+            files_data = self._to_files_data(self.import_source_attachment_id)
+            files_data.extend(self._unwrap_attachments(files_data))
+            file_data_groups = self._group_files_data_into_groups_of_mixed_types(files_data)
+            self._extend_with_attachments(file_data_groups[0])
+
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("Error while reloading imported data on account.move %d: %s", self.id, e)
+            raise UserError(_("Couldn't reload data."))
+
     def _get_mail_template(self):
         """
         :return: the correct mail template based on the current move type
@@ -6563,15 +6653,14 @@ class AccountMove(models.Model):
             template_xmlid = 'account.email_template_edi_self_billing_credit_note'
         return self.env.ref(template_xmlid)
 
-    def _notify_get_recipients_groups(self, message, model_description, msg_vals=False):
-        groups = super()._notify_get_recipients_groups(message, model_description, msg_vals=msg_vals)
+    def _notify_get_recipients_groups(self, message, model_description):
+        groups = super()._notify_get_recipients_groups(message, model_description)
         self.ensure_one()
 
         if self.move_type != 'entry':
-            local_msg_vals = dict(msg_vals or {})
-            partner_ids = local_msg_vals.get('partner_ids', []) if 'partner_ids' in local_msg_vals else message.partner_ids.ids
+            partner_ids = message.partner_ids.ids
             self._portal_ensure_token()
-            access_link = self._notify_get_action_link('view', **local_msg_vals, access_token=self.access_token)
+            access_link = self._notify_get_action_link('view', access_token=self.access_token)
 
             # Create a new group for partners that have been manually added as recipients.
             # Those partners should have access to the invoice.
@@ -7085,6 +7174,7 @@ class AccountMove(models.Model):
             ]
         elif allow_fallback:
             return [self._get_invoice_pdf_proforma()]
+        return []
 
     def _get_invoice_report_filename(self, extension='pdf', report=None):
         """ Get the filename of the generated invoice report with extension file. """
@@ -7307,7 +7397,7 @@ class AccountMove(models.Model):
     def _attachment_fields_to_clear(self):
         return super()._attachment_fields_to_clear() + ['message_main_attachment_id']
 
-    def _message_post_after_hook(self, new_message, message_values):
+    def _message_post_after_hook(self, new_message):
         """ This method processes the attachments of a new mail.message. It handles the 3 following situations:
             (1) receiving an e-mail from a mail alias. In that case, we potentially want to split the attachments into several invoices.
             (2) receiving an e-mail / posting a message on an existing invoice via the webclient:
@@ -7323,7 +7413,7 @@ class AccountMove(models.Model):
 
         if not attachments or new_message.message_type not in {'email', 'comment'} or self.env.context.get('disable_attachment_import'):
             # No attachments, or the message was created in application code, so don't do anything.
-            return super()._message_post_after_hook(new_message, message_values)
+            return super()._message_post_after_hook(new_message)
 
         files_data = self._to_files_data(attachments)
 
@@ -7353,19 +7443,13 @@ class AccountMove(models.Model):
                 if invoice == self:
                     attachment_records |= self._from_files_data(extra_files_data)
                     new_message.attachment_ids = [Command.set(attachment_records.ids)]
-                    message_values['attachment_ids'] = [Command.link(attachment.id) for attachment in attachment_records]
-                    res = super(AccountMove, self.with_context(no_document=True))._message_post_after_hook(new_message, message_values)
+                    res = super(AccountMove, self.with_context(no_document=True))._message_post_after_hook(new_message)
                 else:
                     sub_new_message = new_message.copy({
                         'res_id': invoice.id,
                         'attachment_ids': [Command.set(attachment_records.ids)],
                     })
-                    sub_message_values = {
-                        **message_values,
-                        'res_id': invoice.id,
-                        'attachment_ids': [Command.link(attachment.id) for attachment in attachment_records],
-                    }
-                    super(AccountMove, invoice.with_context(no_document=True))._message_post_after_hook(sub_new_message, sub_message_values)
+                    super(AccountMove, invoice.with_context(no_document=True))._message_post_after_hook(sub_new_message)
                 invoice._fix_attachments_on_record_from_files_data(file_data_group, extra_files_data)
 
             for invoice, file_data_group in zip(invoices, file_data_groups):
@@ -7383,8 +7467,7 @@ class AccountMove(models.Model):
                 self._extend_with_attachments(files_data)
 
             new_message.attachment_ids = [Command.set(attachment_records.ids)]
-            message_values['attachment_ids'] = [Command.link(attachment.id) for attachment in attachment_records]
-            return super()._message_post_after_hook(new_message, message_values)
+            return super()._message_post_after_hook(new_message)
 
     def _creation_subtype(self):
         # EXTENDS mail mail.thread
@@ -7416,13 +7499,13 @@ class AccountMove(models.Model):
             'in_receipt': _('Purchase Receipt Created'),
         }[self.move_type]
 
-    def _notify_by_email_prepare_rendering_context(self, message, msg_vals=False, model_description=False,
+    def _notify_by_email_prepare_rendering_context(self, message, model_description=False,
                                                    force_email_company=False, force_email_lang=False,
                                                    force_record_name=False, force_header=False,
                                                    force_footer=False):
         # EXTENDS mail mail.thread
         render_context = super()._notify_by_email_prepare_rendering_context(
-            message, msg_vals=msg_vals, model_description=model_description,
+            message, model_description=model_description,
             force_email_company=force_email_company, force_email_lang=force_email_lang,
             force_record_name=force_record_name, force_header=force_header,
             force_footer=force_footer,
@@ -7550,29 +7633,28 @@ class AccountMove(models.Model):
     def get_extra_print_items(self):
         """ Helper to dynamically add items in the 'Print' menu of list and form of account.move.
         """
-        if moves_to_export := self.filtered(lambda m: m._get_move_zip_export_docs()):
-            return [
-                {
-                    'key': 'download_all',
-                    'description': _("Export ZIP"),
-                    **moves_to_export.action_move_download_all(),
-                },
-            ]
         return []
 
     def _get_move_zip_export_docs(self):
         self.ensure_one()
 
-        if self.state != 'posted':
-            return []
-
         if self.is_purchase_document(include_receipts=True):
-            attachment = self.message_main_attachment_id
+            attachments = self.env['account.move.send']._get_invoice_extra_attachments(self)
+            main = self.message_main_attachment_id
+            if main and main not in attachments:
+                attachments = main | attachments
             return [{
-                'filename': attachment.name,
-                'filetype': attachment.mimetype,
-                'content': attachment.raw,
-            }] if attachment else []
+                'filename': a.name,
+                'filetype': a.mimetype,
+                'content': a.raw,
+            } for a in attachments]
+
+        if self.state == 'draft' and (main := self.message_main_attachment_id):
+            return [{
+                'filename': main.name,
+                'filetype': main.mimetype,
+                'content': main.raw,
+            }]
 
         return self._get_invoice_legal_documents_all()
 

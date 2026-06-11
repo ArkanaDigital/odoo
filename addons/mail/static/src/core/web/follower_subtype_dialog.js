@@ -1,6 +1,5 @@
-import { useState } from "@web/owl2/utils";
 import { rpc } from "@web/core/network/rpc";
-import { Component, onWillStart } from "@odoo/owl";
+import { Component, onWillStart, signal, types } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
 import { _t } from "@web/core/l10n/translation";
@@ -21,18 +20,15 @@ export class FollowerSubtypeDialog extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.state = useState({
-            /** @type {import("models").MailMessageSubtype[]} */
-            subtypes: [],
+        this.subtypes = signal(null, {
+            type: types.array(types.instanceOf(this.store["mail.message.subtype"].Class)),
         });
         onWillStart(async () => {
             const { store_data, subtype_ids } = await rpc("/mail/read_subscription_data", {
                 follower_id: this.props.follower.id,
             });
             this.store.insert(store_data);
-            this.state.subtypes = subtype_ids.map((id) =>
-                this.store["mail.message.subtype"].get(id)
-            );
+            this.subtypes.set(subtype_ids.map((id) => this.store["mail.message.subtype"].get(id)));
         });
     }
 
@@ -49,7 +45,7 @@ export class FollowerSubtypeDialog extends Component {
     }
 
     async onClickApply() {
-        const selectedSubtypes = this.state.subtypes.filter((s) =>
+        const selectedSubtypes = this.subtypes().filter((s) =>
             s.in(this.props.follower.subtype_ids)
         );
         if (selectedSubtypes.length === 0) {
@@ -67,16 +63,15 @@ export class FollowerSubtypeDialog extends Component {
             if (this.store.mt_comment.notIn(selectedSubtypes)) {
                 this.props.follower.removeRecipient();
             }
-            this.env.services.notification.add(
-                _t("The subscription preferences were successfully applied."),
-                { type: "success" }
-            );
+            this.env.services.notification.add(_t("Notification preferences updated."), {
+                type: "success",
+            });
         }
         this.props.onFollowerChanged();
         this.props.close();
     }
 
     get title() {
-        return _t("Edit Subscription of %(name)s", { name: this.props.follower.displayName });
+        return _t("Notification Preferences");
     }
 }

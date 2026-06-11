@@ -3,6 +3,7 @@ import {
     manuallyDispatchProgrammaticEvent,
     click,
     press,
+    queryAll,
     queryOne,
     waitFor,
     waitForNone,
@@ -18,7 +19,7 @@ import { unformat } from "./_helpers/format";
 import {
     deleteBackward,
     deleteForward,
-    ensureDistinctHistoryStep,
+    ensureDistinctHistoryCommit,
     insertText,
 } from "./_helpers/user_actions";
 import { cleanHints } from "./_helpers/dispatch";
@@ -68,9 +69,8 @@ const toggleCaption = async (captionText) => {
 };
 const addLinkToImage = async (url) => {
     await click("img");
-    await waitFor(".o-we-toolbar button[name='link']");
-    await click(".o-we-toolbar");
-    await click("button[name='link']");
+    await waitFor(".o-we-toolbar button[name='link']:not([disabled])");
+    await click(".o-we-toolbar button[name='link']");
     if (url) {
         await waitFor(".o-we-linkpopover");
         await contains(".o-we-linkpopover input.o_we_href_input_link", { timeout: 1500 }).edit(
@@ -352,7 +352,7 @@ test("can't use the toolbar in a caption", async () => {
             editor.document.execCommand("insertText", false, "a");
             expect(input.value).toBe("a");
             await click("h1"); // Blur the input.
-            await animationFrame(); // Wait for the focus event to trigger a step.
+            await animationFrame(); // Wait for the focus event to trigger a commit.
             editor.shared.selection.setCursorStart(queryOne("h1"));
         },
         contentAfter: unformat(
@@ -373,7 +373,7 @@ test("undo in a caption undoes the last caption action then returns to regular e
         contentBefore: `<p><img class="img-fluid test-image o_editable_media" src="${base64Img}" data-caption="${caption}"></p><h1>[]Heading</h1>`,
         stepFunction: async (editor) => {
             await insertText(editor, "a");
-            await ensureDistinctHistoryStep();
+            await ensureDistinctHistoryCommit();
             const heading = queryOne("h1");
             expect(heading.textContent).toBe("aHeading");
             await toggleCaption();
@@ -384,7 +384,7 @@ test("undo in a caption undoes the last caption action then returns to regular e
             await editor.document.execCommand("insertText", false, "b");
             await editor.document.execCommand("insertText", false, "c");
             await editor.document.execCommand("insertText", false, "d");
-            await ensureDistinctHistoryStep();
+            await ensureDistinctHistoryCommit();
             await editor.document.execCommand("delete", false, null); // Backspace.
             expect(input.value).toBe(`${caption}bc`);
 
@@ -595,7 +595,7 @@ test("replace an image with a caption", async () => {
         // TODO: fix the weird final selection
         contentAfter: unformat(
             `<figure>
-                <img src="/web/static/img/logo2.png" alt="" data-attachment-id="1" class="img img-fluid o_we_custom_image">
+                <img src="/web/static/img/logo2.png" alt="" data-attachment-id="1" class="img img-fluid o_we_custom_image o_attachment_pending_record_id">
                 <figcaption>Hello</figcaption>
             </figure>
             <h1>[]Heading</h1>`
@@ -678,7 +678,7 @@ test("edit caption after replacing image", async () => {
         },
         contentAfter: unformat(
             `<figure>
-                [<img src="/web/static/img/logo2.png" alt="" data-attachment-id="1" class="img img-fluid o_we_custom_image">]
+                [<img src="/web/static/img/logo2.png" alt="" data-attachment-id="1" class="img img-fluid o_we_custom_image o_attachment_pending_record_id">]
                 <figcaption>abc</figcaption>
             </figure>
             <h1>Heading</h1>`
@@ -829,9 +829,10 @@ test("add a link then a caption to an image surrounded by text", async () => {
             await animationFrame();
             await toggleCaption("Hello");
             // Blur the input to commit the caption.
-            await click("p"); // Blur the input.
-            await animationFrame(); // Wait for the focus event to trigger a step.
-            editor.shared.selection.setCursorStart(editor.document.querySelectorAll("p")[1]);
+            const p = queryAll("p")[1];
+            await click(p);
+            editor.shared.selection.setCursorStart(p);
+            await animationFrame(); // Wait for the selection to change.
         },
         contentAfter: unformat(
             `<p>ab</p>

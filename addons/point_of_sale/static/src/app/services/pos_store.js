@@ -1,4 +1,4 @@
-import { reactive } from "@web/owl2/utils";
+import { proxy } from "@odoo/owl";
 import { Mutex } from "@web/core/utils/concurrency";
 import { registry } from "@web/core/registry";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
@@ -82,7 +82,7 @@ export class PosStore extends WithLazyGetterTrap {
 
     constructor() {
         super({});
-        return reactive(this);
+        return proxy(this);
     }
     // use setup instead of constructor because setup can be patched.
     async setup(
@@ -472,7 +472,7 @@ export class PosStore extends WithLazyGetterTrap {
         this.checkPreviousLoggedCashier();
 
         // Add Payment Interface to Payment Method
-        for (const pm of this.models["pos.payment.method"].getAll()) {
+        for (const pm of this.config.payment_method_ids) {
             const PaymentInterface = registry
                 .category("pos_payment_providers")
                 .get(pm.payment_provider, null);
@@ -1226,19 +1226,62 @@ export class PosStore extends WithLazyGetterTrap {
             } else {
                 return false;
             }
-        } else if (values.product_id?.product_template_variant_value_ids.length > 0) {
-            // Verify price extra of variant products
-            const priceExtra = values.product_id.product_template_variant_value_ids
-                .filter((attr) => attr.attribute_id.create_variant !== "always")
-                .reduce((acc, attr) => acc + attr.price_extra, 0);
-
-            values.price_extra += priceExtra;
-            if (!values.attribute_value_ids) {
-                values.attribute_value_ids = [];
-            }
-            values.attribute_value_ids = values.attribute_value_ids.concat(
-                values.product_id.product_template_attribute_value_ids.map((attr) => ["link", attr])
+        } else {
+            // When isConfigurable() is false, a dynamic attribute with a single value still needs
+            // its variant created on the server before the order line can reference it.
+            const hasSingleValueDynamic = productTemplate.attribute_line_ids.some(
+                (l) =>
+                    l.attribute_id.create_variant === "dynamic" &&
+                    l.product_template_value_ids.length === 1
             );
+
+            if (hasSingleValueDynamic) {
+                const allAttributeValueIds = productTemplate.attribute_line_ids.flatMap((l) =>
+                    l.product_template_value_ids.map((v) => v.id)
+                );
+
+                const dynamicValueIds = productTemplate.attribute_line_ids
+                    .filter((l) => l.attribute_id.create_variant === "dynamic")
+                    .flatMap((l) => l.product_template_value_ids.map((v) => v.id));
+
+                let candidate = productTemplate.product_variant_ids.find((variant) => {
+                    const attributeIds = variant.product_template_attribute_value_ids.map(
+                        (v) => v.id
+                    );
+                    return dynamicValueIds.every((id) => attributeIds.includes(id));
+                });
+
+                if (!candidate) {
+                    const result = await this.data.callRelated(
+                        "product.template",
+                        "create_product_variant_from_pos",
+                        [productTemplate.id, allAttributeValueIds, this.config.id]
+                    );
+                    candidate = result["product.product"][0];
+                }
+
+                if (candidate) {
+                    values.product_id = candidate;
+                }
+            }
+
+            if (values.product_id.product_template_variant_value_ids.length > 0) {
+                // Verify price extra of variant products
+                const priceExtra = values.product_id.product_template_variant_value_ids
+                    .filter((attr) => attr.attribute_id.create_variant !== "always")
+                    .reduce((acc, attr) => acc + attr.price_extra, 0);
+
+                values.price_extra += priceExtra;
+                if (!values.attribute_value_ids) {
+                    values.attribute_value_ids = [];
+                }
+                values.attribute_value_ids = values.attribute_value_ids.concat(
+                    values.product_id.product_template_attribute_value_ids.map((attr) => [
+                        "link",
+                        attr,
+                    ])
+                );
+            }
         }
     };
 
@@ -2046,6 +2089,8 @@ export class PosStore extends WithLazyGetterTrap {
 
             if (preset.identification === "name") {
                 await this.handleSelectNamePreset(order);
+                // re-set the order in case an order was selected from the current orders list in the EditOrderNamePopup
+                order = this.getOrder();
             }
 
             if (preset.use_timing && !order.preset_time) {
@@ -2544,7 +2589,7 @@ export class PosStore extends WithLazyGetterTrap {
     }
 
     get showSaveOrderButton() {
-        return this.config.raw.trusted_config_ids.length > 0;
+        return true;
     }
 
     get isSelectedLineCombo() {
@@ -2813,6 +2858,7 @@ export class PosStore extends WithLazyGetterTrap {
     async onPrepLinesSynced(prepLinePairs) {}
 
     async createComboFromLines(productTmpl, combinations) {
+        const order = this.selectedOrder;
         const prepLinePairs = [];
         const handlePreparationHistory = (srcLine, destLine, qty) => {
             const prepLines = srcLine.prep_line_ids;
@@ -2846,7 +2892,7 @@ export class PosStore extends WithLazyGetterTrap {
         combinations.forEach((items) => {
             for (const combo of Object.values(items)) {
                 for (const uuid of Object.keys(combo)) {
-                    const line = this.selectedOrder.lines.find((l) => l.uuid === uuid);
+                    const line = order.lines.find((l) => l.uuid === uuid);
                     if (!line) {
                         continue;
                     }
@@ -2871,7 +2917,7 @@ export class PosStore extends WithLazyGetterTrap {
             const comboPrices = computeComboItems(
                 productTmpl.product_variant_ids[0],
                 payload[0],
-                this.selectedOrder.pricelist_id,
+                order.pricelist_id,
                 this.data.models["decimal.precision"].getAll(),
                 this.data.models["product.template.attribute.value"].getAllBy("id"),
                 payload[1],
@@ -2889,7 +2935,7 @@ export class PosStore extends WithLazyGetterTrap {
                 linkOldNewLines[cl.uuid] = 0;
             });
 
-            const oldLines = this.selectedOrder.lines.filter((l) =>
+            const oldLines = order.lines.filter((l) =>
                 Object.keys(concernedLinesQty).includes(l.uuid)
             );
 
@@ -2926,20 +2972,26 @@ export class PosStore extends WithLazyGetterTrap {
                 prepLinePairs.push([firstChildPrepLine.uuid, newComboParentPrepLine.uuid]);
             }
         }
+        let needsSync = false;
         for (const [lineUuid, newQty] of Object.entries(concernedLinesQty)) {
             const line = this.models["pos.order.line"].getBy("uuid", lineUuid);
+            if (Number.isInteger(line.id)) {
+                needsSync = true;
+            }
             if (newQty > 0) {
                 line.setQuantity(newQty);
             } else {
                 line.order_id.removeOrderline(line);
             }
         }
-        if (prepLinePairs.length) {
-            await this.syncAllOrders({ orders: [this.selectedOrder] });
-            await this.onPrepLinesSynced(prepLinePairs);
+        if (needsSync) {
+            await this.syncAllOrders({ orders: [order] });
+            if (prepLinePairs.length) {
+                await this.onPrepLinesSynced(prepLinePairs);
+            }
         }
         if (comboLine) {
-            this.selectedOrder.selectOrderline(comboLine);
+            order.selectOrderline(comboLine);
         }
         return;
     }
@@ -3011,6 +3063,29 @@ export class PosStore extends WithLazyGetterTrap {
     isProductSnoozed(product) {
         return this.snoozedProductTracker.isProductSnoozed(product);
     }
+
+    async canAddProductToCurrentOrder(product) {
+        if (!this.isProductSnoozed(product)) {
+            return true;
+        }
+        const alreadyAdded = this.selectedOrder.lines.some(
+            (line) => line.product_id.product_tmpl_id.id === product.id
+        );
+
+        if (alreadyAdded) {
+            return true;
+        }
+
+        return new Promise((resolve) => {
+            this.dialog.add(AlertDialog, {
+                title: _t("Warning"),
+                body: _t("You are trying to add a snoozed product. Would you like to continue?"),
+                confirmLabel: _t("Continue"),
+                confirm: () => resolve(true),
+                cancel: () => resolve(false),
+            });
+        });
+    }
 }
 
 export const posService = {
@@ -3018,7 +3093,7 @@ export const posService = {
     async start(env, deps) {
         const store = new PosStore();
         await store.setup(env, deps);
-        return reactive(store);
+        return proxy(store);
     },
 };
 

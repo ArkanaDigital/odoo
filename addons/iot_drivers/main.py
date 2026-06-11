@@ -25,7 +25,7 @@ unsupported_devices = {}
 
 
 class Manager(Thread):
-    ws_channel = ""
+    ws_client = None
 
     def __init__(self):
         super().__init__(daemon=True)
@@ -52,9 +52,10 @@ class Manager(Thread):
         """
         changed = False
 
-        current_devices = set(iot_devices.keys()) | set(unsupported_devices.keys())
-        previous_devices = set(self.previous_iot_devices.keys()) | set(self.previous_unsupported_devices.keys())
-        if current_devices != previous_devices:
+        if (
+            iot_devices.keys() != self.previous_iot_devices.keys()
+            or unsupported_devices.keys() != self.previous_unsupported_devices.keys()
+        ):
             self.previous_iot_devices = iot_devices.copy()
             self.previous_unsupported_devices = unsupported_devices.copy()
             changed = True
@@ -62,11 +63,13 @@ class Manager(Thread):
         # IP address change
         new_domain = self._get_domain()
         if self.domain != new_domain:
+            _logger.info("IoT Box %s: IP address has changed from %s to %s", self.identifier, self.domain, new_domain)
             self.domain = new_domain
             changed = True
         # Version change
         new_version = system.get_version(detailed_version=True)
         if self.version != new_version:
+            _logger.info("IoT Box %s: Version has changed from %s to %s", self.identifier, self.version, new_version)
             self.version = new_version
             changed = True
 
@@ -96,9 +99,7 @@ class Manager(Thread):
             devices_list[identifier] = {
                 'name': device.device_name,
                 'type': device.device_type,
-                'manufacturer': device.device_manufacturer,
                 'connection': device.device_connection,
-                'subtype': device.device_subtype if device.device_type == 'printer' else '',
             }
         devices_list.update(self.previous_unsupported_devices)
 
@@ -112,9 +113,12 @@ class Manager(Thread):
                     timeout=5,
                 )
                 response.raise_for_status()
-                # TODO: remove when v19 is deprecated, ws channel is provided by db
                 data = response.json()
-                self.ws_channel = data.get('result', '')
+                if not self.ws_client:
+                    # TODO: remove when v19 is deprecated, ws channel is provided by db
+                    ws_channel = data.get('result', '')
+                    self.ws_client = WebsocketClient(ws_channel, server_url)
+                    self.ws_client.start()
                 break  # Success, exit the retry loop
             except requests.exceptions.RequestException:
                 if attempt < max_retries:
@@ -159,11 +163,6 @@ class Manager(Thread):
         schedule.every().day.at("00:00").do(certificate.ensure_validity)
         schedule.every().day.at("00:00").do(helpers.reset_log_level)
         schedule.every().monday.at("00:00").do(upgrade.check_git_branch)
-
-        # Set up the websocket connection
-        ws_client = WebsocketClient(self.ws_channel)
-        if ws_client:
-            ws_client.start()
 
         # Check every 3 seconds if the list of connected devices has changed and send the updated
         # list to the connected DB.

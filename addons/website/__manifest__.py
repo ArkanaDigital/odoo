@@ -308,7 +308,6 @@
             ('prepend', 'website/static/src/scss/secondary_variables.scss'),
         ],
         'web.assets_tests': [
-            'website/static/tests/tour_utils/lifecycle_dep_interaction.js',
             'website/static/tests/tours/**/*',
             'website/static/src/client_actions/website_preview/website_builder_action_test_mode.js',
             'html_builder/static/src/utils/utils_css.js',
@@ -316,6 +315,8 @@
         'web.assets_backend': [
             ('include', 'website.assets_editor'),
             ('include', 'html_editor.assets_link_popover'),
+            'html_editor/static/src/main/media/media_dialog/*.js',
+            'html_editor/static/src/main/media/media_dialog/**/*',
             'website/static/src/scss/color_palettes.scss',
             'website/static/src/scss/view_hierarchy.scss',
             'website/static/src/scss/website.backend.scss',
@@ -342,8 +343,6 @@
             'website/static/src/mail/core/common/**/*',
 
             'website/static/src/xml/website_form_editor.xml',
-            # TODO Remove the module's form js - this is for testing.
-            'website/static/src/js/send_mail_form.js',
             # TODO when moving options to website: load this from website
             # directly. This file is loaded in assets_wysiwyg in website, but we
             # need to load it here for html_builder.
@@ -447,6 +446,7 @@
             'website/static/src/scss/website_common.scss',
             'website/static/src/builder/**/*',
             ('remove', 'website/static/src/builder/**/*.edit.*'),
+            'website/static/src/js/send_mail_form.js',
         ],
         'html_builder.iframe_add_dialog': [
             'website/static/src/snippets/**/*.preview.scss',

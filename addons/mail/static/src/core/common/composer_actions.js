@@ -1,7 +1,6 @@
-import { useComponent, useLayoutEffect, useRef, useState } from "@web/owl2/utils";
+import { useComponent, useRef } from "@web/owl2/utils";
 import { CreatePollDialog } from "@mail/core/common/create_poll_dialog";
 
-import { toRaw } from "@odoo/owl";
 import { EmojiPicker, useEmojiPickerStoreScroll } from "@web/core/emoji_picker/emoji_picker";
 
 import { _t } from "@web/core/l10n/translation";
@@ -58,7 +57,7 @@ registerComposerAction("send-message", {
         (store.env.isSmall && composer.message) || (!owner.env.inChatter && !composer.message),
     disabledCondition: ({ owner }) => owner.isSendButtonDisabled,
     icon: "fa fa-paper-plane-o",
-    isActive: ({ owner }) => owner.sendMessageState.active,
+    isActive: ({ owner }) => !owner.isSendButtonDisabled,
     name: ({ composer, owner }) =>
         composer.message
             ? _t("Save editing")
@@ -68,15 +67,6 @@ registerComposerAction("send-message", {
             ? _t("Log")
             : _t("Send"),
     onSelected: ({ owner }) => owner.sendMessage(),
-    setup: ({ owner }) => {
-        owner.sendMessageState = useState({ active: false });
-        useLayoutEffect(
-            () => {
-                owner.sendMessageState.active = !owner.isSendButtonDisabled;
-            },
-            () => [owner.isSendButtonDisabled]
-        );
-    },
     sequenceQuick: 30,
     tags: ({ action }) => (action.isActive ? ACTION_TAGS.PRIMARY : undefined),
 });
@@ -116,9 +106,8 @@ registerComposerAction("upload-files", {
     condition: ({ owner }) => owner.allowUpload,
     icon: "fa fa-paperclip",
     name: _t("Attach Files"),
-    onSelected: ({ composer: comp, owner }, ev) => {
+    onSelected: ({ composer, owner }, ev) => {
         owner.fileUploaderRef.el?.click();
-        const composer = toRaw(comp);
         markEventHandled(ev, "composer.clickOnAddAttachment");
         composer.autofocus++;
     },
@@ -209,12 +198,12 @@ class UseComposerActions extends UseActions {
 }
 
 /**
- * @param {Object} [params0={}]
- * @param {Composer|() => Composer} params0.composer
+ * @param {import("@mail/core/common/action").ActionRootRefParam & {composer?: Composer|() => Composer}} [params0={}]
  * @returns {UseComposerActions_Def}
  */
-export function useComposerActions({ composer } = {}) {
+export function useComposerActions({ composer, rootRef } = {}) {
     return useAction(composerActionsRegistry, UseComposerActions, ComposerAction, {
         composer,
+        rootRef,
     });
 }

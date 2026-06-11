@@ -1,4 +1,4 @@
-import { onRendered, useChildSubEnv, useLayoutEffect, useRef, useState } from "@web/owl2/utils";
+import { useChildSubEnv, useLayoutEffect, useRef } from "@web/owl2/utils";
 import { DateSection } from "@mail/core/common/date_section";
 import { Message } from "@mail/core/common/message";
 import { NotificationMessage } from "./notification_message";
@@ -7,19 +7,24 @@ import { useChildRefs, useMessageSelection, useVisible } from "@mail/utils/commo
 
 import {
     Component,
+    computed,
     onMounted,
     onWillDestroy,
+    onWillPatch,
     onWillUnmount,
     onWillUpdateProps,
-    toRaw,
+    proxy,
+    signal,
+    types,
     untrack,
     useEffect,
+    useListener,
 } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
 
 import { _t } from "@web/core/l10n/translation";
 import { Transition } from "@web/core/transition";
-import { useBus, useRefListener, useService } from "@web/core/utils/hooks";
+import { useBus, useService } from "@web/core/utils/hooks";
 import { escape } from "@web/core/utils/strings";
 
 export const PRESENT_VIEWPORT_THRESHOLD = 1;
@@ -30,7 +35,7 @@ export const PRESENT_VIEWPORT_THRESHOLD = 1;
  * @property {"asc"|"desc"} [order="asc"]
  * @property {import("models").Thread} thread
  * @property {string} [searchTerm]
- * @property {import("@web/core/utils/hooks").Ref} [scrollRef]
+ * @property {import("@odoo/owl").Signal<HTMLElement>} [scrollRef]
  * @extends {Component<Props, Env>}
  */
 export class Thread extends Component {
@@ -75,7 +80,7 @@ export class Thread extends Component {
         });
         this.store = useService("mail.store");
         this.ui = useService("ui");
-        this.state = useState({
+        this.state = proxy({
             isReplyingTo: false,
             mountedAndLoaded: false,
             showJumpPresent: false,
@@ -85,9 +90,7 @@ export class Thread extends Component {
         this.orm = useService("orm");
         this.ui = useService("ui");
         /** @type {ReturnType<import('@mail/utils/common/hooks').useMessageScrolling>|null} */
-        this.messageHighlight = this.env.messageHighlight
-            ? useState(this.env.messageHighlight)
-            : null;
+        this.messageHighlight = this.env.messageHighlight;
         this.scrollingToHighlight = false;
         useLayoutEffect(
             () => {
@@ -97,8 +100,8 @@ export class Thread extends Component {
         );
         this.present = useRef("load-newer");
         this.jumpPresentRef = useRef("jump-present");
-        this.root = useRef("messages");
-        this.visibleState = useVisible("messages", () => {
+        this.rootRef = signal(null, { type: types.instanceOf(HTMLDivElement) });
+        this.visibleState = useVisible(this.rootRef, () => {
             this.updateShowJumpPresent();
         });
         /**
@@ -106,11 +109,11 @@ export class Thread extends Component {
          * either be the chatter scrollable (if chatter) or the thread
          * scrollable (in other cases).
          */
-        this.scrollableRef = this.props.scrollRef ?? this.root;
-        useRefListener(
+        this.scrollableRef = computed(() => this.props.scrollRef?.() ?? this.rootRef());
+        useListener(
             this.scrollableRef,
             "scrollend",
-            () => (this.state.scrollTop = this.scrollableRef.el.scrollTop)
+            () => (this.state.scrollTop = this.scrollableRef().scrollTop)
         );
         this.loadOlderState = useVisible(
             "load-older",
@@ -120,7 +123,7 @@ export class Thread extends Component {
                     this.smoothScrollingPromise,
                 ]);
                 if (this.loadOlderState.isVisible) {
-                    toRaw(this.props.thread).fetchMoreMessages({
+                    this.props.thread.fetchMoreMessages({
                         routeParams: this.messageFetchRouteParams,
                     });
                 }
@@ -135,7 +138,7 @@ export class Thread extends Component {
                     this.smoothScrollingPromise,
                 ]);
                 if (this.loadNewerState.isVisible) {
-                    toRaw(this.props.thread).fetchMoreMessages({
+                    this.props.thread.fetchMoreMessages({
                         epoch: "newer",
                         routeParams: this.messageFetchRouteParams,
                     });
@@ -151,7 +154,7 @@ export class Thread extends Component {
         useLayoutEffect(
             (focus) => {
                 if (focus && this.state.mountedAndLoaded) {
-                    this.root.el.focus();
+                    this.rootRef().focus();
                 }
             },
             () => [this.props.autofocus + this.props.thread.autofocus, this.state.mountedAndLoaded]
@@ -223,7 +226,7 @@ export class Thread extends Component {
                 }
                 const el = this.messageRefs.get(
                     this.channel?.self_member_id.new_message_separator_ui - 1
-                )?.el;
+                )?.();
                 if (el) {
                     el.querySelector(".o-mail-Message-jumpTarget").scrollIntoView({
                         behavior: "instant",
@@ -236,7 +239,7 @@ export class Thread extends Component {
         useBus(this.env.bus, "MAIL:RELOAD-THREAD", ({ detail }) => {
             const { model, id } = this.props.thread;
             if (detail.model === model && detail.id === id) {
-                toRaw(this.props.thread).fetchNewMessages();
+                this.props.thread.fetchNewMessages();
             }
         });
         onWillUpdateProps((nextProps) => {
@@ -247,7 +250,7 @@ export class Thread extends Component {
                 if (this.env.chatter) {
                     this.env.chatter.shouldFetchMessages = false;
                 }
-                toRaw(nextProps.thread).fetchNewMessages();
+                nextProps.thread.fetchNewMessages();
             }
         });
     }
@@ -359,13 +362,13 @@ export class Thread extends Component {
             }
         });
         onWillDestroy(() => stopOnChange());
-        onRendered(() => {
+        onWillPatch(() => {
             if (!this.loadedAndPatched) {
                 return;
             }
             this.snapshot = {
-                scrollHeight: this.scrollableRef.el.scrollHeight,
-                scrollTop: this.scrollableRef.el.scrollTop,
+                scrollHeight: this.scrollableRef().scrollHeight,
+                scrollTop: this.scrollableRef().scrollTop,
             };
         });
         useLayoutEffect(this.applyScroll);
@@ -390,7 +393,7 @@ export class Thread extends Component {
                     };
                 }
             },
-            () => [this.scrollableRef.el, this.state.mountedAndLoaded]
+            () => [this.scrollableRef(), this.state.mountedAndLoaded]
         );
     }
 
@@ -399,13 +402,11 @@ export class Thread extends Component {
             this.reset();
             return;
         }
-        // Use toRaw() to prevent scroll check from triggering renders.
-        const thread = toRaw(this.props.thread);
-        this.applyScrollContextually(thread);
+        this.applyScrollContextually(this.props.thread);
         this.snapshot = undefined;
-        this.newestPersistentMessage = thread.newestPersistentMessage;
-        this.oldestPersistentMessage = thread.oldestPersistentMessage;
-        this.loadNewer = thread.loadNewer;
+        this.newestPersistentMessage = this.props.thread.newestPersistentMessage;
+        this.oldestPersistentMessage = this.props.thread.oldestPersistentMessage;
+        this.loadNewer = this.props.thread.loadNewer;
         if (!this.loadedAndPatched) {
             this.loadedAndPatched = true;
             this.loadOlderState.ready = true;
@@ -430,7 +431,7 @@ export class Thread extends Component {
         if (this.snapshot && messagesAtTop) {
             this.setScroll(
                 this.snapshot.scrollTop +
-                    this.scrollableRef.el.scrollHeight -
+                    this.scrollableRef().scrollHeight -
                     this.snapshot.scrollHeight
             );
         } else if (this.snapshot && messagesAtBottom) {
@@ -448,15 +449,15 @@ export class Thread extends Component {
                 }
                 value =
                     this.props.order === "asc"
-                        ? this.scrollableRef.el.scrollHeight - this.scrollableRef.el.clientHeight
+                        ? this.scrollableRef().scrollHeight - this.scrollableRef().clientHeight
                         : 0;
             } else {
                 value =
                     this.props.order === "asc"
                         ? thread.scrollTop
-                        : this.scrollableRef.el.scrollHeight -
+                        : this.scrollableRef().scrollHeight -
                           thread.scrollTop -
-                          this.scrollableRef.el.clientHeight;
+                          this.scrollableRef().clientHeight;
             }
             if (
                 (this.lastSetValue === undefined || Math.abs(this.lastSetValue - value) > 1) &&
@@ -482,15 +483,15 @@ export class Thread extends Component {
         if (!firstNewerMessage) {
             return false;
         }
-        const firstNewestMessageRef = this.messageRefs.get(firstNewerMessage.id);
-        if (!firstNewestMessageRef) {
+        const firstNewestMessageEl = this.messageRefs.get(firstNewerMessage.id)?.();
+        if (!firstNewestMessageEl) {
             return false;
         }
-        firstNewestMessageRef.el.querySelector(".o-mail-Message-jumpTarget").scrollIntoView({
+        firstNewestMessageEl.querySelector(".o-mail-Message-jumpTarget").scrollIntoView({
             behavior: "instant",
             block: this.props.order === "asc" ? "start" : "end",
         });
-        thread.scrollTop = this.isAtBottom ? "bottom" : this.scrollableRef.el.scrollTop;
+        thread.scrollTop = this.isAtBottom ? "bottom" : this.scrollableRef().scrollTop;
         return true;
     }
 
@@ -499,11 +500,11 @@ export class Thread extends Component {
     }
 
     fetchInitialMessages() {
-        toRaw(this.props.thread).fetchNewMessages({ routeParams: this.messageFetchRouteParams });
+        this.props.thread.fetchNewMessages({ routeParams: this.messageFetchRouteParams });
     }
 
     get viewportEl() {
-        let viewportEl = this.scrollableRef.el;
+        let viewportEl = this.scrollableRef();
         if (viewportEl && viewportEl.clientHeight > browser.innerHeight) {
             while (viewportEl && viewportEl.clientHeight > browser.innerHeight) {
                 viewportEl = viewportEl.parentElement;
@@ -542,9 +543,8 @@ export class Thread extends Component {
 
     onFocusin() {
         this.props.thread.isFocusedByThread = true;
-        const thread = toRaw(this.props.thread);
-        if (thread?.shouldMarkAsReadOnFocus) {
-            thread.markAsRead();
+        if (this.props.thread.shouldMarkAsReadOnFocus) {
+            this.props.thread.markAsRead();
         }
     }
 
@@ -624,15 +624,15 @@ export class Thread extends Component {
             return false;
         }
         return this.props.order === "asc"
-            ? this.scrollableRef.el.scrollHeight -
-                  this.scrollableRef.el.scrollTop -
-                  this.scrollableRef.el.clientHeight <
+            ? this.scrollableRef().scrollHeight -
+                  this.scrollableRef().scrollTop -
+                  this.scrollableRef().clientHeight <
                   30
-            : this.scrollableRef.el.scrollTop < 30;
+            : this.scrollableRef().scrollTop < 30;
     }
 
     onWheel(ev) {
-        if (this.messageSelection._data.size) {
+        if (this.messageSelection.size) {
             ev.stopPropagation();
             ev.preventDefault();
         }
@@ -648,25 +648,23 @@ export class Thread extends Component {
     }
 
     onScroll() {
-        const thread = toRaw(this.props.thread);
-        if (this.shouldMarkAsReadOnScroll(thread)) {
-            thread.markAsRead();
+        if (this.shouldMarkAsReadOnScroll(this.props.thread)) {
+            this.props.thread.markAsRead();
         }
         this.saveScroll();
     }
 
     saveScroll() {
-        const thread = toRaw(this.props.thread);
         const isBottom = this.isAtBottom;
         if (isBottom) {
-            thread.scrollTop = "bottom";
+            this.props.thread.scrollTop = "bottom";
         } else {
-            thread.scrollTop =
+            this.props.thread.scrollTop =
                 this.props.order === "asc"
-                    ? this.scrollableRef.el.scrollTop
-                    : this.scrollableRef.el.scrollHeight -
-                      this.scrollableRef.el.scrollTop -
-                      this.scrollableRef.el.clientHeight;
+                    ? this.scrollableRef().scrollTop
+                    : this.scrollableRef().scrollHeight -
+                      this.scrollableRef().scrollTop -
+                      this.scrollableRef().clientHeight;
         }
     }
 
@@ -674,7 +672,7 @@ export class Thread extends Component {
         if (!this.messageHighlight?.highlightedMessageId || this.scrollingToHighlight) {
             return;
         }
-        const el = this.messageRefs.get(this.messageHighlight.highlightedMessageId)?.el;
+        const el = this.messageRefs.get(this.messageHighlight.highlightedMessageId)?.();
         if (el) {
             this.scrollingToHighlight = true;
             await this.messageHighlight.startupPromise;
@@ -728,7 +726,7 @@ export class Thread extends Component {
                 this.smoothScrollingTimeout = setTimeout(onSmoothScrollingEnd, 250);
             }
         }
-        this.scrollableRef.el.scrollTo({ behavior: smooth ? "smooth" : undefined, top: value });
+        this.scrollableRef().scrollTo({ behavior: smooth ? "smooth" : undefined, top: value });
         this.lastSetValue = value;
         this.messageHighlight?.resolveStartup?.();
         this.saveScroll();

@@ -5,7 +5,12 @@ import { onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { setupEditor, testEditor } from "../_helpers/editor";
 import { cleanLinkArtifacts } from "../_helpers/format";
 import { getContent, setSelection } from "../_helpers/selection";
-import { ensureDistinctHistoryStep, insertSpace, insertText, undo } from "../_helpers/user_actions";
+import {
+    ensureDistinctHistoryCommit,
+    insertSpace,
+    insertText,
+    undo,
+} from "../_helpers/user_actions";
 import { expectElementCount } from "../_helpers/ui_expectations";
 
 describe("transform on space", () => {
@@ -70,6 +75,15 @@ describe("transform on space", () => {
         expect(cleanLinkArtifacts(getContent(el))).toBe("<p>www.odoo&nbsp;[]</p>");
     });
 
+    test("typing uppercase URL + space should convert to link", async () => {
+        const { editor, el } = await setupEditor("<p>[]</p>");
+        await insertText(editor, "http://ODOO.COM");
+        await insertSpace(editor);
+        expect(cleanLinkArtifacts(getContent(el))).toBe(
+            '<p><a href="http://ODOO.COM">http://ODOO.COM</a>&nbsp;[]</p>'
+        );
+    });
+
     test("should transform url followed by punctuation characters after space (1)", async () => {
         await testEditor({
             contentBefore: "<p>http://test.com.[]</p>",
@@ -119,7 +133,7 @@ describe("transform on space", () => {
     test("transform text url into link and undo it", async () => {
         const { el, editor } = await setupEditor(`<p>[]</p>`);
         await insertText(editor, "www.abc.jpg");
-        await ensureDistinctHistoryStep();
+        await ensureDistinctHistoryCommit();
         await insertSpace(editor);
         expect(cleanLinkArtifacts(getContent(el))).toBe(
             '<p><a href="https://www.abc.jpg">www.abc.jpg</a>&nbsp;[]</p>'

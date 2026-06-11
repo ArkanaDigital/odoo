@@ -333,7 +333,7 @@ class StockQuant(models.Model):
                     # Set the `inventory_quantity` field to create the necessary move.
                     quant.inventory_quantity = inventory_quantity
                     quant.user_id = vals.get('user_id', self.env.user.id)
-                    quant.inventory_date = fields.Date.today()
+                    quant.inventory_date = fields.Date.context_today(self)
                 quants |= quant
             else:
                 if 'inventory_quantity' not in vals:
@@ -883,7 +883,7 @@ class StockQuant(models.Model):
 
         # do full packaging reservation when it's needed
         if self.env.context.get('packaging_uom_id') and product_id.product_tmpl_id.categ_id.packaging_reserve_method == "full":
-            available_quantity = self.env.context.get('packaging_uom_id')._check_qty(available_quantity, product_id.uom_id, "DOWN")
+            available_quantity = self.env.context.get('packaging_uom_id')._check_qty(min(quantity, available_quantity), product_id.uom_id, "DOWN")
 
         quantity = min(quantity, available_quantity)
 
@@ -1061,7 +1061,7 @@ class StockQuant(models.Model):
         if date:
             moves.date = date
         moves._trigger_assign()
-        self.location_id.sudo().write({'last_inventory_date': fields.Date.today()})
+        self.location_id.sudo().write({'last_inventory_date': fields.Date.context_today(self)})
         date_by_location = {loc: loc._get_next_inventory_date() for loc in self.mapped('location_id')}
         for quant in self:
             quant.inventory_date = date_by_location[quant.location_id]

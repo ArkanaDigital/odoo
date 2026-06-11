@@ -212,7 +212,7 @@ class HrLeaveAllocation(models.Model):
 
     @api.depends('employee_id', 'work_entry_type_id')
     def _compute_leaves(self):
-        date_from = fields.Date.today()
+        date_from = fields.Date.context_today(self)
         employee_days_per_allocation = self.employee_id._get_consumed_leaves(self.work_entry_type_id, date_from, ignore_future=True)[0]
         for allocation in self:
             origin = allocation._origin
@@ -475,7 +475,7 @@ class HrLeaveAllocation(models.Model):
             leaves_taken = employee_days_per_allocation[origin.employee_id][origin.work_entry_type_id][origin]['leaves_taken']
             return leaves_taken
 
-        date_to = date_to or fields.Date.today()
+        date_to = date_to or fields.Date.context_today(self)
         already_accrued = {allocation.id: allocation.already_accrued or (allocation.number_of_days != 0 and allocation.accrual_plan_id.accrued_gain_time == 'start') for allocation in self}
         first_allocation = _("""This allocation have already ran once, any modification won't be effective to the days allocated to the employee. If you need to change the configuration of the allocation, delete and create a new one.""")
         for allocation in self:
@@ -764,10 +764,10 @@ class HrLeaveAllocation(models.Model):
             )
 
     def _add_lastcalls(self):
+        today = fields.Date.context_today(self)
         for allocation in self:
             if not allocation.accrual_plan_id:
                 continue
-            today = fields.Date.today()
             (current_level, current_level_idx) = allocation._get_current_accrual_plan_level_id(today)
             if not allocation.lastcall:
                 if not current_level:
@@ -970,6 +970,18 @@ class HrLeaveAllocation(models.Model):
                 return False
         return True
 
+    def _get_initialize_accrual_plan_values(self, date_from):
+        return {
+            'lastcall': date_from,
+            'nextcall': False,
+            'number_of_days': 0.0,
+            'number_of_days_display': 0.0,
+            'number_of_hours_display': 0.0,
+            'already_accrued': False,
+            'carried_over_days_expiration_date': False,
+            'expiring_carryover_days': 0
+        }
+
     @api.onchange('accrual_plan_id')
     def _onchange_accrual_plan_id(self):
         if self.accrual_plan_id:
@@ -987,14 +999,8 @@ class HrLeaveAllocation(models.Model):
         if not self.date_from or not self.accrual_plan_id or self.state == 'validate'\
            or not self.employee_id:
             return
-        self.lastcall = self.date_from
-        self.nextcall = False
-        self.number_of_days_display = 0.0
-        self.number_of_hours_display = 0.0
-        self.number_of_days = 0.0
-        self.already_accrued = False
-        self.carried_over_days_expiration_date = False
-        self.expiring_carryover_days = 0
+        update_vals = self._get_initialize_accrual_plan_values(self.date_from)
+        self.update(update_vals)
         date_to = min(self.date_to, date.today()) if self.date_to else False
         self._process_accrual_plans(date_to)
 
@@ -1011,6 +1017,8 @@ class HrLeaveAllocation(models.Model):
                 responsible = self.employee_id.leave_manager_id
             elif self.employee_id.parent_id.user_id:
                 responsible = self.employee_id.parent_id.user_id
+            elif self.employee_id.hr_responsible_id:
+                responsible = self.employee_id.hr_responsible_id
         elif self.validation_type == 'hr' or (self.validation_type == 'both' and self.state == 'validate1'):
             if self.employee_id.hr_responsible_id:
                 responsible = self.employee_id.hr_responsible_id

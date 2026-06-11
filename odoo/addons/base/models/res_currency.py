@@ -7,7 +7,7 @@ from datetime import date
 
 from odoo import api, fields, models, tools
 from odoo.exceptions import UserError, ValidationError
-from odoo.tools import ormcache, parse_date, SQL
+from odoo.tools import parse_date, SQL
 
 _logger = logging.getLogger(__name__)
 
@@ -280,10 +280,10 @@ class ResCurrency(models.CachedModel):
         self.ensure_one()
         return tools.float_is_zero(amount, precision_rounding=self.rounding)
 
-    @ormcache(cache='stable')
     @api.model
+    @api.ormcache(cache='stable')
     def get_all_currencies(self):
-        currencies = self.sudo().browse(self._cached_data()['id'])
+        currencies = self.sudo().get_all()
         return {
             c.id: {'name': c.name, 'symbol': c.symbol, 'position': c.position, 'digits': [69, c.decimal_places]}
             for c in currencies
@@ -294,6 +294,8 @@ class ResCurrency(models.CachedModel):
         if from_currency == to_currency:
             return 1
         company = company or self.env.company
+        if company.root_id in self.env['res.company'].browse(self.env.user._get_company_ids()).root_id:
+            from_currency = from_currency.sudo()
         date = date or fields.Date.context_today(self)
         return from_currency.with_company(company).with_context(to_currency=to_currency.id, date=str(date)).inverse_rate
 
@@ -406,7 +408,7 @@ class ResCurrencyRate(models.Model):
         return self.currency_id.rate_ids.sudo().filtered(lambda x: (
             x.rate
             and x.company_id == (self.company_id or self.env.company.root_id)
-            and x.name < (self.name or fields.Date.today())
+            and x.name < (self.name or fields.Date.context_today(self))
         )).sorted('name')[-1:]
 
     def _get_last_rates_for_companies(self, companies):

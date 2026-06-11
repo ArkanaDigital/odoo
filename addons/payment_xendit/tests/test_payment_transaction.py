@@ -49,13 +49,16 @@ class TestPaymentTransaction(PaymentHttpCommon, XenditCommon):
     def test_no_input_missing_from_redirect_form(self):
         """Test that the `api_url` key is not omitted from the rendering values."""
         tx = self._create_transaction("redirect")
-        with patch(
-            "odoo.addons.payment_xendit.models.payment_transaction.PaymentTransaction"
-            "._get_specific_rendering_values",
-            return_value={"api_url": "https://dummy.com", "http_method": "get"},
-        ), patch(
-            "odoo.addons.payment.utils.generate_access_token",
-            new=self._generate_test_access_token
+        with (
+            patch(
+                "odoo.addons.payment_xendit.models.payment_transaction.PaymentTransaction"
+                "._get_specific_rendering_values",
+                return_value={"api_url": "https://dummy.com", "http_method": "get"},
+            ),
+            patch(
+                "odoo.addons.payment.utils.generate_access_token",
+                new=self._generate_test_access_token,
+            ),
         ):
             processing_values = tx._get_processing_values()
         form_info = self._extract_values_from_html_form(processing_values["redirect_form_html"])
@@ -112,8 +115,7 @@ class TestPaymentTransaction(PaymentHttpCommon, XenditCommon):
         currency_idr = self.env.ref("base.IDR")
         tx = self._create_transaction("redirect", amount=1000.50, currency_id=currency_idr.id)
         with patch(
-            "odoo.addons.payment.utils.generate_access_token",
-            new=self._generate_test_access_token
+            "odoo.addons.payment.utils.generate_access_token", new=self._generate_test_access_token
         ):
             processing_values = tx._get_specific_processing_values({})
         self.assertEqual(processing_values.get("rounded_amount"), 1000)
@@ -143,7 +145,7 @@ class TestPaymentTransaction(PaymentHttpCommon, XenditCommon):
         """Test that the transaction state is set to 'done' when the payment data indicate a
         successful payment."""
         tx = self._create_transaction("redirect")
-        tx._apply_updates(self.webhook_payment_data)
+        tx.with_context(payment_safe_write=True)._apply_updates(self.webhook_payment_data)
         self.assertEqual(tx.state, "done")
 
     @mute_logger("odoo.addons.payment_xendit.controllers.main")
@@ -161,6 +163,7 @@ class TestPaymentTransaction(PaymentHttpCommon, XenditCommon):
             ) as tokenize_mock,
         ):
             tx._xendit_create_charge("dummytoken")
+            self._run_processing()
             self.assertEqual(tokenize_mock.call_count, 1)
 
     def test_extract_token_values_maps_fields_correctly(self):

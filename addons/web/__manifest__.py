@@ -309,6 +309,7 @@ This module provides the core of the Odoo Web Client.
 
         'web.ace_lib': [
             "web/static/lib/ace/ace.js",
+            "web/static/lib/ace/ext-searchbox.js",
             "web/static/lib/ace/mode-javascript.js",
             "web/static/lib/ace/mode-xml.js",
             "web/static/lib/ace/mode-qweb.js",
@@ -385,7 +386,6 @@ This module provides the core of the Odoo Web Client.
         ],
         'web._assets_jquery': [
             'web/static/lib/jquery/jquery.js',
-            'web/static/src/legacy/js/libs/jquery.js',
         ],
         'web._assets_bootstrap': [
             'web/static/src/scss/import_bootstrap.scss',

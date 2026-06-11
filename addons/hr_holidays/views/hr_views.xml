@@ -70,7 +70,7 @@
         <field name="model">hr.employee</field>
         <field name="inherit_id" ref="hr.view_employee_filter"/>
         <field name="arch" type="xml">
-            <xpath expr="//filter[@name='in_contract']" position="before">
+            <xpath expr="//filter[@name='permanent_contract']" position="before">
                 <filter name="at_work" string="Present" domain="[('is_absent', '=', False)]"/>
                 <separator/>
             </xpath>
@@ -124,7 +124,7 @@
                 <field name="show_leaves" invisible="1"/>
                 <field name="is_absent" invisible="1"/>
                 <field name="hr_icon_display" invisible="1"/>
-                <button name="action_time_off_dashboard"
+                <button name="action_time_off_employee"
                         type="object"
                         class="oe_stat_button"
                         icon="fa-calendar"

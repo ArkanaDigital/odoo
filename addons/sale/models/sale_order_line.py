@@ -290,6 +290,7 @@ class SaleOrderLine(models.Model):
     qty_delivered_percent = fields.Float(
         string="% Delivered", compute="_compute_qty_delivered_percent", readonly=False
     )
+    qty_overage = fields.Float(compute="_compute_qty_overage", digits="Product Unit")
 
     # Analytic & Invoicing fields
     qty_invoiced = fields.Float(
@@ -703,7 +704,7 @@ class SaleOrderLine(models.Model):
     @api.depends("product_id", "order_id.commitment_date", "display_qty_widget")
     def _compute_qty_at_date(self):
         """Compute the quantity forecasted of product at delivery date."""
-        self.scheduled_date = fields.Date.today()
+        self.scheduled_date = fields.Date.context_today(self)
         self.virtual_available_at_date = 0
         self.qty_available_today = 0
         for line in self:
@@ -856,15 +857,20 @@ class SaleOrderLine(models.Model):
             for combo_id in combo_line.product_template_id.sudo().combo_ids
         }
         total_combo_base_price = sum(combo_base_prices.values())
-        # Compute the prorated combo prices.
-        combo_prices = {
-            combo_id: self.currency_id.round(
-                # Don't divide by total_combo_base_price if it's 0. This will make the prorating
-                # wrong, but the delta will be fixed by combo_price_delta below.
-                base_price * combo_product_price / (total_combo_base_price or 1)
-            )
-            for (combo_id, base_price) in combo_base_prices.items()
-        }
+        # Compute the prorated combo prices. When all combos have a zero base price, prorating by
+        # base price would assign the whole combo product's price to a single combo (via
+        # combo_price_delta below), making one combo item show the full price while the others
+        # show 0. Distribute the price evenly instead.
+        if total_combo_base_price:
+            combo_prices = {
+                combo_id: self.currency_id.round(
+                    base_price * combo_product_price / total_combo_base_price
+                )
+                for (combo_id, base_price) in combo_base_prices.items()
+            }
+        else:
+            even_share = self.currency_id.round(combo_product_price / len(combo_base_prices))
+            combo_prices = {combo_id: even_share for combo_id in combo_base_prices}
         # Compute the delta between the combo product's price and the sum of its combo prices.
         # Ideally, this should be 0, but division in python isn't perfect, so we may need to adjust
         # the combo prices to make the delta 0.
@@ -873,13 +879,16 @@ class SaleOrderLine(models.Model):
             combo_prices[combo_line.product_template_id.sudo().combo_ids[-1]] += combo_price_delta
         # Add the extra price of this combo item, as well as the extra prices of any `no_variant`
         # attributes to the combo price.
-        return (
-            combo_prices[self.combo_item_id.combo_id]
-            + self.combo_item_id.extra_price
+        extra_price = self.combo_item_id.currency_id._convert(
+            from_amount=self.combo_item_id.extra_price
             + self.product_id._get_no_variant_attributes_price_extra(
                 self.product_no_variant_attribute_value_ids
-            )
+            ),
+            to_currency=self.currency_id,
+            company=self.company_id,
+            date=self.order_id.date_order,
         )
+        return combo_prices[self.combo_item_id.combo_id] + extra_price
 
     @api.depends("product_id", "product_uom_id", "product_uom_qty")
     def _compute_discount(self):
@@ -1112,6 +1121,15 @@ class SaleOrderLine(models.Model):
 
         return result
 
+    @api.depends("product_id", "product_uom_qty", "qty_delivered")
+    def _compute_qty_overage(self):
+        for line in self:
+            product = line.product_id
+            if product.type == "service" and product.invoice_policy == "order":
+                line.qty_overage = max(line.qty_delivered - line.product_uom_qty, 0)
+            else:
+                line.qty_overage = 0
+
     @api.depends("invoice_lines.move_id.state", "invoice_lines.quantity")
     def _compute_qty_invoiced(self):
         """Compute the invoiced quantity invoiced.
@@ -1147,7 +1165,7 @@ class SaleOrderLine(models.Model):
                     or invoice_line.move_id.payment_state == "invoicing_legacy"
                 ):
                     invoice_qty = invoice_line.product_uom_id._compute_quantity(
-                        invoice_line.quantity, line.product_uom_id, round=False,
+                        invoice_line.quantity, line.product_uom_id, round=False
                     )
                     if invoice_line.move_id.move_type == "out_invoice":
                         invoiced_qties[line] += invoice_qty
@@ -1188,7 +1206,9 @@ class SaleOrderLine(models.Model):
         return self.invoice_lines
 
     # no trigger product_id.invoice_policy to avoid retroactively changing SO
-    @api.depends("qty_invoiced", "qty_delivered", "product_uom_qty", "state")
+    @api.depends(
+        "qty_invoiced", "qty_delivered", "product_uom_qty", "state", "order_id.invoice_overages"
+    )
     def _compute_qty_to_invoice(self):
         """
         Compute the quantity to invoice. If the invoice policy is order, the quantity to invoice is
@@ -1201,7 +1221,9 @@ class SaleOrderLine(models.Model):
             if line.state == "sale" and not line.display_type:
                 if line.product_id.type == "combo":
                     combo_lines.add(line)
-                elif line.product_id.invoice_policy == "order":
+                elif line.product_id.invoice_policy == "order" and not (
+                    line.qty_overage and line.order_id.invoice_overages
+                ):
                     line.qty_to_invoice = line.product_uom_qty - line.qty_invoiced
                 else:
                     line.qty_to_invoice = line.qty_delivered - line.qty_invoiced
@@ -1247,6 +1269,7 @@ class SaleOrderLine(models.Model):
                     line.qty_delivered, line.product_uom_qty, precision_digits=precision
                 )
                 == 1
+                and not (line.qty_overage and line.order_id.invoice_overages)
             ):
                 line.invoice_status = "upselling"
             elif (
@@ -1294,7 +1317,7 @@ class SaleOrderLine(models.Model):
                     invoice_line.move_id.state == "posted"
                     or invoice_line.move_id.payment_state == "invoicing_legacy"
                 ):
-                    invoice_date = invoice_line.move_id.invoice_date or fields.Date.today()
+                    invoice_date = invoice_line.move_id.invoice_date
                     if invoice_line.move_id.move_type == "out_invoice":
                         amount_invoiced += invoice_line.currency_id._convert(
                             invoice_line.price_subtotal,
@@ -1321,9 +1344,11 @@ class SaleOrderLine(models.Model):
                     invoice.state == "posted"
                     or invoice_line.move_id.payment_state == "invoicing_legacy"
                 ):
-                    invoice_date = invoice.invoice_date or fields.Date.context_today(self)
                     amount_invoiced_unsigned = invoice_line.currency_id._convert(
-                        invoice_line.price_total, line.currency_id, line.company_id, invoice_date
+                        invoice_line.price_total,
+                        line.currency_id,
+                        line.company_id,
+                        invoice.invoice_date,
                     )
                     amount_invoiced += amount_invoiced_unsigned * -invoice.direction_sign
             line.amount_invoiced = amount_invoiced
@@ -1383,7 +1408,7 @@ class SaleOrderLine(models.Model):
                                     aml.price_unit,
                                     line.currency_id,
                                     line.company_id,
-                                    aml.date or fields.Date.today(),
+                                    aml.date,
                                     round=False,
                                 )
                                 * aml.quantity
@@ -1394,7 +1419,7 @@ class SaleOrderLine(models.Model):
                                     aml.price_unit,
                                     line.currency_id,
                                     line.company_id,
-                                    aml.date or fields.Date.today(),
+                                    aml.date,
                                     round=False,
                                 )
                                 * aml.quantity
@@ -1922,6 +1947,14 @@ class SaleOrderLine(models.Model):
 
     # === HOOKS ===#
 
+    def _is_product_line(self):
+        """Return whether it is a product line.
+
+        A product line is not a section/note, not a combo sub-line , and not a delivery.
+        """
+        self.ensure_one()
+        return not self.display_type and not self.combo_item_id and not self._is_delivery()
+
     def _is_delivery(self):
         self.ensure_one()
         return False
@@ -1954,16 +1987,22 @@ class SaleOrderLine(models.Model):
             }
         """
         if len(self) == 1:
+            available_uoms = self.product_id._get_available_uoms()
             return {
                 "quantity": self.product_uom_qty,
                 "price": self._get_discounted_price(),
                 "readOnly": (self.order_id._is_readonly() or bool(self.combo_item_id)),
                 **self.order_id._get_product_catalog_uom_data(self.product_id, self.product_uom_id),
+                "availableUoms": [
+                    {"id": uom.id, "name": uom.display_name, "factor": uom.factor}
+                    for uom in available_uoms
+                ],
             }
         if self:
             self.product_id.ensure_one()
             order_line = self[0]
             order = order_line.order_id
+            available_uoms = self.product_id._get_available_uoms()
             return {
                 "readOnly": True,
                 "price": order.pricelist_id._get_product_price(
@@ -1981,6 +2020,11 @@ class SaleOrderLine(models.Model):
                     )
                 ),
                 "uomDisplayName": self.product_id.uom_id.display_name,
+                "uomId": self.product_id.uom_id.id,
+                "availableUoms": [
+                    {"id": uom.id, "name": uom.display_name, "factor": uom.factor}
+                    for uom in available_uoms
+                ],
             }
         return {
             "quantity": 0
@@ -2001,7 +2045,7 @@ class SaleOrderLine(models.Model):
         self.ensure_one()
         to_currency = self.currency_id or self.order_id.currency_id
         if currency and to_currency and currency != to_currency:
-            conversion_date = self.order_id.date_order or fields.Date.context_today(self)
+            conversion_date = self.order_id.date_order
             company = self.company_id or self.order_id.company_id or self.env.company
             return currency._convert(
                 from_amount=amount,
@@ -2017,7 +2061,7 @@ class SaleOrderLine(models.Model):
         if not "accrual_entry_date" in self.env.context:
             return False
         accrual_date = fields.Date.from_string(self.env.context["accrual_entry_date"])
-        return accrual_date < fields.Date.today()
+        return accrual_date < fields.Date.context_today(self)
 
     def _get_discounted_price(self):
         self.ensure_one()

@@ -1,4 +1,4 @@
-import { useChildSubEnv, useLayoutEffect, useRef, useState, useSubEnv } from "@web/owl2/utils";
+import { useChildSubEnv, useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
 import { readonlySyntaxHighlightingEmbedding } from "@html_editor/others/embedded_components/core/syntax_highlighting/readonly_syntax_highlighting";
 import { mountComponent } from "@html_editor/others/embedded_component_utils";
 import { AttachmentList } from "@mail/core/common/attachment_list";
@@ -17,15 +17,15 @@ import { isEventHandled, markEventHandled } from "@web/core/utils/misc";
 import { renderToElement } from "@web/core/utils/render";
 import { nbsp } from "@web/core/utils/strings";
 
-import { Component, onMounted, toRaw } from "@odoo/owl";
+import { Component, computed, proxy, signal, types, useEffect } from "@odoo/owl";
 
 import { ActionSwiper } from "@web/core/action_swiper/action_swiper";
-import { hasTouch, isMobileOS } from "@web/core/browser/feature_detection";
+import { isMobileOS } from "@web/core/browser/feature_detection";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { _t } from "@web/core/l10n/translation";
 import { usePopover } from "@web/core/popover/popover_hook";
-import { useChildRef, useService } from "@web/core/utils/hooks";
+import { useService } from "@web/core/utils/hooks";
 import { createElementWithContent } from "@web/core/utils/html";
 import { getOrigin, url } from "@web/core/utils/urls";
 import { useMessageActions } from "./message_actions";
@@ -36,12 +36,6 @@ import { ActionList } from "@mail/core/common/action_list";
 import { loadCssFromBundle } from "@mail/utils/common/misc";
 import { MessageContextMenu } from "@mail/core/common/message_context_menu";
 import { Priority } from "@mail/core/common/priority";
-
-class MessageDropdown extends Dropdown {
-    get isBottomSheet() {
-        return hasTouch() && this.props.bottomSheet;
-    }
-}
 
 /**
  * @typedef {Object} Props
@@ -66,7 +60,7 @@ export class Message extends Component {
         ActionSwiper,
         AttachmentList,
         Composer,
-        Dropdown: MessageDropdown,
+        Dropdown,
         ImStatus,
         MessageContextMenu,
         MessageInReply,
@@ -113,7 +107,7 @@ export class Message extends Component {
         this.nbsp = nbsp;
         this.store = useService("mail.store");
         this.popover = usePopover(this.constructor.components.Popover, { position: "top" });
-        this.state = useState({
+        this.state = proxy({
             isHovered: false,
             isClicked: false,
             expandOptions: false,
@@ -128,37 +122,37 @@ export class Message extends Component {
                 this.isRightClickDropdownOngoingClose = true;
                 await new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve)));
                 this.isRightClickDropdownOngoingClose = false;
-                delete this.root.el.dataset.rightClicking;
+                delete this.rootRef().dataset.rightClicking;
             },
         });
-        this.rightClickAnchor = useChildRef("rightClickAnchor");
-        /** @type {ShadowRoot} */
-        this.shadowRoot;
-        this.root = useRef("root");
+        this.rightClickAnchor = signal(null, { type: types.ref(HTMLElement) });
+        this.rootRef = signal(null, { type: types.ref(HTMLDivElement) });
         if (isMobileOS()) {
-            useLongPress("root", {
+            useLongPress(this.rootRef, {
                 action: () => this.openMobileActions(),
                 predicate: () => !this.isEditing,
             });
         }
-        useForwardRefsToParent("messageRefs", (props) => props.message.id, this.root);
+        useForwardRefsToParent("messageRefs", (props) => props.message.id, this.rootRef);
         this.messageBody = useRef("body");
         this.messageActions = useMessageActions(this.messageActionsParams);
-        this.shadowBody = useRef("shadowBody");
+        this.shadowBody = signal(null, { type: types.ref(HTMLDivElement) });
+        this.shadowRoot = signal(null, { type: types.ref(ShadowRoot) });
         this.dialog = useService("dialog");
         this.ui = useService("ui");
         this.openReactionMenu = this.openReactionMenu.bind(this);
         this.optionsDropdown = useDropdownState();
+        this.isActive = computed(() => Boolean(this._isActive));
         useSubEnv({ inMessage: true });
         useChildSubEnv({
             message: this.props.message,
             alignedRight: this.isAlignedRight,
         });
-        onMounted(() => {
-            if (this.shadowBody.el) {
-                this.shadowRoot = this.shadowBody.el.attachShadow({ mode: "open" });
+        useEffect(() => {
+            if (this.shadowBody()) {
+                this.shadowRoot.set(this.shadowBody().attachShadow({ mode: "open" }));
                 const color = this.store.isOdooWhiteTheme ? "dark" : "white";
-                loadCssFromBundle(this.shadowRoot, "mail.assets_message_email");
+                loadCssFromBundle(this.shadowRoot(), "mail.assets_message_email");
                 const shadowStyle = document.createElement("style");
                 shadowStyle.textContent = `
                     * {
@@ -176,7 +170,7 @@ export class Message extends Component {
                     }
                 `;
                 if (!this.store.isOdooWhiteTheme) {
-                    this.shadowRoot.appendChild(shadowStyle);
+                    this.shadowRoot().appendChild(shadowStyle);
                 }
                 const ellipsisStyle = document.createElement("style");
                 ellipsisStyle.textContent = `
@@ -201,37 +195,29 @@ export class Message extends Component {
                         }
                     }
                 `;
-                this.shadowRoot.appendChild(ellipsisStyle);
+                this.shadowRoot().appendChild(ellipsisStyle);
             }
         });
-        useLayoutEffect(
-            () => {
-                if (this.shadowBody.el) {
-                    const bodyEl = createElementWithContent(
-                        "span",
-                        this.message.showTranslation
-                            ? this.message.richTranslationValue
-                            : this.props.messageSearch?.highlight(this.message.richBody) ??
-                                  this.message.richBody
-                    );
-                    const roots = this.prepareMessageBody(bodyEl) ?? [];
-                    this.shadowRoot.appendChild(bodyEl);
-                    return () => {
-                        for (const root of roots) {
-                            root.destroy();
-                        }
-                        this.shadowRoot.removeChild(bodyEl);
-                    };
-                }
-            },
-            () => [
-                this.message.showTranslation,
-                this.message.richTranslationValue,
-                this.props.messageSearch?.searchTerm,
-                this.message.richBody,
-                this.isEditing,
-            ]
-        );
+        useEffect(() => {
+            const shadowRoot = this.shadowRoot();
+            if (shadowRoot) {
+                const bodyEl = createElementWithContent(
+                    "span",
+                    this.message.showTranslation
+                        ? this.message.richTranslationValue
+                        : this.props.messageSearch?.highlight(this.message.richBody) ??
+                              this.message.richBody
+                );
+                const roots = this.prepareMessageBody(bodyEl) ?? [];
+                shadowRoot.appendChild(bodyEl);
+                return () => {
+                    for (const root of roots) {
+                        root.destroy();
+                    }
+                    shadowRoot.removeChild(bodyEl);
+                };
+            }
+        });
         useLayoutEffect(
             () => {
                 const roots = this.isEditing
@@ -250,6 +236,7 @@ export class Message extends Component {
     get messageActionsParams() {
         return {
             message: () => this.message,
+            rootRef: this.rootRef,
             thread: () => this.props.thread,
         };
     }
@@ -351,7 +338,7 @@ export class Message extends Component {
         if (isMobileOS()) {
             return 1;
         }
-        return this.env.inChatWindow || this.env.inMeetingChat ? 2 : 4;
+        return 2;
     }
 
     get showSubtypeDescription() {
@@ -381,7 +368,8 @@ export class Message extends Component {
         return _t("Message");
     }
 
-    get isActive() {
+    /** The getter of the isActive. Meant to be patched */
+    get _isActive() {
         return (
             this.state.isHovered ||
             this.state.isClicked ||
@@ -463,8 +451,8 @@ export class Message extends Component {
         return true;
     }
 
-    async onClickAttachmentUnlink(attachment) {
-        await toRaw(attachment).remove();
+    onClickAttachmentUnlink(attachment) {
+        return attachment.remove();
     }
 
     /**
@@ -512,8 +500,8 @@ export class Message extends Component {
     }
 
     showRightClickMessageActions(ev) {
-        this.root.el.dataset.rightClicking = true;
-        const el = this.rightClickAnchor.el;
+        this.rootRef().dataset.rightClicking = true;
+        const el = this.rightClickAnchor();
         el.style.left = ev.clientX + "px";
         el.style.top = ev.clientY + "px";
         this.rightClickDropdownState.open();
@@ -601,11 +589,10 @@ export class Message extends Component {
     }
 
     onClickNotification(ev) {
-        const message = toRaw(this.message);
-        if (message.failureNotifications.length > 0) {
+        if (this.message.failureNotifications.length > 0) {
             markEventHandled(ev, "Message.ClickFailure");
         }
-        this.popover.open(ev.target, { message });
+        this.popover.open(ev.target, { message: this.message });
     }
 
     /** @param {MouseEvent} [ev] */
@@ -621,7 +608,7 @@ export class Message extends Component {
         this.dialog.add(
             MessageReactionMenu,
             { message: this.props.message, initialReaction: reaction },
-            { context: this }
+            { rootRef: this.rootRef }
         );
     }
 

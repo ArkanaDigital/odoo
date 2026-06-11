@@ -4187,57 +4187,19 @@ test("group order by count", async () => {
     await selectGroup("currency_id");
     expect("tr.o_group_header").toHaveCount(3, { message: "list should be grouped" });
     await contains(".o_count_header").click();
-    expect.verifySteps(["web_read_group foo,currency_id order by __count DESC"]);
-    await contains("tr.o_group_header:eq(0)").click();
-    expect.verifySteps(["web_read_group currency_id order by __count DESC"]);
-    await contains(".o_count_header").click();
     expect.verifySteps(["web_read_group foo,currency_id order by __count ASC"]);
+    await contains("tr.o_group_header:eq(0)").click();
+    // First click: ASC
+    expect.verifySteps(["web_read_group currency_id order by __count ASC"]);
     await contains(".o_count_header").click();
+    // Second click: DESC
     expect.verifySteps(["web_read_group foo,currency_id order by __count DESC"]);
-});
-
-test.tags("desktop");
-test("order by count reset", async () => {
-    let readGroupCount = 0;
-    onRpc("foo", "web_read_group", ({ kwargs, method }) => {
-        if (readGroupCount < 2) {
-            readGroupCount++;
-        } else {
-            expect.step(`${method} ${kwargs.groupby} order by ${kwargs.order}`);
-        }
-    });
-    await mountView({
-        resModel: "foo",
-        type: "list",
-        arch: `<list>
-                    <field name="foo"/>
-                    <field name="bar"/>
-                </list>`,
-        searchViewArch: `
-            <search>
-                <filter name="my_filter" string="My Filter" domain="[('id', '=', 0)]"/>
-            </search>
-        `,
-    });
-    await toggleSearchBarMenu();
-    await selectGroup("foo");
-    await selectGroup("currency_id");
-    await toggleMenuItem("My Filter");
     await contains(".o_count_header").click();
-    expect.verifySteps([
-        "web_read_group foo,currency_id order by ",
-        "web_read_group foo,currency_id order by __count DESC",
-    ]);
-    await toggleSearchBarMenu();
-    await toggleMenuItem("My Filter");
-    expect.verifySteps(["web_read_group foo,currency_id order by __count DESC"]);
-    await toggleMenuItem("My Filter");
-    expect.verifySteps(["web_read_group foo,currency_id order by __count DESC"]);
-    await toggleMenuItem("Currency");
-    expect.verifySteps(["web_read_group foo order by __count DESC"]);
-    await toggleMenuItem("Foo");
-    await toggleMenuItem("Foo");
-    expect.verifySteps(["web_read_group foo order by "]);
+    // Third click: Resets the order by
+    expect.verifySteps(["web_read_group foo,currency_id order by "]);
+    await contains(".o_count_header").click();
+    // Fourth click: Back to ASC
+    expect.verifySteps(["web_read_group foo,currency_id order by __count ASC"]);
 });
 
 test.tags("desktop");
@@ -5407,6 +5369,31 @@ test(`aggregates monetary (different currencies)`, async () => {
     await toggleMultiCurrencyPopover("tfoot span sup");
     expect(".o_multi_currency_popover").toHaveCount(1);
     expect(".o_multi_currency_popover").toHaveText("2,800.00 € at $ 0.50 on Jun 13");
+});
+
+test(`aggregates monetary (different currencies and empty rate)`, async () => {
+    Currency._records[1].rate_date = false;
+    Currency._records[1].inverse_rate = 1;
+    await mountView({
+        resModel: "foo",
+        type: "list",
+        arch: `
+            <list>
+                <field name="amount" widget="monetary" sum="Sum"/>
+                <field name="currency_id"/>
+            </list>
+        `,
+    });
+    expect(queryAllTexts(`tbody .o_monetary_cell`)).toEqual([
+        "1,200.00 €",
+        "$ 500.00",
+        "$ 300.00",
+        "$ 0.00",
+    ]);
+    expect(`tfoot`).toHaveText("$ 2,000.00?");
+    await toggleMultiCurrencyPopover("tfoot span sup");
+    expect(".o_multi_currency_popover").toHaveCount(1);
+    expect(".o_multi_currency_popover").toHaveText("2,000.00 € at $ 1.00");
 });
 
 test(`aggregates monetary (currency field not in view)`, async () => {
@@ -17533,8 +17520,8 @@ test(`list view with default_group_by`, async () => {
     if (getMockEnv().isSmall) {
         await contains(".o_control_panel_navigation > button").click();
     }
-    expect(`.o_searchview_facet`).toHaveCount(1);
-    expect(`.o_searchview_facet`).toHaveText("Bar");
+    // The default_group_by should not create any facet
+    expect(`.o_searchview_facet`).toHaveCount(0);
     expect.verifySteps(["web_read_group1"]);
 
     await selectGroup("m2m");
@@ -17545,13 +17532,12 @@ test(`list view with default_group_by`, async () => {
 
     await toggleMenuItem("M2m");
     expect(`.o_group_header`).toHaveCount(2);
-    expect(`.o_searchview_facet`).toHaveCount(1);
-    expect(`.o_searchview_facet`).toHaveText("Bar");
+    expect(`.o_searchview_facet`).toHaveCount(0);
     expect.verifySteps(["web_read_group3"]);
 
     await toggleMenuItem("My Filter");
-    expect(`.o_searchview_facet`).toHaveCount(2);
-    expect(queryAllTexts(`.o_searchview_facet`)).toEqual(["Bar", "My Filter"]);
+    expect(`.o_searchview_facet`).toHaveCount(1);
+    expect(queryAllTexts(`.o_searchview_facet`)).toEqual(["My Filter"]);
     expect.verifySteps(["web_read_group4"]);
 });
 
@@ -17587,8 +17573,8 @@ test(`list view with multi-fields default_group_by`, async () => {
     if (getMockEnv().isSmall) {
         await contains(".o_control_panel_navigation > button").click();
     }
-    expect(`.o_searchview_facet`).toHaveCount(1);
-    expect(`.o_searchview_facet`).toHaveText("Foo\n>\nBar");
+    // The default_group_by should not create any facet
+    expect(`.o_searchview_facet`).toHaveCount(0);
     expect.verifySteps(["web_read_group1"]);
     await contains(`.o_group_header`).click();
     expect(`.o_group_header`).toHaveCount(5);
@@ -21085,4 +21071,106 @@ test(`select menu navigation with hot keys`, async () => {
 
     await contains(`.o_form_button_save`).click();
     expect(queryAllTexts(`.o_field_x2many_list .o_data_row`)).toEqual(["aac", "aab"]);
+});
+
+test("save filter with list_optional_show, untoggle, and reapply", async () => {
+    // Intercept the RPC call to prevent the missing 'ir.filters' model error
+    onRpc("create_filter", () => [99]);
+
+    await mountView({
+        type: "list",
+        resModel: "foo",
+        arch: `
+            <list>
+                <field name="foo"/>
+                <field name="bar" optional="hide"/>
+            </list>`,
+    });
+    expect("th[data-name='bar']").toHaveCount(0);
+
+    await contains("table .o_optional_columns_dropdown .dropdown-toggle").click();
+    await contains(".o-dropdown--menu span.dropdown-item:eq(0)").click();
+
+    expect("th[data-name='bar']").toHaveCount(1);
+
+    await toggleSearchBarMenu();
+    await toggleSaveFavorite();
+    await editFavoriteName("My favorite");
+    await saveFavorite();
+
+    await removeFacet("My favorite");
+
+    await contains("table .o_optional_columns_dropdown .dropdown-toggle").click();
+    await contains(".o-dropdown--menu span.dropdown-item:eq(0)").click();
+
+    expect("th[data-name='bar']").toHaveCount(0);
+
+    await toggleSearchBarMenu();
+    await toggleMenuItem("My favorite");
+
+    expect("th[data-name='bar']").toHaveCount(1);
+});
+
+test.tags("desktop");
+test("apply a filter with list_optional_show property", async () => {
+    // Use an in-memory store so getItem correctly returns what setItem saves
+    patchWithCleanup(localStorage, {
+        setItem(key, value) {
+            super.setItem(key, String(value));
+            if (key.startsWith("optional_fields")) {
+                expect.step(`localStorage set: ${value}`);
+            }
+        },
+    });
+
+    await mountView({
+        type: "list",
+        resModel: "foo",
+        arch: `
+            <list>
+                <field name="foo"/>
+                <field name="bar" optional="hide"/>
+            </list>`,
+        searchViewArch: `
+            <search>
+                <filter name="my_filter" string="My Filter" domain="[]" context="{'list_optional_show': ['bar']}"/>
+            </search>`,
+    });
+
+    expect("th[data-name='bar']").toHaveCount(0);
+
+    await toggleSearchBarMenu();
+    await toggleMenuItem("My Filter");
+
+    expect("th[data-name='bar']").toHaveCount(1);
+    expect.verifySteps(["localStorage set: bar"]);
+
+    await removeFacet("My Filter");
+
+    expect("th[data-name='bar']").toHaveCount(1);
+});
+
+test.tags("desktop");
+test("apply a filter with list_optional_show property containing an unknown field", async () => {
+    await mountView({
+        type: "list",
+        resModel: "foo",
+        arch: `
+            <list>
+                <field name="foo"/>
+                <field name="bar" optional="hide"/>
+            </list>`,
+        searchViewArch: `
+            <search>
+                <filter name="my_filter" string="My Filter" domain="[]" context="{'list_optional_show': ['unknown_field', 'bar']}"/>
+            </search>`,
+    });
+
+    await toggleSearchBarMenu();
+    await toggleMenuItem("My Filter");
+    await animationFrame();
+
+    expect(".o_list_table").toHaveCount(1);
+    expect("th[data-name='bar']").toHaveCount(1);
+    expect("th[data-name='unknown_field']").toHaveCount(0);
 });

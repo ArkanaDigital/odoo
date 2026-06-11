@@ -1,7 +1,8 @@
-import { reactive, useLayoutEffect } from "@web/owl2/utils";
+import { effect, immediateEffect, proxy, untrack } from "@odoo/owl";
+
+import { useLayoutEffect } from "@web/owl2/utils";
 import { AssetsLoadingError, getBundle } from "@web/core/assets";
 import { memoize } from "@web/core/utils/functions";
-import { effect, immediateEffect, untrack } from "@odoo/owl";
 
 export function assignDefined(obj, data, keys = Object.keys(data)) {
     for (const key of keys) {
@@ -83,10 +84,10 @@ export function isDragSourceExternalFile(dataTransfer) {
  * @returns {Function} dispose function
  */
 export function onChange(target, key, callback) {
-    let proxy;
+    let targetProxy;
     function _observe() {
-        // access proxy[key] only once to avoid triggering reactive get() many times
-        const val = proxy[key];
+        // access targetProxy[key] only once to avoid triggering reactive get() many times
+        const val = targetProxy[key];
         if (typeof val === "object" && val !== null) {
             void Object.keys(val);
         }
@@ -98,8 +99,6 @@ export function onChange(target, key, callback) {
     if (Array.isArray(key)) {
         /** @type {Function[]} */
         const arrayDisposeFns = [];
-        arrayDisposeFns.forEach((f) => f());
-        arrayDisposeFns.length = 0;
         for (const k of key) {
             arrayDisposeFns.push(onChange(target, k, callback));
         }
@@ -109,7 +108,7 @@ export function onChange(target, key, callback) {
         };
     }
     let running = false;
-    proxy = reactive(target);
+    targetProxy = proxy(target);
     const disposeFn = untrack(() =>
         immediateEffect(() => {
             _observe();
@@ -253,7 +252,7 @@ export const hasHardwareAcceleration = memoize(() => {
  * @template D type of dependencies
  * @param {(...dependencies: D) => Number|void} fn A callback that is
  * invoked initially, after dependencies change (if the dependencies are
- * wrapped in `useState` or otherwise triggers a re-render) or when the
+ * wrapped in `proxy` or otherwise triggers a re-render) or when the
  * delay has passed. Returning a falsy value cancels the interval.
  * @param {() => D} dependencies Returns an array of dependencies.
  */

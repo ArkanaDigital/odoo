@@ -5,7 +5,7 @@ import logging
 
 from collections import defaultdict
 
-from odoo import _, api, fields, models, tools
+from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
 from odoo.tools.image import is_image_size_above
@@ -31,7 +31,7 @@ class ProductTemplate(models.Model):
             res['uom_id'] = self._default_uom_id().id
         return res
 
-    @tools.ormcache()
+    @api.ormcache()
     def _default_uom_id(self):
         # Deletion forbidden (at least through unlink)
         return self.env.ref('uom.product_uom_unit')
@@ -95,9 +95,17 @@ class ProductTemplate(models.Model):
     )
 
     currency_id = fields.Many2one(
-        'res.currency', 'Currency', compute='_compute_currency_id')
+        'res.currency', 'Currency',
+        compute='_compute_currency_id',
+        compute_sql='_compute_sql_currency_id',
+        compute_sudo=True,
+    )
     cost_currency_id = fields.Many2one(
-        'res.currency', 'Cost Currency', compute='_compute_cost_currency_id')
+        'res.currency', 'Cost Currency',
+        compute='_compute_cost_currency_id',
+        compute_sql='_compute_sql_cost_currency_id',
+        compute_sudo=True,
+    )
 
     # list_price: catalog price, user defined
     list_price = fields.Float(
@@ -312,12 +320,19 @@ class ProductTemplate(models.Model):
         for template in self:
             template.currency_id = template.company_id.sudo().currency_id.id or main_company.currency_id.id
 
+    def _compute_sql_currency_id(self, table):
+        main_company = self.env['res.company']._get_main_company()
+        return SQL("COALESCE(%s, %s)", table.company_id.currency_id, main_company.currency_id.id)
+
     @api.depends('company_id')
     @api.depends_context('company')
     def _compute_cost_currency_id(self):
         env_currency_id = self.env.company.currency_id.id
         for template in self:
             template.cost_currency_id = template.company_id.sudo().currency_id.id or env_currency_id
+
+    def _compute_sql_cost_currency_id(self, table):
+        return SQL("COALESCE(%s, %s)", table.company_id.currency_id, self.env.company.currency_id.id)
 
     def _compute_template_field_from_variant_field(self, fname, default=False, multi_variant=False):
         """Set the value of the given field based on the template variant values.
@@ -1005,17 +1020,28 @@ class ProductTemplate(models.Model):
             # write this attribute on every product to make sure we don't lose them
             single_value_lines = lines_without_no_variants.filtered(lambda ptal: len(ptal.product_template_value_ids._only_active()) == 1)
             if single_value_lines:
-                for variant in all_variants:
-                    combination = variant.product_template_attribute_value_ids | single_value_lines.product_template_value_ids._only_active()
-                    # Do not add single value if the resulting combination would
-                    # be invalid anyway.
-                    if (
-                        len(combination) == len(lines_without_no_variants)
-                        and combination.attribute_line_id == lines_without_no_variants
-                        # Update only if necessary to prevent a cache invalidation
-                        and variant.product_template_attribute_value_ids != combination
-                    ):
-                        variant.product_template_attribute_value_ids = combination
+                # Writing product_template_attribute_value_ids below invalidates
+                # price_extra, which triggers recompute of the stored lst_price
+                # and wipes user-set overrides. Protect lst_price on variants
+                # whose value diverges from the computed one (= manual override);
+                # non-overridden variants are left to the recompute so they
+                # correctly pick up the new ptav's price_extra.
+                overridden = all_variants.filtered(
+                    lambda v: v.lst_price != v.list_price + v.price_extra,
+                )
+                lst_price_field = self.env['product.product']._fields['lst_price']
+                with self.env.protecting([lst_price_field], overridden):
+                    for variant in all_variants:
+                        combination = variant.product_template_attribute_value_ids | single_value_lines.product_template_value_ids._only_active()
+                        # Do not add single value if the resulting combination would
+                        # be invalid anyway.
+                        if (
+                            len(combination) == len(lines_without_no_variants)
+                            and combination.attribute_line_id == lines_without_no_variants
+                            # Update only if necessary to prevent a cache invalidation
+                            and variant.product_template_attribute_value_ids != combination
+                        ):
+                            variant.product_template_attribute_value_ids = combination
 
             # Set containing existing `product.template.attribute.value` combination
             existing_variants = {
@@ -1406,7 +1432,7 @@ class ProductTemplate(models.Model):
         """
         return self._create_product_variant(self._get_first_possible_combination(), log_warning)
 
-    @tools.ormcache('self.id', 'frozenset(filtered_combination.ids)')
+    @api.ormcache('self.id', 'frozenset(filtered_combination.ids)')
     def _get_variant_id_for_combination(self, filtered_combination):
         """See `_get_variant_for_combination`. This method returns an ID
         so it can be cached.
@@ -1424,7 +1450,7 @@ class ProductTemplate(models.Model):
 
         return self.env['product.product'].sudo().with_context(active_test=False).search(domain, order='active DESC', limit=1).id
 
-    @tools.ormcache('self.id')
+    @api.ormcache('self.id')
     def _get_first_possible_variant_id(self):
         """See `_create_first_product_variant`. This method returns an ID
         so it can be cached."""

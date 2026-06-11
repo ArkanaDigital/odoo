@@ -1,23 +1,26 @@
-import { reactive } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
+import { Component, props, proxy, types } from "@odoo/owl";
+
 import { useService } from "@web/core/utils/hooks";
 import { registry } from "@web/core/registry";
 
 const DEFAULT_ID = Symbol("default");
 
 export class MailFullscreen extends Component {
-    static props = ["component", "props?"];
     static template = "mail.Fullscreen";
 
     setup() {
         super.setup();
+        this.props = props({
+            component: types.component(),
+            "props?": types.object(),
+        });
         this.fullscreen = useService("mail.fullscreen");
     }
 }
 
 export const fullscreenService = {
     start(env) {
-        const state = reactive({ enter, exit, id: undefined, closeOverlay: undefined });
+        const state = proxy({ enter, exit, id: undefined, closeOverlay: undefined });
         async function exit(id = state.id) {
             if (!id || id !== state.id) {
                 return;

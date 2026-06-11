@@ -740,13 +740,18 @@ async function read_subscription_data(request) {
 
     const { follower_id } = await parseRequestParams(request);
     const [follower] = MailFollowers.browse(follower_id);
-    const subtypes = MailMessageSubtype.search([
+    const [partner] = this.env["res.partner"].browse(follower.partner_id);
+    const subtypeDomain = [
         "&",
         ["hidden", "=", false],
         "|",
         ["res_model", "=", follower.res_model],
         ["res_model", "=", false],
-    ]);
+    ];
+    if (partner.partner_share) {
+        subtypeDomain.unshift("&", ["internal", "=", false]);
+    }
+    const subtypes = MailMessageSubtype.search(subtypeDomain);
     return {
         store_data: new mailDataHelpers.Store(
             MailMessageSubtype.browse(subtypes),
@@ -987,13 +992,25 @@ function _process_request_for_all(store, name, params, context = {}) {
         );
     }
     if (name === "discuss.channel") {
-        const channels = DiscussChannel.search([["id", "=", params]]);
+        const { ids, with_last_message } = params;
+        const channels = DiscussChannel.search([["id", "=", ids]]);
         store.add(DiscussChannel.browse(channels));
-        for (const channelId of params.filter((id) => !channels.includes(id))) {
-            const channel = DiscussChannel.browse();
-            // limitation of mock server: cannot browse non-existing record
-            channel.push({ id: channelId });
-            store.add(channel, makeKwArgs({ delete: true }));
+        if (with_last_message) {
+            store.add(
+                MailMessage.browse(
+                    channels
+                        .map(
+                            (channelId) =>
+                                MailMessage._filter([
+                                    ["model", "=", "discuss.channel"],
+                                    ["res_id", "=", channelId],
+                                ]).sort((a, b) => b.id - a.id)[0]
+                        )
+                        .filter(Boolean)
+                        .map((message) => message.id)
+                ),
+                makeKwArgs({ for_current_user: true })
+            );
         }
     }
     if (name === "res.partner") {
@@ -1043,6 +1060,17 @@ function _process_request_for_all(store, name, params, context = {}) {
             thread: channel,
         });
         MailMessage.set_message_done(messages.map((message) => message.id));
+    }
+    if (name === "/discuss/channel/add_members") {
+        DiscussChannel._add_members(
+            [params.channel_id],
+            makeKwArgs({
+                partner_ids: params.partner_ids,
+                user_ids: params.user_ids,
+                invite_to_rtc_call: params.invite_to_rtc_call,
+                post_joined_message: params.post_joined_message,
+            })
+        );
     }
     if (name === "/discuss/channel/favorite") {
         const memberIds = DiscussChannelMember.search([
@@ -1193,8 +1221,14 @@ function _process_request_for_logged_in_user(store, name, params) {
 }
 
 function _process_request_for_internal_user(store, name, params) {
+    /** @type {import("mock_models").MailActivity} */
+    const MailActivity = this.env["mail.activity"];
     /** @type {import("mock_models").ResUsers} */
     const ResUsers = this.env["res.users"];
+    if (name === "mail.activity") {
+        const activities = MailActivity._filter([["id", "in", params.ids]], { active_test: false });
+        store.add(MailActivity.browse(activities.map((a) => a.id)));
+    }
     if (name === "systray_get_activities" && this.env.user?.partner_id) {
         const bus_last_id = this.env["bus.bus"].lastBusNotificationId;
         const groups = ResUsers._get_activity_groups();

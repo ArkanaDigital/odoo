@@ -1,4 +1,4 @@
-import { reactive, useLayoutEffect, useRef, useState } from "@web/owl2/utils";
+import { reactive, useLayoutEffect, useRef } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { deduceURLfromText } from "@html_editor/main/link/utils";
 import { pyToJsLocale, jsToPyLocale } from "@web/core/l10n/utils";
@@ -11,7 +11,7 @@ import { CheckBox } from "@web/core/checkbox/checkbox";
 import { MediaDialog } from "@html_editor/main/media/media_dialog/media_dialog";
 import { getMimetype } from "@html_editor/utils/image";
 import { WebsiteDialog } from "./dialog";
-import { Component, onMounted, onWillStart } from "@odoo/owl";
+import { Component, onMounted, onWillStart, proxy } from "@odoo/owl";
 import wUtils from "@website/js/utils";
 
 // This replaces \b, because accents(e.g. à, é) are not seen as word boundaries.
@@ -201,7 +201,7 @@ class ImageSelector extends Component {
         this.dialogs = useService("dialog");
         this.notification = useService("notification");
 
-        this.seoContext = useState(seoContext);
+        this.seoContext = proxy(seoContext);
 
         const firstImageId = this.props.hasSocialDefaultImage ? "social_default_image" : "logo";
         const firstImageSrc = `/web/image/website/${encodeURIComponent(
@@ -213,7 +213,7 @@ class ImageSelector extends Component {
             custom: false,
         };
 
-        this.state = useState({
+        this.state = proxy({
             images: [
                 firstImage,
                 ...this.props.pageImages.map((src) => ({
@@ -311,9 +311,9 @@ class Keyword extends Component {
     setup() {
         this.website = useService("website");
 
-        this.seoContext = useState(seoContext);
+        this.seoContext = proxy(seoContext);
 
-        this.state = useState({
+        this.state = proxy({
             suggestions: [],
         });
 
@@ -413,9 +413,9 @@ class MetaKeywords extends Component {
     setup() {
         this.website = useService("website");
 
-        this.seoContext = useState(seoContext);
+        this.seoContext = proxy(seoContext);
 
-        this.state = useState({
+        this.state = proxy({
             language: "",
             keyword: "",
         });
@@ -473,7 +473,7 @@ class SEOPreview extends Component {
 
     setup() {
         this.website = useService("website");
-        this.seoContext = useState(seoContext);
+        this.seoContext = proxy(seoContext);
         this.logo = `/web/image/website/${encodeURIComponent(this.website.currentWebsite.id)}/logo`;
     }
 
@@ -562,11 +562,11 @@ export class TitleDescription extends Component {
     };
 
     setup() {
-        this.seoContext = useState(seoContext);
+        this.seoContext = proxy(seoContext);
         this.website = useService("website");
         useAutofocus();
 
-        this.state = useState({
+        this.state = proxy({
             language: this.getLanguage(),
         });
         this.previousSeoName = this.seoContext.seoName;
@@ -683,7 +683,7 @@ export class BrokenLink extends Component {
         this.urlInputRef = useRef("url-input");
         this.link = this.props.link;
 
-        this.state = useState({
+        this.state = proxy({
             checkingLink: false,
         });
 
@@ -761,12 +761,12 @@ export class SeoChecks extends Component {
 
     async setup() {
         this.website = useService("website");
-        this.seoContext = useState(seoContext);
+        this.seoContext = proxy(seoContext);
         const {
             metadata: { mainObject, seoObject },
         } = this.website.currentWebsite;
         this.object = seoObject || mainObject;
-        this.state = useState({
+        this.state = proxy({
             altAttributes: [],
             checkingLinks: false,
             checkedLinks: false,
@@ -958,7 +958,7 @@ export class OptimizeSEODialog extends Component {
             // from the iframe DOM.
             await this.waitForIframe();
             const {
-                metadata: { mainObject, seoObject, path },
+                metadata: { mainObject, seoObject, path, langName },
             } = this.website.currentWebsite;
             this.object = seoObject || mainObject;
             this.data = await rpc("/website/get_seo_data", {
@@ -966,6 +966,9 @@ export class OptimizeSEODialog extends Component {
                 res_model: this.object.model,
             });
 
+            if (this.data.multi_lang) {
+                this.title += ` — ${langName || this.data.lang.name}`;
+            }
             this.canEditSeo = this.data.can_edit_seo;
             this.canEditDescription = this.canEditSeo && "website_meta_description" in this.data;
             this.canEditTitle = this.canEditSeo && "website_meta_title" in this.data;
@@ -988,7 +991,11 @@ export class OptimizeSEODialog extends Component {
                 this.seoNameDefault = this.data.seo_name_default;
             }
 
-            seoContext.description = this.getMeta({ name: "description" });
+            const storedDescription = this.canEditDescription
+                ? this.data.website_meta_description
+                : "";
+            this.isDefaultLang = this.data.lang?.code === this.data.default_lang_code;
+            seoContext.description = storedDescription || this.getMeta({ name: "description" });
             this.previewDescription = _t(
                 "Your page description should be between 50 and 160 characters long."
             );
@@ -1007,7 +1014,14 @@ export class OptimizeSEODialog extends Component {
             this.hasSocialDefaultImage = this.data.has_social_default_image;
 
             this.canEditKeywords = "website_meta_keywords" in this.data;
-            seoContext.keywords = this.getMeta({ name: "keywords" });
+            if (this.canEditKeywords) {
+                seoContext.keywords = this.data.website_meta_keywords
+                    .split(",")
+                    .map((el) => el.trim())
+                    .filter(Boolean);
+            } else {
+                seoContext.keywords = [];
+            }
         });
     }
 
@@ -1076,9 +1090,31 @@ export class OptimizeSEODialog extends Component {
         if (seoContext.metaImage !== this.previousMetaImage) {
             data.website_meta_og_img = seoContext.metaImage;
         }
+
+        const currentLang = this.website.currentWebsite.metadata.lang;
+        const defaultLang = this.data.default_lang_code;
+        // Avoid using translated SEO fields as fallback/base values when the
+        // default language is empty.
+        for (const fieldName of [
+            "website_meta_title",
+            "website_meta_description",
+            "website_meta_keywords",
+        ]) {
+            if (
+                data[fieldName] &&
+                currentLang !== defaultLang &&
+                !this.data[`default_${fieldName}`]
+            ) {
+                data[fieldName] = {
+                    [defaultLang]: "",
+                    [currentLang]: data[fieldName],
+                };
+            }
+        }
+
         await this.orm.write(this.object.model, [this.object.id], data, {
             context: {
-                lang: this.website.currentWebsite.metadata.lang,
+                lang: currentLang,
                 website_id: this.website.currentWebsite.id,
             },
         });

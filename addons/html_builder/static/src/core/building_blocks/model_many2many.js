@@ -1,5 +1,4 @@
-import { useState } from "@web/owl2/utils";
-import { Component, onWillStart, onWillUpdateProps, status } from "@odoo/owl";
+import { Component, onWillStart, onWillUpdateProps, status, proxy } from "@odoo/owl";
 import { uniqueId } from "@web/core/utils/functions";
 import { useService } from "@web/core/utils/hooks";
 import { useDomState } from "@html_builder/core/utils";
@@ -32,7 +31,7 @@ export class ModelMany2Many extends Component {
     setup() {
         this.fields = useService("field");
         this.cachedModel = useCachedModel();
-        this.state = useState({
+        this.state = proxy({
             searchModel: undefined,
         });
         this.modelEdit = undefined;
@@ -89,7 +88,7 @@ export class ModelMany2Many extends Component {
     }
     setSelection(newSelection) {
         this.modelEdit.set(this.props.m2oField, newSelection);
-        this.env.editor.shared.history.addStep();
+        this.env.editor.shared.history.commit();
     }
     create(name) {
         // TODO maybe this can be in base layer

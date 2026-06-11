@@ -46,7 +46,7 @@ test("simple chatter on a record", async () => {
     });
     listenStoreFetch(undefined, { logParams: ["mail.thread", "/mail/thread/messages"] });
     await start();
-    await waitStoreFetch(["failures", "systray_get_activities", "init_messaging"]);
+    await waitStoreFetch(["init_messaging", "failures", "systray_get_activities"]);
     const partnerId = pyEnv["res.partner"].create({ name: "John Doe" });
     await openFormView("res.partner", partnerId);
     await contains(".o-mail-Chatter-topbar");
@@ -199,8 +199,7 @@ test("Textarea content is kept when switching from aside to bottom", async () =>
     await contains(".o-mail-Composer-input", { value: "Hello world !" });
 });
 
-test.tags("owl3");
-test.skip("Composer type is kept when switching from aside to bottom", async () => {
+test("Composer type is kept when switching from aside to bottom", async () => {
     await patchUiSize({ size: SIZES.XXL });
     const pyEnv = await startServer();
     await start();
@@ -565,8 +564,7 @@ test("should not display subject when subject is the same as the thread name wit
     });
 });
 
-test.tags("owl3");
-test.skip("chatter updating", async () => {
+test("chatter updating", async () => {
     const pyEnv = await startServer();
     const [partnerId_1, partnerId_2] = pyEnv["res.partner"].create([
         { display_name: "first partner" },
@@ -592,8 +590,7 @@ test.skip("chatter updating", async () => {
     await contains(".o-mail-Message");
 });
 
-test.tags("owl3");
-test.skip("chatter message actions appear only after saving the form", async () => {
+test("chatter message actions appear only after saving the form", async () => {
     await start();
     await openFormView("res.partner");
     await contains(".o-mail-Message");
@@ -605,8 +602,7 @@ test.skip("chatter message actions appear only after saving the form", async () 
     await contains(".o-mail-Message-actions");
 });
 
-test.tags("owl3");
-test.skip("post message on draft record", async () => {
+test("post message on draft record", async () => {
     await start();
     await openFormView("res.partner", undefined, {
         arch: `
@@ -788,14 +784,14 @@ test("can mark message as unread from chatter", async () => {
     await start();
     await openFormView("res.partner", partnerId);
     await contains(".o-mail-Message-body:text(lorem ipsum)");
-    await click("button[title='Mark as Unread']");
+    await click(".o-mail-Message [title='Expand']");
+    await click(".o-dropdown-item:text('Mark as Unread')");
     await contains(".o_notification:text(Marked as unread)");
     await click(".o-mail-MessagingMenu-counter:text(1)");
     await contains(".o-mail-NotificationItem-text:text(John Doe: lorem ipsum)");
 });
 
-test.tags("owl3");
-test.skip("Can only mention internal users in Log note", async () => {
+test("Can only mention internal users in Log note", async () => {
     const pyEnv = await startServer();
     pyEnv["res.partner"].create({
         name: "External Partner",

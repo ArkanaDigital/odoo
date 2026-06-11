@@ -1,5 +1,4 @@
-import { useLayoutEffect, useState } from "@web/owl2/utils";
-import { Component, onPatched, markup } from "@odoo/owl";
+import { Component, onPatched, markup, useEffect, proxy } from "@odoo/owl";
 import { DocTable, TABLE_TYPES } from "@api_doc/components/doc_table";
 import { getCrudMethodsExamples } from "@api_doc/utils/doc_model_utils";
 import { DocMethod } from "@api_doc/components/doc_method";
@@ -54,7 +53,7 @@ export class DocModel extends Component {
     static props = {};
 
     setup() {
-        this.state = useState({
+        this.state = proxy({
             model: undefined,
             modelData: { items: [] },
             crudMethods: [],
@@ -69,36 +68,27 @@ export class DocModel extends Component {
         });
 
         this.ui = useDocUI();
-        this.modelStore = useState(this.env.modelStore);
+        this.modelStore = proxy(this.env.modelStore);
         this.update();
 
-        useLayoutEffect(
-            () => {
-                this.update();
-            },
-            () => [
-                this.modelStore.activeModel,
-                this.modelStore.activeMethod,
-                this.modelStore.activeField,
-            ],
-        );
+        useEffect(() => {
+            this.update();
+        });
 
-        let lastFocusedElement = null
-        onPatched(
-            () => {
-                let el = null;
-                if (this.modelStore.activeMethod) {
-                    el = document.getElementById(this.modelStore.activeMethod);
-                }
-                if (this.modelStore.activeField) {
-                    el = document.getElementById(this.modelStore.activeField);
-                }
-                if (el && el != lastFocusedElement) {
-                    lastFocusedElement = el;
-                    el.scrollIntoView({ behavior: "smooth" });
-                }
+        let lastFocusedElement = null;
+        onPatched(() => {
+            let el = null;
+            if (this.modelStore.activeMethod) {
+                el = document.getElementById(this.modelStore.activeMethod);
             }
-        );
+            if (this.modelStore.activeField) {
+                el = document.getElementById(this.modelStore.activeField);
+            }
+            if (el && el != lastFocusedElement) {
+                lastFocusedElement = el;
+                el.scrollIntoView({ behavior: "smooth" });
+            }
+        });
     }
 
     get modelName() {

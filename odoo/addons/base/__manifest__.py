@@ -26,6 +26,7 @@ The kernel of Odoo, needed for all installation.
         'views/decimal_precision_views.xml',
         'views/res_config_views.xml',
         'data/res.country.state.csv',
+        'views/ir_access_token_views.xml',
         'views/ir_actions_views.xml',
         'views/ir_asset_views.xml',
         'views/ir_config_parameter_views.xml',
@@ -78,7 +79,7 @@ The kernel of Odoo, needed for all installation.
         'views/report_paperformat_views.xml',
         'security/ir.model.access.csv',
         'data/ir_action_data.xml',
-
+        'data/website.xml',
         'views/base_menus.xml',
     ],
     'demo': [

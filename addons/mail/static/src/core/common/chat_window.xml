@@ -39,7 +39,7 @@
                     enabled="true"
                     autofocus="true"
                     onValidate.bind="this.renameChannel"
-                    value="this.props.chatWindow.channel.displayName"
+                    value="this.channelDisplayName"
                 />
                 <i t-if="this.state.editingName" class="fa fa-fw fa-caret-down opacity-50"/>
             </t>
@@ -62,11 +62,11 @@
                     className="'py-1 me-2'"
                     autofocus="true"
                     onValidate.bind="this.renameGuest"
-                    value="this.store.self_guest.name"
+                    value="this.selfGuestName"
                 />
             </t>
         </div>
-        <div t-if="!this.props.chatWindow.folded or this.ui.isSmall" class="d-flex flex-column h-100 overflow-auto o-scrollbar-thin position-relative bg-inherit" t-att-class="{ 'opacity-50': this.state.editingName }" t-custom-ref="content">
+        <div t-if="!this.props.chatWindow.folded or this.ui.isSmall" class="d-flex flex-column h-100 overflow-auto o-scrollbar-thin position-relative bg-inherit" t-att-class="{ 'opacity-50': this.state.editingName }" t-ref="this.chatWindowContentRef">
             <t name="thread content">
                 <div t-if="this.threadActions.activeAction?.actionPanelComponentCondition" class="h-100 bg-inherit" t-attf-class="{{ this.threadActions.activeAction.actionPanelOuterClass }}">
                     <t t-component="this.threadActions.activeAction.actionPanelComponent" t-props="this.threadActions.activeAction.actionPanelComponentProps"/>
@@ -74,7 +74,7 @@
                 <t t-else="">
                     <Thread autofocus="this.autofocusThread" thread="this.channel.thread" t-key="this.channel.thread.localId" jumpPresent="this.state.jumpThreadPresent" jumpToNewMessage="this.props.chatWindow.jumpToNewMessage"/>
                     <t t-call="mail.ChatWindow.memberTyping"/>
-                    <Composer t-if="!this.channel.composerHidden" composer="this.channel.composer" autofocus="this.autofocusComposer" mode="'compact'" onPostCallback.bind="() => this.state.jumpThreadPresent++" dropzoneRef="this.contentRef" disabled="this.channel.composerDisabled"/>
+                    <Composer t-if="!this.channel.composerHidden" composer="this.channel.composer" autofocus="this.autofocusComposer" mode="'compact'" onPostCallback.bind="() => this.state.jumpThreadPresent++" dropzoneRef="this.chatWindowContentRef" disabled="this.channel.composerDisabled"/>
                     <div t-else="" class="bg-200 py-1 text-center d-flex fst-italic fw-bold text-muted" t-custom-ref="composerHiddenContainer">
                         <span t-if="this.showBlankBeforeComposerHiddenText" class="flex-grow-1"/>
                         <span t-out="this.channel.composerHiddenText"/>

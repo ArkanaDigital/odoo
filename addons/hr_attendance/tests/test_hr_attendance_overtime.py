@@ -1,5 +1,5 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
-from datetime import date, datetime
+from datetime import date, datetime, time
 from freezegun import freeze_time
 
 from odoo import Command
@@ -690,6 +690,78 @@ class TestHrAttendanceOvertime(HttpCase):
             self.assertEqual(morning.worked_hours + afternoon.worked_hours, 9)  # 8 hours from calendar's attendances + 1 hour of tolerance
             self.assertEqual(afternoon.check_out, datetime(2024, 1, 1, 18, 0))
 
+    @freeze_time("2026-02-26 07:00:00")
+    def test_auto_check_out_specific_time(self):
+        """Test various check-in times with 06:00 cutoff"""
+        self.company.write({
+            'auto_check_out': True,
+            'auto_check_out_mode': 'specific_time',
+            'auto_check_out_specific_time': 6.0,
+        })
+        night_shift, before_cutoff, one_min_before, midnight, just_after_midnight, already_checked, flexible = self.env['hr.attendance'].create([
+            {'employee_id': self.employee.id, 'check_in': datetime(2026, 2, 25, 22, 0)},
+            {'employee_id': self.other_employee.id, 'check_in': datetime(2026, 2, 26, 1, 0)},
+            {'employee_id': self.jpn_employee.id, 'check_in': datetime(2026, 2, 25, 15, 0)},
+            {'employee_id': self.honolulu_employee.id, 'check_in': datetime(2026, 2, 25, 12, 0)},
+            {'employee_id': self.no_contract_employee.id, 'check_in': datetime(2026, 2, 25, 23, 1)},
+            {'employee_id': self.future_contract_employee.id, 'check_in': datetime(2026, 2, 26, 1, 0), 'check_out': datetime(2026, 2, 26, 4, 30)},
+            {'employee_id': self.flexible_employee.id, 'check_in': datetime(2026, 2, 26, 1, 0)},
+        ])
+        initial_checkout = already_checked.check_out
+        self.assertEqual(night_shift.check_out, False)
+        self.env['hr.attendance']._cron_auto_check_out_specific_time()
+        self.assertEqual(night_shift.check_out, datetime(2026, 2, 26, 6, 0))
+        self.assertEqual(night_shift.out_mode, 'auto_check_out')
+        self.assertEqual(before_cutoff.check_out, datetime(2026, 2, 26, 6, 0))
+        # 06:00 JST = 21:00 UTC previous day (JST = UTC+09:00)
+        self.assertEqual(one_min_before.check_out, datetime(2026, 2, 25, 21, 0))
+        # 06:00 HST = 16:00 UTC (HST = UTC-10:00)
+        self.assertEqual(midnight.check_out, datetime(2026, 2, 25, 16, 0))
+        self.assertEqual(just_after_midnight.check_out, datetime(2026, 2, 26, 6, 0))
+        self.assertEqual(already_checked.check_out, initial_checkout)
+        self.assertEqual(flexible.check_out, datetime(2026, 2, 26, 6, 0))
+
+    @freeze_time("2026-02-27 13:00:00")
+    def test_auto_check_out_specific_time_old_attendances(self):
+        """Test multiday forgotten and backdated attendances"""
+        self.company.write({
+            'auto_check_out': True,
+            'auto_check_out_mode': 'specific_time',
+            'auto_check_out_specific_time': 6.0,
+        })
+        multiday, backdated, very_old = self.env['hr.attendance'].create([
+            {'employee_id': self.employee.id, 'check_in': datetime(2026, 2, 24, 1, 0)},
+            {'employee_id': self.other_employee.id, 'check_in': datetime(2026, 2, 25, 2, 0)},
+            {'employee_id': self.jpn_employee.id, 'check_in': datetime(2026, 2, 25, 16, 0)},
+        ])
+        self.env['hr.attendance']._cron_auto_check_out_specific_time()
+        self.assertEqual(multiday.check_out, datetime(2026, 2, 24, 6, 0))
+        self.assertEqual(backdated.check_out, datetime(2026, 2, 25, 6, 0))
+        self.assertEqual(very_old.check_out, datetime(2026, 2, 25, 21, 0))
+
+    @freeze_time("2026-02-27 00:30:00")
+    def test_auto_check_out_specific_time_edge_times(self):
+        """Test cutoff times at start and end of day"""
+        self.company.write({
+            'auto_check_out': True,
+            'auto_check_out_mode': 'specific_time',
+            'auto_check_out_specific_time': 23.98,
+        })
+        end_of_day = self.env['hr.attendance'].create({
+            'employee_id': self.employee.id,
+            'check_in': datetime(2026, 2, 26, 4, 30),
+        })
+        self.env['hr.attendance']._cron_auto_check_out_specific_time()
+        self.assertEqual(end_of_day.check_out, datetime(2026, 2, 26, 23, 59))
+        with freeze_time("2026-02-26 07:00:00"):
+            self.company.write({'auto_check_out_specific_time': 0.0})
+            start_of_day = self.env['hr.attendance'].create({
+                'employee_id': self.other_employee.id,
+                'check_in': datetime(2026, 2, 25, 16, 30),
+            })
+            self.env['hr.attendance']._cron_auto_check_out_specific_time()
+            self.assertEqual(start_of_day.check_out, datetime(2026, 2, 26, 0, 0))
+
     # @freeze_time("2024-02-01 14:00:00")
     # def test_absence_management(self):
     # TODO no more absence management
@@ -864,6 +936,23 @@ class TestHrAttendanceOvertime(HttpCase):
             'check_out': datetime(2023, 1, 4, 9, 0)
         })
         self.assertEqual(attendance.overtime_hours, 0, 'There should be no overtime for the fully flexible resource.')
+
+    def test_overtime_flexible_non_consecutive_days(self):
+        """ A flexible hours employee working exactly their weekly budget
+        spread across non consecutive days must not generate overtime. """
+        self.flexible_employee.ruleset_id = self.ruleset
+        self.flexible_employee.tz = 'Europe/Brussels'
+        self.flexible_employee.write({
+            'hours_per_day': 8,
+            'hours_per_week': 16,
+        })
+        # Jan 6 2025 = Monday, Jan 11 = Saturday
+        attendances = self.env['hr.attendance'].create([
+            {'employee_id': self.flexible_employee.id, 'check_in': datetime(2025, 1, 6, 7, 0), 'check_out': datetime(2025, 1, 6, 15, 0)},
+            {'employee_id': self.flexible_employee.id, 'check_in': datetime(2025, 1, 11, 7, 0), 'check_out': datetime(2025, 1, 11, 15, 0)},
+        ])
+        for att in attendances:
+            self.assertEqual(att.overtime_hours, 0)
 
     def test_refuse_timeoff(self):
         self.company.write({
@@ -1172,20 +1261,30 @@ class TestHrAttendanceOvertime(HttpCase):
         """Validate that multiple overtime lines for today are summed correctly
         and that the entire attendance_employee_data response is consistent.
         """
-        for _ in range(2):
-            self.env['hr.attendance.overtime.line'].create({
-                'employee_id': self.employee.id,
-                'date': date.today(),
-                'duration': 5,
+        attendance_id = self.env['hr.attendance'].create({
+            'employee_id': self.employee.id,
+            'check_in': datetime.combine(date.today(), time(7, 0)),
+            'check_out': datetime.combine(date.today(), time(12, 0)),
+        })
+        domain = {
+            'attendance_id': attendance_id.id,
+            'date': date.today(),
+            'duration': 5,
+        }
+        if 'compensable_as_leave' in self.env['hr.attendance.overtime.line']._fields:
+            domain.update({
+                'compensable_as_leave': True,
+                'leave_compensation_rate': 1.0,
             })
+        self.env['hr.attendance.overtime.line'].create([domain for _ in range(2)])
         token = self.employee.company_id.attendance_kiosk_key
         response = self.make_jsonrpc_request(
             '/hr_attendance/attendance_employee_data',
             {'token': token, 'employee_id': self.employee.id},
         )
         self.assertEqual(response.get('hours_previously_today'), 0)
-        self.assertEqual(response.get('hours_today'), 0)
-        self.assertEqual(response.get('last_attendance_worked_hours'), 0)
+        self.assertEqual(response.get('hours_today'), 5)
+        self.assertEqual(response.get('last_attendance_worked_hours'), 5)
         self.assertEqual(response.get('overtime_today'), 10)
         self.assertEqual(response.get('total_overtime'), 10)
 
@@ -1466,7 +1565,7 @@ class TestHrAttendanceOvertime(HttpCase):
         # The overtime line is linked to the afternoon attendance
         self.assertTrue(afternoon_att.linked_overtime_ids)
         # Should be the same as it's the reverse checking
-        self.assertEqual(overtime_lines._linked_attendances(), afternoon_att)
+        self.assertEqual(overtime_lines.attendance_id, afternoon_att)
 
     def test_overtime_across_midnight_in_utc_timezone(self):
         self.europe_employee.tz = 'UTC'
@@ -1690,3 +1789,86 @@ class TestHrAttendanceOvertime(HttpCase):
         self.ruleset.company_id.absence_management = True
         attendances._update_overtime()
         assert_overtime_durations(attendances)
+
+    def test_regenerate_weekly_overtime_flexible_employee(self):
+        self.ruleset.rule_ids.write({
+            'expected_hours_from_contract': True,
+            'quantity_period': 'week'
+        })
+        attendances = self.env['hr.attendance'].create([
+            {
+                "employee_id": self.flexible_employee.id,
+                "check_in": datetime(2026, 5, 5, 8, 15, 0),
+                "check_out": datetime(2026, 5, 5, 16, 15, 0),
+            },
+            {
+                "employee_id": self.flexible_employee.id,
+                "check_in": datetime(2026, 5, 6, 8, 15, 0),
+                "check_out": datetime(2026, 5, 6, 18, 15, 0),
+            },
+            {
+                "employee_id": self.flexible_employee.id,
+                "check_in": datetime(2026, 5, 7, 8, 15, 0),
+                "check_out": datetime(2026, 5, 7, 13, 15, 0),
+            },
+            {
+                "employee_id": self.flexible_employee.id,
+                "check_in": datetime(2026, 5, 8, 8, 15, 0),
+                "check_out": datetime(2026, 5, 8, 23, 15, 0),
+            },
+            {
+                "employee_id": self.flexible_employee.id,
+                "check_in": datetime(2026, 5, 9, 8, 15, 0),
+                "check_out": datetime(2026, 5, 9, 20, 15, 0),
+            },
+        ])
+        self.ruleset.action_regenerate_overtimes()
+        self.assertEqual(sum(attendances.mapped('overtime_hours')), 10)
+
+    def test_overtime_rule_timing_adjacent_intervals(self):
+        """ Test that adjacent overtime timing rules are not prematurely merged.
+            Daytime: 17:00 -> 21:00 (4h)
+            Nighttime: 21:00 -> 24:00 (3h)
+            Attendance: 17:00 -> 24:00
+            Expected: 4h Daytime, 3h Nighttime
+        """
+        ruleset = self.env['hr.attendance.overtime.ruleset'].create({
+            'name': 'Day and Night Ruleset',
+            'rule_ids': [
+                Command.create({
+                    'name': 'Daytime',
+                    'base_off': 'timing',
+                    'timing_type': 'work_days',
+                    'timing_start': 17.0,
+                    'timing_stop': 21.0,
+                }),
+                Command.create({
+                    'name': 'Nighttime',
+                    'base_off': 'timing',
+                    'timing_type': 'work_days',
+                    'timing_start': 21.0,
+                    'timing_stop': 24.0,
+                }),
+            ],
+        })
+        self.employee.ruleset_id = ruleset
+
+        # Create an attendance from 17:00 to midnight
+        self.env['hr.attendance'].create({
+            'employee_id': self.employee.id,
+            'check_in': datetime(2021, 1, 4, 17, 0, 0),
+            'check_out': datetime(2021, 1, 4, 23, 59, 59),
+        })
+
+        overtimes = self.env['hr.attendance.overtime.line'].search([
+            ('employee_id', '=', self.employee.id),
+            ('date', '=', date(2021, 1, 4))
+        ])
+
+        self.assertEqual(len(overtimes), 2, "There should be exactly two distinct overtime lines generated.")
+
+        daytime_ot = overtimes.filtered(lambda ot: 'Daytime' in ot.rule_ids.mapped('name'))
+        nighttime_ot = overtimes.filtered(lambda ot: 'Nighttime' in ot.rule_ids.mapped('name'))
+
+        self.assertAlmostEqual(daytime_ot.duration, 4.0, 2, "Daytime overtime should be exactly 4 hours.")
+        self.assertAlmostEqual(nighttime_ot.duration, 3.0, 2, "Nighttime overtime should be exactly 3 hours.")

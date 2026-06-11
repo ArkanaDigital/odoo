@@ -108,9 +108,10 @@ class StockRule(models.Model):
                     vals = rules[0]._prepare_purchase_order(company_id, origins, positive_values)
                     # The company_id is the same for all procurements since
                     # _make_po_get_domain add the company in the domain.
-                    # We use SUPERUSER_ID since we don't want the current user to be follower of the PO.
-                    # Indeed, the current user may be a user without access to Purchase, or even be a portal user.
-                    po = self.env['purchase.order'].with_company(company_id).with_user(SUPERUSER_ID).create(vals)
+                    # Create the PO using the current logged-in user if the replenishment is triggered manually.
+                    # Otherwise, fallback to SUPERUSER_ID (e.g., PO generated from sales orders).
+                    user_id = (self.env.context.get('manual_replenishment') and self.env.uid) or SUPERUSER_ID
+                    po = self.env['purchase.order'].with_company(company_id).with_user(user_id).sudo().create(vals)
             else:
                 reference_ids = set()
                 for procurement in procurements:
@@ -275,7 +276,7 @@ class StockRule(models.Model):
         price_unit = self.env['account.tax']._fix_tax_included_price_company(seller.price, line.product_id.supplier_taxes_id, line.sudo().tax_ids, company_id) if seller else 0.0
         if price_unit and seller and line.order_id.currency_id and seller.currency_id != line.order_id.currency_id:
             price_unit = seller.currency_id._convert(
-                price_unit, line.order_id.currency_id, line.order_id.company_id, fields.Date.today())
+                price_unit, line.order_id.currency_id, line.order_id.company_id)
 
         res = {
             'product_qty': line.product_qty + procurement_uom_po_qty,

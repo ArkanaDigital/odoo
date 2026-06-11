@@ -1,8 +1,8 @@
-import { useLayoutEffect, useRef, useState } from "@web/owl2/utils";
+import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { useCrossDocumentListener } from "../../utils/hooks";
 import { session } from "@web/session";
 import { _t } from "@web/core/l10n/translation";
-import { Component } from "@odoo/owl";
+import { Component, proxy } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { cleanZWChars, deduceURLfromText } from "./utils";
 import { CheckBox } from "@web/core/checkbox/checkbox";
@@ -26,7 +26,6 @@ export class LinkPopover extends Component {
         document: { validate: (p) => p.nodeType === Node.DOCUMENT_NODE },
         linkElement: { validate: (el) => el.nodeType === Node.ELEMENT_NODE },
         containerElement: { validate: (el) => el.nodeType === Node.ELEMENT_NODE },
-        ignoreDOMMutations: Function,
         onApply: Function,
         onChange: Function,
         onDiscard: Function,
@@ -87,7 +86,7 @@ export class LinkPopover extends Component {
             },
             {}
         );
-        this.state = useState({
+        this.state = proxy({
             editing: this.props.LinkPopoverState.editing,
             // `.getAttribute("href")` instead of `.href` to keep relative url
             url: linkElement.getAttribute("href") || this.deduceUrl(textContent),
@@ -181,6 +180,11 @@ export class LinkPopover extends Component {
             attachmentId: this.state.attachmentId,
             attributes,
         };
+    }
+
+    discard() {
+        this.props.onDiscard();
+        this.cancelUpload?.();
     }
 
     onChange() {
@@ -483,7 +487,14 @@ export class LinkPopover extends Component {
     async uploadFile() {
         const { upload, getURL } = this.uploadService;
         const { resModel, resId } = this.props.recordInfo;
-        const [attachment] = await upload({ resModel, resId }, { accessToken: true });
+        const setAbortCallback = (abortFn) => {
+            this.cancelUpload = abortFn;
+        };
+        const [attachment] = await upload(
+            { resModel, resId },
+            { accessToken: true, setAbortCallback }
+        );
+        delete this.cancelUpload;
         if (!attachment) {
             // No file selected or upload failed
             return;

@@ -16,8 +16,6 @@ const { DateTime } = luxon;
 
 /** @import { AwaitChatHubInit } from "@mail/core/common/chat_hub_model" */
 
-const DISPOSE_EFFECT_SYM = Symbol("DISPOSE_EFFECT");
-
 export class DiscussChannel extends Record {
     static _name = "discuss.channel";
     static _inherits = { "mail.thread": "thread" };
@@ -28,18 +26,20 @@ export class DiscussChannel extends Record {
         // Handles subscriptions for non-members. Subscriptions for channels
         // that the user is a member of are handled by
         // `ir_websocket@_build_bus_channel_list`.
-        channel[DISPOSE_EFFECT_SYM] = effectWithCleanup(() => {
-            const busChannel =
-                !channel.isTransient &&
-                !channel.self_member_id &&
-                channel.shouldSubscribeToBusChannel &&
-                channel.busChannel;
-            const busService = channel.store.env.services.bus_service;
-            if (busService && busChannel) {
-                busService.addChannel(busChannel);
-                return () => busService.deleteChannel(busChannel);
-            }
-        });
+        channel._registerDisposeFn(
+            effectWithCleanup(() => {
+                const busChannel =
+                    !channel.isTransient &&
+                    !channel.self_member_id &&
+                    channel.shouldSubscribeToBusChannel &&
+                    channel.busChannel;
+                const busService = channel.store.env.services.bus_service;
+                if (busService && busChannel) {
+                    busService.addChannel(busChannel);
+                    return () => busService.deleteChannel(busChannel);
+                }
+            })
+        );
         return channel;
     }
 
@@ -49,7 +49,7 @@ export class DiscussChannel extends Record {
      * @param {number} channel_id
      * @return {Promise<DiscussChannel>}
      */
-    static getOrFetch(channel_id) {
+    static getOrFetch(channel_id, { with_last_message = false } = {}) {
         const channel = this.store["discuss.channel"].get(channel_id);
         if (channel?.fetchChannelInfoState === "fetched" || channel_id < 0) {
             return Promise.resolve(channel);
@@ -60,7 +60,7 @@ export class DiscussChannel extends Record {
         }
         const { promise, reject: rejectFetch, resolve: resolveFetch } = Promise.withResolvers();
         this.store.fetchChannelPromiseByChannelId.set(channel_id, promise);
-        this.store.fetchChannel(channel_id).then(
+        this.store.fetchChannel(channel_id, { with_last_message }).then(
             () => {
                 this.store.fetchChannelPromiseByChannelId.delete(channel_id);
                 const channel = this.store["discuss.channel"].get(channel_id);
@@ -116,10 +116,17 @@ export class DiscussChannel extends Record {
         return this.member_count === this.channel_member_ids.length;
     }
     /** @type {string} */
+    avatar_128_access_token;
+    /** @type {string} */
     avatar_cache_key;
     get avatarUrl() {
         if (["channel", "group"].includes(this.channel_type)) {
+            const accessTokenParam = {};
+            if (this.store.self_user?.share !== false) {
+                accessTokenParam.access_token = this.avatar_128_access_token;
+            }
             return imageUrl("discuss.channel", this.id, "avatar_128", {
+                ...accessTokenParam,
                 unique: this.avatar_cache_key,
             });
         }
@@ -137,6 +144,15 @@ export class DiscussChannel extends Record {
             !this.correspondent?.persona.eq(this.store.odoobot) &&
             !this.is_readonly
         );
+    }
+    /**
+     * Whether the channel holds actual chat messages, i.e. excluding call/join/rename and
+     * other system notifications. Used to decide whether an ended meeting is worth keeping.
+     *
+     * @returns {boolean}
+     */
+    get hasChatMessages() {
+        return this.persistentMessages.some((message) => !message.isNotification);
     }
     canHide = fields.Attr(false, {
         compute() {
@@ -223,10 +239,11 @@ export class DiscussChannel extends Record {
             const localizedDatetime = this.store.self?.tz
                 ? this.create_date.setZone(this.store.self?.tz)
                 : this.create_date.toLocal();
-            const formatDate = localizedDatetime.toLocaleString(luxon.DateTime.DATE_MED, {
-                locale: user.lang,
-            });
-            return _t("Meeting - %(date)s", { date: formatDate });
+            const formatDate = localizedDatetime.toLocaleString(
+                { month: "short", day: "numeric" },
+                { locale: user.lang }
+            );
+            return _t("Meeting, %(date)s", { date: formatDate });
         }
         if (this.channel_type === "chat" && this.correspondent) {
             return this.correspondent.name;
@@ -555,7 +572,6 @@ export class DiscussChannel extends Record {
     }
 
     delete() {
-        this[DISPOSE_EFFECT_SYM]();
         this.chatWindow?.close();
         super.delete(...arguments);
     }

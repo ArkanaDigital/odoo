@@ -3,6 +3,7 @@ import { closestBlock, isBlock } from "@html_editor/utils/blocks";
 import {
     fillEmpty,
     removeClass,
+    removeEmptyTextNodes,
     removeStyle,
     toggleClass,
     unwrapContents,
@@ -236,7 +237,7 @@ export class ListPlugin extends Plugin {
 
     toggleListCommand({ mode, listStyle } = {}) {
         this.toggleList(mode, listStyle);
-        this.dependencies.history.addStep();
+        this.dependencies.history.commit();
     }
 
     getBlocksToToggleList() {
@@ -565,6 +566,11 @@ export class ListPlugin extends Plugin {
             element.classList.add("oe-nested");
         }
 
+        element.classList.toggle(
+            "o_checked_has_nested_list",
+            element.classList.contains("o_checked") && !!element.querySelector("ul, ol")
+        );
+
         if (
             [...element.children].some(
                 (child) =>
@@ -890,7 +896,7 @@ export class ListPlugin extends Plugin {
                 this.adjustListPadding(list);
             }
             // Do nothing to nav-items.
-            this.dependencies.history.addStep();
+            this.dependencies.history.commit();
             return true;
         }
     }
@@ -914,7 +920,7 @@ export class ListPlugin extends Plugin {
             this.outdentListNodes(listItems);
             this.dependencies.tabulation.outdentBlocks(nonListItems);
             // Do nothing to nav-items.
-            this.dependencies.history.addStep();
+            this.dependencies.history.commit();
             return true;
         }
     }
@@ -1083,7 +1089,7 @@ export class ListPlugin extends Plugin {
                 this.dependencies.selection.setSelection({ anchorNode: node, anchorOffset: 0 });
             }
             ev.preventDefault();
-            this.dependencies.history.addStep();
+            this.dependencies.history.commit();
         }
     }
 
@@ -1129,6 +1135,9 @@ export class ListPlugin extends Plugin {
         }
         const cursors = this.dependencies.selection.preserveSelection();
         for (const listItem of listItems) {
+            // Remove empty text nodes without breaking the current selection.
+            removeEmptyTextNodes(listItem, cursors);
+
             if (this.dependencies.selection.areNodeContentsFullySelected(listItem)) {
                 const listItemDescendants = descendants(listItem);
                 for (const node of [
@@ -1209,6 +1218,9 @@ export class ListPlugin extends Plugin {
             if (!hasOnlyBaseBlocks || (!applyStyle && !hasExistingFontSize)) {
                 continue;
             }
+
+            // Remove empty text nodes without breaking the current selection.
+            removeEmptyTextNodes(listItem, cursors);
 
             if (this.dependencies.selection.areNodeContentsFullySelected(listItem)) {
                 const listItemDescendants = descendants(listItem);

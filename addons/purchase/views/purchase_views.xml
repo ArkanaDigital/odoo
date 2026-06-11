@@ -39,7 +39,7 @@
             parent="purchase.menu_product_in_config_purchase" sequence="3" />
 
         <menuitem
-             action="uom.product_uom_form_action" id="menu_purchase_uom_form_action" name="Units &amp; Packagings"
+             action="uom.uom_uom_action_list" id="menu_purchase_uom_form_action" name="Units &amp; Packagings"
              parent="purchase.menu_product_in_config_purchase" sequence="10" groups="uom.group_uom"/>
 
     <!-- Products Control Menu -->
@@ -122,7 +122,7 @@
                     <button name="action_rfq_send" invisible="state != 'purchase'" string="Send PO" type="object" context="{'send_rfq':False}" data-hotkey="g"/>
                     <button name="action_acknowledge" string="Acknowledge" type="object" invisible="acknowledged or state != 'purchase'" data-hotkey="a"/>
                     <button name="button_draft" invisible="state != 'cancel'" string="Set to Draft" type="object" data-hotkey="o"/>
-                    <button name="print_quotation" string="Print" type="object" groups="base.group_user" data-hotkey="k" invisible="state == 'purchase'"/>
+                    <button name="%(purchase.report_purchase_quotation)d" string="Print" type="action" groups="base.group_user" data-hotkey="k" invisible="state == 'purchase'"/>
                     <button name="%(purchase.action_report_purchase_order)d" string="Print" type="action" groups="base.group_user" data-hotkey="k" invisible="state != 'purchase'"/>
                     <button name="button_cancel" invisible="state not in ('draft', 'to approve', 'sent', 'purchase') or locked" string="Cancel" type="object" data-hotkey="x"/>
                     <button name="button_lock" type="object" string="Lock" invisible="locked or state != 'purchase' or not lock_confirmed_po == 'lock'" data-hotkey="l"/>
@@ -622,7 +622,7 @@
                     <field name="date_order"
                         invisible="state == 'purchase' or state == 'cancel'"
                         column_invisible="not context.get('quotation_only', False)"
-                        readonly="state in ['cancel', 'purchase']" widget="remaining_days" optional="show"/>
+                        readonly="state in ['cancel', 'purchase']" widget="relative_date" optional="show"/>
                     <field name="activity_ids" widget="list_activity" optional="show"/>
                     <field name="origin" optional="hide"/>
                     <field name="amount_untaxed" sum="Total Untaxed amount" string="Untaxed" widget="monetary" optional="hide"/>

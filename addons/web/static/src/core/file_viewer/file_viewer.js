@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
+import { useRef } from "@web/owl2/utils";
+import { Component, proxy, signal, useEffect } from "@odoo/owl";
 import { hasTouch } from "@web/core/browser/feature_detection";
 import { useAutofocus, useBackButton, useService } from "@web/core/utils/hooks";
 import { clamp } from "@web/core/utils/numbers";
@@ -34,12 +34,13 @@ export class FileViewer extends Component {
         modal: true,
     };
 
+    iframeViewerPdfRef = signal(null);
+
     setup() {
         useAutofocus();
         this.imageRef = useRef("image");
         this.imageToolbarRef = useRef("imageToolbar");
         this.zoomerRef = useRef("zoomer");
-        this.iframeViewerPdfRef = useRef("iframeViewerPdf");
         this.hasTouch = hasTouch();
 
         this.isDragging = false;
@@ -59,7 +60,7 @@ export class FileViewer extends Component {
             y: 0,
         };
 
-        this.state = useState({
+        this.state = proxy({
             index: this.props.startIndex,
             file: this.props.files[this.props.startIndex],
             imageLoaded: false,
@@ -67,16 +68,13 @@ export class FileViewer extends Component {
             angle: 0,
         });
         this.ui = useService("ui");
-        useLayoutEffect(
-            (el) => {
-                if (el) {
-                    hidePDFJSButtons(this.iframeViewerPdfRef.el, {
-                        hideDownload: true,
-                    });
-                }
-            },
-            () => [this.iframeViewerPdfRef.el]
-        );
+        useEffect(() => {
+            if (this.iframeViewerPdfRef()) {
+                hidePDFJSButtons(this.iframeViewerPdfRef(), {
+                    hideDownload: true,
+                });
+            }
+        });
         useBackButton(() => this.close());
     }
 

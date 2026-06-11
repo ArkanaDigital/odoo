@@ -5,8 +5,8 @@
     <t t-set="isChatterComposer" t-value="this.extended and !this.props.composer.message"/>
     <t t-set="partitionedActions" t-value="this.composerActions.partition"/>
     <t t-set="dummy" t-value="this.computeMoreActions(partitionedActions)"/>
-    <t t-set="actionsContainerClass" t-value="'o-mail-Composer-actions d-flex o-rounded-bubble'"/>
-    <div class="d-print-none" t-custom-ref="root">
+    <t t-set="actionsContainerClass" t-value="'o-mail-Composer-actions d-flex o-rounded-bubble flex-shrink-0'"/>
+    <div class="d-print-none" t-ref="this.rootRef">
         <div class="o-mail-Composer d-grid flex-shrink-0 pt-0 position-relative"
                 t-att-class="{
                     'pb-2': this.extended and !this.props.composer.message,
@@ -54,7 +54,7 @@
                         'align-self-stretch' : this.extended,
                         'w-100': this.props.composer.message,
                     }"
-                    t-custom-ref="input-container"
+                    t-ref="this.inputContainerRef"
                 >
                     <div t-if="!this.extended" t-attf-class="{{ actionsContainerClass }}">
                         <t t-if="this.moreActions" t-call="mail.Composer.moreActions"/>

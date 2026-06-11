@@ -7,12 +7,13 @@ from hashlib import md5
 from urllib import parse
 
 from odoo import api, fields, models
-from odoo.addons.account_peppol.tools.demo_utils import handle_demo
 from odoo.addons.account.models.company import PEPPOL_LIST
+from odoo.addons.account_peppol.tools.demo_utils import handle_demo
 
+
+INVOICE_RESPONSE_CUSTOMISATION_ID = "busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2::ApplicationResponse##urn:fdc:peppol.eu:poacc:trns:invoice_response:3::2.1"
 TIMEOUT = 10
 _logger = logging.getLogger(__name__)
-
 
 
 class ResPartner(models.Model):
@@ -34,6 +35,8 @@ class ResPartner(models.Model):
         string='Peppol status',
         company_dependent=True,
     )
+    peppol_supported_documents = fields.Json('Supported Peppol Documents')
+    peppol_response_support = fields.Boolean('Peppol Response Service', compute='_compute_response_support')
 
     @api.onchange('invoice_edi_format', 'peppol_endpoint', 'peppol_eas')
     def _onchange_verify_peppol_status(self):
@@ -70,6 +73,15 @@ class ResPartner(models.Model):
         if self.env.company._get_peppol_edi_mode() != 'demo' and 'odemo' in eas_codes:
             eas_codes.remove('odemo')
             self.available_peppol_eas = list(eas_codes)
+
+    @api.depends('peppol_supported_documents', 'peppol_verification_state')
+    def _compute_response_support(self):
+        for partner in self:
+            partner.peppol_response_support = (
+                partner.peppol_verification_state == 'valid'
+                and partner.peppol_supported_documents
+                and INVOICE_RESPONSE_CUSTOMISATION_ID in partner.peppol_supported_documents
+            )
 
     # -------------------------------------------------------------------------
     # HELPERS
@@ -116,12 +128,15 @@ class ResPartner(models.Model):
     @api.model
     def _peppol_lookup_participant(self, edi_identification):
         """NAPTR DNS peppol participant lookup through Odoo's Peppol proxy"""
-        if (edi_mode := self.env.company._get_peppol_edi_mode()) == 'demo':
+        company = self.env.company
+        if (edi_mode := company._get_peppol_edi_mode()) == 'demo':
             return
 
-        origin = self.env['account_edi_proxy_client.user']._get_proxy_urls()['peppol'][edi_mode]
+        proxy_type = company._get_peppol_proxy_type()
+        origin = self.env['account_edi_proxy_client.user']._get_proxy_urls()[proxy_type][edi_mode]
         query = parse.urlencode({'peppol_identifier': edi_identification.lower()})
-        endpoint = f'{origin}/api/peppol/1/lookup?{query}'
+        api_endpoint = self.env['account_edi_proxy_client.user']._get_peppol_proxy_endpoint('1/lookup', proxy_type=proxy_type)
+        endpoint = f'{origin}{api_endpoint}?{query}'
 
         try:
             response = requests.get(endpoint, timeout=TIMEOUT)
@@ -146,11 +161,15 @@ class ResPartner(models.Model):
 
         return decoded_response.get('result')
 
-    def _check_document_type_support(self, participant_info, ubl_cii_format, process_type='billing'):
+    @api.model
+    def _check_document_type_support(self, participant_info, ubl_cii_format, process_type='billing', partner=None):
         edi_builder = self._get_edi_builder(ubl_cii_format)
         expected_customization_id = edi_builder._get_customization_id(process_type=process_type)
         if isinstance(participant_info, dict):
-            return any(expected_customization_id in (service.get('document_id') or '') for service in participant_info.get('services', []))
+            service_document_ids = [service['document_id'] for service in participant_info.get('services', []) if service.get('document_id')]
+            if partner:
+                partner.peppol_supported_documents = service_document_ids
+            return any(expected_customization_id in document for document in service_document_ids)
 
         # DEPRECATED: participant_info as XML fetched directly from SMP
         service_references = participant_info.findall(
@@ -229,10 +248,11 @@ class ResPartner(models.Model):
         if not self_partner.peppol_eas or not self_partner.peppol_endpoint:
             return False
         old_value = self_partner.peppol_verification_state
-        new_value = self._get_peppol_verification_state(
+        new_value = self_partner._get_peppol_verification_state(
             self_partner.peppol_endpoint,
             self_partner.peppol_eas,
             self_partner._get_peppol_edi_format(),
+            partner=self_partner,
         )
         if old_value != new_value:
             self_partner.peppol_verification_state = new_value
@@ -245,7 +265,10 @@ class ResPartner(models.Model):
 
     @api.model
     @handle_demo
-    def _get_peppol_verification_state(self, peppol_endpoint, peppol_eas, invoice_edi_format, process_type='billing'):
+    def _get_peppol_verification_state(self, peppol_endpoint, peppol_eas, invoice_edi_format, process_type='billing', partner=None):
+        ''' Check the state of the peppol participant (defined by its endpoint and eas) for a specific edi format and process.
+            A partner record parameter can be added in order to attach its available services (if its participant on Peppol).
+        '''
         if not (peppol_eas and peppol_endpoint) or invoice_edi_format not in self._get_peppol_formats():
             return 'not_verified'
 
@@ -256,7 +279,7 @@ class ResPartner(models.Model):
         else:
             is_participant_on_network = self._check_peppol_participant_exists(participant_info, edi_identification)
             if is_participant_on_network:
-                is_valid_format = self._check_document_type_support(participant_info, invoice_edi_format, process_type=process_type)
+                is_valid_format = self._check_document_type_support(participant_info, invoice_edi_format, process_type=process_type, partner=partner)
                 if is_valid_format:
                     return 'valid'
                 else:
@@ -270,7 +293,23 @@ class ResPartner(models.Model):
 
         return frontend_writable_fields
 
+    def _get_mandatory_billing_address_fields(self, country_sudo, **kwargs):
+        mandatory_fields = super()._get_mandatory_billing_address_fields(country_sudo, **kwargs)
+
+        sending_method = kwargs.get('invoice_sending_method')
+        if sending_method == 'peppol':
+            mandatory_fields.update({'peppol_eas', 'peppol_endpoint', 'invoice_edi_format'})
+
+        return mandatory_fields
+
     def _get_partners_to_skip_peppol_computation(self):
         return self.env['res.company'].search([
             ('account_peppol_proxy_state', 'in', self.env['account_edi_proxy_client.user']._get_can_send_domain()),
         ]).mapped('partner_id')
+
+    @api.model
+    def _get_peppol_proxy_identification_info(self, peppol_eas, peppol_endpoint):
+        # Return tuple `(proxy_type, peppol_identifier)` where `peppol_identifier` is in form "{scheme}:{identifier}"
+        if not peppol_eas or not peppol_endpoint:
+            return None, ""
+        return 'peppol', f"{peppol_eas}:{peppol_endpoint}"

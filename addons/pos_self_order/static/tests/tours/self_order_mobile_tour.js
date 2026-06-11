@@ -327,6 +327,8 @@ registry.category("web_tour.tours").add("test_self_order_product_availability", 
         Utils.checkIsNoBtn("My Order"),
         Utils.clickBtn("Order Now"),
         LandingPage.selectLocation("Test-In"),
+        // 'Combo Product 2' is snoozed, so it should appear as Out of stock
+        ProductPage.isProductDisplayed("Combo Product 2", true),
         // Mark 'Combo Product 5' as unavailable and verify it is not displayed
         Utils.setProductAvailability("Combo Product 5", false),
         negateStep(ProductPage.isProductDisplayed("Combo Product 5")),
@@ -471,12 +473,15 @@ registry.category("web_tour.tours").add("test_delete_mobile_order_from_backend",
             Utils.checkIsNoBtn("Order Now"),
             {
                 trigger: "body",
-                run: async () => {
-                    // Simulate mobile self-order deletion from the backend
-                    await rpc(`/pos-self-order/test-delete-order-from-backend/`, {
-                        order_ids: [posmodel.currentOrder.id],
-                    });
-                },
+                run: async () =>
+                    new Promise((resolve) => {
+                        setTimeout(async () => {
+                            await rpc(`/pos-self-order/test-delete-order-from-backend/`, {
+                                order_ids: [posmodel.currentOrder.id],
+                            });
+                            resolve();
+                        }, 150);
+                    }),
             },
             Utils.clickBtn("Order Now"),
             ProductPage.isShown(),

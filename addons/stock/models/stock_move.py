@@ -238,7 +238,17 @@ class StockMove(models.Model):
             elif move.rule_id.location_dest_from_rule:
                 location_dest = move.rule_id.location_dest_id
             elif move.is_scrap:
-                location_dest = move.company_id.scrap_location_id
+                curr_location_dest = move.location_dest_id
+                if (
+                    curr_location_dest
+                    and curr_location_dest.usage == 'inventory'
+                    and (
+                        not curr_location_dest.company_id
+                        or curr_location_dest.company_id == move.company_id
+                    )
+                ):
+                    location_dest = curr_location_dest
+                location_dest = location_dest or move.company_id.scrap_location_id
             elif move.picking_type_id:
                 location_dest = move.picking_type_id.default_location_dest_id
             is_move_to_interco_transit = False
@@ -284,8 +294,9 @@ class StockMove(models.Model):
     @api.depends('move_line_ids', 'move_line_ids.result_package_id', 'move_line_ids.result_package_id.outermost_package_id')
     def _compute_package_ids(self):
         for move in self:
-            if move.state in ['done', 'cancel']:
-                move.package_ids = move.move_line_ids.package_history_id.outermost_dest_id
+            package_history = move.move_line_ids.package_history_id
+            if move.state in ['done', 'cancel'] and package_history:
+                move.package_ids = package_history.outermost_dest_id
             else:
                 # Only display the top-level packages until the move is done.
                 move.package_ids = move.move_line_ids.result_package_id.outermost_package_id
@@ -762,6 +773,11 @@ Please change the quantity done or the rounding precision in your settings.""",
                 vals['state'] = 'done'
             if vals.get('state') == 'done':
                 vals['picked'] = True
+            if vals.get('description_picking') and vals.get('product_id') and picking_id.state != 'done':
+                # we don't want the picking description to be stored unless it was manually added or the picking is already done
+                product = self.env['product.product'].browse(vals.get('product_id'))
+                if vals.get('description_picking') == product._get_picking_description(picking_id.picking_type_id):
+                    vals.pop('description_picking')
         res = super().create(vals_list)
         res._update_orderpoints()
         res._set_references()
@@ -776,6 +792,12 @@ Please change the quantity done or the rounding precision in your settings.""",
         if 'quantity' in vals:
             if any(move.state == 'cancel' for move in self):
                 raise UserError(_('You cannot change a cancelled stock move, create a new line instead.'))
+            # TODO The order of the calls is based on the orders of the keys in vals, which is the order of changes made
+            # in the UI. This should be refactored to avoid relying on the order of the keys in vals.
+            if 'lot_ids' in vals:
+                # If lot_ids is changed after changing the quantity, we need to ensure that the lot_ids changed is process before
+                # processing the quantity change, to avoid unexpected lot_ids that will be re-added later in the process.
+                vals = dict(sorted(vals.items()))
         if 'uom_id' in vals and any(move.state == 'done' for move in self) and not self.env.context.get('skip_uom_conversion'):
             raise UserError(_('You cannot change the UoM for a stock move that has been set to \'Done\'.'))
         if 'product_uom_qty' in vals:
@@ -1614,7 +1636,7 @@ Please change the quantity done or the rounding precision in your settings.""",
         move_waiting.write({'state': 'waiting'})
         # procure_method sometimes changes with certain workflows so just in case, apply to all moves
         (move_to_confirm | move_waiting).filtered(lambda m: m.picking_type_id.reservation_method == 'at_confirm')\
-            .write({'reservation_date': fields.Date.today()})
+            .write({'reservation_date': fields.Date.context_today(self)})
 
         # assign picking in batch for all confirmed move that share the same details
         for moves_ids in to_assign.values():
@@ -1853,7 +1875,7 @@ Please change the quantity done or the rounding precision in your settings.""",
         # Return moves should be auto-assigned when confirmed
         if self.origin_returned_move_id:
             return True
-        return self._should_bypass_reservation() or self.picking_type_id.reservation_method == 'at_confirm' or (self.reservation_date and self.reservation_date <= fields.Date.today())
+        return self._should_bypass_reservation() or self.picking_type_id.reservation_method == 'at_confirm' or (self.reservation_date and self.reservation_date <= fields.Date.context_today(self))
 
     def _filtered_for_assign(self):
         return self.filtered(lambda move: (move.state in ('confirmed', 'partially_available') or move.origin_returned_move_id) and move._should_assign_at_confirm())
@@ -2200,6 +2222,7 @@ Please change the quantity done or the rounding precision in your settings.""",
         if moves_todo:
             moves_todo._check_quantity()
             moves_todo._action_synch_order()
+            moves_todo._inverse_description_picking()   # we want to make sure the current description won't change on done pickings if it is changed on the product
         return moves_todo
 
     def _action_synch_order(self):
@@ -2524,7 +2547,7 @@ Please change the quantity done or the rounding precision in your settings.""",
         static_domain = [('state', 'in', ['confirmed', 'partially_available']),
                          ('procure_method', '=', 'make_to_stock'),
                          '|',
-                            ('reservation_date', '<=', fields.Date.today()),
+                            ('reservation_date', '<=', 'today'),
                             ('picking_type_id.reservation_method', '=', 'at_confirm')
                         ]
         moves_to_reserve = self.env['stock.move'].search(

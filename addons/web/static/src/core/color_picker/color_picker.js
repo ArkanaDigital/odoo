@@ -1,5 +1,5 @@
-import { useExternalListener, useLayoutEffect, useRef, useState } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
+import { useExternalListener, useLayoutEffect, useRef } from "@web/owl2/utils";
+import { Component, proxy } from "@odoo/owl";
 import { CustomColorPicker } from "@web/core/color_picker/custom_color_picker/custom_color_picker";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { isCSSColor, isColorGradient, normalizeCSSColor } from "@web/core/utils/colors";
@@ -51,15 +51,15 @@ export class ColorPicker extends Component {
                 selectedTab: { type: String, optional: true },
             },
         },
-        getUsedCustomColors: Function,
+        getUsedCustomColors: { type: Function, optional: true },
         applyColor: Function,
-        applyColorPreview: Function,
-        applyColorResetPreview: Function,
+        applyColorPreview: { type: Function, optional: true },
+        applyColorResetPreview: { type: Function, optional: true },
         editColorCombination: { type: Function, optional: true },
         setOnCloseCallback: { type: Function, optional: true },
         setOperationCallbacks: { type: Function, optional: true },
         enabledTabs: { type: Array, optional: true },
-        colorPrefix: { type: String },
+        colorPrefix: { type: String, optional: true },
         cssVarColorPrefix: { type: String, optional: true },
         defaultOpacity: { type: Number, optional: true },
         grayscales: { type: Object, optional: true },
@@ -73,8 +73,12 @@ export class ColorPicker extends Component {
         close: () => {},
         defaultOpacity: 100,
         enabledTabs: ["solid", "custom"],
+        colorPrefix: "",
         cssVarColorPrefix: "",
+        getUsedCustomColors: () => [],
         setOnCloseCallback: () => {},
+        applyColorPreview: () => {},
+        applyColorResetPreview: () => {},
         useDefaultThemeColors: true,
         onEscape: () => {},
     };
@@ -99,7 +103,7 @@ export class ColorPicker extends Component {
         this.getPreviewColor = () => {};
         this.isMobileOS = isMobileOS();
 
-        this.state = useState({
+        this.state = proxy({
             activeTab: this.props.state.selectedTab || this.getDefaultTab(),
             currentCustomColor: this.props.state.selectedColor,
             currentColorPreview: undefined,
@@ -378,7 +382,12 @@ export function useColorPicker(refName, props, options = {}) {
     const root = useRef(refName);
 
     function onClick() {
-        colorPicker.isOpen ? colorPicker.close() : colorPicker.open(root.el, props);
+        if (colorPicker.isOpen) {
+            colorPicker.close();
+        } else {
+            colorPicker.open(root.el, props);
+            options.onOpen?.();
+        }
     }
 
     useLayoutEffect(

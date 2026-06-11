@@ -6,7 +6,6 @@ import { animationFrame, manuallyDispatchProgrammaticEvent, queryOne } from "@od
 import { contains, mockService, onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
 import {
     defineWebsiteModels,
-    getStructureSnippet,
     invisibleEl,
     setupSidebarBuilderForTranslation,
     setupWebsiteBuilder,
@@ -459,7 +458,7 @@ test("replicated translated snippets are marked dirty", async () => {
 
     setSelection({ anchorNode: sourceSpan.firstChild, anchorOffset: 0 });
     await insertText(editor, "X");
-    editor.shared.history.addStep();
+    editor.shared.history.commit();
 
     expect([sourceSpan, replicaSpan]).toHaveClass("o_dirty");
     expect([sourceSpan, replicaSpan]).toHaveText("XHello");
@@ -509,23 +508,6 @@ test("TOC navbar translation entry follows the heading translation", async () =>
     // sha).
     expect(navSpan).toHaveText("XHeading");
     expect(navSpan).toHaveClass("o_dirty");
-});
-
-test("table of content snippet headings' translation updates its navbar items", async () => {
-    const snippet = "s_table_of_content";
-    const websiteContent = (await getStructureSnippet(snippet)).outerHTML;
-    const { getEditor } = await setupSidebarBuilderForTranslation({ websiteContent });
-    const editor = getEditor();
-    const oldTitle = editor.editable.querySelector("#table_of_content_heading_1_1").textContent;
-    expect(":iframe .s_table_of_content_navbar .table_of_content_link:first-child").toHaveText(
-        oldTitle
-    );
-    const titleEl = editor.editable.querySelector("#table_of_content_heading_1_1");
-    setSelection({ anchorNode: titleEl });
-    await insertText(editor, "New title");
-    expect(":iframe .s_table_of_content_navbar .table_of_content_link:first-child").toHaveText(
-        `New title${oldTitle}`
-    );
 });
 
 test("'Translate to' button should be visible in translate mode", async () => {
@@ -826,6 +808,24 @@ test("it should be possible to translate the attribute of an image that has the 
     expect(
         ".options-container [data-action-id='translateAttribute'][data-action-param='title'] input"
     ).toHaveCount(1);
+});
+
+test("placeholders aren't translated on elements that aren't input or textarea", async () => {
+    await setupSidebarBuilderForTranslation({
+        websiteContent: `
+            <div class="div-target o_editable" placeholder="<span data-oe-model=&quot;ir.ui.view&quot; data-oe-id=&quot;544&quot; data-oe-field=&quot;arch_db&quot; data-oe-translation-state=&quot;to_translate&quot; data-oe-translation-source-sha=&quot;sourceSha&quot;>placeholder</span>">Text</div>
+            <input class="input-target" placeholder="<span data-oe-model=&quot;ir.ui.view&quot; data-oe-id=&quot;544&quot; data-oe-field=&quot;arch_db&quot; data-oe-translation-state=&quot;to_translate&quot; data-oe-translation-source-sha=&quot;sourceSha&quot;>placeholder</span>"></input>
+        `,
+    });
+    await contains(".modal .btn:contains(Ok, never show me this again)").click();
+    expect(":iframe .div-target").not.toHaveClass("o_translatable_attribute");
+    await contains(":iframe .div-target").click();
+    await animationFrame();
+    expect(".hb-row [data-action-id='translateAttribute']").toHaveCount(0);
+    expect(":iframe .input-target").toHaveClass("o_translatable_attribute");
+    await contains(":iframe .input-target").click();
+    await animationFrame();
+    expect(".hb-row [data-action-id='translateAttribute']").toHaveCount(1);
 });
 
 test("Ensure the contenteditable attributes have been set before the TranslationPlugin checks for the node to be translated", async () => {

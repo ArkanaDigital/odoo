@@ -6,12 +6,13 @@ import re
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from lxml import etree
+from requests import RequestException
 
 from odoo import SUPERUSER_ID, api, fields, models
-from odoo.exceptions import AccessError, MissingError
+from odoo.exceptions import MissingError
 from odoo.fields import Domain
 from odoo.http import request
-from odoo.tools import BinaryBytes, file_open, ormcache
+from odoo.tools import BinaryBytes, file_open
 from odoo.tools.json import scriptsafe as json_scriptsafe
 
 from odoo.addons.website_sale import const
@@ -262,7 +263,11 @@ class Website(models.Model):
     )
 
     currency_id = fields.Many2one(
-        string="Default Currency", comodel_name="res.currency", compute="_compute_currency_id"
+        string="Default Currency",
+        comodel_name="res.currency",
+        compute="_compute_currency_id",
+        compute_sql="_compute_sql_currency_id",
+        compute_sudo=True,
     )
     pricelist_ids = fields.One2many(
         string="Price list available for this Ecommerce/Website",
@@ -298,6 +303,10 @@ class Website(models.Model):
             website.currency_id = (
                 request and hasattr(request, "pricelist") and request.pricelist.currency_id
             ) or website.company_id.sudo().currency_id
+
+    def _compute_sql_currency_id(self, table):  # noqa: ARG002
+        msg = "website.currency_id is not searchable"
+        raise ValueError(msg)  # depends on request
 
     @api.depends("send_abandoned_cart_email")
     def _compute_send_abandoned_cart_email_activation_time(self):
@@ -509,7 +518,7 @@ class Website(models.Model):
                     "/api/olg/1/chat",
                     {"prompt": prompt, "conversation_history": [], "database_id": database_id},
                 )
-            except AccessError:
+            except RequestException:
                 logger.warning("API is unreachable for the category generation")
                 return None
 
@@ -555,7 +564,7 @@ class Website(models.Model):
         return res
 
     # This method is cached, must not return records! See also #8795
-    @ormcache(
+    @api.ormcache(
         "country_code", "show_visible", "current_pl_id", "website_pricelist_ids", "partner_pl_id"
     )
     def _get_pl_partner_order(
@@ -692,7 +701,7 @@ class Website(models.Model):
                     self.env["product.template"]._get_saleable_tracking_types(),
                 ),
             ]
-        company_domain = [('company_id', 'in', [False, website.company_id.id])]
+        company_domain = [("company_id", "in", [False, website.company_id.id])]
         return Domain.AND([website._product_domain(), website_domain, user_domain, company_domain])
 
     def _product_domain(self):  # noqa: PLR6301
@@ -766,7 +775,9 @@ class Website(models.Model):
         else:
             pricelist_sudo = self.env.user.partner_id.property_product_pricelist
             available_pricelists = self.get_pricelist_available()
-            if available_pricelists and pricelist_sudo not in available_pricelists:
+            if not available_pricelists:
+                pricelist_sudo = available_pricelists
+            elif pricelist_sudo not in available_pricelists:
                 pricelist_sudo = available_pricelists[0].sudo()
 
         request.session[PRICELIST_SESSION_CACHE_KEY] = pricelist_sudo.id
@@ -862,9 +873,9 @@ class Website(models.Model):
             and self.env.user.partner_id.filtered_domain(
                 self.env["res.partner"]._check_company_domain(self.company_id.id)
             )
-        ):  # Search for abandonned cart.
+        ):  # Search for abandoned cart.
             partner_sudo = self.env.user.partner_id
-            abandonned_cart_sudo = SaleOrderSudo.search(
+            abandoned_cart_sudo = SaleOrderSudo.search(
                 [
                     ("partner_id", "=", partner_sudo.id),
                     ("website_id", "=", self.id),
@@ -872,13 +883,13 @@ class Website(models.Model):
                 ],
                 limit=1,
             )
-            if abandonned_cart_sudo:
+            if abandoned_cart_sudo:
                 if not self.env.cr.readonly:
                     # Force the recomputation of the pricelist and fiscal position when resurrecting
-                    # an abandonned cart
-                    abandonned_cart_sudo._update_address(partner_sudo.id, ["partner_id"])
-                    abandonned_cart_sudo._verify_cart()
-                sale_order_sudo = abandonned_cart_sudo
+                    # an abandoned cart
+                    abandoned_cart_sudo._update_address(partner_sudo.id, ["partner_id"])
+                    abandoned_cart_sudo._verify_cart()
+                sale_order_sudo = abandoned_cart_sudo
 
         if (
             sale_order_sudo or not self.env.user._is_public()
@@ -1002,58 +1013,72 @@ class Website(models.Model):
                 )
             step.copy({"website_id": self.id, "is_published": is_published})
 
-    def _get_checkout_step(self, href):
-        return (
-            self
-            .env["website.checkout.step"]
-            .sudo()
-            .search([("website_id", "=", self.id), ("step_href", "=", href)], limit=1)
-        )
+    def _get_checkout_step_values(self, href):
+        next_href = self._get_next_breadcrumb_step_href(href)
 
-    def _get_allowed_steps_domain(self):
-        return [("website_id", "=", self.id), ("is_published", "=", True)]
-
-    def _get_checkout_steps(self):
-        return (
-            self
-            .env["website.checkout.step"]
-            .sudo()
-            .search(self._get_allowed_steps_domain(), order="sequence")
-        )
-
-    def _get_checkout_step_values(self):
-        def rewrite(path):
-            return self.env["ir.http"].url_rewrite(path)[0]
-
-        href = rewrite(request.httprequest.path)
-        # /shop/address is associated with the delivery step
-        if href == rewrite("/shop/address"):
-            href = rewrite("/shop/checkout")
-
-        allowed_steps_domain = self._get_allowed_steps_domain()
-        current_step = self.env["website.checkout.step"].sudo()
-        for step in current_step.search(allowed_steps_domain):
-            if rewrite(step.step_href) == href:
-                current_step = step
-                href = step.step_href
-                break
-        next_step = current_step._get_next_checkout_step(allowed_steps_domain)
-        previous_step = current_step._get_previous_checkout_step(allowed_steps_domain)
-
-        next_href = next_step.step_href
-        # try_skip_step option required on /shop/checkout next button
-        if next_step.step_href == "/shop/checkout":
-            next_href = "/shop/checkout?try_skip_step=true"
-        # redirect handled by '/shop/address/submit' route when all values are properly filled
-        if request.httprequest.path == rewrite("/shop/address"):
-            next_href = False
+        # /shop/address is a "hidden" step of /shop/checkout
+        if href == "/shop/address":
+            href = "/shop/checkout"
+        current_step_sudo = self._get_checkout_step(href)
+        next_step_sudo = current_step_sudo.browse(self._get_next_breadcrumb_step_id(href))
+        previous_step_sudo = current_step_sudo.browse(self._get_previous_breadcrumb_step_id(href))
 
         return {
-            "current_website_checkout_step_href": href,
-            "previous_website_checkout_step": previous_step,
-            "next_website_checkout_step": next_step,
+            "current_website_checkout_step_href": current_step_sudo.step_href,
+            "previous_website_checkout_step": previous_step_sudo,
+            "next_website_checkout_step": next_step_sudo,
             "next_website_checkout_step_href": next_href,
         }
+
+    def _get_checkout_step(self, href):
+        return self.env["website.checkout.step"].sudo().browse(self._get_checkout_step_id(href))
+
+    @api.ormcache("self.id", "href")
+    def _get_checkout_step_id(self, href):
+        self.ensure_one()
+        return self.env["website.checkout.step"].sudo()._get_step_by_href(href, self).id
+
+    @api.ormcache("self.id", "href")
+    def _get_next_breadcrumb_step_id(self, href):
+        current_step_sudo = self._get_checkout_step(href)
+        return current_step_sudo._get_next_steps(
+            additional_domain=self._get_breadcrumb_checkout_steps_domain(), limit=1
+        ).id
+
+    @api.ormcache("self.id", "href")
+    def _get_previous_breadcrumb_step_id(self, href):
+        current_step_sudo = self._get_checkout_step(href)
+        return current_step_sudo._get_previous_steps(
+            additional_domain=self._get_breadcrumb_checkout_steps_domain(), limit=1
+        ).id
+
+    def _get_next_breadcrumb_step_href(self, href):
+        # redirect handled by '/shop/address/submit' route when all values are properly filled
+        if href == "/shop/address":
+            return False
+
+        next_step_sudo = (
+            self.env["website.checkout.step"].sudo().browse(self._get_next_breadcrumb_step_id(href))
+        )
+
+        # try_skip_step option required on /shop/checkout next button
+        if next_step_sudo.step_href == "/shop/checkout":
+            return "/shop/checkout?try_skip_step=true"
+        return next_step_sudo.step_href
+
+    def _get_checkout_breadcrumb_steps(self):
+        return (
+            self
+            .env["website.checkout.step"]
+            .sudo()
+            .search(self._get_breadcrumb_checkout_steps_domain(), order="sequence")
+        )
+
+    def _get_breadcrumb_checkout_steps_domain(self):
+        return self._get_allowed_checkout_steps_domain() & Domain("show_in_breadcrumb", "=", True)
+
+    def _get_allowed_checkout_steps_domain(self):
+        return Domain([("website_id", "=", self.id), ("is_published", "=", True)])
 
     def has_ecommerce_access(self):
         """Return whether the current user is allowed to access eCommerce-related content."""
@@ -1194,10 +1219,6 @@ class Website(models.Model):
 
     def _get_product_available_qty(self, product, **_kwargs):
         """Give the available quantity of a given product.
-
-        NB: this method is only meant to be used on the shop before the checkout.
-        For checkout steps, please use `cart._get_free_qty` instead to consider
-        the chosen warehouse for delivery (website_sale_collect).
 
         :param product: product.product record
         :param dict kwargs: unused parameters, available for overrides

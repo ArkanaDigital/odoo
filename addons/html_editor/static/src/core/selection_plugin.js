@@ -29,6 +29,7 @@ import {
 } from "../utils/selection";
 import { closestScrollableY } from "@web/core/utils/scrolling";
 import { weakMemoize } from "@html_editor/utils/functions";
+import { withSequence } from "@html_editor/utils/resource";
 
 /**
  * @typedef { Object } EditorSelection
@@ -71,6 +72,21 @@ import { weakMemoize } from "@html_editor/utils/functions";
  * @typedef {Object} Cursor
  * @property {Node} node
  * @property {number} offset
+ */
+
+/**
+ * @typedef { Object } SerializedSelection
+ * @property { NodeId } anchorNodeId
+ * @property { number } anchorOffset
+ * @property { NodeId } focusNodeId
+ * @property { number } focusOffset
+ */
+
+/**
+ * @typedef { Object } SelectionCommitData
+ * @property { NodeId } activeElementId              // the ID of the active element before applying the mutations
+ * @property { SerializedSelection } selection       // the serialized selection before applying the mutations
+ * @property { SerializedSelection } selectionAfter  // the serialized selection after applying the mutations
  */
 
 export function isNotAllowedContent(node) {
@@ -160,6 +176,9 @@ function scrollToSelection(selection) {
  * @property { SelectionPlugin['isNodeEditable'] } isNodeEditable
  * @property { SelectionPlugin['selectAroundNonEditable'] } selectAroundNonEditable
  * @property { SelectionPlugin['selectElement'] } selectElement
+ * @property { SelectionPlugin['stageSelection'] } stageSelection
+ * @property { SelectionPlugin['stageFocus'] } stageFocus
+ * @property { SelectionPlugin['serializeEditableSelection'] } serializeEditableSelection
  */
 
 /**
@@ -179,6 +198,7 @@ function scrollToSelection(selection) {
 
 export class SelectionPlugin extends Plugin {
     static id = "selection";
+    static dependencies = ["domReferenceMap", "domObserver"];
     static shared = [
         "getSelectionData",
         "getEditableSelection",
@@ -202,14 +222,99 @@ export class SelectionPlugin extends Plugin {
         "editableDocumentHasFocus",
         "getCachedSelection",
         "setCachedSelection",
+        // History
+        "stageSelection",
+        "stageFocus",
+        "serializeEditableSelection",
     ];
     /** @type {import("plugins").EditorResources} */
     resources = {
         user_commands: { id: "selectAll", run: this.selectAll.bind(this) },
         shortcuts: [{ hotkey: "control+a", commandId: "selectAll" }],
+        history_commit_data_properties: ["activeElementId", "selection", "selectionAfter"],
+
+        on_will_reset_history_handlers: () => {
+            this.resetStagedData();
+        },
+        on_committed_to_history_handlers: () => {
+            this.resetStagedData();
+            this.stageSelection();
+        },
+        on_history_reset_handlers: () => {
+            this.stageSelection();
+        },
+        on_will_preview_handlers: () => {
+            this.stageSelection();
+        },
+        // Execute this late to ensure the state of the DOM doesn't change and
+        // invalidate the selection after setting it here.
+        on_revert_history_commit_handlers: withSequence(
+            100,
+            (commit, { restoreFocus = true } = {}) => {
+                if (restoreFocus && "activeElementId" in commit.data) {
+                    this.setSerializedFocus(commit.data.activeElementId);
+                }
+                if (restoreFocus) {
+                    this.stageFocus();
+                }
+                if ("selection" in commit.data) {
+                    this.setSerializedSelection(commit.data.selection);
+                }
+                if ("selectionAfter" in commit.data) {
+                    this.currentData.selection = commit.data.selectionAfter;
+                }
+            }
+        ),
+        on_apply_history_commit_handlers: (commit, { restoreSelection = false } = {}) => {
+            if (restoreSelection && commit.data.selection) {
+                this.setSerializedSelection(commit.data.selection);
+            }
+        },
+        on_savepoint_restored_handlers: (savePoint) => {
+            if (savePoint.data.lastRevertedChanges?.selection && !savePoint.data.mutations.length) {
+                savePoint.data.selection.setCursor((cursor) => {
+                    const anchorNode = this.dependencies.domReferenceMap.getNodeById(
+                        savePoint.data.lastRevertedChanges.selection.anchorNodeId
+                    );
+                    const focusNode = this.dependencies.domReferenceMap.getNodeById(
+                        savePoint.data.lastRevertedChanges.selection.focusNodeId
+                    );
+                    cursor.anchor.node = anchorNode;
+                    cursor.anchor.offset =
+                        savePoint.data.lastRevertedChanges.selection.anchorOffset;
+
+                    cursor.focus.node = focusNode;
+                    cursor.focus.offset = savePoint.data.lastRevertedChanges.selection.focusOffset;
+                });
+            }
+
+            // TODO ABD TODO @phoenix: evaluate if the selection is not restorable at the desired position
+            savePoint.data.selection.restore();
+        },
+        save_point_history_commit_data_processors: (data) =>
+            // TODO ABD TODO @phoenix: selection may become obsolete, it should evolve with mutations.
+            ({ ...data, selection: this.preserveSelection() }),
+        snapshot_history_commit_data_processors: (data) => ({
+            ...data,
+            activeElementId: null,
+            selection: {
+                anchorNode: undefined,
+                anchorOffset: undefined,
+                focusNode: undefined,
+                focusOffset: undefined,
+            },
+            selectionAfter: null,
+        }),
+        // Execute this late to ensure the state of the DOM doesn't change and
+        // invalidate the selection after setting it here.
+        pending_history_commit_data_processors: withSequence(
+            100,
+            this.processCommitData.bind(this)
+        ),
     };
 
     setup() {
+        this.resetStagedData();
         this.resetSelection();
         this.addGlobalDomListener("selectionchange", () => {
             this.updateActiveSelection();
@@ -240,6 +345,11 @@ export class SelectionPlugin extends Plugin {
             ];
             if (handled.includes(getActiveHotkey(ev))) {
                 this.onKeyDownArrows(ev);
+            }
+        });
+        this.addGlobalDomListener("pointerup", (ev) => {
+            if (this.editable.contains(ev.target)) {
+                this.stageSelection();
             }
         });
 
@@ -285,6 +395,21 @@ export class SelectionPlugin extends Plugin {
         }
         super.destroy();
     }
+    resetStagedData() {
+        this.currentData = {
+            /** @type { NodeId | null } */
+            activeElementId: null,
+            /** @type { SerializedSelection | {} } */
+            selection: {},
+            /** @type { SerializedSelection | null } */
+            selectionAfter: null,
+        };
+    }
+    processCommitData(data) {
+        this.currentData.selectionAfter = this.serializeEditableSelection();
+        return { ...data, ...this.currentData };
+    }
+
     editableDocumentHasFocus() {
         return this.focusEditableDocument;
     }
@@ -819,19 +944,35 @@ export class SelectionPlugin extends Plugin {
 
     areNodeContentsFullySelected(node) {
         const selection = this.getEditableSelection();
+        // In empty blocks (e.g. <p><br></p>), Ctrl+A produces a collapsed
+        // DOM selection, so no actual range is selected.
+        if (selection.isCollapsed) {
+            return false;
+        }
         const range = new Range();
         range.setStart(selection.startContainer, selection.startOffset);
-        range.setEnd(selection.endContainer, selection.endOffset);
+        // Adjust the range end if it ends with a <br>.
+        const { endContainer, endOffset } = this.getEditableSelection();
+        if (endContainer.childNodes?.[endOffset]?.nodeName === "BR") {
+            range.setEnd(endContainer, endOffset + 1);
+        } else {
+            range.setEnd(endContainer, endOffset);
+        }
+
+        // Custom rules.
+        if (
+            this.checkPredicates("is_node_fully_selected_predicates", node, selection, range) ??
+            false
+        ) {
+            return true;
+        }
 
         const firstLeafNode = firstLeaf(node);
         const lastLeafNode = lastLeaf(node);
+        // Default rule: range must cover the full node.
         return (
-            // Custom rules
-            (this.checkPredicates("is_node_fully_selected_predicates", node, selection, range) ??
-                false) ||
-            // Default rule
-            (range.isPointInRange(firstLeafNode, 0) &&
-                range.isPointInRange(lastLeafNode, nodeSize(lastLeafNode)))
+            range.isPointInRange(firstLeafNode, 0) &&
+            range.isPointInRange(lastLeafNode, nodeSize(lastLeafNode))
         );
     }
 
@@ -1207,7 +1348,7 @@ export class SelectionPlugin extends Plugin {
         // Get up-to-date selection
         const { editableSelection } = this.getSelectionData();
         // Avoid setting the selection if it's not inside an uneditable element
-        const isInUneditable = (node) => !!closestElement(node, (elem) => !elem.isContentEditable);
+        const isInUneditable = (node) => !closestElement(node).isContentEditable;
         let { startContainer: start, endContainer: end } = editableSelection;
         if (!(isInUneditable(start) || (end !== start && isInUneditable(end)))) {
             return editableSelection;
@@ -1235,5 +1376,100 @@ export class SelectionPlugin extends Plugin {
             focusNode,
             focusOffset,
         });
+    }
+
+    // =======
+    // History
+    // =======
+
+    /**
+     * Set the serialized selection of the currentData.
+     *
+     * This method is used to save a serialized selection in the currentData.
+     * It will be necessary if the commit is reverted at some point because we
+     * need to set the selection to where it was before any mutation was made.
+     *
+     * It means that we should not call this method in the middle of mutations
+     * because if a selection is set onto a node that is edited/added/removed
+     * within the same commit, it might become impossible to set the selection
+     * when reverting the commit.
+     */
+    stageSelection() {
+        this.stageFocus();
+        if (this.dependencies.domObserver.hasStagedMutations()) {
+            console.warn(
+                `should not have any "characterData", "remove" or "add" mutations in current changes when you update the selection`
+            );
+            return;
+        }
+        this.currentData.selection = this.serializeEditableSelection();
+    }
+
+    /**
+     * Set the serialized focus of the currentData.
+     */
+    stageFocus() {
+        let activeElement = this.document.activeElement;
+        if (activeElement.contains(this.editable)) {
+            activeElement = this.editable;
+        }
+        if (this.editable.contains(activeElement)) {
+            this.currentData.activeElementId =
+                this.dependencies.domReferenceMap.register(activeElement);
+        }
+    }
+
+    /**
+     * Serialize an editor selection.
+     *
+     * @returns { SerializedSelection }
+     */
+    serializeEditableSelection() {
+        const selection = this.getEditableSelection();
+        return {
+            anchorNodeId: this.dependencies.domReferenceMap.getNodeId(selection.anchorNode),
+            anchorOffset: selection.anchorOffset,
+            focusNodeId: this.dependencies.domReferenceMap.getNodeId(selection.focusNode),
+            focusOffset: selection.focusOffset,
+        };
+    }
+
+    /**
+     * @param { SerializedSelection } selection
+     */
+    setSerializedSelection(selection) {
+        if (!selection.anchorNodeId) {
+            return;
+        }
+        const anchorNode = this.dependencies.domReferenceMap.getNodeById(selection.anchorNodeId);
+        if (!anchorNode) {
+            return;
+        }
+        const newSelection = {
+            anchorNode,
+            anchorOffset: selection.anchorOffset,
+        };
+        const focusNode = this.dependencies.domReferenceMap.getNodeById(selection.focusNodeId);
+        if (focusNode) {
+            newSelection.focusNode = focusNode;
+            newSelection.focusOffset = selection.focusOffset;
+        }
+        this.setSelection(newSelection, { normalize: false });
+        // @todo @phoenix add this in the selection or table plugin.
+        // // If a table must be selected, ensure it's in the same tick.
+        // this._handleSelectionInTable();
+    }
+
+    /**
+     * @param { NodeId } activeElementId
+     */
+    setSerializedFocus(activeElementId) {
+        const elementToFocus =
+            activeElementId === "root"
+                ? this.editable
+                : activeElementId && this.dependencies.domReferenceMap.getNodeById(activeElementId);
+        if (elementToFocus?.isConnected && elementToFocus !== this.document.activeElement) {
+            elementToFocus.focus();
+        }
     }
 }

@@ -1,53 +1,39 @@
-import { useChildSubEnv, useLayoutEffect, useRef, useState } from "@web/owl2/utils";
+import { useChildSubEnv, useLayoutEffect } from "@web/owl2/utils";
 import { useChildRefs, useForwardRefsToParent, useScrollState } from "@mail/utils/common/hooks";
-import { Component, xml } from "@odoo/owl";
+import { Component, props, signal, types, useEffect, xml } from "@odoo/owl";
 import { useForwardRefToParent } from "@web/core/utils/hooks";
 
-/**
- * @typedef {Object} Props
- * @property {"v"|"h"} [direction] Direction of the tabs. "v" for vertical, "h" for horizontal.
- * @property {any} [initialTabId] Id of the tab that should be active at the start.
- * @property {ReturnType<typeof import("@web/core/utils/hooks").useChildRef>} [ref] Ref function returned
- * by `useChildRef`. Used to forward the Tabs component ref to its parent.
- * @property {Record<string, any>} [slots]
- * @extends {Component<Props, Env>}
- */
 export class Tabs extends Component {
     static template = "mail.Tabs";
-    static props = {
-        direction: { type: String, optional: true, validate: (d) => ["v", "h"].includes(d) },
-        initialTabId: { optional: true },
-        ref: { type: Function, optional: true },
-        slots: { type: Object, optional: true },
-    };
-    static defaultProps = { direction: "v" };
 
     setup() {
-        this.state = useState({ activeHeaderId: this.props.initialTabId });
+        this.props = props(
+            {
+                "direction?": types.selection(["h", "v"]),
+                "initialTabId?": types.or([types.string(), types.number()]),
+                "ref?": types.function(),
+                "slots?": types.object(),
+            },
+            { direction: "v" }
+        );
+        this.activeHeaderId = signal(this.props.initialTabId);
         this.headerRefs = useChildRefs();
-        this.navRef = useRef("nav");
-        this.scrollState = useScrollState("nav");
+        this.navRef = signal();
+        this.scrollState = useScrollState(this.navRef);
         useForwardRefToParent("ref");
         useChildSubEnv({
             tabsContext: {
                 headerRefs: this.headerRefs,
-                isActive: (id) => this.state.activeHeaderId === id,
-                setActiveTab: (id) => (this.state.activeHeaderId = id),
+                isActive: (id) => this.activeHeaderId() === id,
+                setActiveTab: (id) => this.activeHeaderId.set(id),
             },
         });
-        useLayoutEffect(
-            (refs, headerEls, activeHeaderId) => {
-                if (!refs.has(activeHeaderId) && headerEls?.length) {
-                    this.state.activeHeaderId = headerEls[0].dataset.headerId;
-                }
-            },
-            () => [
-                this.headerRefs,
-                this.navRef.el?.children,
-                this.state.activeHeaderId,
-                this.headerRefs.size,
-            ]
-        );
+        useEffect(() => {
+            const headerEls = this.navRef()?.children;
+            if (!this.headerRefs.has(this.activeHeaderId()) && headerEls?.length) {
+                this.activeHeaderId.set(headerEls[0].dataset.headerId);
+            }
+        });
     }
 
     /**
@@ -65,15 +51,19 @@ export class Tabs extends Component {
     }
 }
 
-const TAB_HEADER_PROPS = ["id", "title?", "slots?"];
 export class InternalTabHeader extends Component {
     static template = "mail.InternalTabHeader";
-    static props = [...TAB_HEADER_PROPS, "headerRefs"];
 
     setup() {
         super.setup(...arguments);
-        this.root = useRef("root");
-        useForwardRefsToParent("headerRefs", (props) => props.id, this.root);
+        this.props = props({
+            headerRefs: types.object(),
+            id: types.or([types.string(), types.number()]),
+            "slots?": types.object(),
+            "title?": types.string(),
+        });
+        this.rootRef = signal();
+        useForwardRefsToParent("headerRefs", (props) => props.id, this.rootRef);
     }
 
     onClick() {
@@ -95,15 +85,27 @@ export class InternalTabHeader extends Component {
 export class TabHeader extends Component {
     static template = xml`<InternalTabHeader id="this.props.id" title="this.props.title" headerRefs="this.env.tabsContext.headerRefs"><t t-call-slot="default"/></InternalTabHeader>`;
     static components = { InternalTabHeader };
-    static props = TAB_HEADER_PROPS;
+
+    setup() {
+        super.setup(...arguments);
+        this.props = props({
+            id: types.any(),
+            "slots?": types.object(),
+            "title?": types.string(),
+        });
+    }
 }
 
 export class TabPanel extends Component {
     static template = "mail.TabPanel";
-    static props = ["id", "slots?", "onBecameVisible?"];
 
     setup() {
-        super.setup(...arguments);
+        super.setup();
+        this.props = props({
+            id: types.any(),
+            "onBecameVisible?": types.function([]),
+            "slots?": types.object(),
+        });
         useLayoutEffect(
             (active) => {
                 if (active) {

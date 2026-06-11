@@ -32,7 +32,8 @@ SALE_ORDER_STATE = [
 
 class SaleOrder(models.Model):
     _name = "sale.order"
-    _explanation = "Represents a customer quotation that can be converted into a sales order. Used to manage pricing, product quantities, and status"
+    _explanation = "Represents a customer quotation that can be converted into a sales order. Used"
+    " to manage pricing, product quantities, and status"
     _inherit = [
         "account.document.import.mixin",
         "mail.activity.mixin",
@@ -442,11 +443,12 @@ class SaleOrder(models.Model):
         help="Delivery date you can promise to the customer, computed from the minimum lead time of"
         " the order lines.",
     )
+    extra_total_fields = fields.Json(compute="_compute_extra_total_fields")
     is_expired = fields.Boolean(
         string="Is Expired", compute="_compute_is_expired", search="_search_is_expired"
     )
     partner_credit_warning = fields.Text(compute="_compute_partner_credit_warning")
-    show_deliver_button = fields.Boolean(compute="_compute_show_deliver_button")
+    show_ship_button = fields.Boolean(compute="_compute_show_ship_button")
     tax_calculation_rounding_method = fields.Selection(
         related="company_id.tax_calculation_rounding_method", depends=["company_id"]
     )
@@ -460,11 +462,11 @@ class SaleOrder(models.Model):
     terms_type = fields.Selection(related="company_id.terms_type")
     type_name = fields.Char(string="Type Name", compute="_compute_type_name")
 
+    has_overages = fields.Boolean(compute="_compute_has_overages")
+    invoice_overages = fields.Boolean()
+
     # Remaining ux fields (not computed, not stored)
 
-    show_update_fpos = fields.Boolean(
-        string="Has Fiscal Position Changed", store=False
-    )  # True if the fiscal position was changed
     has_active_pricelist = fields.Boolean(compute="_compute_has_active_pricelist")
     show_update_pricelist = fields.Boolean(
         string="Has Pricelist Changed", store=False
@@ -579,7 +581,6 @@ class SaleOrder(models.Model):
             if not order.partner_id:
                 order.fiscal_position_id = False
                 continue
-            fpos_id_before = order.fiscal_position_id.id
             key = (order.company_id.id, order.partner_id.id, order.partner_shipping_id.id)
             if key not in cache:
                 cache[key] = (
@@ -589,8 +590,6 @@ class SaleOrder(models.Model):
                     ._get_fiscal_position(order.partner_id, order.partner_shipping_id)
                     .id
                 )
-            if fpos_id_before != cache[key] and order.order_line:
-                order.show_update_fpos = True
             order.fiscal_position_id = cache[key]
 
     @api.depends("partner_id")
@@ -909,7 +908,7 @@ class SaleOrder(models.Model):
         :rtype: tuple(float, float)
         """
 
-        def grouping_function(base_line, tax_data):
+        def grouping_function(base_line, tax_data):  # noqa: ARG001
             return base_line["special_type"] not in ("global_discount", "loyalty_discount")
 
         self.ensure_one()
@@ -1053,7 +1052,7 @@ class SaleOrder(models.Model):
         return min(expected_dates)
 
     def _compute_is_expired(self):
-        today = fields.Date.today()
+        today = fields.Date.context_today(self)
         for order in self:
             order.is_expired = (
                 order.state in ("draft", "sent")
@@ -1062,25 +1061,13 @@ class SaleOrder(models.Model):
             )
 
     def _search_is_expired(self, operator, value):  # noqa: ARG002
-        today = fields.Date.today()
-        expired_domain = [("state", "in", ("draft", "sent")), ("validity_date", "<", today)]
+        expired_domain = [("state", "in", ("draft", "sent")), ("validity_date", "<", "today")]
         if operator == "in":
             return expired_domain
         return ["!", "&"] + expired_domain
 
-    @api.depends("order_line.qty_delivered")
-    def _compute_show_deliver_button(self):
-        for order in self:
-            order.show_deliver_button = (
-                order.state == "sale"
-                and any(
-                    line.qty_delivered < line.product_uom_qty
-                    if line.product_uom_qty > 0
-                    else line.qty_delivered > line.product_uom_qty
-                    for line in order.order_line
-                )
-                and all(line.qty_delivered_method == "manual" for line in order.order_line)
-            )
+    def _compute_show_ship_button(self):
+        self.show_ship_button = False
 
     @api.depends("company_id", "fiscal_position_id")
     def _compute_tax_country_id(self):
@@ -1132,6 +1119,21 @@ class SaleOrder(models.Model):
                 company=order.company_id,
             )
 
+    @api.depends(
+        "order_line", "order_line.discount", "order_line.price_unit", "order_line.product_uom_qty"
+    )
+    def _compute_extra_total_fields(self):
+        for order in self:
+            basic_group = {"sequence": 1, "name": "basic", "lines": []}
+            _excl, incl = order._get_advantages()
+            if incl:
+                basic_group["lines"].append({
+                    "label": self.env._("Total Advantage"),
+                    "value": abs(incl),
+                })
+
+            order.extra_total_fields = [basic_group]
+
     @api.depends("state")
     @api.depends_context("lang")
     def _compute_type_name(self):
@@ -1170,6 +1172,11 @@ class SaleOrder(models.Model):
     def _compute_delivery_date(self):
         for order in self:
             order.delivery_date = order.commitment_date or order.expected_date
+
+    @api.depends("order_line.qty_overage")
+    def _compute_has_overages(self):
+        for order in self:
+            order.has_overages = any(line.qty_overage for line in order.order_line)
 
     # === CONSTRAINT METHODS ===#
 
@@ -1265,15 +1272,9 @@ class SaleOrder(models.Model):
                 )
 
     @api.onchange("fiscal_position_id")
-    def _onchange_fpos_id_show_update_fpos(self):
-        if self.order_line and (
-            not self.fiscal_position_id
-            or (
-                self.fiscal_position_id
-                and self._origin.fiscal_position_id != self.fiscal_position_id
-            )
-        ):
-            self.show_update_fpos = True
+    def _onchange_fpos_id_recompute_taxes(self):
+        if self.order_line:
+            self._recompute_taxes()
 
     @api.onchange("pricelist_id")
     def _onchange_pricelist_id_show_update_prices(self):
@@ -1567,7 +1568,7 @@ class SaleOrder(models.Model):
         return self.env["res.groups"]._is_feature_enabled("sale.group_auto_done_setting")
 
     def _confirmation_error_message(self):
-        """Return whether order can be confirmed or not if not then returm error message."""
+        """Return whether order can be confirmed or not if not then return error message."""
         self.ensure_one()
         if self.state not in {"draft", "sent"}:
             return self.env._("Some orders are not in a state requiring confirmation.")
@@ -1725,24 +1726,10 @@ class SaleOrder(models.Model):
         self.ensure_one()
         return {"type": "ir.actions.act_url", "target": "new", "url": self.get_portal_url()}
 
-    def action_update_taxes(self):
-        self.ensure_one()
-
-        self._recompute_taxes()
-
-        if self.partner_id:
-            self.message_post(
-                body=self.env._(
-                    "Product taxes have been recomputed according to fiscal position %s.",
-                    self.fiscal_position_id._get_html_link() if self.fiscal_position_id else "",
-                )
-            )
-
     def _recompute_taxes(self):
         lines_to_recompute = self.order_line.filtered(lambda line: not line.display_type)
 
         lines_to_recompute.with_context(recompute_unit_price_on_tax_change=True)._compute_tax_ids()
-        self.show_update_fpos = False
 
     def action_update_prices(self):
         self.ensure_one()
@@ -2166,13 +2153,11 @@ class SaleOrder(models.Model):
             kwargs["notify_author_mention"] = kwargs.get("notify_author_mention", True)
         return super().message_post(**kwargs)
 
-    def _notify_get_recipients_groups(self, message, model_description, msg_vals=False):
+    def _notify_get_recipients_groups(self, message, model_description):
         # Give access button to users and portal customer as portal is integrated
         # in sale. Customer and portal group have probably no right to see
         # the document so they don't have the access button.
-        groups = super()._notify_get_recipients_groups(
-            message, model_description, msg_vals=msg_vals
-        )
+        groups = super()._notify_get_recipients_groups(message, model_description)
         if not self:
             return groups
 
@@ -2199,7 +2184,6 @@ class SaleOrder(models.Model):
     def _notify_by_email_prepare_rendering_context(
         self,
         message,
-        msg_vals=False,
         model_description=False,
         force_email_company=False,
         force_email_lang=False,
@@ -2209,7 +2193,6 @@ class SaleOrder(models.Model):
     ):
         render_context = super()._notify_by_email_prepare_rendering_context(
             message,
-            msg_vals=msg_vals,
             model_description=model_description,
             force_email_company=force_email_company,
             force_email_lang=force_email_lang,
@@ -2630,9 +2613,9 @@ class SaleOrder(models.Model):
             raise UserError(
                 self.env._(
                     "The following sale orders %(invalid_orders)s can't be delivered. Cancelled all"
-                    " deliveries."
-                ),
-                invalid_orders=", ".join(invalid_targets.mapped("name")),
+                    " deliveries.",
+                    invalid_orders=", ".join(invalid_targets.mapped("name")),
+                )
             )
         for order in self:
             for line in order.order_line:
@@ -2662,14 +2645,14 @@ class SaleOrder(models.Model):
             res[product.id]["price"] = prices.get(product.id)
         return res
 
-    def _get_product_catalog_product_data(self, product, **kwargs):
+    def _get_product_catalog_product_data(self, product, **kwargs):  # noqa: ARG002
         product_data = super()._get_product_catalog_product_data(product)
         has_warning_group = self.env["res.groups"]._is_feature_enabled("sale.group_warning_sale")
         if product.sale_line_warn_msg and has_warning_group:
             product_data.update(warning=product.sale_line_warn_msg)
         return product_data
 
-    def _get_product_catalog_record_lines(self, product_ids, *, section_id=None, **kwargs):
+    def _get_product_catalog_record_lines(self, product_ids, *, section_id=None, **kwargs):  # noqa: ARG002
         grouped_lines = defaultdict(lambda: self.env["sale.order.line"])
         if section_id is None:
             section_id = (
@@ -2696,9 +2679,10 @@ class SaleOrder(models.Model):
         """Update sale order line information for a given product or create a
         new one if none exists yet.
 
-        :param int product_id: The product, as a `product.product` id.
+        :param record product: The product, as a `product.product` record.
         :param int quantity: The quantity selected in the catalog.
         :param int section_id: The id of section selected in the catalog.
+        :param record uom: The UoM selected in the catalog, as a `uom.uom` record.
         :return: The unit price of the product, based on the pricelist of the sale order and the
                  quantity selected.
         :rtype: float
@@ -2710,6 +2694,8 @@ class SaleOrder(models.Model):
             )
         )
         if sol:
+            if uom and sol.product_uom_id != uom:
+                sol.product_uom_id = uom.id
             if quantity != 0:
                 sol.product_uom_qty = quantity
             elif self.state in ["draft", "sent"]:
@@ -2733,7 +2719,7 @@ class SaleOrder(models.Model):
                 "sequence": self._get_new_line_sequence(child_field, section_id),
                 "product_uom_id": uom.id,
             })
-        else:  # quantity of 0, no line to update, return defaut pricelist price
+        else:  # quantity of 0, no line to update, return default pricelist price
             return self.pricelist_id._get_product_price(
                 product=product,
                 quantity=1.0,

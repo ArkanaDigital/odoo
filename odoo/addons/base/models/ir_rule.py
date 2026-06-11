@@ -128,9 +128,9 @@ class IrRule(models.Model):
         return self.browse(id_ for r in rules if (id_ := r.rule_id) in failing_ids)
 
     @api.model
-    @tools.ormcache(cache='stable')
+    @api.ormcache(cache='stable')
     def _get_all_rules(self) -> dict[str, tuple[RuleInfo, ...]]:
-        """ Returns all the active record rules.
+        """ Returns all the active record rules for models in the registry.
 
         :return: Dict {model_name: [RuleInfo]}
         """
@@ -143,6 +143,8 @@ class IrRule(models.Model):
         domains = {}
         env = self.env(su=True)
         for rule in all_rules:
+            if rule.model_name not in env:
+                continue
             domain = (rule.domain_force or '').strip()
             try:
                 domain = ast.literal_eval(domain) if domain else Domain.TRUE
@@ -161,13 +163,15 @@ class IrRule(models.Model):
                 for group in rule.groups or (rule.groups,)
             )
             for model_name, model_rules in all_rules.grouped('model_name').items()
+            if model_name in env
         })
 
     @api.model
     @tools.conditional(
         'xml' not in config['dev_mode'],
-        tools.ormcache('self.env.uid', 'self.env.su', 'model_name', 'mode', 'include_inherits',
-                       'tuple(self._compute_domain_context_values())'),
+        api.ormcache(
+            'self.env.uid', 'self.env.su', 'model_name', 'mode', 'include_inherits',
+            'tuple(self._compute_domain_context_values())'),
     )
     def _compute_domain(self, model_name: str, mode: str = "read", *, include_inherits=True) -> Domain:
         model = self.sudo().env[model_name]

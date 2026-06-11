@@ -14,7 +14,7 @@ from odoo.addons.mail.tools.web_push import PUSH_NOTIFICATION_TYPE
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.fields import Domain
 from odoo.tools import BinaryBytes, format_list, email_normalize, html_escape
-from odoo.tools.misc import hash_sign, OrderedSet
+from odoo.tools.misc import hash_sign, limited_field_access_token, OrderedSet
 from odoo.tools.sql import SQL
 
 channel_avatar = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 530.06 530.06">
@@ -269,6 +269,15 @@ class DiscussChannel(models.Model):
             else:
                 channel.avatar_cache_key = sha512(channel.avatar_128).hexdigest()
 
+    def _get_avatar_128_access_token(self):
+        """Return a scoped access token for the `avatar_128` field so guests and
+        other portal users can fetch the channel avatar without read access.
+
+        :rtype: str
+        """
+        self.ensure_one()
+        return limited_field_access_token(self, "avatar_128", scope="binary")
+
     def _generate_avatar(self):
         if self.channel_type not in ('channel', 'group'):
             return False
@@ -482,14 +491,8 @@ class DiscussChannel(models.Model):
         self.uuid = self._generate_random_token()
 
     @api.ondelete(at_uninstall=False)
-    def _unlink_except_all_employee_channel(self):
+    def _unlink_channel(self):
         # Delete discuss.channel
-        try:
-            all_emp_group = self.env.ref('mail.channel_all_employees')
-        except ValueError:
-            all_emp_group = None
-        if all_emp_group and all_emp_group in self:
-            raise UserError(_('You cannot delete those groups, as the Whole Company group is required by other modules.'))
         for channel in self:
             channel._bus_send("discuss.channel/delete", {"id": channel.id})
 
@@ -555,6 +558,7 @@ class DiscussChannel(models.Model):
         # keys are bus subchannel names, values are lists of field names to sync
         super()._sync_field_names(res)
         res[None].attr("avatar_cache_key", predicate=is_channel_or_group)
+        res[None].attr("avatar_128_access_token", lambda c: c._get_avatar_128_access_token(), predicate=is_channel_or_group)
         # sudo: discuss.category - guests can read categories of accessible channels
         res[None].one("discuss_category_id", "_store_category_fields", sudo=True)
         res[None].extend(["channel_type", "create_uid", "default_display_mode"])
@@ -629,22 +633,6 @@ class DiscussChannel(models.Model):
             )
         member.unlink()
 
-    def add_members(
-        self,
-        partner_ids=None,
-        guest_ids=None,
-        invite_to_rtc_call=False,
-        post_joined_message=True,
-    ):
-        """Adds the given partner_ids and guest_ids as member of self channels.
-        Prefer calling _add_members with recordsets directly when possible."""
-        return self._add_members(
-            partners=self.env["res.partner"].browse(partner_ids or []).exists(),
-            guests=self.env["mail.guest"].browse(guest_ids or []).exists(),
-            invite_to_rtc_call=invite_to_rtc_call,
-            post_joined_message=post_joined_message,
-        )
-
     def _add_members(
         self,
         *,
@@ -718,6 +706,30 @@ class DiscussChannel(models.Model):
             if new_members:
                 stores[channel].add(channel, ["member_count"])
                 stores[channel].add(new_members, "_store_member_fields")
+                if channel.channel_type == "channel":
+                    devices, private_key, public_key = channel._web_push_get_partners_parameters(new_members.partner_id.ids)
+                    if devices:
+                        icon = f"/web/image/discuss.channel/{channel.id}/avatar_128"
+                        languages = set(devices.partner_id.mapped("lang"))
+                        payload_by_lang = {}
+                        for lang in languages:
+                            channel_lang = channel.with_context(lang=lang)
+                            payload_by_lang[lang] = {
+                                "title": channel_lang.display_name,
+                                "options": {
+                                    "body": channel_lang.env._(
+                                        "%(user)s has invited you to this channel",
+                                        user=channel_lang.env.user.partner_id.display_name,
+                                    ),
+                                    "data": {
+                                        "action": "mail.action_discuss",
+                                        "model": "discuss.channel",
+                                        "res_id": channel.id,
+                                    },
+                                    "icon": icon,
+                                },
+                            }
+                        channel._web_push_send_notification(devices, private_key, public_key, payload_by_lang=payload_by_lang)
             if existing_members and (bus_channel := current_user or current_guest):
                 # If the current user invited these members but they are already present, notify the current user about their existence as well.
                 # In particular this fixes issues where the current user is not aware of its own member in the following case:
@@ -864,22 +876,21 @@ class DiscussChannel(models.Model):
     # MAILING
     # ------------------------------------------------------------
 
-    def _notify_get_recipients(self, message, msg_vals=False, **kwargs):
+    def _notify_get_recipients(self, message, **kwargs):
         # Override recipients computation as channel is not a standard
         # mail.thread document. Indeed there are no followers on a channel.
         # Instead of followers it has members that should be notified.
-        msg_vals = msg_vals or {}
 
         # notify only user input (comment, whatsapp messages or incoming / outgoing emails)
-        message_type = msg_vals['message_type'] if 'message_type' in msg_vals else message.message_type
+        message_type = message.message_type
         if message_type not in ('comment', 'email', 'email_outgoing', 'whatsapp_message'):
             return []
 
         recipients_data = []
-        author_id = msg_vals.get("author_id") or message.author_id.id
-        pids = msg_vals['partner_ids'] or [] if 'partner_ids' in msg_vals else message.partner_ids.ids
+        author_id = message.author_id.id
+        pids = message.partner_ids.ids
         if pids:
-            email_from = tools.email_normalize(msg_vals.get('email_from') or message.email_from)
+            email_from = tools.email_normalize(message.email_from)
             self.env['res.partner'].flush_model(['active', 'email', 'partner_share'])
             self.env['res.users'].flush_model(['notification_type', 'partner_id'])
             sql_query = SQL(
@@ -968,14 +979,12 @@ class DiscussChannel(models.Model):
             })
         return recipients_data
 
-    def _notify_get_recipients_groups(self, message, model_description, msg_vals=False):
+    def _notify_get_recipients_groups(self, message, model_description):
         # All recipients of a message on a channel are considered as partners.
         # This means they will receive a minimal email, without a link to access
         # in the backend. Mailing lists should indeed send minimal emails to avoid
         # the noise.
-        groups = super()._notify_get_recipients_groups(
-            message, model_description, msg_vals=msg_vals
-        )
+        groups = super()._notify_get_recipients_groups(message, model_description)
         for (index, (group_name, _group_func, group_data)) in enumerate(groups):
             if group_name != 'customer':
                 groups[index] = (group_name, lambda partner: False, group_data)
@@ -984,9 +993,9 @@ class DiscussChannel(models.Model):
     def _get_notify_valid_parameters(self):
         return super()._get_notify_valid_parameters() | {"silent"}
 
-    def _notify_thread(self, message, msg_vals=False, **kwargs):
+    def _notify_thread(self, message, **kwargs):
         # link message to channel
-        rdata = super()._notify_thread(message, msg_vals=msg_vals, **kwargs)
+        rdata = super()._notify_thread(message, **kwargs)
         payload = {"id": self.id}
         if temporary_id := self.env.context.get("temporary_id"):
             payload["temporary_id"] = temporary_id
@@ -1001,17 +1010,11 @@ class DiscussChannel(models.Model):
             store.add(message.channel_id, ["message_count"])
         return rdata
 
-    def _notify_by_web_push_prepare_payload(self, message, msg_vals=False, force_record_name=False):
-        payload = super()._notify_by_web_push_prepare_payload(
-            message, msg_vals=msg_vals, force_record_name=force_record_name,
-        )
-        msg_vals = msg_vals or {}
+    def _notify_by_web_push_prepare_payload(self, message, force_record_name=False):
+        payload = super()._notify_by_web_push_prepare_payload(message, force_record_name=force_record_name)
         payload['options']['data']['action'] = 'mail.action_discuss'
         record_name = force_record_name or message.record_name
-        author_ids = [msg_vals["author_id"]] if msg_vals.get("author_id") else message.author_id.ids
-        author = self.env["res.partner"].browse(author_ids) or self.env["mail.guest"].browse(
-            msg_vals.get("author_guest_id", message.author_guest_id.id)
-        )
+        author = message.author_id or message.author_guest_id
         if self.channel_type == 'chat':
             payload['title'] = author.name
         elif self.channel_type == 'channel':
@@ -1025,11 +1028,11 @@ class DiscussChannel(models.Model):
             payload['title'] = "#%s" % (record_name)
         return payload
 
-    def _notify_thread_by_web_push(self, message, recipients_data, msg_vals=False, **kwargs):
+    def _notify_thread_by_web_push(self, message, recipients_data, **kwargs):
         # only notify "web_push" recipients in discuss channels.
         # exclude "inbox" recipients in discuss channels as inbox and web push can be mutually exclusive.
         # the user can turn off the web push but receive notifs via inbox if they want to.
-        super()._notify_thread_by_web_push(message, [r for r in recipients_data if r["notif"] == "web_push"], msg_vals=msg_vals, **kwargs)
+        super()._notify_thread_by_web_push(message, [r for r in recipients_data if r["notif"] == "web_push"], **kwargs)
 
     def _message_receive_bounce(self, email, partner):
         # Override bounce management to unsubscribe bouncing addresses
@@ -1080,7 +1083,7 @@ class DiscussChannel(models.Model):
             self.with_context(mail_post_autofollow_author_skip=True, mail_post_autofollow=False),
         ).message_post(message_type=message_type, **kwargs)
 
-    def _message_post_after_hook(self, message, msg_vals):
+    def _message_post_after_hook(self, message):
         # Automatically set the message posted by the current user as seen for themselves.
         if self.self_member_id and message.is_current_user_or_guest_author:
             self.self_member_id._set_last_seen_message(message, notify=False)
@@ -1100,7 +1103,7 @@ class DiscussChannel(models.Model):
                     p.user_ids.res_users_settings_id.channel_notifications != "no_notif"
                 )
             self._add_members(partners=to_invite)
-        return super()._message_post_after_hook(message, msg_vals)
+        return super()._message_post_after_hook(message)
 
     def _message_update_content(self, message, /, *, partner_ids=None, **kwargs):
         if partner_ids:
@@ -1297,6 +1300,7 @@ class DiscussChannel(models.Model):
             "_store_member_fields",
         )._build_result()
         res.attr("avatar_cache_key", predicate=is_channel_or_group)
+        res.attr("avatar_128_access_token", lambda c: c._get_avatar_128_access_token(), predicate=is_channel_or_group)
         # sudo: discuss.category - guests can read categories of accessible channels
         res.one("discuss_category_id", "_store_category_fields", sudo=True)
         res.attr("channel_type")

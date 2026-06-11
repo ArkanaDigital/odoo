@@ -1,14 +1,14 @@
-import { reactive } from "@web/owl2/utils";
 import { fields, Record } from "@mail/model/export";
 import { BlurManager } from "@mail/discuss/call/common/blur_manager";
 import { CallPermissionDialog } from "@mail/discuss/call/common/call_permission_dialog";
 import { CALL_PROMOTE_FULLSCREEN } from "@mail/discuss/call/common/discuss_channel_model_patch";
+import { CALL_GRID_LAYOUT } from "@mail/discuss/call/common/call_layout";
 import { monitorAudio } from "@mail/utils/common/media_monitoring";
 import { CallPermissionDeniedDialog } from "@mail/discuss/call/common/call_permission_denied_dialog";
 import { rpc } from "@web/core/network/rpc";
 import { assignDefined, closeStream } from "@mail/utils/common/misc";
 
-import { toRaw } from "@odoo/owl";
+import { proxy, toRaw } from "@odoo/owl";
 
 import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
@@ -284,6 +284,7 @@ export class Rtc extends Record {
     isSendingScreen = false;
     /** @type {MediaStreamTrack} */
     micAudioTrack;
+    isMicAudioTrackMuted = false;
     /** @type {MediaStreamTrack} */
     screenAudioTrack;
     /** @type {MediaStreamTrack} */
@@ -305,6 +306,7 @@ export class Rtc extends Record {
      * @type {import("@mail/utils/common/media_monitoring").MonitorAudioReturnType}
      */
     disconnectAudioMonitor;
+    disconnectMicAudioTrackListeners;
     /** @type {ReturnType<setTimeout>} */
     pttReleaseTimeout;
     /**
@@ -312,12 +314,27 @@ export class Rtc extends Record {
      */
     fallbackMode = false;
     isPipMode = false;
+    /**
+     * Whether the user dismissed the "meeting ready" banner. Tracked on the call session rather
+     * than the banner component so it stays dismissed for the whole call, even as the banner is
+     * destroyed and recreated while toggling the meeting view.
+     */
+    isMeetingReadyBannerDismissed = false;
+    /** Whether the meeting view is open (either as the full-window overlay or true browser fullscreen). */
     isFullscreen = false;
-    /** Whether fullscreen was active before opening PIP. */
+    /**
+     * Whether the meeting view is in true browser fullscreen (no browser UI), as opposed to the
+     * full-window overlay that keeps the browser header. Only the fullscreen button toggles this;
+     * switching layouts/modes uses the full-window overlay.
+     */
+    isBrowserFullscreen = false;
+    /** Whether the meeting view was open before opening PIP. */
     hadFullscreen = false;
+    /** Whether the meeting view was in true browser fullscreen before opening PIP. */
+    hadBrowserFullscreen = false;
     /** @type {RtcLog} */
     logs = {};
-    notifications = reactive(new Map());
+    notifications = proxy(new Map());
     /** @type {Map<string, number>} timeoutId by notificationId for call notifications */
     timeouts = new Map();
     /** @type {Map<number, number>} timeoutId by sessionId for download pausing delay */
@@ -330,6 +347,7 @@ export class Rtc extends Record {
     });
     /** @type {"granted" | "denied" | "prompt" | undefined} */
     microphonePermission;
+    isMicrophonePermissionWarningDismissed = false;
     /** @type {"granted" | "denied" | "prompt" | undefined} */
     cameraPermission;
     /**
@@ -423,6 +441,16 @@ export class Rtc extends Record {
      */
     get isHost() {
         return Boolean(this.localSession);
+    }
+
+    get showMicrophonePermissionWarning() {
+        return (
+            !this.isMicrophonePermissionWarningDismissed && this.microphonePermission !== "granted"
+        );
+    }
+
+    get showMicrophoneSilentWarning() {
+        return !this.selfSession?.isMute && this.isMicAudioTrackMuted;
     }
 
     /** @type {CallAction[]} */
@@ -650,6 +678,7 @@ export class Rtc extends Record {
     async openPip(options) {
         if (this.isHost) {
             this.hadFullscreen = this.isFullscreen;
+            this.hadBrowserFullscreen = this.isBrowserFullscreen;
             if (this.isFullscreen) {
                 this.exitFullscreen();
             }
@@ -725,6 +754,9 @@ export class Rtc extends Record {
             this.network?.disconnect();
             this.clear();
             this.soundEffectsService.play("call-leave");
+            if (channel.default_display_mode === "video_full_screen" && !channel.hasChatMessages) {
+                channel.unpinChannel({ notify: false });
+            }
         }
     }
 
@@ -785,13 +817,23 @@ export class Rtc extends Record {
         this.soundEffectsService.play("mic-off");
     }
 
-    /** @param {Object} props Properties to pass to the meeting component. */
-    async enterFullscreen(props) {
+    /**
+     * Open the meeting view. By default it opens as a full-window overlay that keeps the browser
+     * header (address bar, tabs, …) visible — this is what switching layouts/modes uses. Pass
+     * `browserFullscreen: true` (only the fullscreen button does) to request true browser
+     * fullscreen instead, hiding the browser UI.
+     *
+     * @param {Object} [props] Properties to pass to the meeting component.
+     * @param {Object} [options]
+     * @param {boolean} [options.browserFullscreen=false] Request true browser fullscreen (no browser UI).
+     */
+    async enterFullscreen(props, { browserFullscreen = false } = {}) {
         const Meeting = registry.category("discuss.call/components").get("Meeting");
         this.store.fullscreenChannel = this.channel;
+        this.isBrowserFullscreen = browserFullscreen;
         await this.fullscreen.enter(Meeting, {
             id: CALL_FULLSCREEN_ID,
-            keepBrowserHeader: true,
+            keepBrowserHeader: !browserFullscreen,
             props,
             rootId: this.rootEl?.getRootNode()?.host?.id,
         });
@@ -799,6 +841,7 @@ export class Rtc extends Record {
 
     async exitFullscreen() {
         this.store.fullscreenChannel = null;
+        this.isBrowserFullscreen = false;
         await this.fullscreen.exit(CALL_FULLSCREEN_ID);
     }
 
@@ -1599,6 +1642,25 @@ export class Rtc extends Record {
             })
         );
         this.channel?.focusAvailableVideo();
+        let isPipActionSupported = false;
+        try {
+            browser.navigator.mediaSession.setActionHandler(
+                "enterpictureinpicture",
+                ({ enterPictureInPictureReason }) => {
+                    if (enterPictureInPictureReason === "contentoccluded") {
+                        this.openPip({ context: { root: { el: this.rootEl } } });
+                    }
+                }
+            );
+            isPipActionSupported = true;
+        } catch {
+            // safely ignore, "enterpictureinpicture" event is not universally available.
+        }
+        if (isPipActionSupported) {
+            this.cleanups.push(() =>
+                browser.navigator.mediaSession.setActionHandler("enterpictureinpicture", null)
+            );
+        }
     }
 
     newLogs() {
@@ -1754,6 +1816,7 @@ export class Rtc extends Record {
         this.closeCallPermissionDialog?.();
         this.updateAndBroadcastDebounce?.cancel();
         this.disconnectAudioMonitor?.();
+        this.disconnectMicAudioTrackListeners?.();
         this.micAudioTrack?.stop();
         this.screenAudioTrack?.stop();
         this.audioTrack?.stop();
@@ -1761,6 +1824,7 @@ export class Rtc extends Record {
         this.screenTrack?.stop();
         this.fallbackMode = undefined;
         this.isPipMode = false;
+        this.isMeetingReadyBannerDismissed = false;
         closeStream(this.sourceCameraStream);
         this.sourceCameraStream = null;
         closeStream(this.sourceScreenStream);
@@ -1774,9 +1838,12 @@ export class Rtc extends Record {
             cameraTrack: undefined,
             connectionType: undefined,
             disconnectAudioMonitor: undefined,
+            disconnectMicAudioTrackListeners: undefined,
             fallbackMode: false,
             isSendingCamera: false,
             isSendingScreen: false,
+            isMicAudioTrackMuted: false,
+            isMicrophonePermissionWarningDismissed: false,
             localChannel: undefined,
             localSession: undefined,
             micAudioTrack: undefined,
@@ -1797,7 +1864,7 @@ export class Rtc extends Record {
             if (!session.audioElement) {
                 continue;
             }
-            session.audioElement.muted = is_deaf;
+            session.audioElement.muted = is_deaf || session.isLocallyMuted;
         }
         await this.refreshMicAudioStatus();
     }
@@ -2159,8 +2226,10 @@ export class Rtc extends Record {
     }
 
     async resetMicAudioTrack({ force = false }) {
+        this.disconnectMicAudioTrackListeners?.();
         this.micAudioTrack?.stop();
         this.micAudioTrack = undefined;
+        this.isMicAudioTrackMuted = false;
         this.audioTrack?.stop();
         this.audioTrack = undefined;
         if (!this.localChannel) {
@@ -2196,9 +2265,27 @@ export class Rtc extends Record {
             });
             micAudioTrack.enabled = !this.localSession.isMute && this.localSession.isTalking;
             this.micAudioTrack = micAudioTrack;
+            this.setupMicAudioTrackListeners();
             this.linkVoiceActivationDebounce();
             this.updateAudioTrack();
         }
+    }
+
+    setupMicAudioTrackListeners() {
+        if (!this.micAudioTrack) {
+            this.isMicAudioTrackMuted = false;
+            return;
+        }
+        const syncMutedState = () => {
+            this.isMicAudioTrackMuted = this.micAudioTrack.muted;
+        };
+        const disconnectMute = subscribe(this.micAudioTrack, "mute", syncMutedState);
+        const disconnectUnmute = subscribe(this.micAudioTrack, "unmute", syncMutedState);
+        this.disconnectMicAudioTrackListeners = () => {
+            disconnectMute();
+            disconnectUnmute();
+        };
+        syncMutedState();
     }
 
     /**
@@ -2265,7 +2352,7 @@ export class Rtc extends Record {
             const audioElement = session.audioElement || new window.Audio();
             audioElement.srcObject = stream;
             audioElement.load();
-            audioElement.muted = mute;
+            audioElement.muted = mute || session.isLocallyMuted;
             audioElement.volume = this.store.settings.getVolume(session);
             // Using both autoplay and play() as safari may prevent play() outside of user interactions
             // while some browsers may not support or block autoplay.
@@ -2342,8 +2429,20 @@ export class Rtc extends Record {
         const activeRtcSession = this.localChannel.activeRtcSession;
         if (addVideo) {
             if (videoType === "screen") {
+                if (this.localChannel.pinnedRtcSession) {
+                    // A manual pin owns the main window; don't let a new screenshare steal focus.
+                    return;
+                }
                 this.localChannel.activeRtcSession = session;
                 session.mainVideoStreamType = videoType;
+                // A new screenshare takes over the main window. In the tiled/sidebar layouts switch
+                // to the sidebar so the shared screen is highlighted with participants stacked beside
+                // it (auto already does this via Call.resolvedCallLayout; spotlight keeps its single
+                // focused tile).
+                const layout = this.store.settings.callLayout;
+                if (layout === CALL_GRID_LAYOUT.TILED || layout === CALL_GRID_LAYOUT.SIDEBAR) {
+                    this.store.settings.callLayout = CALL_GRID_LAYOUT.SIDEBAR;
+                }
                 return;
             }
             if (activeRtcSession && session.hasVideo && !session.isMainVideoStreamActive) {
@@ -2430,9 +2529,12 @@ export const rtcService = {
             const isPipMode = rtc.pipService.state.active;
             if (!isPipMode) {
                 if (rtc.hadFullscreen && rtc.channel) {
-                    rtc.enterFullscreen();
+                    rtc.enterFullscreen(undefined, {
+                        browserFullscreen: rtc.hadBrowserFullscreen,
+                    });
                 }
                 rtc.hadFullscreen = false;
+                rtc.hadBrowserFullscreen = false;
                 rtc.channel?.openChatWindow();
             }
             rtc.isPipMode = isPipMode;
@@ -2445,6 +2547,9 @@ export const rtcService = {
         rtc.registerOnChange(rtc.fullscreen, "id", () => {
             const wasFullscreen = rtc.isFullscreen;
             rtc.isFullscreen = rtc.fullscreen.id === CALL_FULLSCREEN_ID;
+            if (!rtc.isFullscreen) {
+                rtc.isBrowserFullscreen = false;
+            }
             if (
                 rtc.screenTrack &&
                 rtc.displaySurface !== "browser" &&

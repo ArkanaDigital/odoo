@@ -1,4 +1,4 @@
-import { onWillRender, render, useExternalListener, useRef, useState } from "@web/owl2/utils";
+import { onWillRender, render, useExternalListener, useRef } from "@web/owl2/utils";
 import { browser } from "@web/core/browser/browser";
 import { CheckBox } from "@web/core/checkbox/checkbox";
 import { Dropdown } from "@web/core/dropdown/dropdown";
@@ -32,7 +32,9 @@ import {
     onWillDestroy,
     onWillPatch,
     onWillStart,
+    signal,
     status,
+    proxy,
 } from "@odoo/owl";
 import { getCurrencyRates } from "@web/core/currency";
 import { _t } from "@web/core/l10n/translation";
@@ -148,6 +150,7 @@ export class ListRenderer extends Component {
 
         this.longTouchTimer = null;
         this.touchStartMs = 0;
+        this.lastOptionalShow = undefined;
 
         /**
          * When resizing columns, it's possible that the pointer is not above the resize
@@ -182,9 +185,9 @@ export class ListRenderer extends Component {
         this.allColumns = [];
         /** @type {Column[]} */
         this.columns = [];
-        this.editedRecord = null;
+        this.editedRecord = signal(null);
         onWillRender(() => {
-            this.editedRecord = this.props.list.editedRecord;
+            this.editedRecord.set(this.props.list.editedRecord);
             this.allColumns = this.processAllColumn(this.props.archInfo.columns, this.props.list);
             Object.assign(this.optionalActiveFields, this.computeOptionalActiveFields());
             this.debugOpenView = exprToBoolean(browser.localStorage.getItem(this.keyDebugOpenView));
@@ -195,7 +198,7 @@ export class ListRenderer extends Component {
         this.multiCurrencyPopover = usePopover(MultiCurrencyPopover, {
             position: "right",
         });
-        this.state = useState({
+        this.state = proxy({
             showGroupInput: false,
             altKeyMode: false,
         });
@@ -308,8 +311,8 @@ export class ListRenderer extends Component {
             if (this.activeElement !== this.uiService.activeElement) {
                 return;
             }
-            if (this.editedRecord && this.activeRowId !== this.editedRecord.id) {
-                if (this.cellToFocus && this.cellToFocus.record === this.editedRecord) {
+            if (this.editedRecord() && this.activeRowId !== this.editedRecord().id) {
+                if (this.cellToFocus && this.cellToFocus.record === this.editedRecord()) {
                     const column = this.cellToFocus.column;
                     const forward = this.cellToFocus.forward;
                     this.focusCell(column, forward, this.cellToFocus.subFieldName);
@@ -546,8 +549,8 @@ export class ListRenderer extends Component {
             if (column.type === "column_group") {
                 const hasEditable = column.fields.some(
                     (f) =>
-                        !this.isCellReadonly(f, this.editedRecord) &&
-                        !this.evalInvisible(f.invisible, this.editedRecord) &&
+                        !this.isCellReadonly(f, this.editedRecord()) &&
+                        !this.evalInvisible(f.invisible, this.editedRecord()) &&
                         (!f.optional || this.optionalActiveFields[f.name])
                 );
                 if (hasEditable) {
@@ -564,7 +567,7 @@ export class ListRenderer extends Component {
                     toFocus = toFocus || (cell && getElementToFocus(cell, forward ? 0 : -1));
                     if (toFocus && cell !== toFocus) {
                         this.focus(toFocus);
-                        this.lastEditedCell = { column, record: this.editedRecord };
+                        this.lastEditedCell = { column, record: this.editedRecord() };
                         break;
                     }
                 }
@@ -575,7 +578,7 @@ export class ListRenderer extends Component {
             }
             // in findNextFocusableOnRow test is done by using classList
             // refactor
-            if (!this.isCellReadonly(column, this.editedRecord)) {
+            if (!this.isCellReadonly(column, this.editedRecord())) {
                 const cell = this.tableRef.el.querySelector(
                     `.o_selected_row td[data-column-id='${column.id}']`
                 );
@@ -583,7 +586,7 @@ export class ListRenderer extends Component {
                     const toFocus = getElementToFocus(cell);
                     if (cell !== toFocus) {
                         this.focus(toFocus);
-                        this.lastEditedCell = { column, record: this.editedRecord };
+                        this.lastEditedCell = { column, record: this.editedRecord() };
                         break;
                     }
                 }
@@ -1097,8 +1100,8 @@ export class ListRenderer extends Component {
             }
             if (
                 record.isInEdition &&
-                this.editedRecord &&
-                this.isCellReadonly(column, this.editedRecord)
+                this.editedRecord() &&
+                this.isCellReadonly(column, this.editedRecord())
             ) {
                 classNames.push("text-muted");
             } else if (this.isRecordAvailable(record)) {
@@ -1276,26 +1279,56 @@ export class ListRenderer extends Component {
     }
 
     computeOptionalActiveFields() {
+        const optionalActiveFields = {};
         const localStorageValue = browser.localStorage.getItem(this.keyOptionalFields);
+
         const optionalColumn = [
             ...this.allColumns.filter((col) => col.optional),
             ...this.allColumns
                 .filter((col) => col.type === "column_group")
                 .flatMap((col) => col.fields.filter((f) => f.optional)),
         ];
-        const optionalActiveFields = {};
+
         if (localStorageValue !== null) {
-            const localStorageOptionalActiveFields = localStorageValue.split(",");
+            const stored = localStorageValue.split(",");
             for (const col of optionalColumn) {
-                optionalActiveFields[col.name] = localStorageOptionalActiveFields.includes(
-                    col.name
-                );
+                optionalActiveFields[col.name] = stored.includes(col.name);
             }
         } else {
             for (const col of optionalColumn) {
                 optionalActiveFields[col.name] = col.optional === "show";
             }
         }
+
+        const optionalShow = this.props.list.context.list_optional_show;
+
+        // if we remove a filter we have to set unset lastOptionalShow so the next time
+        // we apply a filter the optional fields will be enabled
+        if (!optionalShow) {
+            this.lastOptionalShow = undefined;
+            return optionalActiveFields;
+        }
+
+        const optionalShowChanged = JSON.stringify(optionalShow) !== this.lastOptionalShow;
+
+        // only apply list_optional_show once when filter changes to keep it possible
+        // to untoggle optional fields even if they occur in list_optional_show
+        if (optionalShowChanged) {
+            Object.assign(optionalActiveFields, this.optionalActiveFields);
+            this.lastOptionalShow = JSON.stringify(optionalShow);
+            if (optionalShow) {
+                for (const fieldName of optionalShow) {
+                    optionalActiveFields[fieldName] = true;
+                }
+                browser.localStorage.setItem(
+                    this.keyOptionalFields,
+                    Object.keys(optionalActiveFields)
+                        .filter((fieldName) => optionalActiveFields[fieldName])
+                        .join(",")
+                );
+            }
+        }
+
         return optionalActiveFields;
     }
 
@@ -1304,14 +1337,10 @@ export class ListRenderer extends Component {
             this.preventReorder = false;
             return;
         }
-        if (this.editedRecord || this.props.list.model.useSampleModel) {
+        if (this.editedRecord() || this.props.list.model.useSampleModel) {
             return;
         }
         const list = this.props.list;
-        if (column.type === "count") {
-            this.env.searchModel.switchGroupBySort();
-            return;
-        }
         const fieldName = column.name;
         if (this.isSortable(column)) {
             list.sortBy(fieldName);
@@ -1348,7 +1377,7 @@ export class ListRenderer extends Component {
             (this.isInlineEditable(record) && !hasSelection)
         ) {
             const clickedSubFieldName = ev.target.closest("[data-field-name]")?.dataset.fieldName;
-            if (record.isInEdition && this.editedRecord === record) {
+            if (record.isInEdition && this.editedRecord() === record) {
                 const cellName =
                     column.type === "column_group" ? column.fields[0].name : column.name;
                 const cell = this.tableRef.el.querySelector(
@@ -1383,7 +1412,7 @@ export class ListRenderer extends Component {
                     }
                 }
             }
-        } else if (this.editedRecord && this.editedRecord !== record) {
+        } else if (this.editedRecord() && this.editedRecord() !== record) {
             this.props.list.leaveEditMode();
         } else if (!this.props.archInfo.noOpen) {
             this.props.openRecord(record, { newWindow });
@@ -1421,7 +1450,7 @@ export class ListRenderer extends Component {
      * @param {RelationalRecord} record
      */
     async onDeleteRecord(record) {
-        if (this.editedRecord && this.editedRecord !== record) {
+        if (this.editedRecord() && this.editedRecord() !== record) {
             const left = await this.props.list.leaveEditMode();
             if (!left) {
                 return;
@@ -1549,7 +1578,7 @@ export class ListRenderer extends Component {
             return;
         }
 
-        const handled = this.editedRecord
+        const handled = this.editedRecord()
             ? this.onCellKeydownEditMode(hotkey, closestCell, group, record)
             : this.onCellKeydownReadOnlyMode(hotkey, closestCell, group, record); // record is supposed to be not null here
 
@@ -2165,7 +2194,7 @@ export class ListRenderer extends Component {
     }
 
     get canSelectRecord() {
-        return !this.editedRecord && !this.props.list.model.useSampleModel;
+        return !this.editedRecord() && !this.props.list.model.useSampleModel;
     }
 
     toggleSelection() {
@@ -2250,7 +2279,7 @@ export class ListRenderer extends Component {
      * @param {PointerEvent} ev
      */
     onGlobalClick(ev) {
-        if (!(this.editedRecord || this.state.showGroupInput)) {
+        if (!(this.editedRecord() || this.state.showGroupInput)) {
             return; // there's no row or group in edition
         }
 

@@ -2,7 +2,7 @@ import { Interaction } from "@web/public/interaction";
 import { registry } from "@web/core/registry";
 
 import { rpc } from "@web/core/network/rpc";
-import { utils as uiUtils } from "@web/core/ui/ui_service";
+import { listenSizeChange, utils as uiUtils } from "@web/core/ui/ui_service";
 import { uniqueId } from "@web/core/utils/functions";
 import { renderToFragment } from "@web/core/utils/render";
 import { verifyHttpsUrl } from "@website/utils/misc";
@@ -18,7 +18,6 @@ export class DynamicSnippet extends Interaction {
         "[data-url]": {
             "t-on-click": this.callToAction,
         },
-        _window: { "t-on-resize": this.throttled(this.render) },
         _root: {
             "t-att-class": () => ({
                 o_dynamic_snippet_loading: this.loadingData,
@@ -37,7 +36,7 @@ export class DynamicSnippet extends Interaction {
          * Can be accessed when overriding the _render_content() function in order to generate
          * a new renderedContent from the original data.
          *
-         * @type {*|jQuery.fn.init|jQuery|HTMLElement}
+         * @type {*|HTMLElement}
          */
         this.data = [];
         this.renderedContentNode = document.createDocumentFragment();
@@ -54,6 +53,8 @@ export class DynamicSnippet extends Interaction {
     }
 
     start() {
+        // Re-render on media breakpoint change
+        this.registerCleanup(listenSizeChange(this.render.bind(this)));
         this.render();
     }
 
@@ -152,6 +153,7 @@ export class DynamicSnippet extends Interaction {
             unique_id: this.uniqueId,
             extraClasses: dataset.extraClasses || "",
             columnClasses: dataset.columnClasses || "",
+            is_single_record: this.isSingleMode,
         };
     }
 

@@ -43,6 +43,7 @@ const RE_PADDING_MATCH = /[ ]*padding[^;]*;/g;
 const RE_PADDING = /([\d.]+)/;
 const RE_WHITESPACE = /[\s\u200b]*/;
 const SELECTORS_IGNORE = /(^\*$|:hover|:before|:after|:active|:link|::|')|@page/; // :not(:has) should be legal
+const RE_THEME_COLOR_CLASS = /^bg-o-color-\d+$/;
 const CONVERT_INLINE_BLACKLIST_CLASSES = ["o_mail_redirect"];
 // CSS properties relating to font, which Outlook seem to have trouble inheriting.
 const FONT_PROPERTIES_TO_INHERIT = [
@@ -569,6 +570,18 @@ export function classToStyle(element, cssRules) {
             });
         }
 
+        const themeColorClasses = [...node.classList].filter((c) => RE_THEME_COLOR_CLASS.test(c));
+        if (themeColorClasses.length) {
+            writes.push(() => {
+                for (const cls of themeColorClasses) {
+                    node.classList.remove(cls);
+                }
+                if (!node.classList.length) {
+                    node.removeAttribute("class");
+                }
+            });
+        }
+
         if (node.nodeName === "IMG") {
             writes.push(() => {
                 // Media list images should not have an inline height
@@ -645,7 +658,10 @@ export function classToStyle(element, cssRules) {
                     node.style.setProperty(styleName, value);
                     if (value.includes("calc(")) {
                         // If value included a calc(), assign the node's computed style property value for Outlook compatibility
-                        node.style.setProperty(styleName, computedStyle.getPropertyValue(styleName));
+                        node.style.setProperty(
+                            styleName,
+                            computedStyle.getPropertyValue(styleName)
+                        );
                     }
                 }
             }
@@ -1670,7 +1686,7 @@ function _computeStyleAndSpecificityOnRules(cssRules) {
     }
 }
 /**
- * Return an array of twelve table cells as JQuery elements.
+ * Return an array of twelve table cells as HTML elements.
  *
  * @returns {Element[]}
  */

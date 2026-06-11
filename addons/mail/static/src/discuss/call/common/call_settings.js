@@ -1,5 +1,4 @@
-import { useExternalListener, useState } from "@web/owl2/utils";
-import { Component, onWillStart, xml } from "@odoo/owl";
+import { Component, onWillStart, useListener, xml } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
 import { browser } from "@web/core/browser/browser";
@@ -25,12 +24,9 @@ export class CallSettings extends Component {
         this.store = useService("mail.store");
         this.rtc = useService("discuss.rtc");
         this.microphoneVolume = useMicrophoneVolume();
-        this.state = useState({
-            userDevices: [],
-        });
         this.pttExtService = useService("discuss.ptt_extension");
-        useExternalListener(browser, "keydown", this._onKeyDown, { capture: true });
-        useExternalListener(browser, "keyup", this._onKeyUp, { capture: true });
+        useListener(browser, "keydown", (ev) => this._onKeyDown(ev), { capture: true });
+        useListener(browser, "keyup", (ev) => this._onKeyUp(ev), { capture: true });
         onWillStart(async () => {
             if (!browser.navigator.mediaDevices) {
                 // zxing-js: isMediaDevicesSuported or canEnumerateDevices is false.
@@ -41,8 +37,8 @@ export class CallSettings extends Component {
                 console.warn("Media devices unobtainable. SSL might not be set up properly.");
                 return;
             }
-            this.state.userDevices = await browser.navigator.mediaDevices.enumerateDevices();
         });
+        this.isMobileOS = isMobileOS;
     }
 
     get stopText() {
@@ -51,10 +47,6 @@ export class CallSettings extends Component {
 
     get testText() {
         return _t("Test");
-    }
-
-    get isMobileOS() {
-        return isMobileOS();
     }
 
     _onKeyDown(ev) {
@@ -103,24 +95,11 @@ export class CallSettings extends Component {
         this.store.settings.usePushToTalk = ev.target.checked;
     }
 
-    onChangeShowOnlyVideo(ev) {
-        const showOnlyVideo = ev.target.checked;
-        this.store.settings.showOnlyVideo = Boolean(showOnlyVideo);
-        const activeRtcSessions = this.store.allActiveRtcSessions;
-        if (showOnlyVideo && activeRtcSessions) {
-            activeRtcSessions
-                .filter((rtcSession) => !rtcSession.videoStream)
-                .forEach((rtcSession) => {
-                    rtcSession.channel.activeRtcSession = undefined;
-                });
-        }
-    }
-
-    onChangeBackgroundBlurAmount(ev) {
+    onInputBackgroundBlurAmount(ev) {
         this.store.settings.backgroundBlurAmount = Number(ev.target.value);
     }
 
-    onChangeEdgeBlurAmount(ev) {
+    onInputEdgeBlurAmount(ev) {
         this.store.settings.edgeBlurAmount = Number(ev.target.value);
     }
 }

@@ -71,7 +71,7 @@ class HrEmployeeDeparture(models.Model):
 
     @api.depends('departure_date', 'action_date')
     def _compute_apply_immediately(self):
-        today = fields.Date.today()
+        today = fields.Date.context_today(self)
         for departure in self:
             if not departure.departure_date:
                 departure.apply_immediately = False
@@ -108,9 +108,11 @@ class HrEmployeeDeparture(models.Model):
     def create(self, vals_list):
         res = super().create(vals_list)
         for departure in res:
-            departure.employee_id._get_version(departure.departure_date).write({
-                'departure_id': departure.id,
-            })
+            version = departure.employee_id._get_version(departure.departure_date)
+            departure.employee_id.version_ids.filtered(
+                lambda v: v.contract_date_start == version.contract_date_start
+                and v.contract_date_end == version.contract_date_end,
+            ).write({"departure_id": departure.id})
         return res
 
     def _cron_apply_departure(self):
@@ -173,7 +175,7 @@ class HrEmployeeDeparture(models.Model):
             employee.version_ids.filtered(lambda v: v.date_version > departure.departure_date).unlink()
 
         emp_to_archive.action_archive()
-        self.apply_date = fields.Date.today()
+        self.apply_date = fields.Date.context_today(self)
 
         next_action = {'type': 'ir.actions.act_window_close'}
         if users_to_archive:

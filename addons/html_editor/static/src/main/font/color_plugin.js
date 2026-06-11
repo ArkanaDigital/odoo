@@ -15,8 +15,13 @@ import {
     isWhitespace,
     isZWS,
 } from "@html_editor/utils/dom_info";
-import { closestElement, descendants, selectElements } from "@html_editor/utils/dom_traversal";
-import { isColorGradient, rgbaToHex } from "@web/core/utils/colors";
+import {
+    closestElement,
+    descendants,
+    findUpTo,
+    selectElements,
+} from "@html_editor/utils/dom_traversal";
+import { isColorGradient, normalizeCSSColor } from "@web/core/utils/colors";
 import { backgroundImageCssToParts, backgroundImagePartsToCss } from "@html_editor/utils/image";
 import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
 import { isBlock } from "@html_editor/utils/blocks";
@@ -59,7 +64,7 @@ export class ColorPlugin extends Plugin {
                 id: "applyColor",
                 run: ({ color, mode }) => {
                     this.applyColor(color, mode);
-                    this.dependencies.history.addStep();
+                    this.dependencies.history.commit();
                 },
                 isAvailable: isHtmlContentSupported,
             },
@@ -106,9 +111,12 @@ export class ColorPlugin extends Plugin {
         );
 
         return {
-            color: hasGradient && hasTextGradientClass ? gradient : rgbaToHex(elStyle.color),
+            color:
+                hasGradient && hasTextGradientClass ? gradient : normalizeCSSColor(elStyle.color),
             backgroundColor:
-                hasGradient && !hasTextGradientClass ? gradient : rgbaToHex(backgroundColor),
+                hasGradient && !hasTextGradientClass
+                    ? gradient
+                    : normalizeCSSColor(backgroundColor),
         };
     }
 
@@ -183,7 +191,7 @@ export class ColorPlugin extends Plugin {
             this.dependencies.selection.setSelection(
                 {
                     anchorNode: zws,
-                    anchorOffset: 0,
+                    anchorOffset: 1,
                 },
                 { normalize: false }
             );
@@ -227,25 +235,28 @@ export class ColorPlugin extends Plugin {
                 if (alreadyWithinFont.has(node)) {
                     return [];
                 }
+                // Background gradient cannot be applied within text gradient.
+                const shouldBreakGradient = (node) =>
+                    mode === "backgroundColor" &&
+                    isColorGradient(color) &&
+                    node.classList.contains("text-gradient");
                 let font = closestElement(
                     node,
                     (node) =>
-                        (hasColor(node, "color") || hasColor(node, "backgroundColor")) &&
+                        (hasColor(node, mode) || shouldBreakGradient(node)) &&
                         node.nodeName !== "LI"
                 );
                 if (
                     color &&
                     font &&
-                    (!hasColor(font, mode) ||
-                        (isColorGradient(font.style["background-image"]) &&
-                            !this.dependencies.selection.areNodeContentsFullySelected(font))) &&
-                    // Background gradient cannot be applied within text
-                    // gradient.
-                    !(
-                        font.classList.contains("text-gradient") &&
-                        mode === "backgroundColor" &&
-                        isColorGradient(color)
-                    )
+                    !shouldBreakGradient(font) &&
+                    // Partially selected gradient font
+                    ((isColorGradient(font.style["background-image"]) &&
+                        !this.dependencies.selection.areNodeContentsFullySelected(font)) ||
+                        // Gradient found between node uptil font
+                        findUpTo(node, font, (ancestor) =>
+                            isColorGradient(ancestor.style?.["background-image"])
+                        ))
                 ) {
                     font = null;
                 }
@@ -272,7 +283,11 @@ export class ColorPlugin extends Plugin {
                                     newFont.classList.add(className);
                                 }
                             });
-                            newFont.append(...font.childNodes);
+                            for (const child of [...font.childNodes]) {
+                                cursors.update(callbacksForCursorUpdate.append(newFont, child));
+                                newFont.append(child);
+                            }
+                            cursors.update(callbacksForCursorUpdate.append(font, newFont));
                             font.append(newFont);
                             font = newFont;
                         }
@@ -310,9 +325,11 @@ export class ColorPlugin extends Plugin {
                     } else {
                         // No <font> found: insert a new one.
                         font = this.document.createElement("font");
+                        cursors.update(callbacksForCursorUpdate.after(node, font));
                         node.after(font);
                     }
                     if (node.textContent) {
+                        cursors.update(callbacksForCursorUpdate.append(font, node));
                         font.appendChild(node);
                         descendants(node).forEach((n) => alreadyWithinFont.add(n));
                     } else {

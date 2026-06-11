@@ -12,8 +12,8 @@ export class SignaturePlugin extends Plugin {
             {
                 id: "insertSignature",
                 title: _t("Signature"),
-                description: _t("Insert your signature"),
-                icon: "fa-pencil-square-o",
+                description: _t("Insert your signature from Sign"),
+                icon: "o_signature_icon",
                 run: this.insertSignature.bind(this),
                 isAvailable: (selection) =>
                     this.config.allowImage && isHtmlContentSupported(selection),
@@ -39,8 +39,7 @@ export class SignaturePlugin extends Plugin {
                 img.style = "width: 50%";
                 img.src = signature.signatureImage;
                 this.dependencies.dom.insert(img);
-                this.dependencies.history.addStep();
-                close();
+                this.dependencies.history.commit();
             },
         });
     }

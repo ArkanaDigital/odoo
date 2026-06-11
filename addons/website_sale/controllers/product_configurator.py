@@ -95,7 +95,14 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
         return super().sale_product_configurator_get_optional_products(*args, **kwargs)
 
     def _get_basic_product_information(
-        self, product_or_template, pricelist, combination, currency=None, date=None, uom=None, **kwargs
+        self,
+        product_or_template,
+        pricelist,
+        combination,
+        currency=None,
+        date=None,
+        uom=None,
+        **kwargs,
     ):
         """Override of `sale` to append website data and apply taxes.
 
@@ -130,7 +137,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
 
         if request.is_frontend:
             has_zero_price = currency.is_zero(basic_product_information["price"])
-            basic_product_information["can_be_sold"] = not request.website._prevent_product_sale(
+            basic_product_information["can_be_sold"] = not self.env.website._prevent_product_sale(
                 product_or_template, has_zero_price
             )
             # Don't compute the strikethrough price if there's a custom price (i.e. if `price_info`
@@ -152,8 +159,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
                 basic_product_information["strikethrough_price"] = strikethrough_price
             if request.env["res.groups"]._is_feature_enabled("product.group_show_uom_price"):
                 product_uom_price = (uom or product_or_template.uom_id)._compute_price(
-                    basic_product_information["price"],
-                    product_or_template.uom_id,
+                    basic_product_information["price"], product_or_template.uom_id
                 )
                 basic_product_information.update({
                     "base_unit_name": product_or_template.base_unit_name,
@@ -174,10 +180,9 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
         :return: The extra price for the product template attribute value.
         """
         price_extra = super()._get_ptav_price_extra(ptav, currency, date, product_or_template)
-        if request.is_frontend:
-            return product_or_template._apply_taxes_to_price(
-                price_extra, currency, website=request.website
-            )
+        website = request.env["website"].get_current_website(fallback=False)
+        if website:
+            return product_or_template._apply_taxes_to_price(price_extra, currency, website=website)
         return price_extra
 
     def _get_strikethrough_price(
@@ -207,7 +212,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
                     currency=currency,
                 ),
                 currency,
-                website=request.website,
+                website=self.env.website,
             )
             # Only show the base price if it's greater than the actual price.
             if currency.compare_amounts(pricelist_base_price, price) == 1:
@@ -245,6 +250,6 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
             return (
                 should_show_product
                 and product_template._is_add_to_cart_possible()
-                and product_template.filtered_domain(request.website.website_domain())
+                and product_template.filtered_domain(self.env.website.website_domain())
             )
         return should_show_product

@@ -101,7 +101,7 @@
         <field name="employee_requests">True</field>
         <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
     </record>
-    
+
     <record id="hr_work_entry.l10n_be_work_entry_type_child_ceremony" model="hr.work.entry.type">
         <field name="requires_allocation">True</field>
         <field name="request_unit">day</field>
@@ -193,6 +193,33 @@
     </record>
 
     <record id="hr_work_entry.l10n_be_work_entry_type_training_time_off" model="hr.work.entry.type">
+        <field name="requires_allocation">True</field>
+        <field name="employee_requests">True</field>
+        <field name="request_unit">half_day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+        <field name="country_id" ref="base.be"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_training_time_off_with_meal_voucher" model="hr.work.entry.type">
+        <field name="requires_allocation">True</field>
+        <field name="employee_requests">True</field>
+        <field name="request_unit">half_day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+        <field name="country_id" ref="base.be"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_flemish_training_time_off" model="hr.work.entry.type">
+        <field name="requires_allocation">True</field>
+        <field name="employee_requests">True</field>
+        <field name="request_unit">half_day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+        <field name="country_id" ref="base.be"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_flemish_training_time_off_with_meal_voucher" model="hr.work.entry.type">
         <field name="requires_allocation">True</field>
         <field name="employee_requests">True</field>
         <field name="request_unit">half_day</field>
@@ -402,7 +429,7 @@
     <record id="hr_work_entry.l10n_be_work_entry_type_unpaid_compensatory_rest" model="hr.work.entry.type">
         <field name="count_days_as">calendar</field>
     </record>
-   
+
     <record id="hr_work_entry.l10n_be_work_entry_type_paid_recovered_compensatory_rest" model="hr.work.entry.type">
         <field name="count_days_as">calendar</field>
     </record>
@@ -417,6 +444,36 @@
 
     <record id="hr_work_entry.l10n_be_work_entry_type_other_training" model="hr.work.entry.type">
         <field name="count_days_as">calendar</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_overtime_no_onss" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+        <field name="requires_allocation" eval="False"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_overtime_no_onss_horeca" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+        <field name="requires_allocation" eval="False"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_voluntary_overtime_150" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+        <field name="requires_allocation" eval="False"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_voluntary_overtime_200" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+        <field name="requires_allocation" eval="False"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_voluntary_overtime_net" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+        <field name="requires_allocation" eval="False"/>
     </record>
 
 <!-- CH: Switzerland -->
@@ -713,6 +770,18 @@
         <field name="country_id" ref="base.id"/>
     </record>
 
+    <record id="hr_work_entry.l10n_id_work_entry_type_overtime_1" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="request_unit">hour</field>
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_id_work_entry_type_overtime_2" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="request_unit">hour</field>
+        <field name="time_off_selectable">False</field>
+    </record>
+
 <!-- IQ : Iraq -->
     <record id="hr_work_entry.iq_work_entry_type_day_overtime" model="hr.work.entry.type">
         <field name="count_days_as">calendar</field>
@@ -769,6 +838,49 @@
 
     <record id="hr_work_entry.l10n_jo_work_entry_type_week_days_overtime" model="hr.work.entry.type">
         <field name="count_days_as">calendar</field>
+    </record>
+
+<!-- KW : Kuwait -->
+    <record id="hr_work_entry.l10n_kw_work_entry_type_maternity_leave" model="hr.work.entry.type">
+        <field name="name">Maternity Leave</field>
+        <field name="requires_allocation">no</field>
+        <field name="leave_validation_type">hr</field>
+        <field name="country_id" ref="base.kw"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_kw_work_entry_type_study_leave" model="hr.work.entry.type">
+        <field name="name">Study Leave</field>
+        <field name="requires_allocation">no</field>
+        <field name="leave_validation_type">hr</field>
+        <field name="country_id" ref="base.kw"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_kw_work_entry_type_hajj_leave" model="hr.work.entry.type">
+        <field name="name">Hajj Leave</field>
+        <field name="requires_allocation">no</field>
+        <field name="leave_validation_type">hr</field>
+        <field name="country_id" ref="base.kw"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_kw_work_entry_type_compassionate_leave" model="hr.work.entry.type">
+        <field name="name">Compassionate Leave</field>
+        <field name="requires_allocation">no</field>
+        <field name="leave_validation_type">hr</field>
+        <field name="country_id" ref="base.kw"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_kw_work_entry_type_sick_leave" model="hr.work.entry.type">
+        <field name="name">Sick Leave</field>
+        <field name="requires_allocation">no</field>
+        <field name="leave_validation_type">both</field>
+        <field name="country_id" ref="base.kw"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_kw_work_entry_type_annual_leave" model="hr.work.entry.type">
+        <field name="name">Annual Leave</field>
+        <field name="requires_allocation">yes</field>
+        <field name="leave_validation_type">both</field>
+        <field name="country_id" ref="base.kw"/>
     </record>
 
 <!-- LU : Luxemburg -->
@@ -1025,6 +1137,99 @@
         <field name="country_id" ref="base.tr"/>
     </record>
 
+<!-- PH : Philippines -->
+    <!-- Batch update the work entry types that should be set up in the same way (attendance, night shifts, overtimes) -->
+    <function model="hr.work.entry.type" name="write">
+        <value model="hr.work.entry.type" eval="obj().with_context(active_test=False).sudo().search([
+            ('code', '=like', 'WORK100%'),
+            ('code', 'not like', 'WORK100_NS%'),
+            ('country_id', '=', obj().env.ref('base.ph').id),
+        ]).ids"/>
+        <value eval="{'request_unit': 'half_day', 'time_off_selectable': False, 'requires_allocation': False}"/>
+    </function>
+    <function model="hr.work.entry.type" name="write">
+        <value model="hr.work.entry.type" eval="obj().with_context(active_test=False).sudo().search([
+            ('code', '=like', 'WORK100_NS%'),
+            ('country_id', '=', obj().env.ref('base.ph').id),
+        ]).ids"/>
+        <value eval="{'request_unit': 'hour', 'time_off_selectable': False, 'requires_allocation': False}"/>
+    </function>
+    <function model="hr.work.entry.type" name="write">
+        <value model="hr.work.entry.type" eval="obj().with_context(active_test=False).sudo().search([
+            ('code', '=like', 'OVERTIME%'),
+            ('country_id', '=', obj().env.ref('base.ph').id),
+        ]).ids"/>
+        <value eval="{'request_unit': 'hour', 'time_off_selectable': False, 'requires_allocation': False, 'leave_validation_type': 'manager'}"/>
+    </function>
+
+    <record id="hr_work_entry.l10n_ph_hr_payroll_sil_leave" model="hr.work.entry.type">
+        <field name="employee_requests">yes</field>
+        <field name="requires_allocation">yes</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="allocation_validation_type">hr</field>
+        <field name="request_unit">half_day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_mat_leave" model="hr.work.entry.type">
+        <field name="employee_requests">yes</field>
+        <field name="requires_allocation">yes</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="allocation_validation_type">hr</field>
+        <field name="request_unit">day</field>
+        <field name="count_days_as">calendar</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_pat_leave" model="hr.work.entry.type">
+        <field name="employee_requests">yes</field>
+        <field name="requires_allocation">yes</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="allocation_validation_type">hr</field>
+        <field name="request_unit">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_spl_leave" model="hr.work.entry.type">
+        <field name="employee_requests">yes</field>
+        <field name="requires_allocation">yes</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="allocation_validation_type">hr</field>
+        <field name="request_unit">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_slfw_leave" model="hr.work.entry.type">
+        <field name="employee_requests">yes</field>
+        <field name="requires_allocation">yes</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="allocation_validation_type">hr</field>
+        <field name="request_unit">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_dvl_leave" model="hr.work.entry.type">
+        <field name="employee_requests">yes</field>
+        <field name="requires_allocation">yes</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="allocation_validation_type">hr</field>
+        <field name="request_unit">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_tardiness" model="hr.work.entry.type">
+        <field name="requires_allocation" eval="False"/>
+        <field name="leave_validation_type">manager</field>
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+    </record>
+
+    <!-- Should only be used through public holidays -->
+    <record id="hr_work_entry.l10n_ph_hr_payroll_rh_leave" model="hr.work.entry.type">
+        <field name="time_off_selectable" eval="False"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_dh_leave" model="hr.work.entry.type">
+        <field name="time_off_selectable" eval="False"/>
+    </record>
+    <record id="hr_work_entry.l10n_ph_hr_payroll_snwh_leave" model="hr.work.entry.type">
+        <field name="time_off_selectable" eval="False"/>
+    </record>
+<!-- PH : Philippines END-->
+
     <function model="hr.work.entry.type" name="write">
         <value model="hr.work.entry.type" eval="obj().sudo().search([('code', 'in', ['LEAVE100', 'LEAVE105', 'WORK110', 'LEAVE90', 'LEAVE110', 'LEAVE120', 'OUT'])]).ids"/>
         <value eval="{'request_unit': 'half_day'}"/>
@@ -1033,6 +1238,11 @@
     <function model="hr.work.entry.type" name="write">
         <value model="hr.work.entry.type" eval="obj().sudo().search([('code', 'in', ['WORK100'])]).ids"/>
         <value eval="{'request_unit': 'hour', 'time_off_selectable': False}"/>
+    </function>
+
+    <function model="hr.work.entry.type" name="write">
+        <value model="hr.work.entry.type" eval="obj().sudo().search([('code', '=', 'OVERTIME')]).ids"/>
+        <value eval="{'request_unit': 'hour'}"/>
     </function>
 
 </data></odoo>

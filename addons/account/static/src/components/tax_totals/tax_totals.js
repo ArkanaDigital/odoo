@@ -1,4 +1,4 @@
-import { onWillRender, useRef, useState } from "@web/owl2/utils";
+import { onWillRender, useRef } from "@web/owl2/utils";
 import { formatMonetary } from "@web/views/fields/formatters";
 import { formatFloat } from "@web/core/utils/numbers";
 import { parseFloat } from "@web/views/fields/parsers";
@@ -7,8 +7,9 @@ import { registry } from "@web/core/registry";
 import {
     Component,
     onPatched,
-    onWillUpdateProps,
     toRaw,
+    proxy,
+    useEffect,
 } from "@odoo/owl";
 import { useNumpadDecimal } from "@web/views/fields/numpad_decimal_hook";
 
@@ -28,7 +29,7 @@ class TaxGroupComponent extends Component {
 
     setup() {
         this.inputTax = useRef("taxValueInput");
-        this.state = useState({ value: "readonly" });
+        this.state = proxy({ value: "readonly" });
         onPatched(() => {
             if (this.state.value === "edit") {
                 const { taxGroup } = this.props;
@@ -37,7 +38,8 @@ class TaxGroupComponent extends Component {
                 this.inputTax.el.focus(); // Focus the input
             }
         });
-        onWillUpdateProps(() => {
+        useEffect(() => {
+            this.props.taxGroup;
             this.setState("readonly");
         });
         useNumpadDecimal();

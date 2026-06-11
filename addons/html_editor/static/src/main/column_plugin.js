@@ -25,7 +25,9 @@ function isUnremovableColumn(node, root) {
 function columnIsAvailable(numberOfColumns) {
     return (selection) => {
         const row = closestElement(selection.anchorNode, ".o_text_columns .row");
-        return !(row && row.childElementCount === numberOfColumns);
+        return row
+            ? row.childElementCount !== numberOfColumns
+            : closestBlock(selection.anchorNode)?.parentNode?.isContentEditable;
     };
 }
 
@@ -148,7 +150,7 @@ export class ColumnPlugin extends Plugin {
         }
 
         this.dependencies.selection.setSelection(selectionToRestore);
-        this.dependencies.history.addStep();
+        this.dependencies.history.commit();
     }
 
     createColumnsFromList(anchor, li, numberOfColumns) {
@@ -180,7 +182,7 @@ export class ColumnPlugin extends Plugin {
             anchorNode: columns[0].firstElementChild,
             anchorOffset: 0,
         });
-        this.dependencies.history.addStep();
+        this.dependencies.history.commit();
     }
 
     removeColumns(anchor) {

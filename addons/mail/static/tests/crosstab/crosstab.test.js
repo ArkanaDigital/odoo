@@ -97,8 +97,9 @@ test.skip("Channel subscription is renewed when channel is added from invite", a
     });
     await openDiscuss();
     await contains(".o-mail-DiscussSidebarChannel");
-    getService("orm").call("discuss.channel", "add_members", [[channelId]], {
-        partner_ids: [serverState.partnerId],
+    getService("mail.store").fetchStoreData("/discuss/channel/add_members", {
+        channel_id: channelId,
+        user_ids: [serverState.userId],
     });
     await contains(".o-mail-DiscussSidebarChannel", { count: 2 });
     await expect.waitForSteps(["update-channels"]); // FIXME: sometimes 1 or 2 update-channels
@@ -120,7 +121,8 @@ test("Adding attachments", async () => {
     const file = new File(["file content"], "test.txt", { type: "text/plain" });
     await contains(`${env1.selector} .o-mail-Message:contains('Hello world!')`);
     await contains(`${env2.selector} .o-mail-Message:contains('Hello world!')`);
-    await click(`${env1.selector} .o-mail-Message button[title='Edit']`);
+    await click(`${env1.selector} .o-mail-Message button[title='Expand']`);
+    await click(`${env1.selector} .o-dropdown-item:text('Edit')`);
     await click(`${env1.selector} .o-mail-Message .o-mail-Composer button[title='More Actions']`);
     await click(`${env1.selector} .o_popover button[name='upload-files']`);
     await click(`${env1.selector} .o-mail-Message .o-mail-Composer .o_input_file`);
@@ -189,5 +191,5 @@ test("Message (hard) delete notification", async () => {
     });
     await contains(".o-mail-Message", { count: 0 });
     await contains("button:has(:text('Inbox'))", { contains: [".badge", { count: 0 }] });
-    await contains("button:has(:text('Bookmarks'))", { contains: [".badge", { count: 0 }] });
+    await contains("button:has(:text('Bookmarks'))", { count: 0 });
 });

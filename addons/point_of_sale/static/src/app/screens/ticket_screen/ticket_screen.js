@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "@web/owl2/utils";
+import { useLayoutEffect } from "@web/owl2/utils";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { parseDate, parseDateTime, serializeDate, serializeDateTime } from "@web/core/l10n/dates";
@@ -13,7 +13,7 @@ import { Orderline } from "@point_of_sale/app/components/orderline/orderline";
 import { CenteredIcon } from "@point_of_sale/app/components/centered_icon/centered_icon";
 import { SearchBar } from "@point_of_sale/app/screens/ticket_screen/search_bar/search_bar";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
-import { Component, onMounted, onWillStart, onWillUnmount } from "@odoo/owl";
+import { Component, onMounted, onWillStart, onWillUnmount, proxy } from "@odoo/owl";
 import {
     BACKSPACE,
     Numpad,
@@ -32,6 +32,7 @@ import { ConnectionLostError } from "@web/core/network/rpc";
 import { TipCell } from "@point_of_sale/app/screens/ticket_screen/tip_cell/tip_cell";
 import { ProgressBar } from "@point_of_sale/app/screens/ticket_screen/progress_bar/progress_bar";
 import { logPosMessage } from "@point_of_sale/app/utils/pretty_console_log";
+import { PrintPopup } from "@point_of_sale/app/components/popups/print_popup/print_popup";
 
 const { DateTime } = luxon;
 const NBR_BY_PAGE = 30;
@@ -75,7 +76,7 @@ export class TicketScreen extends Component {
             triggerAtInput: (event) => this._onUpdateSelectedOrderline(event),
         });
 
-        this.state = useState({
+        this.state = proxy({
             nbrByPage: NBR_BY_PAGE,
             page: 1,
             nbrPage: 1,
@@ -87,7 +88,7 @@ export class TicketScreen extends Component {
         });
         Object.assign(this.state, this.props.stateOverride || {});
 
-        this.orderTimers = useState({});
+        this.orderTimers = proxy({});
 
         useLayoutEffect(
             () => this.updateOrderTimers(),
@@ -178,7 +179,7 @@ export class TicketScreen extends Component {
         }
     }
     async print(order) {
-        await this.pos.ticketPrinter.printOrderReceipt({ order });
+        this.dialog.add(PrintPopup, { order });
     }
     async onFilterSelected(selectedFilter) {
         this.state.filter = selectedFilter;
@@ -255,8 +256,8 @@ export class TicketScreen extends Component {
         });
     }
     async onClickReprintAll(order) {
-        const printingChanges = order.uiState?.lastPrints;
-        if (printingChanges) {
+        const printingChanges = order.lastPrints;
+        if (printingChanges.length) {
             await this.pos.ticketPrinter.printOrderChanges({ order, opts: printingChanges });
         }
     }

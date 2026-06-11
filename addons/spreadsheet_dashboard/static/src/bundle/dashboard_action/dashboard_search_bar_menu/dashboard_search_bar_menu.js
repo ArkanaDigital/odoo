@@ -1,5 +1,4 @@
-import { useState } from "@web/owl2/utils";
-import { Component, onWillStart } from "@odoo/owl";
+import { Component, onWillStart, proxy } from "@odoo/owl";
 import { FilterValue } from "@spreadsheet/global_filters/components/filter_value/filter_value";
 import { _t } from "@web/core/l10n/translation";
 import { getOperatorLabel } from "@web/core/tree_editor/tree_editor_operator_editor";
@@ -27,7 +26,7 @@ export class DashboardSearchBarMenu extends Component {
 
     setup() {
         this.orm = useService("orm");
-        this.state = useState({
+        this.state = proxy({
             filtersAndValues: this.globalFilters.map((globalFilter) => {
                 const value = this.props.model.getters.getGlobalFilterValue(globalFilter.id);
                 return {
@@ -106,18 +105,24 @@ export class DashboardSearchBarMenu extends Component {
     }
 
     onConfirm() {
+        const filters = [];
         for (const node of this.state.filtersAndValues) {
             const { globalFilter, value } = node;
             const originalValue = this.props.model.getters.getGlobalFilterValue(globalFilter.id);
+            const currentValue = isEmptyFilterValue(globalFilter, value) ? undefined : value;
 
-            if (deepEqual(originalValue, value)) {
+            if (deepEqual(originalValue, currentValue)) {
                 continue;
             }
-            this.props.model.dispatch("SET_GLOBAL_FILTER_VALUE", {
-                id: globalFilter.id,
-                value: isEmptyFilterValue(globalFilter, value) ? undefined : value,
+            filters.push({
+                filterId: globalFilter.id,
+                value: currentValue,
             });
         }
+        if (!filters.length) {
+            return;
+        }
+        this.props.model.dispatch("SET_MANY_GLOBAL_FILTER_VALUE", { filters });
         this.props.close();
     }
 

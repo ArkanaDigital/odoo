@@ -1,6 +1,6 @@
-import { useExternalListener, useLayoutEffect, useRef, useState, useSubEnv } from "@web/owl2/utils";
+import { useExternalListener, useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
 import { useCrossDocumentListener } from "../utils/hooks";
-import { Component, onWillDestroy, xml } from "@odoo/owl";
+import { Component, onWillDestroy, xml, proxy } from "@odoo/owl";
 import { OVERLAY_SYMBOL } from "@web/core/overlay/overlay_container";
 import { usePosition } from "@web/core/position/position_hook";
 import { getIFrame } from "@web/core/position/utils";
@@ -92,6 +92,12 @@ export class EditorOverlay extends Component {
         const resizeObserver = new ResizeObserver(() => position.unlock());
         resizeObserver.observe(container);
         onWillDestroy(() => resizeObserver.disconnect());
+        if (scrollContainer === editable) {
+            // rangeElement is a sibling of the editable, so position_hook's scroll
+            // listener won't detect editable.contains(rangeElement) as true. Listen
+            // directly so scrolling within the editable still triggers repositioning.
+            useExternalListener(editable, "scroll", () => position.unlock());
+        }
         const positionOptions = {
             position: "bottom-start",
             container: container,
@@ -103,7 +109,7 @@ export class EditorOverlay extends Component {
         };
         position = usePosition("root", getTarget, positionOptions);
 
-        this.overlayState = useState({ isOverlayVisible: true });
+        this.overlayState = proxy({ isOverlayVisible: true });
         useSubEnv({ overlayState: this.overlayState });
     }
 
@@ -135,7 +141,7 @@ export class EditorOverlay extends Component {
             // Attention, ignoring DOM mutations is always dangerous (when we add or remove nodes)
             // because if another mutation uses the target that is not observed, that mutation can never be applied
             // again (when undo/redo and in collaboration).
-            this.props.shared.ignoreDOMMutations(() => {
+            this.props.shared.ignoreDomMutations(() => {
                 const clonedRange = range.cloneRange();
                 const shadowCaret = doc.createTextNode("|");
                 clonedRange.insertNode(shadowCaret);

@@ -33,7 +33,6 @@ class SaleOrder(models.Model):
 
     # Display Fields
     gift_card_count = fields.Integer(compute="_compute_gift_card_count")
-    loyalty_data = fields.Json(compute="_compute_loyalty_data")
 
     @api.depends("order_line")
     def _compute_reward_total(self):
@@ -49,37 +48,36 @@ class SaleOrder(models.Model):
                     reward_amount -= line.product_id.lst_price * line.product_uom_qty
             order.reward_amount = reward_amount
 
-    def _compute_loyalty_data(self):
-        self.loyalty_data = {}
+    def _compute_extra_total_fields(self):
+        super()._compute_extra_total_fields()
 
-        confirmed_so = self.filtered(lambda order: order.state == "sale" and bool(order.id))
-        if not confirmed_so:
-            return
-
-        loyalty_history_data = (
-            self
-            .env["loyalty.history"]
-            .sudo()
-            ._read_group(
-                domain=[("order_id", "in", confirmed_so.ids), ("order_model", "=", self._name)],
-                groupby=["order_id"],
-                aggregates=["issued:sum", "used:sum"],
-            )
-        )
-        loyalty_history_data_per_order = {
-            order_id: {"total_issued": issued, "total_cost": cost}
-            for order_id, issued, cost in loyalty_history_data
-        }
-        for order in confirmed_so:
-            if order.id not in loyalty_history_data_per_order:
+        for order in self:
+            loyalty_data = order._get_loyalty_data()
+            if not loyalty_data:
                 continue
-            coupons = order.coupon_point_ids.coupon_id
-            coupon_point_name = (len(coupons) == 1 and coupons.point_name) or self.env._("Points")
-            order.loyalty_data = {
-                "point_name": coupon_point_name,
-                "issued": loyalty_history_data_per_order[order.id]["total_issued"],
-                "cost": loyalty_history_data_per_order[order.id]["total_cost"],
-            }
+
+            groups = order.extra_total_fields
+            groups.append({
+                "sequence": 3,
+                "name": "loyalty",
+                "lines": [
+                    {
+                        "label": self.env._(
+                            "%(points_name)s Issued", points_name=loyalty_data["point_name"] or ""
+                        ),
+                        "value": loyalty_data["issued"],
+                        "is_not_monetary": True,
+                    },
+                    {
+                        "label": self.env._(
+                            "%(points_name)s Used", points_name=loyalty_data["point_name"] or ""
+                        ),
+                        "value": loyalty_data["cost"],
+                        "is_not_monetary": True,
+                    },
+                ],
+            })
+            order.extra_total_fields = groups
 
     def _compute_gift_card_count(self):
         gift_card_data = dict(
@@ -124,6 +122,33 @@ class SaleOrder(models.Model):
         """Return the lines that have no effect on the minimum amount to reach."""
         self.ensure_one()
         return self.env["sale.order.line"]
+
+    def _get_loyalty_data(self):
+        self.ensure_one()
+
+        if self.state != "sale" or not self._origin.id:
+            return False
+
+        loyalty_history_data = (
+            self
+            .env["loyalty.history"]
+            .sudo()
+            ._read_group(
+                domain=[("order_id", "=", self._origin.id), ("order_model", "=", self._name)],
+                groupby=["order_id"],
+                aggregates=["issued:sum", "used:sum"],
+            )
+        )
+
+        if not loyalty_history_data:
+            return False
+
+        _id, issued, cost = loyalty_history_data[0]
+
+        coupons = self.coupon_point_ids.coupon_id
+        point_name = coupons.point_name if len(coupons) == 1 else self.env._("Points")
+
+        return {"point_name": point_name, "issued": issued, "cost": cost}
 
     def copy(self, default=None):
         new_orders = super().copy(default)
@@ -623,7 +648,7 @@ class SaleOrder(models.Model):
             raise UserError(self.env._("There is nothing to discount"))
 
         max_discount = reward_currency._convert(
-            reward.discount_max_amount, self.currency_id, self.company_id, fields.Date.today()
+            reward.discount_max_amount, self.currency_id, self.company_id
         ) or float("inf")
         # discount should never surpass the order's current total amount
         max_discount = min(self.amount_total, max_discount)
@@ -635,15 +660,13 @@ class SaleOrder(models.Model):
             max_discount = min(
                 max_discount,
                 reward_currency._convert(
-                    reward.discount * points, self.currency_id, self.company_id, fields.Date.today()
+                    reward.discount * points, self.currency_id, self.company_id
                 ),
             )
         elif reward.discount_mode == "per_order":
             max_discount = min(
                 max_discount,
-                reward_currency._convert(
-                    reward.discount, self.currency_id, self.company_id, fields.Date.today()
-                ),
+                reward_currency._convert(reward.discount, self.currency_id, self.company_id),
             )
         elif reward.discount_mode == "percent":
             max_discount = min(max_discount, discountable * (reward.discount / 100))
@@ -657,10 +680,7 @@ class SaleOrder(models.Model):
         if reward.discount_mode == "per_point" and not reward.clear_wallet:
             # Calculate the actual point cost if the cost is per point
             converted_discount = self.currency_id._convert(
-                min(max_discount, discountable),
-                reward_currency,
-                self.company_id,
-                fields.Date.today(),
+                min(max_discount, discountable), reward_currency, self.company_id
             )
             point_cost = coupon.currency_id.round(converted_discount / reward.discount)
 
@@ -1000,10 +1020,7 @@ class SaleOrder(models.Model):
         """
         if reward.discount_mode == "per_order":
             return reward.currency_id._convert(
-                from_amount=reward.discount,
-                to_currency=self.currency_id,
-                company=self.company_id,
-                date=fields.Date.today(),
+                from_amount=reward.discount, to_currency=self.currency_id, company=self.company_id
             )
         if reward.discount_mode == "percent":
             return discountable * (reward.discount / 100)
@@ -1663,7 +1680,10 @@ class SaleOrder(models.Model):
         coupon = False
         check_date = self._get_confirmed_tx_create_date()
 
-        if rule in self.code_enabled_rule_ids:
+        if (
+            rule in self.code_enabled_rule_ids
+            and program in self.order_line.filtered("is_reward_line").reward_id.program_id
+        ):
             return {"error": self.env._("This promo code is already applied.")}
 
         # No trigger was found from the code, try to find a coupon

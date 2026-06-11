@@ -1,4 +1,3 @@
-import { useState } from "@web/owl2/utils";
 import {
     addBuilderAction,
     addBuilderOption,
@@ -10,7 +9,7 @@ import { SavePlugin } from "@html_builder/core/save_plugin";
 import { BaseOptionComponent } from "@html_builder/core/base_option_component";
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { advanceTime, animationFrame, tick } from "@odoo/hoot-dom";
-import { xml } from "@odoo/owl";
+import { xml, proxy } from "@odoo/owl";
 import {
     contains,
     defineModels,
@@ -76,7 +75,7 @@ test("Prepare is triggered on props updated", async () => {
         static template = xml`<BuilderCheckbox action="'customAction'" actionParam="this.state.param"/>`;
         setup() {
             super.setup();
-            this.state = useState({ param: "old param" });
+            this.state = proxy({ param: "old param" });
             newPropDeferred.promise.then(() => {
                 this.state.param = "new param";
             });
@@ -108,6 +107,38 @@ test("Prepare is triggered on props updated", async () => {
     prepareDeferred.resolve();
     await animationFrame();
     expect.verifySteps(["prepare"]);
+});
+
+test("prepare is triggered before getValue(useInputBuilderComponent)", async () => {
+    const prepareDeferred = Promise.withResolvers();
+    class TestOption extends BaseOptionComponent {
+        static template = xml`<BuilderList action="'customAction'"/>`;
+        static selector = ".test-options-target";
+        static props = {};
+    }
+    class CustomAction extends BuilderAction {
+        static id = "customAction";
+        async prepare() {
+            expect.step("prepare-start");
+            await prepareDeferred.promise;
+            expect.step("prepare-end");
+        }
+        getValue() {
+            expect.step("getValue");
+            return false;
+        }
+        apply() {}
+    }
+    addBuilderAction({
+        CustomAction,
+    });
+    addBuilderOption(TestOption);
+    await setupHTMLBuilder(`<section class="test-options-target">Homepage</section>`);
+    await contains(":iframe .test-options-target").click();
+    expect.verifySteps(["prepare-start"]);
+    prepareDeferred.resolve();
+    await animationFrame();
+    expect.verifySteps(["prepare-end", "getValue"]);
 });
 
 test("Data Attribute action works with non string values", async () => {

@@ -29,13 +29,17 @@
                     <filter invisible="1" string="Future Activities" name="activities_upcoming_all"
                         domain="[('my_activity_date_deadline', '&gt;', 'today')]"/>
                     <separator/>
-                    <filter string="In Contract" name="in_contract"
+                    <filter string="Permanent Contract" name="permanent_contract"
                             domain="[
                                 ('contract_date_start', '!=', False),
-                                ('contract_date_start', '&lt;=', 'today'),
-                                '|',
-                                    ('contract_date_end', '=', False),
-                                    ('contract_date_end', '>=', 'today')
+                                ('contract_date_end', '=', False)
+                            ]"
+                            groups="hr.group_hr_manager"/>
+                    <filter string="Fixed-term Contract" name="fixed_term_contract"
+                            domain="[
+                                ('contract_date_start', '!=', False),
+                                ('contract_date_end', '!=', False),
+                                ('departure_reason_id', '=', False)
                             ]"
                             groups="hr.group_hr_manager"/>
                     <filter string="Notice Period" name="notice_period"
@@ -149,11 +153,15 @@
                                 <label for="work_phone" class="d-md-none"/>
                                 <div class="d-flex align-items-baseline w-md-50 gap-2">
                                     <i class="d-none d-md-inline-flex fa fa-phone" title="Work Phone"/>
+                                    <field name="work_phone_sanitized" invisible="1"/>
+                                    <field name="work_phone_formatted" invisible="1"/>
                                     <field name="work_phone" widget="phone" placeholder="Work Phone" string="Work Phone"/>
                                 </div>
                                 <label for="mobile_phone" class="d-md-none"/>
                                 <div class="d-flex align-items-baseline w-md-50 gap-2">
                                     <i class="d-none d-md-inline-flex fa fa-mobile" title="Work Mobile"/>
+                                    <field name="mobile_phone_sanitized" invisible="1"/>
+                                    <field name="mobile_phone_formatted" invisible="1"/>
                                     <field name="mobile_phone" widget="phone" placeholder="Work Mobile" string="Work Mobile"/>
                                 </div>
                                 <label for="category_ids" class="d-md-none"/>
@@ -228,6 +236,8 @@
                                 <group>
                                     <group string="Private Contact">
                                         <field name="private_email" placeholder="e.g. myprivateemail@example.com" string="Email"/>
+                                        <field name="private_phone_sanitized" invisible="1"/>
+                                        <field name="private_phone_formatted" invisible="1"/>
                                         <field name="private_phone" widget="phone" string="Phone"/>
                                         <field name="has_multiple_bank_accounts" invisible="1"/>
                                         <field name="is_trusted_bank_account" invisible="1"/>
@@ -317,7 +327,9 @@
                                     </group>
                                     <group string="Emergency Contact">
                                         <field name="emergency_contact" string="Contact Name"/>
-                                        <field name="emergency_phone" class="o_force_ltr" string="Phone"/>
+                                        <field name="emergency_phone_sanitized" invisible="1"/>
+                                        <field name="emergency_phone_formatted" invisible="1"/>
+                                        <field name="emergency_phone" widget="phone" class="o_force_ltr" string="Phone"/>
                                     </group>
                                     <group string="Location" name="hr_location_group">
                                         <label for="private_street" string="Private Address"/>
@@ -367,25 +379,25 @@
                                                 nolabel="1"/>
                                             </div>
                                         <field name="employee_type_id" string="Employee Type" placeholder="Select employee type"
-                                                domain="[('country_id', 'in', [company_country_id, False])]"
+                                                domain="[('country_id', 'in', [company_country_id, False]), '|', ('company_id', 'in', [company_id, False]), ('company_id', '=', parent_company_id)]"
                                                 required="contract_date_start"/>
                                         <label for="contract_date_start" string="Contract"/>
                                         <div class="o_row" name="contract_dates">
                                             <field name="contract_date_start" string="Start Date" placeholder="Not Employed" class="o_hr_narrow_field me-3"/>
                                             <span invisible="not contract_date_start">to</span>
                                             <field name="contract_date_end" string="End Date" placeholder="Indefinite" widget="date_dynamic_min" options="{'min_date_field': 'contract_date_start'}"
-                                                class="o_hr_narrow_field ms-3" invisible="not contract_date_start" required="fixed_term"/>
+                                                class="o_hr_narrow_field ms-3" invisible="not contract_date_start"/>
                                             <widget name="button_new_contract"/>
                                         </div>
-                                        <field name="fixed_term" string="Fixed Term"/>
+                                        <field name="fixed_term" string="Fixed Term" invisible="1"/>
                                         <label for="wage"/>
                                         <div class="o_row" name="wage">
                                             <field name="wage" class="oe_inline o_hr_narrow_field" nolabel="1"/>
                                         </div>
                                         <field name="structure_type_id" string="Pay Category" placeholder="Employee will be excluded from Pay Runs"
                                                 domain="['|', ('country_id', '=', False), ('country_id', '=', company_country_id)]"/>
-
-                                        <separator name="schedule" string="Schedule"/>
+                                    </group>
+                                    <group name="schedule" string="Schedule">
                                         <field name="resource_calendar_id" help="The default working hours are set in configuration." placeholder="Flexible"/>
                                         <label for="hours_per_week" string="Hours Per Week" invisible="resource_calendar_id"/>
                                         <div class="o_row" name="flexible_hours_per_week" invisible="resource_calendar_id">
@@ -537,13 +549,15 @@
             <field name="name">hr.employee.list</field>
             <field name="model">hr.employee</field>
             <field name="arch" type="xml">
-                <list string="Employees" expand="context.get('expand', False)" multi_edit="1" duplicate="false" sample="1">
+                <list string="Employees" expand="context.get('expand', False)" multi_edit="1" duplicate="false" sample="1" js_class="hr_employee_list">
                     <header>
                         <button name="%(plan_wizard_action)d" string="Launch Plan" type="action" groups="hr.group_hr_user"/>
                     </header>
                     <field name="avatar_128" widget="image" options="{'size': [24, 24], 'img_class': 'rounded-3'}" width="30" nolabel="1"/>
                     <field name="name" string="Name" readonly="1"/>
-                    <field name="work_phone" class="o_force_ltr" readonly="1" optional="show"/>
+                    <field name="work_phone_sanitized" column_invisible="1"/>
+                    <field name="work_phone_formatted" column_invisible="1"/>
+                    <field name="work_phone" widget="phone" class="o_force_ltr" readonly="1" optional="show"/>
                     <field name="work_email" optional="hide"/>
                     <field name="work_location_name" readonly="0" string="Work Location" optional="hide"/>
                     <field name="contract_date_start" optional="hide"/>
@@ -559,6 +573,7 @@
                     <field name="address_id" column_invisible="True"/>
                     <field name="company_id" column_invisible="True"/>
                     <field name="birthday" optional="hide"/>
+                    <field name="hr_responsible_id" optional="hide"/>
                     <field name="work_location_id" column_invisible="True"/>
                     <field name="active" column_invisible="True"/>
                     <field name="category_ids" widget="many2many_tags" options="{'color_field': 'color', 'on_tag_click': 'edit_color'}" optional="hide"/>
@@ -571,7 +586,7 @@
             <field name="name">hr.employee.list</field>
             <field name="model">hr.employee</field>
             <field name="arch" type="xml">
-                <list string="Employees" multi_edit="1" editable="bottom" duplicate="false" sample="1">
+                <list string="Employees" multi_edit="1" editable="bottom" duplicate="false" sample="1" js_class="hr_employee_list">
                     <field name="name" string="Name" readonly="1"/>
                     <field name="company_id" optional="hide"/>
                     <field name="department_id" optional="hide"/>
@@ -587,10 +602,12 @@
             <field name="name">hr.employee.list.activites.view</field>
             <field name="model">hr.employee</field>
             <field name="arch" type="xml">
-                <list string="Employees" expand="context.get('expand', False)" multi_edit="1" sample="1">
+                <list string="Employees" expand="context.get('expand', False)" multi_edit="1" sample="1" js_class="hr_employee_list">
                     <field name="avatar_128" widget="image" options="{'size': [24, 24], 'img_class': 'rounded-3'}" width="30" nolabel="1"/>
                     <field name="name" readonly="1"/>
-                    <field name="work_phone" class="o_force_ltr" readonly="1" optional="hide"/>
+                    <field name="work_phone_sanitized" column_invisible="1"/>
+                    <field name="work_phone_formatted" column_invisible="1"/>
+                    <field name="work_phone" widget="phone" class="o_force_ltr" readonly="1" optional="hide"/>
                     <field name="work_email" optional="hide"/>
                     <field name="contract_date_start" optional="hide"/>
                     <field name="contract_date_end" optional="hide"/>
@@ -600,7 +617,7 @@
                     <field name="structure_type_id" optional="hide"/>
                     <field name="activity_ids" widget="list_activity" optional="show"/>
                     <field name="activity_user_id" optional="hide" string="Activity by" widget="many2one_avatar_user"/>
-                    <field name="activity_date_deadline" widget="remaining_days" optional="show"/>
+                    <field name="activity_date_deadline" widget="relative_date" optional="show"/>
                     <field name="company_id" groups="base.group_multi_company" readonly="1" optional="hide"/>
                     <field name="department_id" optional="show"/>
                     <field name="job_id" context="{'default_no_of_recruitment': 0, 'default_is_favorite': False}" optional="show"/>
@@ -623,13 +640,15 @@
             <field name="model">hr.employee</field>
             <field name="priority">10</field>
             <field name="arch" type="xml">
-                <kanban class="o_hr_employee_kanban" sample="1" duplicate="false">
+                <kanban class="o_hr_employee_kanban" sample="1" duplicate="false" js_class="hr_employee_kanban">
                     <header>
                         <button name="%(plan_wizard_action)d" string="Launch Plan" type="action" groups="hr.group_hr_user"/>
                     </header>
                     <field name="show_hr_icon_display"/>
                     <field name="image_128" />
                     <field name="company_id"/>
+                    <field name="work_phone_sanitized"/>
+                    <field name="work_phone_formatted"/>
                     <templates>
                         <t t-name="card" class="flex-row">
                             <aside class="o_kanban_aside_full">
@@ -665,7 +684,7 @@
                                 </div>
                                 <div t-if="record.work_phone.raw_value">
                                     <i class="fa fa-fw me-2 fa-phone text-primary" title="Phone"/>
-                                    <field name="work_phone" />
+                                    <field name="work_phone" widget="phone"/>
                                 </div>
                                 <div t-if="record.first_contract_date.raw_value" groups="hr.group_hr_manager" t-att-class="{'text-danger': record.contract_date_end.raw_value &lt; luxon.DateTime.now().toISO()}">
                                     <i class="fa fa-fw me-2 fa-briefcase text-primary" title="Contract"/>
@@ -951,7 +970,7 @@
             <field name="view_mode">activity,list,kanban,form,graph,pivot</field>
             <field name="view_ids"
                    eval="[(5, 0, 0),
-                          (0, 0, {'view_mode': 'list', 'view_id': ref('hr_employee_list_activites_view')})]"/>
+                          (0, 0, {'view_mode': 'list', 'view_id': ref('hr.hr_employee_list_activites_view')})]"/>
             <field name="search_view_id" ref="view_employee_filter"/>
         </record>
 

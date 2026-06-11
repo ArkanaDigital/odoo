@@ -713,14 +713,6 @@ class AccountMoveLine(models.Model):
                     line.account_id = accounts['income'] or line.account_id
                 elif line.move_id.is_purchase_document(include_receipts=True):
                     line.account_id = accounts['expense'] or line.account_id
-            elif line.partner_id:
-                account_id = self.env['account.account']._get_most_frequent_account_for_partner(
-                    company_id=line.company_id.id,
-                    partner_id=line.partner_id.id,
-                    move_type=line.move_id.move_type,
-                )
-                if account_id:
-                    line.account_id = account_id
         for line in self:
             if not line.account_id and line.display_type not in ('line_section', 'line_subsection', 'line_note'):
                 previous_two_accounts = line.move_id.line_ids.filtered(
@@ -1148,7 +1140,7 @@ class AccountMoveLine(models.Model):
     @api.depends('product_id', 'product_uom_id')
     def _compute_tax_ids(self):
         for line in self:
-            if line.display_type in ('line_section', 'line_subsection', 'line_note', 'payment_term') or line.is_imported:
+            if line.display_type in ('line_section', 'line_subsection', 'line_note', 'payment_term', 'cogs') or line.is_imported:
                 continue
             # /!\ Don't remove existing taxes if there is no explicit taxes set on the account.
             account_taxes = line.account_id.sudo().tax_ids
@@ -1694,14 +1686,18 @@ class AccountMoveLine(models.Model):
             account_type = line.account_id.account_type
             if line.move_id.is_sale_document(include_receipts=True):
                 if account_type == 'liability_payable':
-                    raise UserError(_("Account %s is of payable type, but is used in a sale operation.", line.account_id.code))
-                if (line.display_type == 'payment_term') ^ (account_type == 'asset_receivable'):
-                    raise UserError(_("Any journal item on a receivable account must have a due date and vice versa."))
+                    raise UserError(self.env._("Account '%s' is of payable type, but is used in a sale operation.", line.account_id.display_name))
+                if (line.display_type == 'payment_term') and (account_type != 'asset_receivable'):
+                    raise UserError(self.env._("Account '%s' used for receivable line is not of receivable type. Check if the account type is correct.", line.account_id.display_name))
+                if (line.display_type != 'payment_term') and (account_type == 'asset_receivable'):
+                    raise UserError(self.env._("Any journal item on '%s' (Receivable) must have a due date.", line.account_id.display_name))
             if line.move_id.is_purchase_document(include_receipts=True):
                 if account_type == 'asset_receivable':
-                    raise UserError(_("Account %s is of receivable type, but is used in a purchase operation.", line.account_id.code))
-                if (line.display_type == 'payment_term') ^ (account_type == 'liability_payable'):
-                    raise UserError(_("Any journal item on a payable account must have a due date and vice versa."))
+                    raise UserError(self.env._("Account '%s' is of receivable type, but is used in a purchase operation.", line.account_id.display_name))
+                if (line.display_type == 'payment_term') and (account_type != 'liability_payable'):
+                    raise UserError(self.env._("Account '%s' used for payable line is not of payable type. Check if the account type is correct.", line.account_id.display_name))
+                if (line.display_type != 'payment_term') and (account_type == 'liability_payable'):
+                    raise UserError(self.env._("Any journal item on '%s' (Payable) must have a due date.", line.account_id.display_name))
 
     def _affect_tax_report(self):
         self.ensure_one()
@@ -1774,7 +1770,7 @@ class AccountMoveLine(models.Model):
             if common_tags:
                 raise ValidationError(_("Taxes exigible on payment and on invoice cannot be mixed on the same journal item if they share some tag."))
 
-    @api.constrains('matching_number', 'matched_debit_ids', 'matched_credit_ids')
+    @api.constrains('matching_number', 'matched_debit_ids', 'matched_credit_ids', 'full_reconcile_id')
     def _constrains_matching_number(self):
         for line in self:
             if line.matching_number:
@@ -1796,7 +1792,7 @@ class AccountMoveLine(models.Model):
     @api.constrains('deductible_percentage')
     def _constrains_deductible_percentage(self):
         for line in self:
-            if not line.move_id.is_purchase_document() and float_compare(line.deductible_percentage, 1, precision_digits=4):
+            if not line.move_id.is_purchase_document(include_receipts=True) and float_compare(line.deductible_percentage, 1, precision_digits=4):
                 raise ValidationError(_("Only vendor bills allow for deductibility of product/services."))
             if line.deductible_percentage < 0 or line.deductible_percentage > 1:
                 raise ValidationError(_("The deductibility percentage must be between 0% and 100%"))
@@ -3890,7 +3886,11 @@ class AccountMoveLine(models.Model):
         if self:
             self.product_id.ensure_one()
             return {
-                'quantity': self.quantity,
+                'quantity': sum(self.mapped(
+                    lambda line: line.product_uom_id._compute_quantity(
+                        qty=line.quantity, to_unit=self[0].product_uom_id,
+                    ),
+                )),
                 'readOnly': self.move_id._is_readonly() or len(self) > 1,
                 'price': self[0].price_unit,
                 **self.move_id._get_product_catalog_uom_data(

@@ -12,7 +12,6 @@ from odoo.exceptions import UserError
 from odoo.fields import Domain
 from odoo.tools import SQL
 from odoo.tools.barcode import check_barcode_encoding
-from odoo.tools.mail import html2plaintext, is_html_empty
 
 PY_OPERATORS = {
     '<': py_operator.lt,
@@ -313,16 +312,9 @@ class ProductProduct(models.Model):
         return []
 
     def _get_description(self, picking_type_id):
-        """
-            Return product description based on the picking type:
-            * For outgoing pickings, we always use the product name.
-            * For all other pickings, we try to use the product description (if one has been set),
-              otherwise we fall back to the product name.
-        """
+        """ Hook function meant to be overridden. """
         self.ensure_one()
-        if picking_type_id.code == 'outgoing':
-            return self.display_name
-        return html2plaintext(self.description) if not is_html_empty(self.description) else self.display_name
+        return self.display_name
 
     def _get_picking_description(self, picking_type_id):
         """
@@ -401,25 +393,34 @@ class ProductProduct(models.Model):
             dest_loc_domain_out = Domain('location_dest_id', 'not in', locations.ids)
             dest_loc_domain_done = dest_loc_domain
         elif locations:
-            paths_query = models.Query(locations)
-            paths_query.add_where(SQL(
-                """EXISTS (
-                    SELECT 1
-                      FROM stock_location parent
-                     WHERE parent.id IN %s
-                       AND %s LIKE parent.parent_path || '%%'
-                )""",
-                tuple(locations.ids),
-                paths_query.table.parent_path,
-            ))
-            loc_domain = Domain('location_id', 'in', paths_query)
+            descendants_query = SQL(
+                    """
+                    (
+                        WITH RECURSIVE descendants AS (
+                            SELECT id
+                            FROM stock_location
+                            WHERE id IN %s
+
+                            UNION
+
+                            SELECT sl.id
+                            FROM stock_location sl
+                            JOIN descendants d
+                                ON sl.location_id = d.id
+                        )
+                        SELECT id FROM descendants
+                    )
+                    """,
+                    tuple(locations.ids),
+            )
+            loc_domain = Domain('location_id', 'in', descendants_query)
             # The condition should be split for done and not-done moves as the final_dest_id only make sense
             # for the part of the move chain that is not done yet.
-            dest_loc_domain_done = Domain('location_dest_id', 'in', paths_query)
+            dest_loc_domain_done = Domain('location_dest_id', 'in', descendants_query)
             dest_loc_domain_in_progress = Domain([
                 '|',
-                    '&', ('forecasted_location_id', '!=', False), ('forecasted_location_id', 'in', paths_query),
-                    '&', ('forecasted_location_id', '=', False), ('location_dest_id', 'in', paths_query),
+                    '&', ('forecasted_location_id', '!=', False), ('forecasted_location_id', 'in', descendants_query),
+                    '&', ('forecasted_location_id', '=', False), ('location_dest_id', 'in', descendants_query),
             ])
             dest_loc_domain = Domain([
                 '|',
@@ -657,6 +658,8 @@ class ProductProduct(models.Model):
 
     def action_product_forecast_report(self):
         self.ensure_one()
+        if not self.env.user._get_default_warehouse_id():
+            self.env['stock.warehouse']._warehouse_redirect_warning()
         action = self.env["ir.actions.actions"]._for_xml_id("stock.stock_forecasted_product_product_action")
         return action
 
@@ -805,7 +808,7 @@ class ProductTemplate(models.Model):
         help="Ensure the traceability of a storable product in your warehouse.")
     lot_sequence_id = fields.Many2one(
         'ir.sequence', 'Serial/Lot Numbers Sequence', default=lambda self: self.env.ref('stock.sequence_production_lots', raise_if_not_found=False),
-        help='Technical Field: The Ir.Sequence record that is used to generate serial/lot numbers for this product')
+        help='Technical Field: The Ir.Sequence record that is used to generate serial/lot numbers for this product', index='btree_not_null')
     serial_prefix_format = fields.Char(
         'Custom Lot/Serial', compute='_compute_serial_prefix_format', inverse='_inverse_serial_prefix_format',
         help=SERIAL_PREFIX_FORMAT_HELP_TEXT)

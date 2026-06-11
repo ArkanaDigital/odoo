@@ -919,7 +919,7 @@ class CalendarEvent(models.Model):
                         new_partner_ids.append(command[1])
                     elif command[0] == Command.SET:
                         new_partner_ids.extend(command[2])
-                self.videocall_channel_id.add_members(new_partner_ids)
+                self.videocall_channel_id._add_members(partners=self.env["res.partner"].browse(new_partner_ids))
 
         time_fields = self.env['calendar.event']._get_time_fields()
         if any([values.get(key) for key in time_fields]):
@@ -1231,7 +1231,7 @@ class CalendarEvent(models.Model):
         """
         self.ensure_one()
         now = fields.Datetime.now()
-        today = fields.Date.today()
+        today = fields.Date.context_today(self)
 
         # For all-day events
         if self.allday:
@@ -1695,7 +1695,7 @@ class CalendarEvent(models.Model):
         :return: date
         """
         if not self.start:
-            return fields.Date.today()
+            return fields.Date.context_today(self)
         if self.recurrency and self.event_tz:
             # Ensure that all day events date are not calculated around midnight. TZ shift would potentially return bad date
             start = self.start if not self.allday else self.start.replace(hour=12)

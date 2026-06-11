@@ -64,7 +64,10 @@ class ResPartner(models.Model):
             afip_code = partner.l10n_latam_identification_type_id.l10n_ar_afip_code
             prefix = (partner.l10n_ar_vat or '')[:2]
 
-            if afip_code == '80' and prefix in ('30', '33', '34', '51', '55'):  # CUIT
+            if (
+                afip_code == '80' and prefix in ('30', '33', '34', '51', '55')  # CUIT
+                and partner.commercial_partner_id == partner
+            ):
                 partner.is_company = True
             else:
                 partner.is_company = False  # CUIL or DNI or Unknown type → default to individual
@@ -107,6 +110,12 @@ class ResPartner(models.Model):
         frontend_writable_fields.add('l10n_ar_afip_responsibility_type_id')
 
         return frontend_writable_fields
+
+    def _get_mandatory_billing_address_fields(self, country_sudo, **kwargs):
+        mandatory_fields = super()._get_mandatory_billing_address_fields(country_sudo, **kwargs)
+        if self.env.company.country_code == 'AR':
+            mandatory_fields.add('l10n_ar_afip_responsibility_type_id')
+        return mandatory_fields
 
     def _get_validation_module(self):
         self.ensure_one()

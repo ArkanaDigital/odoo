@@ -100,6 +100,7 @@ class HrExpense(models.Model):
         tracking=True,
         check_company=True,
         domain=[('can_be_expensed', '=', True)],
+        index=True,
         ondelete='restrict',
     )
     product_description = fields.Html(compute='_compute_product_description')
@@ -1365,6 +1366,13 @@ class HrExpense(models.Model):
             name=_("Expenses with a similar receipt to %(other_expense_name)s", other_expense_name=self.name),
         )
 
+    def action_show_duplicate_expense_ids(self):
+        self.ensure_one()
+        duplicate_expenses = self.duplicate_expense_ids - self
+        return duplicate_expenses._get_records_action(
+            name=_("Expenses similar to %(other_expense_name)s", other_expense_name=self.name),
+        )
+
     @api.model
     def get_expense_dashboard(self):
         expense_state = {
@@ -1627,7 +1635,7 @@ class HrExpense(models.Model):
             'res_model': 'hr.expense.post.wizard',
             'res_id': self.env['hr.expense.post.wizard'].create({}).id,
             'target': 'new',
-            'context': self.with_context(active_ids=self.ids).env.context,
+            'context': self.with_context(active_ids=self.ids, validate_analytic=True).env.context,
         }
 
     def _create_company_paid_moves(self):

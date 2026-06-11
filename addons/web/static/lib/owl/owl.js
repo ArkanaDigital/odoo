@@ -39,7 +39,7 @@ var owl = (() => {
     batched: () => batched,
     blockDom: () => blockDom,
     computed: () => computed,
-    config: () => config2,
+    config: () => config,
     effect: () => effect,
     getScope: () => getScope,
     globalTemplates: () => globalTemplates,
@@ -57,7 +57,6 @@ var owl = (() => {
     onWillUnmount: () => onWillUnmount,
     onWillUpdateProps: () => onWillUpdateProps,
     plugin: () => plugin,
-    prop: () => prop,
     props: () => props,
     providePlugins: () => providePlugins,
     proxy: () => proxy,
@@ -66,7 +65,7 @@ var owl = (() => {
     toRaw: () => toRaw,
     types: () => types2,
     untrack: () => untrack,
-    useApp: () => useApp,
+    useApp: () => useApp2,
     useEffect: () => useEffect,
     useListener: () => useListener,
     useScope: () => useScope,
@@ -203,13 +202,15 @@ var owl = (() => {
     sources.clear();
   }
   function disposeComputation(computation) {
-    for (const source of computation.sources) {
+    const sources = computation.sources;
+    for (const source of sources) {
       source.observers.delete(computation);
-      if ("compute" in source && source.isDerived && source.observers.size === 0) {
-        disposeComputation(source);
+      const derived = source;
+      if (derived.isDerived && derived.observers.size === 0) {
+        disposeComputation(derived);
       }
     }
-    computation.sources.clear();
+    sources.clear();
     computation.state = 1;
   }
   function markDownstream(computation) {
@@ -250,6 +251,7 @@ var owl = (() => {
   }
   var Scope = class {
     app;
+    pluginManager;
     status = STATUS.NEW;
     computations = [];
     willStart = [];
@@ -257,6 +259,7 @@ var owl = (() => {
     _destroyCbs = null;
     constructor(app) {
       this.app = app;
+      this.pluginManager = app.pluginManager;
     }
     /**
      * Pushes this scope on the stack for the duration of `callback`. Any code
@@ -700,14 +703,19 @@ var owl = (() => {
   }
   function effect(fn) {
     const computation = createComputation(() => {
-      setComputation(void 0);
-      unsubscribeEffect(computation);
-      setComputation(computation);
+      if (computation.value || computation.observers.size) {
+        setComputation(void 0);
+        unsubscribeEffect(computation);
+        setComputation(computation);
+      } else {
+        removeSources(computation);
+      }
       return fn();
     }, false);
     getCurrentComputation()?.observers.add(computation);
     updateComputation(computation);
     return function cleanupEffect2() {
+      computation.state = 0;
       const previousComputation = getCurrentComputation();
       setComputation(void 0);
       unsubscribeEffect(computation);
@@ -717,9 +725,13 @@ var owl = (() => {
   function immediateEffect(fn) {
     const computation = createComputation(
       () => {
-        setComputation(void 0);
-        unsubscribeEffect(computation);
-        setComputation(computation);
+        if (computation.value || computation.observers.size) {
+          setComputation(void 0);
+          unsubscribeEffect(computation);
+          setComputation(computation);
+        } else {
+          removeSources(computation);
+        }
         return fn();
       },
       false,
@@ -729,6 +741,7 @@ var owl = (() => {
     getCurrentComputation()?.observers.add(computation);
     updateComputation(computation);
     return function cleanupImmediateEffect() {
+      computation.state = 0;
       const previousComputation = getCurrentComputation();
       setComputation(void 0);
       unsubscribeEffect(computation);
@@ -740,7 +753,6 @@ var owl = (() => {
     cleanupEffect(effect2);
     for (const childEffect of effect2.observers) {
       childEffect.state = 0;
-      removeSources(childEffect);
       unsubscribeEffect(childEffect);
     }
     effect2.observers.clear();
@@ -817,19 +829,27 @@ var owl = (() => {
     read.dispose = dispose;
     return read;
   }
+  function safeReplacer(knownObjects, _key, value) {
+    if (typeof value === "function") {
+      return value.name || "[Function]";
+    }
+    if (value && typeof value === "object") {
+      const ctor = value.constructor;
+      if (ctor && ctor !== Object && ctor !== Array) {
+        return `[Instance of ${ctor.name || "anonymous"}]`;
+      }
+      if (knownObjects.includes(value)) {
+        return `[Known object]`;
+      }
+      knownObjects.push(value);
+    }
+    return value;
+  }
   function assertType(value, validation, errorMessage = "Value does not match the type") {
     const issues = validateType(value, validation);
     if (issues.length) {
-      const issueStrings = JSON.stringify(
-        issues,
-        (key, value2) => {
-          if (typeof value2 === "function") {
-            return value2.name;
-          }
-          return value2;
-        },
-        2
-      );
+      const knownObjects = [];
+      const issueStrings = JSON.stringify(issues, safeReplacer.bind(null, knownObjects), 2);
       throw new OwlError(`${errorMessage}
 ${issueStrings}`);
     }
@@ -845,7 +865,7 @@ ${issueStrings}`);
       addIssue(issue) {
         issues.push({
           received: this.value,
-          path: this.path,
+          path: this.path.join(" > "),
           ...issue
         });
       },
@@ -891,7 +911,7 @@ ${issueStrings}`);
   }
   function stringType() {
     return function validateString(context) {
-      if (typeof context.value !== "string") {
+      if (typeof context.value !== "string" && !(context.value instanceof String)) {
         context.addIssue({ message: "value is not a string" });
       }
     };
@@ -970,15 +990,20 @@ ${issueStrings}`);
       return;
     }
     const isShape = !Array.isArray(schema);
-    let shape = schema;
-    if (Array.isArray(schema)) {
+    let shape;
+    let keys;
+    if (isShape) {
+      keys = Object.keys(schema);
+      shape = schema;
+    } else {
+      keys = schema;
       shape = {};
-      for (const key of schema) {
+      for (const key of keys) {
         shape[key] = null;
       }
     }
     const missingKeys = [];
-    for (const key in shape) {
+    for (const key of keys) {
       const property = key.endsWith("?") ? key.slice(0, -1) : key;
       if (context.value[property] === void 0) {
         if (!key.endsWith("?")) {
@@ -993,20 +1018,22 @@ ${issueStrings}`);
     if (missingKeys.length) {
       context.addIssue({
         message: "object value has missing keys",
-        missingKeys
+        missingKeys,
+        expectedKeys: keys
       });
     }
     if (isStrict) {
       const unknownKeys = [];
       for (const key in context.value) {
-        if (!(key in shape) && !(`${key}?` in shape)) {
+        if (!keys.includes(key) && !(`${key}?` in shape)) {
           unknownKeys.push(key);
         }
       }
       if (unknownKeys.length) {
         context.addIssue({
           message: "object value has unknown keys",
-          unknownKeys
+          unknownKeys,
+          expectedKeys: keys
         });
       }
     }
@@ -1212,6 +1239,13 @@ ${issueStrings}`);
     static set id(shadowId) {
       this._shadowId = shadowId;
     }
+    // Plugins passed to `startPlugins` are started in batches of equal sequence,
+    // ascending (lower first), like Resource/Registry. Each batch's onWillStart
+    // callbacks fully settle before the next batch is instantiated, so
+    // foundational plugins (low sequence) are ready before later plugins even
+    // run their setup. Explicit `plugin(X)` dependencies bypass batching and
+    // start immediately.
+    static sequence = 50;
     __owl__;
     constructor(manager) {
       this.__owl__ = manager;
@@ -1222,14 +1256,17 @@ ${issueStrings}`);
   var PluginManager = class extends Scope {
     config;
     plugins;
-    // Resolves once all pending plugin willStart callbacks have settled. The
-    // scope transitions to MOUNTED as the last step of this chain. Consumers
-    // (App.mount, providePlugins) await this before treating the manager as
-    // ready. `willStart` itself is inherited from Scope.
+    // Resolves once all batches of plugins have started and their willStart
+    // callbacks have settled. The scope transitions to MOUNTED as the last step
+    // of this chain. Consumers (the root's mount(), providePlugins) await this
+    // before treating the manager as ready. `willStart` itself is inherited
+    // from Scope.
     ready = Promise.resolve();
+    hasPendingReady = false;
     constructor(app, options = {}) {
       super(app);
       this.config = options.config ?? {};
+      this.pluginManager = this;
       if (options.parent) {
         const parent = options.parent;
         parent.onDestroy(() => this.destroy());
@@ -1266,24 +1303,61 @@ ${issueStrings}`);
       return plugin2;
     }
     startPlugins(pluginConstructors) {
-      scopeStack.push(this);
-      try {
-        for (const pluginConstructor of pluginConstructors) {
-          this.startPlugin(pluginConstructor);
+      const fresh = pluginConstructors.filter((ctor) => {
+        if (!ctor.id || this.plugins.hasOwnProperty(ctor.id)) {
+          this.startPlugin(ctor);
+          return false;
         }
-      } finally {
-        scopeStack.pop();
+        return true;
+      });
+      if (!fresh.length) {
+        return;
       }
-      const pending = this.willStart.splice(0);
-      if (pending.length) {
-        this.ready = Promise.all(pending.map((fn) => fn())).then(() => {
-          if (this.status < STATUS.MOUNTED) {
-            this.status = STATUS.MOUNTED;
+      fresh.sort((p1, p2) => p1.sequence - p2.sequence);
+      const batches = [];
+      for (const ctor of fresh) {
+        const batch = batches[batches.length - 1];
+        if (batch && batch[0].sequence === ctor.sequence) {
+          batch.push(ctor);
+        } else {
+          batches.push([ctor]);
+        }
+      }
+      const startBatch = (batch) => {
+        scopeStack.push(this);
+        try {
+          for (const ctor of batch) {
+            this.startPlugin(ctor);
           }
-        });
-      } else if (this.status < STATUS.MOUNTED) {
-        this.status = STATUS.MOUNTED;
+        } finally {
+          scopeStack.pop();
+        }
+        const pending = this.willStart.splice(0);
+        return pending.length ? Promise.all(pending.map((fn) => fn())) : null;
+      };
+      let chain = this.hasPendingReady ? this.ready : null;
+      for (const batch of batches) {
+        if (chain) {
+          chain = chain.then(() => startBatch(batch));
+        } else {
+          chain = startBatch(batch);
+        }
       }
+      if (!chain) {
+        if (this.status < STATUS.MOUNTED) {
+          this.status = STATUS.MOUNTED;
+        }
+        return;
+      }
+      this.hasPendingReady = true;
+      const ready = this.ready = chain.then(() => {
+        if (this.status < STATUS.MOUNTED) {
+          this.status = STATUS.MOUNTED;
+        }
+        if (this.ready === ready) {
+          this.hasPendingReady = false;
+        }
+      });
     }
   };
   function startPlugins(manager, plugins) {
@@ -1298,9 +1372,103 @@ ${issueStrings}`);
       );
     }
   }
+  function onWillStart(fn) {
+    const scope = useScope();
+    scope.willStart.push(scope.decorate(fn, "onWillStart"));
+  }
+  function onWillDestroy(fn) {
+    const scope = useScope();
+    scope.onDestroy(scope.decorate(fn, "onWillDestroy"));
+  }
+  function useEffect(fn) {
+    onWillDestroy(effect(fn));
+  }
+  function useListener(target, eventName, handler, eventParams) {
+    if (typeof target === "function") {
+      useEffect(() => {
+        const el = target();
+        if (el) {
+          el.addEventListener(eventName, handler, eventParams);
+          return () => el.removeEventListener(eventName, handler, eventParams);
+        }
+        return;
+      });
+    } else {
+      target.addEventListener(eventName, handler, eventParams);
+      onWillDestroy(() => target.removeEventListener(eventName, handler, eventParams));
+    }
+  }
+  function useApp() {
+    return useScope().app;
+  }
+  function plugin(pluginType) {
+    const scope = useScope();
+    let plugin2 = scope.pluginManager.getPluginById(pluginType.id);
+    if (!plugin2) {
+      if (scope instanceof PluginManager) {
+        plugin2 = scope.pluginManager.startPlugin(pluginType);
+      } else {
+        throw new OwlError(`Unknown plugin "${pluginType.id}"`);
+      }
+    }
+    return plugin2;
+  }
+  function config(key, type, defaultValue) {
+    const scope = useScope();
+    if (!(scope instanceof PluginManager)) {
+      throw new OwlError("Expected to be in a plugin scope");
+    }
+    if (scope.app.dev && type) {
+      assertType(scope.config, types.object({ [key]: type }), "Config does not match the type");
+    }
+    const configValue = scope.config[key.endsWith("?") ? key.slice(0, -1) : key];
+    return configValue === void 0 ? defaultValue : configValue;
+  }
+  var EventBus = class extends EventTarget {
+    trigger(name, payload) {
+      this.dispatchEvent(new CustomEvent(name, { detail: payload }));
+    }
+  };
+  var Markup = class extends String {
+  };
+  function htmlEscape(str) {
+    if (str instanceof Markup) {
+      return str;
+    }
+    if (str === void 0) {
+      return markup("");
+    }
+    if (typeof str === "number") {
+      return markup(String(str));
+    }
+    [
+      ["&", "&amp;"],
+      ["<", "&lt;"],
+      [">", "&gt;"],
+      ["'", "&#x27;"],
+      ['"', "&quot;"],
+      ["`", "&#x60;"]
+    ].forEach((pairs) => {
+      str = String(str).replace(new RegExp(pairs[0], "g"), pairs[1]);
+    });
+    return markup(str);
+  }
+  function markup(valueOrStrings, ...placeholders) {
+    if (!Array.isArray(valueOrStrings)) {
+      return new Markup(valueOrStrings);
+    }
+    const strings = valueOrStrings;
+    let acc = "";
+    let i = 0;
+    for (; i < placeholders.length; ++i) {
+      acc += strings[i] + htmlEscape(placeholders[i]);
+    }
+    acc += strings[i];
+    return new Markup(acc);
+  }
 
   // ../owl-runtime/dist/owl-runtime.es.js
-  var version = "3.0.0-alpha.31";
+  var version = "3.0.0-alpha.34";
   var fibersInError = /* @__PURE__ */ new WeakMap();
   var nodeErrorHandlers = /* @__PURE__ */ new WeakMap();
   function invokeErrorHandlers(node, error, finalize, markFibers) {
@@ -1373,7 +1541,7 @@ ${issueStrings}`);
     }
     return { modifiers, data: dataList };
   }
-  var config = {
+  var config2 = {
     // whether or not blockdom should normalize DOM whenever a block is created.
     // Normalizing dom mean removing empty text nodes (or containing only spaces)
     shouldNormalizeDom: true,
@@ -1580,20 +1748,20 @@ ${issueStrings}`);
     }
   }
   var CSS_PROP_CACHE = {};
-  function toKebabCase(prop2) {
-    if (prop2 in CSS_PROP_CACHE) {
-      return CSS_PROP_CACHE[prop2];
+  function toKebabCase(prop) {
+    if (prop in CSS_PROP_CACHE) {
+      return CSS_PROP_CACHE[prop];
     }
-    const result = prop2.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
-    CSS_PROP_CACHE[prop2] = result;
+    const result = prop.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
+    CSS_PROP_CACHE[prop] = result;
     return result;
   }
   var IMPORTANT_RE = /\s*!\s*important\s*$/i;
-  function setStyleProp(style, prop2, value) {
+  function setStyleProp(style, prop, value) {
     if (IMPORTANT_RE.test(value)) {
-      style.setProperty(prop2, value.replace(IMPORTANT_RE, ""), "important");
+      style.setProperty(prop, value.replace(IMPORTANT_RE, ""), "important");
     } else {
-      style.setProperty(prop2, value);
+      style.setProperty(prop, value);
     }
   }
   function toStyleObj(expr) {
@@ -1637,19 +1805,19 @@ ${issueStrings}`);
           if (colonIdx === -1) {
             continue;
           }
-          const prop2 = trim.call(part.slice(0, colonIdx));
+          const prop = trim.call(part.slice(0, colonIdx));
           const value = trim.call(part.slice(colonIdx + 1));
-          if (prop2 && value && value !== "undefined") {
-            result[prop2] = value;
+          if (prop && value && value !== "undefined") {
+            result[prop] = value;
           }
         }
         return result;
       }
       case "object":
-        for (let prop2 in expr) {
-          const value = expr[prop2];
+        for (let prop in expr) {
+          const value = expr[prop];
           if (value || value === 0) {
-            result[toKebabCase(prop2)] = String(value);
+            result[toKebabCase(prop)] = String(value);
           }
         }
         return result;
@@ -1680,22 +1848,22 @@ ${issueStrings}`);
   function setStyle(val) {
     val = val === "" ? {} : toStyleObj(val);
     const style = this.style;
-    for (let prop2 in val) {
-      setStyleProp(style, prop2, val[prop2]);
+    for (let prop in val) {
+      setStyleProp(style, prop, val[prop]);
     }
   }
   function updateStyle(val, oldVal) {
     oldVal = oldVal === "" ? {} : toStyleObj(oldVal);
     val = val === "" ? {} : toStyleObj(val);
     const style = this.style;
-    for (let prop2 in oldVal) {
-      if (!(prop2 in val)) {
-        style.removeProperty(prop2);
+    for (let prop in oldVal) {
+      if (!(prop in val)) {
+        style.removeProperty(prop);
       }
     }
-    for (let prop2 in val) {
-      if (val[prop2] !== oldVal[prop2]) {
-        setStyleProp(style, prop2, val[prop2]);
+    for (let prop in val) {
+      if (val[prop] !== oldVal[prop]) {
+        setStyleProp(style, prop, val[prop]);
       }
     }
     if (!style.cssText) {
@@ -1747,11 +1915,6 @@ ${issueStrings}`);
     }
     throw new OwlError("Cannot mount component: the target is not a valid DOM element");
   }
-  var EventBus = class extends EventTarget {
-    trigger(name, payload) {
-      this.dispatchEvent(new CustomEvent(name, { detail: payload }));
-    }
-  };
   function whenReady(fn) {
     return new Promise(function(resolve) {
       if (document.readyState !== "loading") {
@@ -1761,43 +1924,6 @@ ${issueStrings}`);
       }
     }).then(fn || function() {
     });
-  }
-  var Markup = class extends String {
-  };
-  function htmlEscape(str) {
-    if (str instanceof Markup) {
-      return str;
-    }
-    if (str === void 0) {
-      return markup("");
-    }
-    if (typeof str === "number") {
-      return markup(String(str));
-    }
-    [
-      ["&", "&amp;"],
-      ["<", "&lt;"],
-      [">", "&gt;"],
-      ["'", "&#x27;"],
-      ['"', "&quot;"],
-      ["`", "&#x60;"]
-    ].forEach((pairs) => {
-      str = String(str).replace(new RegExp(pairs[0], "g"), pairs[1]);
-    });
-    return markup(str);
-  }
-  function markup(valueOrStrings, ...placeholders) {
-    if (!Array.isArray(valueOrStrings)) {
-      return new Markup(valueOrStrings);
-    }
-    const strings = valueOrStrings;
-    let acc = "";
-    let i = 0;
-    for (; i < placeholders.length; ++i) {
-      acc += strings[i] + htmlEscape(placeholders[i]);
-    }
-    acc += strings[i];
-    return new Markup(acc);
   }
   function createEventHandler(rawEvent) {
     const eventName = rawEvent.split(".")[0];
@@ -1820,7 +1946,7 @@ ${issueStrings}`);
       if (!currentTarget || !inOwnerDocument(currentTarget)) return;
       const data = currentTarget[eventKey];
       if (!data) return;
-      config.mainEventHandler(data, ev, currentTarget);
+      config2.mainEventHandler(data, ev, currentTarget);
     }
     const options = { capture, passive };
     function setup(data) {
@@ -1860,7 +1986,7 @@ ${issueStrings}`);
       const _data = dom[eventKey];
       if (_data) {
         for (const data of Object.values(_data)) {
-          const stopped = config.mainEventHandler(data, event, dom);
+          const stopped = config2.mainEventHandler(data, event, dom);
           if (stopped) return;
         }
       }
@@ -2106,7 +2232,7 @@ ${issueStrings}`);
     }
     const doc = new DOMParser().parseFromString(`<t>${str}</t>`, "text/xml");
     const node = doc.firstChild.firstChild;
-    if (config.shouldNormalizeDom) {
+    if (config2.shouldNormalizeDom) {
       normalizeNode(node);
     }
     const tree = buildTree(node);
@@ -3017,6 +3143,9 @@ ${issueStrings}`);
         node.forceNextRender = true;
       } else {
         result++;
+        if (node.bdom) {
+          node.forceNextRender = true;
+        }
       }
       result += cancelFibers(fiber.children);
     }
@@ -3226,12 +3355,15 @@ ${issueStrings}`);
     parent;
     children = /* @__PURE__ */ Object.create(null);
     willUpdateProps = [];
+    // Fired right after `props` is applied to `node.props` on a parent re-render,
+    // so reactive prop notifications happen once the new values are observable
+    // (after user `onWillUpdateProps` hooks, including async ones, have run).
+    propsUpdated = [];
     willUnmount = [];
     mounted = [];
     willPatch = [];
     patched = [];
     signalComputation;
-    pluginManager;
     constructor(C, props2, app, parent, parentKey) {
       super(app);
       this.parent = parent;
@@ -3760,6 +3892,7 @@ ${issueStrings}`);
               () => {
                 if (fiber !== node.fiber) return;
                 node.props = props2;
+                for (const f of node.propsUpdated) f();
                 fiber.render();
               },
               (error) => {
@@ -3768,6 +3901,7 @@ ${issueStrings}`);
             );
           } else {
             node.props = props2;
+            for (const f of node.propsUpdated) f();
             fiber.render();
           }
         }
@@ -4108,10 +4242,6 @@ ${issueStrings}`);
     }
     return stopped;
   };
-  function onWillStart(fn) {
-    const scope = useScope();
-    scope.willStart.push(scope.decorate(fn, "onWillStart"));
-  }
   function onWillUpdateProps(fn) {
     const scope = getComponentScope();
     function swapped(s, nextProps) {
@@ -4135,10 +4265,6 @@ ${issueStrings}`);
     const scope = getComponentScope();
     scope.willUnmount.unshift(scope.decorate(fn, "onWillUnmount"));
   }
-  function onWillDestroy(fn) {
-    const scope = useScope();
-    scope.onDestroy(scope.decorate(fn, "onWillDestroy"));
-  }
   function onError(callback) {
     const scope = getComponentScope();
     let handlers = nodeErrorHandlers.get(scope);
@@ -4147,6 +4273,24 @@ ${issueStrings}`);
       nodeErrorHandlers.set(scope, handlers);
     }
     handlers.push(callback.bind(scope.component));
+  }
+  function staticProp(key, type, ...args) {
+    const node = getComponentScope();
+    const hasDefault = args.length > 0;
+    const propValue = node.props[key];
+    if (node.app.dev) {
+      if (type !== void 0 && (!hasDefault || propValue !== void 0)) {
+        assertType(propValue, type, `Invalid prop '${key}' in '${node.componentName}'`);
+      }
+      node.willUpdateProps.push((nextProps) => {
+        if (nextProps[key] !== node.props[key]) {
+          throw new OwlError(
+            `Prop '${key}' changed in component '${node.componentName}'. Props declared with \`props.static()\` are static and should not change. If the prop is a signal, pass the same signal reference (its inner value may change).`
+          );
+        }
+      });
+    }
+    return propValue === void 0 && hasDefault ? args[0] : propValue;
   }
   function componentType() {
     return constructorType(Component);
@@ -4169,35 +4313,51 @@ ${issueStrings}`);
     }
     return types2.strictObject(validation);
   }
-  function props(type, defaults) {
+  function makeProps(type, defaults) {
     const node = getComponentScope();
     const { app, componentName } = node;
     if (defaults) {
       node.defaultProps = Object.assign(node.defaultProps || {}, defaults);
     }
-    function getProp(key) {
-      if (node.props[key] === void 0 && defaults) {
+    function resolveValue(props2, key) {
+      if (props2[key] === void 0 && defaults) {
         return defaults[key];
       }
-      return node.props[key];
+      return props2[key];
     }
+    const signals = /* @__PURE__ */ Object.create(null);
     const result = /* @__PURE__ */ Object.create(null);
-    function applyPropGetters(keys) {
+    function defineProp(key) {
+      signals[key] = signal(resolveValue(node.props, key));
+      Reflect.defineProperty(result, key, {
+        enumerable: true,
+        configurable: true,
+        get: signals[key]
+      });
+    }
+    function defineProps(keys) {
       for (const key of keys) {
-        Reflect.defineProperty(result, key, {
-          enumerable: true,
-          get: getProp.bind(null, key)
-        });
+        defineProp(key);
+      }
+    }
+    function updateSignals(keys) {
+      for (const key of keys) {
+        signals[key].set(resolveValue(node.props, key));
       }
     }
     if (type) {
       const keys = (Array.isArray(type) ? type : Object.keys(type)).map(
         (key) => key.endsWith("?") ? key.slice(0, -1) : key
       );
-      applyPropGetters(keys);
+      defineProps(keys);
+      node.propsUpdated.push(() => updateSignals(keys));
       if (app.dev) {
         if (defaults) {
-          assertType(defaults, validateDefaults(type), `Invalid component default props (${componentName})`);
+          assertType(
+            defaults,
+            validateDefaults(type),
+            `Invalid component default props (${componentName})`
+          );
         }
         const validation = types2.object(type);
         assertType(node.props, validation, `Invalid component props (${componentName})`);
@@ -4223,17 +4383,28 @@ ${issueStrings}`);
         return keys2;
       };
       let keys = getKeys(node.props);
-      applyPropGetters(keys);
-      node.willUpdateProps.push((np) => {
+      defineProps(keys);
+      node.propsUpdated.push(() => {
+        const nextKeys = getKeys(node.props);
+        const nextKeySet = new Set(nextKeys);
         for (const key of keys) {
-          Reflect.deleteProperty(result, key);
+          if (!nextKeySet.has(key)) {
+            Reflect.deleteProperty(result, key);
+            delete signals[key];
+          }
         }
-        keys = getKeys(np);
-        applyPropGetters(keys);
+        for (const key of nextKeys) {
+          if (!(key in signals)) {
+            defineProp(key);
+          }
+        }
+        updateSignals(nextKeys);
+        keys = nextKeys;
       });
     }
     return result;
   }
+  var props = Object.assign(makeProps, { static: staticProp });
   var ErrorBoundary = class extends Component {
     static template = xml`
     <t t-if="this.props.error()">
@@ -4248,27 +4419,7 @@ ${issueStrings}`);
       onError((e) => this.props.error.set(e));
     }
   };
-  function useEffect(fn) {
-    onWillDestroy(effect(fn));
-  }
-  function useListener(target, eventName, handler, eventParams) {
-    if (typeof target === "function") {
-      useEffect(() => {
-        const el = target();
-        if (el) {
-          el.addEventListener(eventName, handler, eventParams);
-          return () => el.removeEventListener(eventName, handler, eventParams);
-        }
-        return;
-      });
-    } else {
-      target.addEventListener(eventName, handler, eventParams);
-      onWillDestroy(() => target.removeEventListener(eventName, handler, eventParams));
-    }
-  }
-  function useApp() {
-    return useScope().app;
-  }
+  var useApp2 = useApp;
   var PortalContent = class extends Component {
     static template = xml`<t t-call-slot="default"/>`;
   };
@@ -4352,47 +4503,6 @@ ${issueStrings}`);
       onWillDestroy(() => root.destroy());
     }
   };
-  function prop(key, type, ...args) {
-    const node = getComponentScope();
-    const hasDefault = args.length > 0;
-    const propValue = node.props[key];
-    if (node.app.dev) {
-      if (type !== void 0 && (!hasDefault || propValue !== void 0)) {
-        assertType(propValue, type, `Invalid prop '${key}' in '${node.componentName}'`);
-      }
-      node.willUpdateProps.push((nextProps) => {
-        if (nextProps[key] !== node.props[key]) {
-          throw new OwlError(
-            `Prop '${key}' changed in component '${node.componentName}'. Props declared with \`prop()\` are static and should not change. If the prop is a signal, pass the same signal reference (its inner value may change).`
-          );
-        }
-      });
-    }
-    return propValue === void 0 && hasDefault ? args[0] : propValue;
-  }
-  function plugin(pluginType) {
-    const scope = useScope();
-    const manager = scope instanceof ComponentNode ? scope.pluginManager : scope;
-    let plugin2 = manager.getPluginById(pluginType.id);
-    if (!plugin2) {
-      if (scope instanceof PluginManager) {
-        plugin2 = manager.startPlugin(pluginType);
-      } else {
-        throw new OwlError(`Unknown plugin "${pluginType.id}"`);
-      }
-    }
-    return plugin2;
-  }
-  function config2(name, type) {
-    const scope = useScope();
-    if (!(scope instanceof PluginManager)) {
-      throw new OwlError("Expected to be in a plugin scope");
-    }
-    if (scope.app.dev && type) {
-      assertType(scope.config, types2.object({ [name]: type }), "Config does not match the type");
-    }
-    return scope.config[name.endsWith("?") ? name.slice(0, -1) : name];
-  }
   function providePlugins(pluginConstructors, config3) {
     const node = getComponentScope();
     const manager = new PluginManager(node.app, { parent: node.pluginManager, config: config3 });
@@ -4403,10 +4513,10 @@ ${issueStrings}`);
       onWillStart(() => manager.ready);
     }
   }
-  config.shouldNormalizeDom = false;
-  config.mainEventHandler = mainEventHandler;
+  config2.shouldNormalizeDom = false;
+  config2.mainEventHandler = mainEventHandler;
   var blockDom = {
-    config,
+    config: config2,
     // bdom entry points
     mount,
     patch,
@@ -4421,8 +4531,8 @@ ${issueStrings}`);
   };
   var __info__ = {
     version: App.version,
-    date: "2026-05-21T09:26:06.769Z",
-    hash: "64885dbf",
+    date: "2026-06-05T08:48:39.601Z",
+    hash: "06699124",
     url: "https://github.com/odoo/owl"
   };
 

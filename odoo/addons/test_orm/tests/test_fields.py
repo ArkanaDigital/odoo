@@ -24,12 +24,10 @@ from odoo.addons.test_orm.tests.test_domain_expression import TransactionExpress
 _logger = logging.getLogger(__name__)
 
 
-@tagged('at_install', '-post_install')  # LEGACY at_install
+@tagged('at_install', '-post_install')
 class TestFields(TransactionCaseWithUserDemo, TransactionExpressionCase):
     def setUp(self):
         # for tests methods that create custom models/fields
-        self.addCleanup(self.registry.reset_changes)
-        self.addCleanup(self.registry.clear_all_caches)
         super().setUp()
         self.env.ref('test_orm.discussion_0').write({'participants': [Command.link(self.user_demo.id)]})
         # YTI FIX ME: The cache shouldn't be inconsistent (rco is gonna fix it)
@@ -4281,7 +4279,7 @@ class TestRequiredMany2one(TransactionCase):
         field = Model._fields['foo']
 
         # clean up registry after this test
-        self.addCleanup(self.registry.reset_changes)
+        self.env.transaction.will_change_registry()
         self.patch(field, 'ondelete', 'set null')
 
         with self.assertRaises(ValueError):
@@ -4304,7 +4302,7 @@ class TestRequiredMany2oneTransient(TransactionCase):
         field = Model._fields['foo']
 
         # clean up registry after this test
-        self.addCleanup(self.registry.reset_changes)
+        self.env.transaction.will_change_registry()
         self.patch(field, 'ondelete', 'set null')
 
         with self.assertRaises(ValueError):
@@ -5028,7 +5026,7 @@ class TestPrecomputeModel(TransactionCase):
         self.assertTrue(Model.upper.precompute)
 
         # see what happens if not both are precompute
-        self.addCleanup(self.registry.reset_changes)
+        self.env.transaction.will_change_registry()
         self.patch(Model.upper, 'precompute', False)
         with self.assertWarns(UserWarning):
             self.registry._setup_models__(self.cr, ['test_orm.precompute'])
@@ -5039,10 +5037,9 @@ class TestPrecomputeModel(TransactionCase):
         self.assertTrue(Model.lower.precompute)
         self.assertTrue(Model.upper.precompute)
         self.assertTrue(Model.lowup.precompute)
+        self.env.transaction.will_change_registry()
 
         # see what happens if precompute depends on non-precompute
-        self.addCleanup(self.registry.reset_changes)
-
         def reset():
             Model.lowup.precompute = True
         self.addCleanup(reset)
@@ -5067,9 +5064,9 @@ class TestPrecomputeModel(TransactionCase):
         Line = self.registry['test_orm.precompute.line']
         self.assertTrue(Model.size.precompute)
         self.assertTrue(Line.size.precompute)
+        self.env.transaction.will_change_registry()
 
         # see what happens if precompute depends on non-precompute
-        self.addCleanup(self.registry.reset_changes)
         # ensure that Model.size.precompute is restored after _setup_models__()
         self.patch(Model.size, 'precompute', True)
         self.patch(Line.size, 'precompute', False)

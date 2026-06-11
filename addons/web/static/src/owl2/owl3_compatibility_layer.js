@@ -64,14 +64,6 @@ class Component extends owl.Component {
 owl.Component = Component;
 
 /**
- * @param {any} value
- * @param {any} descr
- */
-owl.validate = function validate(value, descr) {
-    // return owl.validate(...arguments);
-};
-
-/**
  * @param {() => void} cb
  */
 owl.onWillRender = function onWillRender(cb) {
@@ -135,14 +127,6 @@ owl.useExternalListener = function useExternalListener(target, eventName, handle
     const boundHandler = handler.bind(node.component);
     owl.onMounted(() => target.addEventListener(eventName, boundHandler, eventParams));
     owl.onWillUnmount(() => target.removeEventListener(eventName, boundHandler, eventParams));
-};
-
-/**
- * @template T
- * @param {T} data
- */
-owl.useState = function useState(data) {
-    return owl.proxy(data);
 };
 
 /**

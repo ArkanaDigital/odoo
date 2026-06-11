@@ -9,6 +9,8 @@ import {
 import { removeInvisibleWhitespace } from "@html_editor/utils/dom";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
 import { closestBlock } from "@html_editor/utils/blocks";
+import { DISABLED_NAMESPACE } from "@html_editor/main/toolbar/toolbar_plugin";
+import { closestElement } from "@html_editor/utils/dom_traversal";
 
 const CODE_BLOCK_CLASS = "o_syntax_highlighting";
 const CODE_BLOCK_SELECTOR = `div.${CODE_BLOCK_CLASS}`;
@@ -38,14 +40,22 @@ export class SyntaxHighlightingPlugin extends Plugin {
 
         /** Handlers */
         on_will_mount_component_handlers: this.setupNewCodeBlock.bind(this),
-        on_undone_handlers: () => this.addCodeBlocks(this.editable, true),
-        on_redone_handlers: () => this.addCodeBlocks(this.editable, true),
+        on_history_commit_undone_handlers: () => this.addCodeBlocks(this.editable, true),
+        on_history_commit_redone_handlers: () => this.addCodeBlocks(this.editable, true),
         on_will_set_tag_handlers: (el, newTagName, cursors) => {
             if (newTagName.toLowerCase() === "pre") {
                 // Remove invisible whitespace that would become visible in a `<pre>` element.
                 removeInvisibleWhitespace(el, cursors);
             }
         },
+        toolbar_namespace_providers: withSequence(70, (targetedNodes) => {
+            if (
+                targetedNodes.length &&
+                targetedNodes.every((node) => closestElement(node, ".o_syntax_highlighting"))
+            ) {
+                return DISABLED_NAMESPACE;
+            }
+        }),
 
         /** Processors */
         clean_for_save_processors: withSequence(0, (root) => this.cleanForSave(root)),
@@ -164,7 +174,7 @@ export class SyntaxHighlightingPlugin extends Plugin {
                         const textarea = codeBlock.querySelector("textarea");
                         if (textarea !== codeBlock.ownerDocument.activeElement) {
                             textarea.focus();
-                            this.dependencies.history.stageFocus();
+                            this.dependencies.selection.stageFocus();
                         }
                     }
                 }
@@ -183,9 +193,9 @@ export class SyntaxHighlightingPlugin extends Plugin {
     setupNewCodeBlock({ name, props }) {
         if (name === "syntaxHighlighting") {
             Object.assign(props, {
-                onTextareaFocus: () => this.dependencies.history.stageFocus(),
+                onTextareaFocus: () => this.dependencies.selection.stageFocus(),
                 convertToParagraph: ({ target }) => {
-                    this.dependencies.history.stageSelection();
+                    this.dependencies.selection.stageSelection();
                     const component = target.closest(`[data-embedded='${name}']`);
                     const embeddedProps = getEmbeddedProps(component);
                     const baseContainer = this.dependencies.baseContainer.createBaseContainer({
@@ -194,7 +204,7 @@ export class SyntaxHighlightingPlugin extends Plugin {
                     component.replaceWith(baseContainer);
                     newlinesToLineBreaks(baseContainer);
                     this.dependencies.selection.setCursorStart(baseContainer);
-                    this.dependencies.history.addStep();
+                    this.dependencies.history.commit();
                 },
                 setSelection: (selection) => this.dependencies.selection.setSelection(selection),
             });

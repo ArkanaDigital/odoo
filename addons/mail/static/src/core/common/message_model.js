@@ -136,7 +136,6 @@ export class Message extends Record {
     /** @type {boolean} */
     is_transient;
     message_link_preview_ids = fields.Many("mail.message.link.preview", { inverse: "message_id" });
-    /** @type {number[]} */
     parent_id = fields.One("mail.message");
     /**
      * When set, this temporary/pending message failed message post, and the
@@ -362,11 +361,7 @@ export class Message extends Record {
         const name = this.thread?.display_name;
         const threadName = name ? name.trim().toLowerCase() : "";
         const defaultSubject = this.default_subject ? this.default_subject.toLowerCase() : "";
-        // suggested is expected to not change much so it's best to consider it the default for display purposes
-        const suggestedSubject = this.thread?.suggestedSubject
-            ? this.thread.suggestedSubject.toLowerCase()
-            : "";
-        const candidates = new Set([defaultSubject, threadName, suggestedSubject]);
+        const candidates = new Set([defaultSubject, threadName]);
         return candidates.has(this.subject?.toLowerCase());
     }
 
@@ -730,13 +725,13 @@ export class Message extends Record {
 
     /**
      * @param {Object} owner
-     * @param {import("@web/env").OdooEnv} owner.env
+     * @param {import("@odoo/owl").Signal<HTMLElement>} [rootRef]
      */
-    showDeleteConfirm(owner) {
+    showDeleteConfirm(owner, rootRef) {
         this.store.env.services.dialog.add(
             discussComponentRegistry.get("MessageDeleteDialog"),
             { message: this, onConfirm: () => this.onShowDeleteConfirm(owner) },
-            { context: owner }
+            { rootRef }
         );
     }
 

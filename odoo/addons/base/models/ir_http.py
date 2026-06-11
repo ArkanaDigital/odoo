@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import re
-import threading
 import time
 import typing
 import unicodedata
@@ -30,7 +29,7 @@ except ImportError:
     slugify_lib = None
 
 import odoo
-from odoo import api, models, tools
+from odoo import api, models
 from odoo.api import SUPERUSER_ID
 from odoo.exceptions import AccessDenied
 from odoo.http import Response, request
@@ -45,7 +44,6 @@ from odoo.http.session import (
     get_session_max_inactivity,
     session_store,
 )
-from odoo.modules.registry import Registry
 from odoo.tools.json import json_default
 from odoo.tools.misc import get_lang, submap
 from odoo.tools.translate import code_translations
@@ -111,17 +109,14 @@ class ModelConverter(werkzeug.routing.BaseConverter):
         super().__init__(url_map)
         self.model = model
 
-        IrHttp = Registry(threading.current_thread().dbname)['ir.http']
-        self.slug = IrHttp._slug
-        self.unslug = IrHttp._unslug
-
     def to_python(self, value: str) -> models.BaseModel:
         uid = RequestUID(value=value, converter=self)
         env = api.Environment(request.env.cr, uid, request.env.context)
-        return env[self.model].browse(self.unslug(value)[1])
+        unslug = env['ir.http']._unslug
+        return env[self.model].browse(unslug(value)[1])
 
     def to_url(self, value: models.BaseModel) -> str:
-        return self.slug(value)
+        return value.env['ir.http']._slug(value)
 
 
 class ModelsConverter(werkzeug.routing.BaseConverter):
@@ -326,11 +321,14 @@ class IrHttp(models.AbstractModel):
         session_expired_exc = None
         try:
             if request.session.uid is not None:
+                # website_id listed here, not overridable on purpose.
+                safe_context = submap(request.env.context, ('lang', 'tz', 'website_id'))
                 try:
                     check(request.session, request)
                 except SessionExpiredException as exc:
                     session_expired_exc = exc  # save the traceback
-                    request.env = api.Environment(request.env.cr, None, request.session.context)
+                    safe_context.update(request.session.context)
+                    request.env = api.Environment(request.env.cr, None, safe_context)
             getattr(cls, f'_auth_method_{auth}')()
         except SessionExpiredException as exc:
             if session_expired_exc:
@@ -445,10 +443,10 @@ class IrHttp(models.AbstractModel):
         from odoo.http.routing_map import _generate_routing_rules  # noqa: PLC0415
         return _generate_routing_rules(modules, False, converters)
 
-    @tools.ormcache('key', cache='routing')
+    @api.ormcache('key', cache='routing')
     def routing_map(self, key=None):
         _logger.info("Generating routing map for key %s", key)
-        registry = Registry(threading.current_thread().dbname)
+        registry = self.env.registry
         installed = registry._init_modules.union(odoo.tools.config['server_wide_modules'])
         mods = sorted(installed)
         # Note : when routing map is generated, we put it on the class `cls`
@@ -497,7 +495,7 @@ class IrHttp(models.AbstractModel):
         return translations_per_module, lang_params
 
     @api.model
-    @tools.ormcache('frozenset(modules)', 'lang')
+    @api.ormcache('frozenset(modules)', 'lang')
     def _get_web_translations_hash(self, modules, lang):
         translations, lang_params = self._get_translations_for_webclient(modules, lang)
         translation_cache = {
@@ -511,9 +509,9 @@ class IrHttp(models.AbstractModel):
             self.env.cr.cache['translation_data'] = translation_cache
         return hashlib.sha1(json.dumps(translation_cache, sort_keys=True, default=json_default).encode()).hexdigest()
 
-    @classmethod
-    def _is_allowed_cookie(cls, cookie_type):
-        return True if cookie_type == 'required' else bool(request.env.user)
+    @api.model
+    def _is_allowed_cookie(self, cookie_type):
+        return True if cookie_type == 'required' else bool(self.env.user)
 
     @api.model
     def _verify_request_recaptcha_token(self, action: str):

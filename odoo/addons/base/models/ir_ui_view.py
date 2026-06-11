@@ -479,7 +479,8 @@ actual arch.
 
                 if view.type == 'qweb':
                     continue
-            except (etree.ParseError, ValueError) as e:
+            except (etree.ParseError, ValueError, TypeError) as e:
+                # Note: lxml < 5.0 raises ValueError; lxml 5.0+ / libxml2 2.12+ raises TypeError
                 err = ValidationError(_(
                     "Error while parsing or validating view:\n\n%(error)s",
                     error=e,
@@ -581,7 +582,8 @@ actual arch.
                 combined_arch = view._get_combined_arch()
                 if view.type != 'qweb':
                     view._postprocess_view(combined_arch, view.model, is_compute_warning_info=True)
-            except (etree.ParseError, ValueError) as e:
+            except (etree.ParseError, ValueError, TypeError) as e:
+                # Note: lxml < 5.0 raises ValueError; lxml 5.0+ / libxml2 2.12+ raises TypeError
                 view.warning_info = str(e)
 
     def _validate_xml_encoding(self, text):
@@ -615,7 +617,8 @@ actual arch.
                                 "Allowed types are: %(valid_types)s",
                                 view_type=values['type'], valid_types=', '.join(valid_types)
                             ))
-                    except (etree.ParseError, ValueError):
+                    except (etree.ParseError, ValueError, TypeError):
+                        # Note: lxml < 5.0 raises ValueError; lxml 5.0+ / libxml2 2.12+ raises TypeError
                         # don't raise here, the constraint that runs `self._check_xml` will
                         # do the job properly.
                         pass
@@ -1119,13 +1122,13 @@ actual arch.
 
     @api.model
     def _get_cached_template_prefetched_keys(self):
-        return ['id', 'key', 'active']
+        return ['id', 'key', 'active', 'type']
 
     def _get_template_minimal_cache_keys(self):
         return (bool(self.env.context.get('active_test', True)),)
 
     @api.model
-    @tools.ormcache('id_or_xmlid', 'isinstance(id_or_xmlid, str) and self._get_template_minimal_cache_keys()', cache='templates')
+    @api.ormcache('id_or_xmlid', 'isinstance(id_or_xmlid, str) and self._get_template_minimal_cache_keys()', cache='templates')
     def _get_cached_template_info(self, id_or_xmlid: int | str, *, _view: models.BaseModel | None = None):
         """Return cached template data for ``id_or_xmlid``.
 
@@ -1240,7 +1243,7 @@ actual arch.
                 view_by_id[id_or_xmlid] = info['error']
         return view_by_id
 
-    @tools.ormcache(cache='templates')
+    @api.ormcache(cache='templates')
     def _clear_preload_views_cache_if_needed(self):
         """ Invalidate the local cache when the orm cache is cleared
         """
@@ -3084,7 +3087,7 @@ class Base(models.AbstractModel):
     @api.model
     @tools.conditional(
         'xml' not in config['dev_mode'],
-        tools.ormcache('self._get_view_cache_key(view_id, view_type, **options)', cache='templates'),
+        api.ormcache('self._get_view_cache_key(view_id, view_type, **options)', cache='templates'),
     )
     def _get_view_cache(self, view_id=None, view_type='form', **options):
         """ Get the view information ready to be cached

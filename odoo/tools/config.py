@@ -32,6 +32,16 @@ ALL_DEV_MODE = ['access', 'qweb', 'reload', 'xml']
 DEFAULT_SERVER_WIDE_MODULES = ['base', 'rpc', 'web']
 REQUIRED_SERVER_WIDE_MODULES = ['base', 'web']
 
+DEFAULT_COLOR_SPEC = {
+    'pid': 'never',
+    'loglevel': 'auto',
+    'session_id': 'never',
+    'http_request_line': 'auto',
+    'http_response_body': 'auto',
+    'perf': 'auto',
+    'cursor_mode': 'auto',
+}
+
 
 class _Empty:
     def __repr__(self):
@@ -193,6 +203,9 @@ class configmanager:
 
         # list of nargs='?' options, indexed by short/long option (-x, --xx)
         self.optional_options = {}
+
+        # optional [colors] options, no color until we load_color_options()
+        self.colors: dict[str, bool] = dict.fromkeys(DEFAULT_COLOR_SPEC, False)
 
         # map old name -> new name
         self.aliases = {
@@ -536,14 +549,23 @@ class configmanager:
             f'/var/lib/{release.product_name}'
         )
 
-        if os.name == 'nt':
+        default_config_dir = (
+            appdirs.user_config_dir(release.product_name, release.author)
+            if os.path.isdir(os.path.expanduser('~')) else
+            appdirs.site_config_dir(release.product_name, release.author)
+        )
+        default_config_file = os.path.join(default_config_dir, 'odoo.conf')
+
+        if os.path.isfile(default_config_file):
+            rcfilepath = default_config_file
+        elif os.name == 'nt':
             rcfilepath = os.path.join(os.path.abspath(os.path.dirname(sys.argv[0])), 'odoo.conf')
         elif os.path.isfile(rcfilepath := os.path.expanduser('~/.odoorc')):
             pass
         elif os.path.isfile(rcfilepath := os.path.expanduser('~/.openerp_serverrc')):
             self._warn("Since ages ago, the ~/.openerp_serverrc file has been replaced by ~/.odoorc", DeprecationWarning)
         else:
-            rcfilepath = '~/.odoorc'
+            rcfilepath = default_config_file
         self._default_options['config'] = self._normalize(rcfilepath)
 
     _log_entries = []   # helpers for log() and warn(), accumulate messages
@@ -590,6 +612,7 @@ class configmanager:
         opt = self._parse_config(args)
         if setup_logging is not False:
             netsvc.init_logger()
+            self.load_color_options()
             # warn after having done setup, so it has a chance to show up
             # (mostly once this warning is bumped to DeprecationWarning proper)
             if setup_logging is None:
@@ -667,6 +690,57 @@ class configmanager:
         if opt.log_handler:
             self._cli_options['log_handler'] = [handler for comma in opt.log_handler for handler in comma]
 
+    def load_color_options(self):
+        if os.getenv('NO_COLOR'):
+            self.colors = dict.fromkeys(DEFAULT_COLOR_SPEC, False)
+            return
+
+        if os.getenv('FORCE_COLOR'):
+            self.colors = dict.fromkeys(DEFAULT_COLOR_SPEC, True)
+            return
+
+        color2bool = {'always': True, 'never': False, 'auto': any(
+            isinstance(handler, logging.StreamHandler)
+            and hasattr(handler.stream, 'fileno')
+            and os.isatty(handler.stream.fileno())
+            for handler in logging.getLogger().handlers
+        )}
+
+        if color := os.getenv('ODOO_PY_COLORS'):
+            try:
+                value = color2bool[color]
+            except KeyError:
+                try:
+                    value = self._check_bool(..., ..., color)  # backward compat
+                except optparse.OptionValueError:
+                    e = f"environ['ODOO_PY_COLORS'] is not always/never/auto: {color!r}"
+                    raise optparse.OptionValueError(e) from None
+
+            self.colors = dict.fromkeys(DEFAULT_COLOR_SPEC, value)
+            return
+
+        self.colors = {
+            name: color2bool[value]
+            for name, value in DEFAULT_COLOR_SPEC.items()
+        }
+
+        p = ConfigParser.RawConfigParser()
+        try:
+            p.read([self['config']])
+            file_options = p.items('colors')
+        except (OSError, ConfigParser.NoSectionError):
+            pass
+        else:
+            for name, value in file_options:
+                if name not in DEFAULT_COLOR_SPEC:
+                    self._log(logging.WARNING, "unknown color option: %r, skipped", name)
+                    continue
+                try:
+                    self.colors[name] = color2bool[value]
+                except KeyError:
+                    e = f"color option {name}: invalid value: {value!r}"
+                    raise optparse.OptionValueError(e) from None
+
     def _postprocess_options(self):
         self._runtime_options.clear()
 
@@ -691,6 +765,13 @@ class configmanager:
         # ensure default http_interface is set
         if not self['http_interface']:
             self._runtime_options['http_interface'] = '127.0.0.1'
+
+        # check here some envvar options that are exposed as property
+        try:
+            self.http_socket_activation
+            self.max_http_threads
+        except ValueError as exc:
+            self.parser.error(exc.args[0])
 
         # accumulate all log_handlers
         self._runtime_options['log_handler'] = list(_deduplicate_loggers([
@@ -808,6 +889,9 @@ class configmanager:
                 continue
             if not os.path.isdir(path):
                 cls._log(logging.WARNING, "option %s, no such directory %r, skipped", opt, path)
+                continue
+            if not cls._is_addons_path(path):
+                cls._log(logging.WARNING, "option %s, invalid addons directory %r, skipped", opt, path)
                 continue
             ad_paths.append(path)
         return ad_paths
@@ -948,6 +1032,8 @@ class configmanager:
             p.read([self['config']])
         if not p.has_section('options'):
             p.add_section('options')
+        if not p.has_section('colors'):
+            p.add_section('colors')
         for opt in sorted(self.options):
             option = self.options_index.get(opt)
             if keys is not None and opt not in keys:
@@ -958,6 +1044,10 @@ class configmanager:
                 p.set('options', opt, self.format(opt, self.options[opt]))
             else:
                 p.set('options', opt, self.options[opt])
+
+        for color, value in DEFAULT_COLOR_SPEC.items():
+            if color not in p['colors']:  # ignored unless keys are given
+                p['colors'][color] = value
 
         # try to create the directories and write the file
         try:
@@ -1051,6 +1141,14 @@ class configmanager:
             and os.getenv('LISTEN_FDS') == '1'
             and os.getenv('LISTEN_PID') == str(os.getpid())
         )
+
+    @property
+    def max_http_threads(self):
+        mht = os.getenv('ODOO_MAX_HTTP_THREADS', str(2 * os.cpu_count() + 1))
+        if not (mht.isdecimal() and mht.isascii()):
+            e = f"ODOO_MAX_HTTP_THREADS={mht} but it is not a positive integer"
+            raise ValueError(e)
+        return int(mht)
 
     @classmethod
     def _normalize(cls, path):

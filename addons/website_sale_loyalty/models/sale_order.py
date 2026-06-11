@@ -208,9 +208,10 @@ class SaleOrder(models.Model):
         return self.order_line.filtered(lambda line: line.reward_id.reward_type == "shipping")
 
     def _allow_nominative_programs(self):
-        if not request or not hasattr(request, "website"):
+        website = self.env["website"].get_current_website(fallback=False)
+        if not website:
             return super()._allow_nominative_programs()
-        return not request.website.is_public_user() and super()._allow_nominative_programs()
+        return not website.is_public_user() and super()._allow_nominative_programs()
 
     @api.autovacuum
     def _gc_abandoned_coupons(self, *_args, **_kwargs):
@@ -242,6 +243,7 @@ class SaleOrder(models.Model):
         ])
         total_is_zero = self.currency_id.is_zero(self.amount_total)
         global_discount_reward = self._get_applied_global_discount()
+        today = fields.Date.context_today(self)
         for coupon in loyality_cards:
             points = self._get_real_points_for_coupon(coupon)
             for reward in coupon.program_id.reward_ids - self.order_line.reward_id:
@@ -253,7 +255,7 @@ class SaleOrder(models.Model):
                     continue
                 if reward.reward_type == "discount" and total_is_zero:
                     continue
-                if coupon.expiration_date and coupon.expiration_date < fields.Date.today():
+                if coupon.expiration_date and coupon.expiration_date < today:
                     continue
                 if points >= reward.required_points:
                     if coupon in res:
@@ -271,11 +273,18 @@ class SaleOrder(models.Model):
             .filtered(lambda sol: not sol.is_reward_line)
         )
 
-    def _recompute_cart(self):
-        """Recompute cart with loyalty programs and rewards applied."""
-        self._update_programs_and_rewards()
-        self._auto_apply_rewards()
-        super()._recompute_cart()
+    def _update_cart_taxes_and_prices(self, **kwargs):
+        """Override of `website_sale` to ensure rewards are up to date before paying."""
+        changed = super()._update_cart_taxes_and_prices(**kwargs)
+
+        # self._update_programs_and_rewards() is already called by self._recompute_prices()
+        if self._auto_apply_rewards():
+            self._add_warning_alert(
+                self.env._("Applied rewards have changed. Please review your cart.")
+            )
+            return True
+
+        return changed
 
     def _get_promotion_progress_bars(self):
         """Return progress data for auto-applied promotion programs whose only unmatched

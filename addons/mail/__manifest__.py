@@ -213,7 +213,6 @@ For more specific needs, you may also assign custom-defined actions
             "web/static/lib/odoo_ui_icons/style.css",
         ],
         'mail.assets_public': [
-            'web/static/lib/jquery/jquery.js',
             ('include', 'web._assets_helpers'),
             ('include', 'web._assets_backend_helpers'),
             'web/static/src/scss/pre_variables.scss',
@@ -295,11 +294,10 @@ For more specific needs, you may also assign custom-defined actions
         ],
         'im_livechat.assets_embed_cors': [
             ('include', 'im_livechat.assets_embed_external'),
-            ('remove', 'web/static/src/core/browser/title_service.js'),
+            ('remove', 'web/static/src/core/browser/title_plugin.js'),
         ],
         'im_livechat.embed_assets_unit_tests_setup': [
             ('include', 'web.assets_unit_tests_setup'),
-            ('remove', 'mail/static/src/discuss/core/web/discuss_core_common_service_patch.js'),
             'web/static/tests/web_test_helpers.js',
             'bus/static/tests/bus_test_helpers.js',
             'mail/static/tests/mail_test_helpers.js',

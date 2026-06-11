@@ -12,7 +12,7 @@ from dateutil.rrule import DAILY, rrule
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError, UserError
 from odoo.fields import Command, Domain
-from odoo.tools import float_compare, ormcache
+from odoo.tools import float_compare
 from odoo.tools.date_utils import end_of, float_to_time, localized, to_timezone, start_of
 from odoo.tools.float_utils import float_round
 from odoo.tools.intervals import Intervals
@@ -158,7 +158,7 @@ class ResourceCalendar(models.Model):
 
     @api.depends('two_weeks_calendar')
     def _compute_two_weeks_explanation(self):
-        today = fields.Date.today()
+        today = fields.Date.context_today(self)
         week_type = self.env['resource.calendar.attendance'].get_week_type(today)
         week_type_str = self.env._("even") if week_type else self.env._("odd")
         first_day = start_of(today, 'week')
@@ -472,10 +472,9 @@ class ResourceCalendar(models.Model):
                         tz_dates[tz, end_dt] = end
                     dt0 = leave_date_from.astimezone(tz)
                     dt1 = leave_date_to.astimezone(tz)
-                    if leave_resource and leave_resource._is_fully_flexible():
+                    if leave_resource and leave_resource._is_flexible():
                         dt0, dt1 = self._handle_flexible_leave_interval(dt0, dt1, leave)
                     result[resource.id].append((max(start, dt0), min(end, dt1), leave))
-
         return {r.id: Intervals(result[r.id]) for r in all_resources}
 
     def _work_intervals_batch(self, start_dt, end_dt, resources_per_tz=None, domain=None, compute_leaves=True):
@@ -519,7 +518,7 @@ class ResourceCalendar(models.Model):
             if resource and resource._is_flexible():
                 leaves = self._leave_intervals_batch(start_dt, end_dt, resources_per_tz, domain)
                 if res_leaves := leaves.get(resource.id, []):
-                    result[resource.id] = [(i[0], i[1]) for i in res_leaves]
+                    result[resource.id] = [(i[0].astimezone(UTC), i[1].astimezone(UTC)) for i in res_leaves]
                 continue
             work_intervals = resources_work_intervals[resource.id]
             utc_work_intervals = []
@@ -892,7 +891,7 @@ class ResourceCalendar(models.Model):
                 nb_of_work_days += int(schedule[week_type][str(day.weekday())])
         return nb_of_work_days
 
-    @ormcache('self.id')
+    @api.ormcache('self.id')
     def _get_working_hours(self):
         self.ensure_one()
 

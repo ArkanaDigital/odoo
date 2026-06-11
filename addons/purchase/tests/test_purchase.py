@@ -848,26 +848,6 @@ class TestPurchase(AccountTestInvoicingCommon):
         po.company_id = company_a.id
         self.assertEqual(po.amount_untaxed, 10.0)
 
-    def test_print_purchase_order_without_state_change(self):
-        """
-        Check that printing a confirmed purchase order does not
-        reset its state.
-        """
-        po_form = Form(self.env['purchase.order'])
-        po_form.partner_id = self.partner_a
-        with po_form.order_line.new() as po_line:
-            po_line.product_id = self.product
-            po_line.product_qty = 1.0
-        po = po_form.save()
-        po.button_confirm()
-        self.assertEqual(po.state, 'purchase')
-        po.print_quotation()
-        self.assertEqual(po.state, 'purchase')
-        po.button_cancel()
-        self.assertEqual(po.state, 'cancel')
-        po.print_quotation()
-        self.assertEqual(po.state, 'cancel')
-
     def test_purchase_warnings(self):
         """Test warnings when partner/products with purchase warnings are used."""
         partner_with_warning = self.env['res.partner'].create({
@@ -1354,3 +1334,135 @@ class TestPurchase(AccountTestInvoicingCommon):
             "The UoM of the PO line for the Blue variant should not be the supplier info UoM (dozens) tied to Red.")
         self.assertNotIn(self.uom_dozen, po_line_blue.allowed_uom_ids,
             "The dozens UoM should not be allowed for the Blue variant since the supplier info is specific to Red.")
+
+    def test_action_receive_on_purchase_order_with_stock_installed(self):
+        """Verify that calling action_receive on a purchase order
+        while the stock module is installed raises a UserError,
+        and the received quantity remains zero.
+        """
+        self.ensure_installed('stock')
+        po = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [Command.create({
+                'product_id': self.product.id,
+                'product_qty': 1,
+            })],
+        })
+        po.button_confirm()
+        with self.assertRaises(UserError):
+            po.action_receive()
+        self.assertEqual(po.order_line.qty_received, 0)
+
+    def test_variant_level_pricelist_with_different_characteristics(self):
+        """Check that confirming a PO with product variants creates vendor pricelist lines
+        at the template level when all variants share the same characteristics, and at the
+        variant level when price or lead time differs between variants.
+        """
+        color_attributes = self.env['product.attribute'].create({
+            'name': 'Color',
+            'value_ids': [Command.create({'name': name}) for name in ['Red', 'Green']],
+        })
+        product_sofa = self.env['product.template'].create({
+            'name': 'Sofa',
+            'attribute_line_ids': [Command.create({
+                'attribute_id': color_attributes.id,
+                'value_ids': [Command.set(color_attributes.value_ids.ids)],
+            })],
+        })
+        variants = product_sofa.product_variant_ids
+
+        # PO with same price for both variants → template-level pricelist should be created.
+        po_form = Form(self.env['purchase.order'])
+        po_form.partner_id = self.partner_a
+        for variant in variants:
+            with po_form.order_line.new() as line:
+                line.product_id = variant
+                line.price_unit = 200
+        po = po_form.save()
+        po.button_confirm()
+        self.assertRecordValues(product_sofa.seller_ids, [
+            {'product_id': False, 'partner_id': self.partner_a.id, 'price': 200, 'delay': 0},
+        ])
+
+        # PO with different prices/delays → variant-level pricelist should be created.
+        po_form = Form(self.env['purchase.order'])
+        po_form.partner_id = self.partner_b
+        for i, variant in enumerate(variants):
+            with po_form.order_line.new() as line:
+                line.product_id = variant
+                line.price_unit = 100 + i * 10
+                line.date_planned = fields.Datetime.now() + timedelta(days=i + 1)
+        po = po_form.save()
+        po.button_confirm()
+        self.assertRecordValues(product_sofa.seller_ids, [
+            {'product_id': False, 'partner_id': self.partner_a.id, 'price': 200, 'delay': 0},
+            {'product_id': variants[0].id, 'partner_id': self.partner_b.id, 'price': 100, 'delay': 1},
+            {'product_id': variants[1].id, 'partner_id': self.partner_b.id, 'price': 110, 'delay': 2},
+        ])
+
+    @freeze_time('2026-05-12 20:00:00')
+    def test_supplierinfo_date_timezone_aware(self):
+        """Supplierinfo lookup should use the user's local date, not UTC.
+
+        When a user in Pacific/Auckland (UTC+12) creates a PO at
+        2026-05-12 20:00 UTC (= 2026-05-13 08:00 NZST), a supplierinfo
+        with date_start=2026-05-13 must match — the user's local date is
+        May 13, even though the UTC date is still May 12.
+
+        An older entry covering up to May 12 at a different price ensures
+        the test fails if the code uses the UTC date instead of the
+        user's local date.
+        """
+        self.env.user.tz = 'Pacific/Auckland'
+        self.env['product.supplierinfo'].create({
+            'partner_id': self.partner_a.id,
+            'product_tmpl_id': self.product_a.product_tmpl_id.id,
+            'min_qty': 1,
+            'price': 30.0,
+            'date_start': fields.Date.from_string('2026-05-01'),
+            'date_end': fields.Date.from_string('2026-05-12'),
+        })
+        self.env['product.supplierinfo'].create({
+            'partner_id': self.partner_a.id,
+            'product_tmpl_id': self.product_a.product_tmpl_id.id,
+            'min_qty': 1,
+            'price': 50.0,
+            'date_start': fields.Date.from_string('2026-05-13'),
+            'date_end': fields.Date.from_string('2026-05-31'),
+        })
+
+        po = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [Command.create({
+                'product_id': self.product_a.id,
+                'product_qty': 1,
+            })],
+        })
+
+        self.assertEqual(
+            po.order_line.price_unit, 50.0,
+            "The price should come from the May 13-31 entry, not the "
+            "May 1-12 entry that matches the wrong UTC date.",
+        )
+
+
+@tagged('at_install', '-post_install')
+class TestPurchaseWithoutStock(AccountTestInvoicingCommon):
+
+    def test_qty_received_with_different_purchase_and_product_uom(self):
+        """Ensure that when a purchase order line uses a UoM different from the
+        product's default UoM (e.g. dozens instead of units), the received
+        quantity reflect the purchase UoM and ahquantity, not the product UoM quantity.
+        """
+        self.assertEqual(self.product.uom_id, self.env.ref('uom.product_uom_unit'))
+        po = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [Command.create({
+                'product_id': self.product.id,
+                'product_qty': 1,
+                'uom_id': self.env.ref('uom.product_uom_dozen').id,
+            })],
+        })
+        po.button_confirm()
+        po.action_receive()
+        self.assertEqual(po.order_line.qty_received, 1)

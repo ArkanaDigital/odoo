@@ -17,6 +17,7 @@ class ProductTemplate(models.Model):
         if (
             bool(in_store_dm)  # Click & Collect is enabled.
             and product_or_template.is_product_variant
+            and product_or_template.is_storable
         ):
             product_sudo = product_or_template.sudo()  # To read the stock values when public user.
             order_sudo = request.cart
@@ -40,7 +41,7 @@ class ProductTemplate(models.Model):
             )
             if valid_delivery_methods:
                 res["delivery_stock_data"] = utils.format_product_stock_values(
-                    product_sudo, uom=uom, cart_qty=cart_qty
+                    product_sudo, wh_id=website.warehouse_id.id, uom=uom, cart_qty=cart_qty
                 )
             else:
                 res["delivery_stock_data"] = {}

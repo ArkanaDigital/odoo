@@ -69,9 +69,11 @@ class DiscussChannelWebclientController(WebclientController):
         self._add_has_unpinned_channels_to_store(store)
 
     @store_handler("discuss.channel", audience="everyone")
-    def store_add_discuss_channel_to_context(self, store: Store, *channel_id):
-        channels = request.env["discuss.channel"].search([("id", "in", channel_id)])
+    def store_add_discuss_channel_to_context(self, store: Store, ids=(), with_last_message=False):
+        channels = request.env["discuss.channel"].search([("id", "in", ids)])
         request.update_context(channels=request.env.context["channels"] | channels)
+        if with_last_message:
+            request.update_context(add_channels_last_message=True)
 
     @store_handler("/discuss/channel/members", audience="everyone")
     def store_get_discuss_channel_members(
@@ -86,7 +88,7 @@ class DiscussChannelWebclientController(WebclientController):
             return
         domain = Domain("channel_id", "=", channel.id)
         if known_member_ids:
-            domain &= Domain("id", "in", known_member_ids)
+            domain &= Domain("id", "not in", known_member_ids)
         if search_term:
             domain &= (
                 Domain("partner_id.name", "ilike", search_term)
@@ -145,6 +147,18 @@ class DiscussChannelWebclientController(WebclientController):
                 lambda res: res.one("channel", "_store_channel_fields", value=resolve_channel),
             )
 
+    @store_handler("/discuss/channel/add_members", audience="logged_in", readonly=False)
+    def store_discuss_channel_add_members(self, store: Store, channel_id, partner_ids=None, user_ids=None, invite_to_rtc_call=False, post_joined_message=True):
+        channel = request.env["discuss.channel"].search_fetch([("id", "=", channel_id)])
+        if not channel:
+            return
+        channel._add_members(
+            partners=request.env["res.partner"].search_fetch([("id", "in", partner_ids or [])]),
+            users=request.env["res.users"].search_fetch([("id", "in", user_ids or [])]),
+            invite_to_rtc_call=invite_to_rtc_call,
+            post_joined_message=post_joined_message,
+        )
+
     @store_handler("/discuss/create_group", audience="everyone", readonly=False)
     def store_create_group(
         self,
@@ -177,7 +191,7 @@ class DiscussChannelWebclientController(WebclientController):
                 member.message_unread_counter or member.channel_id.message_needaction_counter
             ),
         )
-        res.attr("initChannelsUnreadCounter", len(members_with_unread))
+        res.attr("init_unread_channel_ids", members_with_unread.channel_id.ids)
         # fetch channels data before calling super to benefit from prefetching (channel info might
         # prefetch a lot of data that super could use, about the current user in particular)
         super()._store_init_messaging_global_fields(res, bus_last_id)

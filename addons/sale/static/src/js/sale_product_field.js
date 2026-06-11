@@ -6,7 +6,7 @@ import {
 import { serializeDateTime } from "@web/core/l10n/dates";
 import { _t } from "@web/core/l10n/translation";
 import { rpc } from "@web/core/network/rpc";
-import { x2ManyCommands } from "@web/core/orm_service";
+import { x2ManyCommands } from "@web/core/orm_plugin";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { uuid } from "@web/core/utils/strings";
@@ -234,7 +234,7 @@ export class SaleOrderLineProductField extends ProductLabelSectionAndNoteField {
     async _openProductConfigurator(edit = false, selectedComboItems = []) {
         const saleOrderRecord = this.props.record.model.root;
         const saleOrderLine = this.props.record.data;
-        const ptavIds = this._getVariantPtavIds(saleOrderLine);
+        const ptavIds = [...this._getVariantPtavIds(saleOrderLine)];
         let customPtavs = [];
 
         if (edit) {
@@ -279,7 +279,6 @@ export class SaleOrderLineProductField extends ProductLabelSectionAndNoteField {
 
                 await Promise.all(proms);
                 this._onProductUpdate();
-                saleOrderRecord.data.order_line.leaveEditMode();
             },
             discard: () => {
                 if (!selectedComboItems.length) {

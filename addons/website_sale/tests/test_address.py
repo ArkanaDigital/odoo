@@ -246,12 +246,13 @@ class TestCheckoutAddress(WebsiteSaleCommon):
         with self.mock_request(
             sale_order_id=so.id, website_sale_current_pl=so.pricelist_id.id
         ) as request:
+            website = request.env["website"].get_current_website()
             self.assertEqual(request.pricelist, self.pricelist)
             order = request.cart
             self.assertEqual(order, so)
             self.assertEqual(order.pricelist_id, self.pricelist)
 
-            order_b = request.website.with_user(test_user)._get_and_cache_current_cart()
+            order_b = website.with_user(test_user)._get_and_cache_current_cart()
             self.assertEqual(order, order_b)
             self.assertEqual(order_b.pricelist_id, pl_with_code)
 
@@ -562,11 +563,10 @@ class TestCheckoutAddress(WebsiteSaleCommon):
                 partner_id=bad_invoicing.id, address_type="billing"
             )
             self.assertEqual(so.partner_invoice_id, bad_invoicing)
-            redirection = self.WebsiteSaleController._check_addresses(so)
-            self.assertTrue(redirection is not None)
+            redirect = self.env["website.checkout.step"]._check_shop_address_completion(so)
+            self.assertTrue(redirect is not None)
             self.assertEqual(
-                redirection.location,
-                f"/shop/address?partner_id={bad_invoicing.id}&address_type=billing",
+                redirect, f"/shop/address?partner_id={bad_invoicing.id}&address_type=billing"
             )
 
             # reset to valid one
@@ -578,11 +578,10 @@ class TestCheckoutAddress(WebsiteSaleCommon):
                 partner_id=bad_shipping.id, address_type="delivery"
             )
             self.assertEqual(so.partner_shipping_id, bad_shipping)
-            redirection = self.WebsiteSaleController._check_addresses(so)
-            self.assertTrue(redirection is not None)
+            redirect = self.env["website.checkout.step"]._check_shop_address_completion(so)
+            self.assertTrue(redirect is not None)
             self.assertEqual(
-                redirection.location,
-                f"/shop/address?partner_id={bad_shipping.id}&address_type=delivery",
+                redirect, f"/shop/address?partner_id={bad_shipping.id}&address_type=delivery"
             )
 
             # reset to valid one

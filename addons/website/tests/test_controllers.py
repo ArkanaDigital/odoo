@@ -87,10 +87,10 @@ class TestControllers(tests.HttpCase):
         res.raise_for_status()
 
         headers = {
-            'Content-Length': '93',
-            'Content-Type': 'image/png',
-            'Content-Disposition': 'attachment; filename=one_pixel.png',
-            'Cache-Control': 'public, max-age=31536000, immutable',
+            'content-length': '93',
+            'content-type': 'image/png',
+            'content-disposition': 'attachment; filename=one_pixel.png',
+            'cache-control': 'public, max-age=31536000, immutable',
         }
         self.assertEqual(submap(res.headers, headers.keys()), headers)
         self.assertEqual(res.content, attachment.raw.content)
@@ -213,7 +213,7 @@ class TestControllers(tests.HttpCase):
         })
         models = [{"model": "ir.ui.view", "id": test_view.id, "field": "arch"}]
 
-        with MockRequest(self.env, website=self.env.ref('website.default_website')):
+        with MockRequest(self.env, website=self.env.ref('base.default_website')):
             result = Website().get_alt_images(models)
             parsed_result = json.loads(result)
 

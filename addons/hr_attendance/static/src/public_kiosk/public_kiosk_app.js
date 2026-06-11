@@ -1,5 +1,4 @@
-import { useState } from "@web/owl2/utils";
-import { App, whenReady, Component } from "@odoo/owl";
+import { App, whenReady, Component, proxy } from "@odoo/owl";
 import { CardLayout } from "@hr_attendance/components/card_layout/card_layout";
 import { KioskManualSelection } from "@hr_attendance/components/manual_selection/manual_selection";
 import { makeEnv, startServices } from "@web/env";
@@ -18,6 +17,7 @@ import { isIosApp } from "@web/core/browser/feature_detection";
 import { DocumentationLink } from "@web/views/widgets/documentation_link/documentation_link";
 import { NewEmployeeDialog } from "@hr_attendance/components/new_employee_dialog/new_employee_dialog";
 import { session } from "@web/session";
+import { services } from "@web/core/services";
 
 class kioskAttendanceApp extends Component {
     static template = "hr_attendance.public_kiosk_app";
@@ -51,7 +51,7 @@ class kioskAttendanceApp extends Component {
         this.companyImageUrl = url("/web/binary/company_logo", {
             company: this.props.companyId,
         });
-        this.state = useState({
+        this.state = proxy({
             active_display: "settings",
             displayDemoMessage:
                 browser.localStorage.getItem("hr_attendance.ShowDemoMessage") !== "false",
@@ -260,14 +260,15 @@ class kioskAttendanceApp extends Component {
 export async function createPublicKioskAttendance(document, kiosk_backend_info) {
     await whenReady();
     const env = makeEnv();
-    await startServices(env);
     session.server_version_info = kiosk_backend_info.server_version_info;
     const app = new App({
         getTemplate,
         dev: env.debug,
         translateFn: appTranslateFn,
         translatableAttributes: ["data-tooltip"],
+        plugins: services,
     });
+    await startServices(env, app);
     const root = app.createRoot(kioskAttendanceApp, {
         env: env,
         props: {

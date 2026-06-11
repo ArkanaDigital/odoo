@@ -31,7 +31,7 @@ class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
             "state_id": cls.env.ref("base.state_us_39").id,
         })
         cls.env.ref("base.user_admin").sudo().partner_id.company_id = cls.env.company
-        cls.env.ref("website.default_website").company_id = cls.env.company
+        cls.env.ref("base.default_website").company_id = cls.env.company
         cls.public_category = cls.env["product.public.category"].create({"name": "Public Category"})
 
     def test_01_admin_shop_sale_loyalty_tour(self):
@@ -475,7 +475,7 @@ class TestWebsiteSaleCoupon(HttpCase, WebsiteSaleCommon):
         for __ in http.routing_map._generate_routing_rules(installed_modules, nodb_only=False):
             pass
 
-        with MockRequest(self.env, website=self.website, sale_order_id=order.id) as request:
+        with self.mock_request(path="/shop/cart", sale_order_id=order.id) as request:
             # Check the base cart value
             self.assertEqual(order.amount_total, 100.0, "The base cart value is incorrect.")
 

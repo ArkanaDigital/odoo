@@ -37,7 +37,7 @@ class AccountAccount(models.Model):
     description = fields.Text(translate=True)
     currency_id = fields.Many2one('res.currency', string='Account Currency', tracking=True,
         help="Forces all journal items in this account to have a specific currency (i.e. bank journals). If no currency is set, entries can use any currency.")
-    company_currency_id = fields.Many2one('res.currency', compute='_compute_company_currency_id')
+    company_currency_id = fields.Many2one('res.currency', compute='_compute_company_currency_id', compute_sql='_compute_sql_company_currency_id', compute_sudo=True)
     company_fiscal_country_code = fields.Char(compute='_compute_company_fiscal_country_code')
     code = fields.Char(string="Code", size=64, tracking=True, compute='_compute_code', inverse='_inverse_code', compute_sql='_compute_sql_code', compute_sudo=True)
     code_store = fields.Char(company_dependent=True)
@@ -597,6 +597,9 @@ class AccountAccount(models.Model):
     def _compute_company_currency_id(self):
         self.company_currency_id = self.env.company.currency_id
 
+    def _compute_sql_company_currency_id(self, table):
+        return SQL("%s", self.env.company.currency_id.id)
+
     @api.depends_context('company')
     def _compute_company_fiscal_country_code(self):
         self.company_fiscal_country_code = self.env.company.account_fiscal_country_id.code
@@ -760,14 +763,13 @@ class AccountAccount(models.Model):
         return defaults
 
     @api.model
-    def _get_most_frequent_accounts_for_partner(self, company_id, partner_id, move_type, filter_never_user_accounts=False, limit=None):
+    def _get_most_frequent_accounts_for_partner(self, company_id, partner_id, move_type, limit=None):
         """
         Returns the accounts ordered from most frequent to least frequent for a given partner
         and filtered according to the move type
         :param company_id: the company id
         :param partner_id: the partner id for which we want to retrieve the most frequent accounts
         :param move_type: the type of the move to know which type of accounts to retrieve
-        :param filter_never_user_accounts: True if we should filter out accounts never used for the partner
         :param limit: the maximum number of accounts to retrieve
         :returns: List of account ids, ordered by frequency (from most to least frequent)
         """
@@ -776,55 +778,18 @@ class AccountAccount(models.Model):
             account_domain &= Domain('internal_group', '=', 'income')
         elif move_type in self.env['account.move'].get_outbound_types(include_receipts=True):
             account_domain &= Domain('internal_group', '=', 'expense')
-        domain = [
+
+        query = self.env['account.move.line'].with_company(company_id)._search([
             *self.env['account.move.line']._check_company_domain(company_id),
             ('partner_id', '=', partner_id),
             ('account_id', 'any', account_domain),
-            ('date', '>=', fields.Date.add(fields.Date.today(), days=-365 * 2)),
-        ]
-        company = self.env['res.company'].browse(company_id)
-
-        query = self.env['account.move.line']._search(domain, bypass_access=True)
-        query.groupby = query.table.account_id.id
-        if filter_never_user_accounts:
-            account_t = query.groupby._table
-            code_sql = account_t._with_model(self.with_company(company)).code
-            query.order = SQL("COUNT(%s) DESC, MAX(%s)", query.table.id, code_sql)
-            query.limit = limit
-            sql = query.select(query.groupby)
-        else:
-            aml_sql = query.subselect(
-                query.groupby,
-                SQL("COUNT(%s) AS num", query.table.id),
-            )
-            query = self._search(account_domain)
-            account_t = query.table
-            query.add_join('LEFT JOIN', 'counts', aml_sql, SQL("%s = counts.id", account_t.id))
-            code_sql = account_t._with_model(self.with_company(company)).code
-            query.order = SQL('counts.num DESC NULLS LAST, %s', code_sql)
-            query.limit = limit
-            sql = query.select()
-
-        return [id_ for id_, in self.env.execute_query(sql)]
-
-    @api.model
-    def _get_most_frequent_account_for_partner(self, company_id, partner_id, move_type=None):
-
-        cache = self.env.cr.cache.setdefault('most_frequent_accounts_for_partner', {})
-        key = (company_id, partner_id, move_type)
-
-        if key not in cache:
-            most_frequent_account = self._get_most_frequent_accounts_for_partner(
-                company_id, partner_id, move_type,
-                filter_never_user_accounts=True, limit=1,
-            )
-            cache[key] = most_frequent_account[0] if most_frequent_account else False
-
-        return cache[key]
-
-    @api.model
-    def _order_accounts_by_frequency_for_partner(self, company_id, partner_id, move_type=None):
-        return self._get_most_frequent_accounts_for_partner(company_id, partner_id, move_type)
+            ('date', '>=', fields.Date.add(fields.Date.context_today(self), days=-365 * 2)),
+            ('move_id.state', '=', 'posted'),
+        ], bypass_access=True)
+        query.groupby = query.table.account_id
+        query.order = SQL("COUNT(*) DESC, MAX(%s)", query.table.account_id.code)
+        query.limit = limit
+        return [id_ for id_, in self.env.execute_query(query.select(query.table.account_id))]
 
     def _order_to_sql(self, table, order: str, reverse=False) -> SQL:
         sql_order = super()._order_to_sql(table, order, reverse)
@@ -862,10 +827,10 @@ class AccountAccount(models.Model):
             return super().name_search(name, domain, operator, limit)
 
         partner = self.env.context.get('partner_id')
-        suggested_accounts = self._order_accounts_by_frequency_for_partner(self.env.company.id, partner, move_type) if partner else []
+        suggested_accounts = self._get_most_frequent_accounts_for_partner(self.env.company.id, partner, move_type) if partner else []
 
         if not name and suggested_accounts:
-            return [(record.id, record.display_name) for record in self.sudo().browse(suggested_accounts)]
+            return [(record.id, record.display_name) for record in self.sudo().browse(suggested_accounts[:limit or 100])]
 
         digit_in_search_term = any(c.isdigit() for c in name)
         search_domain = Domain('display_name', 'ilike', name) if name else []
@@ -933,7 +898,7 @@ class AccountAccount(models.Model):
             and (partner := self.env.context.get('partner_id'))
             and not preferred_account_ids
         ):
-            preferred_account_ids = self._order_accounts_by_frequency_for_partner(self.env.company.id, partner, move_type)
+            preferred_account_ids = self._get_most_frequent_accounts_for_partner(self.env.company.id, partner, move_type)
         for account in self:
             if formatted_display_name:
                 account.display_name = (
@@ -1497,7 +1462,7 @@ class AccountAccount(models.Model):
         ))
 
         # Clear ir.model.data ormcache
-        self.env.registry.clear_cache()
+        self.env.transaction.invalidate_ormcache()
 
         # Step 4: Change check_company fields to only keep values compatible with the account's company, and update company_ids on account.
         write_vals = {'company_ids': [Command.set(base_company.ids)]}
