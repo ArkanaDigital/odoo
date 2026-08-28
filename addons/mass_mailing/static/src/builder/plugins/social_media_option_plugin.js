@@ -13,12 +13,14 @@ const LINK_OPTIONS_CLASSLIST = [
     "rounded-circle",
     "rounded-empty-circle",
     "shadow-sm",
-    "fa-stack",
+    "oi-stack",
     "small_social_icon",
-    "fa-2x",
+    "oi-2x",
 ];
 
 const LINKS_CONTAINER_SELECTOR = ".s_social_media_links";
+
+export const DEFAULT_HIDDEN_LINKS = ["social_github", "social_discord"];
 
 export class MassMailingSocialMediaOptionPlugin extends Plugin {
     static id = "massMailingSocialMediaOptionPlugin";
@@ -87,6 +89,7 @@ export class MassMailingSocialMediaOptionPlugin extends Plugin {
         root.querySelectorAll(".o_social_snippet_empty_placeholder").forEach((element) =>
             element.remove()
         );
+        return root;
     }
 
     normalize(rootEl) {
@@ -106,16 +109,17 @@ export class MassMailingSocialMediaOptionPlugin extends Plugin {
                 snippet.querySelector(".o_social_snippet_empty_placeholder")?.remove();
             }
         }
+        return rootEl;
     }
 
     applyIconsMediaDialogParams(params) {
         if (
             params.node?.nodeType === Node.ELEMENT_NODE &&
-            params.node.matches(".s_social_media .s_social_media_links .fa")
+            params.node.matches(".s_social_media .s_social_media_links .oi")
         ) {
             params.visibleTabs = ["ICONS"];
-            return params;
         }
+        return params;
     }
 
     renderPlaceholderEl() {
@@ -141,7 +145,11 @@ export class MassMailingSocialMediaOptionPlugin extends Plugin {
         let currentIndex = snippetEl.querySelectorAll("[data-platform]").length;
 
         for (const [platform, href] of Object.entries(medias)) {
-            if (snippetEl.querySelector(`[data-platform="${platform}"]`) || !href) {
+            if (
+                snippetEl.querySelector(`[data-platform="${platform}"]`) ||
+                !href ||
+                DEFAULT_HIDDEN_LINKS.includes(platform)
+            ) {
                 continue;
             }
             this.dependencies.builderActions.getAction("toggleSocialMediaLink").apply({
@@ -203,7 +211,7 @@ export class MassMailingSocialMediaOptionPlugin extends Plugin {
         const element = renderToElement("mass_mailing.social_media_link", {
             href: href || "",
             platform,
-            icon: `fa-${iconName}`,
+            icon: `oi_${iconName}`,
         });
         return element;
     }
@@ -370,7 +378,7 @@ export class ToggleSocialMediaLinkAction extends BuilderAction {
         } else {
             sibling.after(newLinkElement);
         }
-        const referenceIcon = sibling?.querySelector(".fa");
+        const referenceIcon = sibling?.querySelector(".oi");
         if (referenceIcon) {
             const backgroundColor = this.styleAction.getValue({
                 editingElement: referenceIcon,
@@ -386,17 +394,18 @@ export class ToggleSocialMediaLinkAction extends BuilderAction {
                     params: { mainParam: className },
                 })
             );
-            const icon = newLinkElement.querySelector(".fa");
+            const icon = newLinkElement.querySelector(".oi");
             if (backgroundColor) {
                 icon.style.backgroundColor = backgroundColor;
             }
             if (color) {
                 icon.style.color = color;
             }
-            icon.classList.remove("fa-stack");
+            icon.classList.remove("oi-stack");
             icon.classList.add(...appliedClasses);
         }
     }
+
     isApplied({ editingElement, params }) {
         return editingElement.querySelector(`[data-platform="${params.platform}"]`) !== null;
     }
@@ -419,7 +428,7 @@ export class AddSocialMediaLinkAction extends BuilderAction {
             const element = renderToElement("mass_mailing.social_media_link", {
                 href: "https://www.example.com",
                 platform: uniqueId("customLink-"),
-                icon: `fa-home`,
+                icon: "home",
             });
             editingElement.querySelector(LINKS_CONTAINER_SELECTOR).append(element);
         } else {
@@ -431,12 +440,12 @@ export class AddSocialMediaLinkAction extends BuilderAction {
                 href: "https://www.example.com",
                 "data-platform": uniqueId("customLink-"),
             });
-            const icon = cloneEl.querySelector(".fa");
-            const faClassesToRemove = [...icon.classList].filter(
-                (className) => className.startsWith("fa-") && className !== "fa-stack"
+            const icon = cloneEl.querySelector(".oi");
+            const oiClassesToRemove = [...icon.classList].filter(
+                (className) => className.startsWith("oi-") && className !== "oi-stack"
             );
-            icon.classList.remove(...faClassesToRemove);
-            icon.classList.add("fa-home");
+            icon.classList.remove(...oiClassesToRemove);
+            icon.dataset.icon = "home";
         }
     }
 }

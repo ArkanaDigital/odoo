@@ -1,51 +1,73 @@
-import { useRef } from "@web/owl2/utils";
 import { useSelection } from "@mail/utils/common/hooks";
 
-import { Component, props, types } from "@odoo/owl";
+import { Component, signal, t, useProps } from "@odoo/owl";
 
+import { Dropdown } from "@web/core/dropdown/dropdown";
+import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { useEmojiPicker } from "@web/core/emoji_picker/emoji_picker";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
 import { isEventHandled } from "@web/core/utils/misc";
 
 export class CreatePollOptionDialog extends Component {
+    static components = { Dropdown, DropdownItem };
     static template = "mail.CreatePollOptionDialog";
 
+    pickerRef = signal.ref();
+    rootRef = signal.ref();
+
     setup() {
-        this.props = props({
-            deletable: types.boolean(),
-            model: types.object({
-                "direction?": types.selection(["forward", "backward", "none"]),
-                "end?": types.number(),
-                label: types.string(),
-                "start?": types.number(),
+        this.props = useProps({
+            deletable: t.boolean(),
+            model: t.object({
+                direction: t.selection(["forward", "backward", "none"]).optional(),
+                end: t.number().optional(),
+                label: t.string(),
+                start: t.number().optional(),
             }),
-            onClickRemove: types.function([types.instanceOf(MouseEvent)]),
+            onClickRemove: t.function([t.instanceOf(MouseEvent)]),
         });
-        this.pickerRef = useRef("picker");
+        useAutofocus({ ref: this.rootRef });
         this.ui = useService("ui");
-        this.selection = useSelection({
-            refName: "root",
+        useSelection({
+            ref: this.rootRef,
             model: this.props.model,
             preserveOnClickAwayPredicate: async (ev) => {
                 await new Promise(setTimeout);
                 return (
-                    isEventHandled(ev, "emoji.selectEmoji") ||
-                    this.pickerRef.el?.contains(ev.target)
+                    isEventHandled(ev, "emoji.selectEmoji") || this.pickerRef()?.contains(ev.target)
                 );
             },
         });
-        useAutofocus({ refName: "root" });
-        useEmojiPicker(this.pickerRef, {
-            onSelect: (str) => {
-                const label = this.props.model.label;
-                const firstPart = label.slice(0, this.props.model.start);
-                const secondPart = label.slice(this.props.model.end, label.length);
-                this.props.model.label = firstPart + str + secondPart;
-                this.selection.moveCursor((firstPart + str).length);
+        this.emojiPicker = useEmojiPicker(undefined, {
+            onSelect: (emoji) => {
+                this.props.model.emoji = emoji;
                 if (!this.ui.isSmall) {
-                    this.pickerRef.el.focus();
+                    this.rootRef()?.focus();
                 }
             },
         });
+    }
+
+    get emojiPickerAnchor() {
+        return this.ui.isSmall ? undefined : this.pickerRef;
+    }
+
+    onClickEmojiDropdownButton(ev) {
+        if (this.emojiPicker.isOpen) {
+            ev.stopPropagation();
+            this.emojiPicker.close();
+        }
+    }
+
+    onClickRemoveEmoji() {
+        this.props.model.emoji = "";
+    }
+
+    openEmojiPicker() {
+        this.emojiPicker.open(this.emojiPickerAnchor);
+    }
+
+    toggleEmojiPicker() {
+        this.emojiPicker.toggle(this.emojiPickerAnchor);
     }
 }

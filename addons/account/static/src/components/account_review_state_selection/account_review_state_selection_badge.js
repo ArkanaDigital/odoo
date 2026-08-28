@@ -1,6 +1,6 @@
 import { registry } from "@web/core/registry";
 import { Dropdown } from "@web/core/dropdown/dropdown";
-import { Component, onWillStart } from "@odoo/owl";
+import { Component, onWillStart, useProps, t } from "@odoo/owl";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { cookie } from "@web/core/browser/cookie";
@@ -8,23 +8,22 @@ import { user } from "@web/core/user";
 
 export class AccountReviewStateSelectionBadge extends Component {
     static template = "account_reports.AccountReviewStateSelectionBadgeField";
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        decorations: { type: Object, optional: true },
-        options: { type: Object, optional: true },
-        class: { type: String, optional: true },
-        size: { type: String, optional: true },
-    };
+        decorations: t.object().optional(),
+        options: t.object().optional(),
+        class: t.string().optional(),
+        size: t.string().optional("normal"),
+        onChange: t.function().optional(),
+    });
 
     setup() {
+        this.selection_map = new Map(this.props.record.fields[this.props.name].selection);
+
         onWillStart(async () => {
             this.editableOptions = await this.getEditableOptions();
         });
     }
-
-    static defaultProps = {
-        size: "normal"
-    };
 
     static components = {
         Dropdown,
@@ -44,9 +43,9 @@ export class AccountReviewStateSelectionBadge extends Component {
     }
 
     get display() {
-        const result = this.options.filter((val) => val[0] === this.value)[0];
-        if(result) {
-            return result[1];
+        const value = this.value;
+        if (this.selection_map.has(value)) {
+            return this.selection_map.get(value);
         }
         return null;
     }
@@ -57,14 +56,16 @@ export class AccountReviewStateSelectionBadge extends Component {
             editableOptions.push(false);
         }
 
-        for (let [key, value] of Object.entries(this.props.options)) {
-            if (
-                [true, undefined].includes(value.can_edit)
-                || (typeof value.can_edit == 'string' && (await Promise.all(
-                    value.can_edit.split(",").map(group => user.hasGroup(group))
-                )).some(Boolean))
-            ) {
-                editableOptions.push(key === 'false' ? false : key);
+        if (!this.props.record.model.useSampleModel && this.props.record.resId && await user.checkAccessRight(this.props.record.resModel, "write", this.props.record.resId)) {
+            for (let [key, value] of Object.entries(this.props.options)) {
+                if (
+                    [true, undefined].includes(value.can_edit)
+                    || (typeof value.can_edit == 'string' && (await Promise.all(
+                        value.can_edit.split(",").map(group => user.hasGroup(group))
+                    )).some(Boolean))
+                ) {
+                    editableOptions.push(key === 'false' ? false : key);
+                }
             }
         }
 
@@ -117,6 +118,7 @@ export class AccountReviewStateSelectionBadge extends Component {
             { [this.props.name]: value },
             { save: true }
         );
+        await this.props.onChange?.(value);
         this.env.reload?.()
     }
 }
@@ -124,9 +126,7 @@ export class AccountReviewStateSelectionBadge extends Component {
 export const accountReviewStateSelectionBadge = {
     supportedTypes: ["selection"],
     component: AccountReviewStateSelectionBadge,
-    extractProps: ({options}) => {
-        return { options };
-    },
+    extractProps: ({options}) => ({ options }),
 }
 
 registry.category("fields").add("account_review_state_selection_badge", accountReviewStateSelectionBadge)

@@ -1,11 +1,8 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, useProps, t, signal } from "@odoo/owl";
 import { scrollToSelected } from "@pos_self_order/app/utils/scroll_to_selected";
 import { Dialog } from "@web/core/dialog/dialog";
 import { useService } from "@web/core/utils/hooks";
-import { _t } from "@web/core/l10n/translation";
-
-const { DateTime } = luxon;
+import { getDisplayDateInfo } from "@point_of_sale/utils";
 
 /**
  * PillsSelectionPopup component
@@ -31,19 +28,20 @@ const { DateTime } = luxon;
 export class PillsSelectionPopup extends Component {
     static template = "pos_self_order.PillsSelectionPopup";
     static components = { Dialog };
-    static props = {
-        options: Object,
-        title: String,
-        subtitle: String,
-        close: Function,
-        getPayload: Function,
-        selectionType: String,
-    };
+    props = useProps({
+        options: t.object(),
+        title: t.string(),
+        subtitle: t.string(),
+        close: t.function(),
+        getPayload: t.function(),
+        selectionType: t.string(),
+    });
+
+    categoryListRef = signal.ref();
 
     setup() {
         this.ui = useService("ui");
         this.selfOrder = useService("self_order");
-        this.categoryListRef = useRef("category-list");
         this.state = proxy({
             selectedCategoryId: this.categories.length > 0 ? this.categories[0].id : null,
             selectedOptionId: null,
@@ -91,29 +89,11 @@ export class PillsSelectionPopup extends Component {
         return this.props.selectionType == "table";
     }
 
-    getCategoryDisplayName(category) {
+    getCategoryInfo(category) {
         if (!this.isTimeSelection) {
-            return category.name;
+            return { label: category.name };
         }
 
-        try {
-            const categoryDate = DateTime.fromISO(category.id);
-            if (!categoryDate.isValid) {
-                return category.name;
-            }
-
-            const today = DateTime.now().startOf("day");
-            const tomorrow = today.plus({ days: 1 });
-
-            if (categoryDate.hasSame(today, "day")) {
-                return _t("Today");
-            } else if (categoryDate.hasSame(tomorrow, "day")) {
-                return _t("Tomorrow");
-            }
-        } catch {
-            return category.name;
-        }
-
-        return category.name;
+        return getDisplayDateInfo(category.id);
     }
 }

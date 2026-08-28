@@ -1,8 +1,4 @@
-# -*- coding: utf-8 -*-
-# Part of Odoo. See LICENSE file for full copyright and licensing details.
-
 import logging
-from lxml import etree
 from freezegun import freeze_time
 from odoo import tools
 from odoo.tests import Form, tagged
@@ -13,6 +9,8 @@ _logger = logging.getLogger(__name__)
 
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestItEdiDDT(TestItEdi):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -121,12 +119,11 @@ class TestItEdiDDT(TestItEdi):
             deferred_invoice = self.sale_order._create_invoices()
             deferred_invoice.action_post()
 
+        # makes _assert_export_invoice look in this module's test folder
+        self.module = "l10n_it_stock_ddt"
+
         # Check the XML output of the invoice
-        invoice_xml = deferred_invoice._l10n_it_edi_render_xml()
-        expected_xml = self._get_stock_ddt_test_file_content("deferred_invoice.xml")
-        result = etree.fromstring(invoice_xml)
-        expected = etree.fromstring(expected_xml)
-        self.assertXmlTreeEqual(result, expected)
+        self._assert_export_invoice(deferred_invoice, "deferred_invoice.xml")
 
     def _create_delivery(self, sale_order, qty=1):
         """ Create a picking of a limited quantity and create a backorder """

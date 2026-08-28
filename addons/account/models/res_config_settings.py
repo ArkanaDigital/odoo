@@ -81,7 +81,7 @@ class ResConfigSettings(models.TransientModel):
         help="Intermediary account used when moving from a liquidity account to another.")
     transfer_account_active = fields.Boolean(related='transfer_account_id.active', string="Internal Transfer Account Active")
     module_account_accountant = fields.Boolean(string='Accounting')
-    group_cash_rounding = fields.Boolean(string="Cash Rounding", implied_group='account.group_cash_rounding')
+    group_cash_rounding = fields.Boolean(string="Total Rounding", implied_group='account.group_cash_rounding')
     show_sale_receipts = fields.Boolean(string='Sale Receipt', config_parameter='account.show_sale_receipts')
     module_account_budget = fields.Boolean(string='Budget Management')
     module_account_payment = fields.Boolean(string='Invoice Online Payment')
@@ -102,6 +102,7 @@ class ResConfigSettings(models.TransientModel):
     module_account_loan_extract = fields.Boolean("Loans Digitization", compute='_compute_module_account_loan_extract', readonly=False, store=True)
     module_snailmail_account = fields.Boolean(string="Snailmail")
     module_account_peppol = fields.Boolean(string='PEPPOL Invoicing')
+    module_l10n_eu_account_vies = fields.Boolean(string='VAT number validation with VIES')
     tax_exigibility = fields.Boolean(string='Cash Basis', related='company_id.tax_exigibility', readonly=False)
     tax_cash_basis_journal_id = fields.Many2one(
         'account.journal',
@@ -129,7 +130,7 @@ class ResConfigSettings(models.TransientModel):
     terms_type = fields.Selection(
         related='company_id.terms_type', readonly=False)
     display_invoice_amount_total_words = fields.Boolean(
-        string="Total amount of invoice in letters",
+        string="Total amount of invoice in words",
         related='company_id.display_invoice_amount_total_words',
         readonly=False
     )
@@ -151,6 +152,7 @@ class ResConfigSettings(models.TransientModel):
         help='This is the default credit limit that will be used on partners that do not have a specific limit on them.',
         related='company_id.account_credit_limit',
     )
+    vat_check_vies = fields.Boolean(related='company_id.vat_check_vies', readonly=False, string='Verify VAT Numbers')
 
     # Technical field to hide country specific fields from accounting configuration
     country_code = fields.Char(related='company_id.account_fiscal_country_id.code', readonly=True)
@@ -238,6 +240,9 @@ class ResConfigSettings(models.TransientModel):
         and self.chart_template != self.company_id.chart_template:
             self.env['account.chart.template'].try_loading(self.chart_template, company=self.company_id)
             self.company_id._initiate_account_onboardings()
+        # Install `l10n_eu_account_vies` if the user wants to use the VAT number validation with VIES.
+        if not self.module_l10n_eu_account_vies and self.vat_check_vies:
+            self.module_l10n_eu_account_vies = True
 
     def reload_template(self):
         self.env['account.chart.template'].try_loading(self.company_id.chart_template, company=self.company_id)

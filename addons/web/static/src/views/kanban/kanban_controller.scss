@@ -73,9 +73,6 @@
 // ------- Kanban View -------
 .o_kanban_view {
     @include media-breakpoint-down(md) {
-        @include media-only(screen) {
-            --ControlPanel-border-bottom: none;
-        }
         &.o_field_x2many_kanban .o_kanban_ghost {
             display: none;
         }
@@ -88,26 +85,18 @@
     // Default KanbanView values
 
     --Kanban-background: #{$o-kanban-background};
-    --Kanban-gap: unset;
+    --Kanban-gap: 0;
     --Kanban-padding: 0;
 
     --KanbanGroup-background: var(--Kanban-background);
     --KanbanGroup-padding-h: #{$o-kanban-group-padding};
     --KanbanGroup-padding-bottom: #{$o-kanban-group-padding};
 
-    --KanbanRecord-width: #{$o-kanban-default-record-width};
-    --KanbanRecord-margin-v: #{$o-kanban-record-margin};
-    --KanbanRecord-margin-h: #{$o-kanban-record-margin};
-    --KanbanRecord-padding-v: #{$o-kanban-inside-vgutter};
-    --KanbanRecord-padding-h: #{$o-kanban-inside-hgutter};
+    --KanbanRecord-margin-v: 0;
+    --KanbanRecord-margin-h: 0;
     --KanbanRecord-gap-v: #{$o-kanban-inner-hmargin};
-
+    --KanbanRecord-width: #{$o-kanban-default-record-width}; 
     --KanbanRecord--small-width: #{$o-kanban-small-record-width};
-
-    --KanbanRecord__image-width: #{$o-kanban-image-width};
-    --KanbanRecord__image--fill-width: #{$o-kanban-image-fill-width};
-
-    --KanbanRecord__dropdown-gap: #{$border-width};
 
     --KanbanColumn__highlight-background: #{tint-color($o-action, 90%)};
     --KanbanColumn__highlight-border: #{$o-action};
@@ -116,6 +105,11 @@
 
     --o-view-nocontent-zindex: 1;
 
+    --Card-border-width: 1px;
+    --Card-padding-v: #{$o-kanban-inside-vgutter};
+    --Card-padding-h: #{$o-kanban-inside-hgutter};
+    --Card__image-width: #{$o-kanban-image-width};
+    --Card__image--fill-width: #{$o-kanban-image-fill-width};
     --Card-Footer-gap: 4px;
 
     // ----------------------------------------------------------------------------
@@ -141,7 +135,7 @@
 
     @include media-only(print) {
         @include media-breakpoint-down(md) {
-            --KanbanRecord-padding-h: #{$o-kanban-inside-hgutter * 2};
+            --Card-padding-h: #{$o-kanban-inside-hgutter * 2};
         }
     }
 
@@ -154,13 +148,12 @@
 
     .o_kanban_quick_create {
         border: $border-width solid $border-color;
+        border-radius: $border-radius-lg;
         background-color: $o-view-background-color;
-    }
-
-    .o_kanban_quick_create {
-        margin-bottom: calc(var(--KanbanRecord-margin-h) * 2);
-        margin-top: calc(var(--KanbanRecord-margin-h) * 2);
-        padding: 8px;
+        margin-bottom: map-get($spacers, 3);
+        // TODO: Use variables from card.scss.
+        // We may need to define the card variables on o_kanban_renderer parent so it's accessible from this element.
+        padding: 14px;
 
         .o_form_view .o_inner_group {
             margin: 0;
@@ -309,20 +302,18 @@
             }
 
             button.o_column_unfold {
-                padding: 0 .15rem;
+                // Matches .o_column_title font-size
+                width: 1.05rem;
                 height: map-get($font-sizes, 4) * $line-height-lg;
+                gap: .5rem;
 
-                .fa-caret-left {
-                    margin-right: 0.2rem;
+                > .oi::before {
+                    position: absolute;
                 }
             }
 
             &:hover button.o_column_unfold {
-                padding: 0;
-
-                .fa-caret-left {
-                    margin-right: 0.5rem;
-                }
+                gap: .8rem;
             }
 
             .o_column_title {
@@ -347,12 +338,13 @@
         min-height: 100%;
 
         @include media-breakpoint-up(md) {
-            --Kanban-padding:  var(--KanbanRecord-margin-v) var(--KanbanRecord-margin-h);
+            --Kanban-padding: 0 #{map-get($spacers, 3)} #{map-get($spacers, 3)};
+            --Kanban-gap: #{$o-kanban-record-margin * 2};
         }
 
         .o_kanban_record {
             width: var(--KanbanRecord-width);
-            margin: calc(var(--KanbanRecord-margin-v) * 0.5) var(--KanbanRecord-margin-h);
+            margin: var(--KanbanRecord-margin-v) var(--KanbanRecord-margin-h);
 
             @include media-breakpoint-down(md) {
                 margin: 0 0 #{-$border-width};
@@ -368,6 +360,10 @@
     .o_field_monetary {
         /*rtl:ignore*/
         direction: ltr;
+    }
+
+    .o_search_panel_resize + &, .o_search_panel_sidebar + & {
+        --Kanban-padding: 0 #{map-get($spacers, 3)} #{map-get($spacers, 3)} 0;
     }
 }
 

@@ -13,7 +13,8 @@ patch(PosOrderline.prototype, {
                 (this.config.tip_product_id &&
                     this.product_id.id === this.config.tip_product_id?.id) ||
                 (this.config.discount_product_id &&
-                    this.product_id.id === this.config.discount_product_id?.id)
+                    this.product_id.id === this.config.discount_product_id?.id) ||
+                this.isServiceFeeLine()
             )
         );
     },
@@ -26,5 +27,19 @@ patch(PosOrderline.prototype, {
 
     get isValidForRefund() {
         return super.isValidForRefund && !this.isDiscountLine;
+    },
+
+    isServiceFeeApplicable() {
+        if (!this.isDiscountLine) {
+            return super.isServiceFeeApplicable();
+        }
+        // The discount joins the base the fee is carved from only for a percentage
+        // of the total after discount: no discount applies to a flat amount, and a
+        // fee carved out of a fully discounted base is no fee at all.
+        return (
+            super.isServiceFeeApplicable() &&
+            this.order_id.preset_id?.service_fee_type === "percent" &&
+            this.order_id.preset_id?.service_fee_based_on === "post_discount"
+        );
     },
 });

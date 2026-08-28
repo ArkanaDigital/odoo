@@ -3,7 +3,6 @@
 import re
 from collections import defaultdict
 from datetime import datetime, time
-from statistics import mode
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError, AccessError, ValidationError
@@ -25,13 +24,13 @@ class AccountAnalyticLine(models.Model):
 
     @api.model
     def _get_favorite_project_id(self, employee_id=False):
+        """ Return the project linked to at least 3 of the employee's 5 most recent
+        timesheets, if any, since they are the most likely to keep logging time on it. """
         last_timesheets = self.search_fetch(
             self._get_favorite_project_id_domain(employee_id), ['project_id'], limit=5
         )
-        if not last_timesheets:
-            internal_project = self.env.company.internal_project_id
-            return internal_project.has_access('read') and internal_project.active and internal_project.allow_timesheets and internal_project.id
-        return mode([t.project_id.id for t in last_timesheets])
+        project_ids = [t.project_id.id for t in last_timesheets]
+        return next((pid for pid in project_ids if project_ids.count(pid) >= 3), False)
 
     @api.model
     def default_get(self, fields):
@@ -60,17 +59,20 @@ class AccountAnalyticLine(models.Model):
     task_id = fields.Many2one(
         'project.task', 'Task', index='btree_not_null',
         compute='_compute_task_id', store=True, readonly=False,
+        # The task_id is set to False when there is no project_id on the line,
+        # but at installation, no line is associated with a project
+        init_storage=lambda model: None,
         domain="[('allow_timesheets', '=', True), ('project_id', '=?', project_id), ('has_template_ancestor', '=', False)]")
-    parent_task_id = fields.Many2one('project.task', related='task_id.parent_id', store=True, index='btree_not_null')
+    parent_task_id = fields.Many2one('project.task', related='task_id.parent_id', store=True, index='btree_not_null', init_storage=lambda model: None)
     project_id = fields.Many2one(
         'project.project', 'Project', domain=_domain_project_id, index=True,
-        compute='_compute_project_id', store=True, readonly=False)
+        compute='_compute_project_id', inverse='_inverse_project_id', store=True, readonly=False, init_storage=lambda model: None)
     user_id = fields.Many2one(compute='_compute_user_id', store=True, readonly=False)
     employee_id = fields.Many2one('hr.employee', "Employee", domain=_domain_employee_id, context={'active_test': False},
         index=True, help="Define an 'hourly cost' on the employee to track the cost of their time.")
     job_title = fields.Char(related='employee_id.job_title', export_string_translation=False)
-    department_id = fields.Many2one('hr.department', "Department", compute='_compute_department_id', store=True, compute_sudo=True)
-    manager_id = fields.Many2one('hr.employee', "Manager", related='employee_id.parent_id', store=True)
+    department_id = fields.Many2one('hr.department', "Department", compute='_compute_department_id', store=True, compute_sudo=True, init_storage=lambda model: None)
+    manager_id = fields.Many2one('hr.employee', "Manager", related='employee_id.parent_id', store=True, init_storage=lambda model: None)
     encoding_uom_id = fields.Many2one('uom.uom', compute='_compute_encoding_uom_id', export_string_translation=False)
     partner_id = fields.Many2one(compute='_compute_partner_id', store=True, readonly=False)
     readonly_timesheet = fields.Boolean(compute="_compute_readonly_timesheet", compute_sudo=True, export_string_translation=False)
@@ -123,6 +125,11 @@ class AccountAnalyticLine(models.Model):
             readonly_timesheets = self.filtered(lambda timesheet: timesheet._is_readonly())
             readonly_timesheets.readonly_timesheet = True
             (self - readonly_timesheets).readonly_timesheet = False
+
+    def _inverse_project_id(self):
+        for line in self:
+            if line.task_id.project_id != line.project_id:
+                line.sudo().task_id = False
 
     def _compute_encoding_uom_id(self):
         for analytic_line in self:

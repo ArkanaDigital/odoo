@@ -1,9 +1,8 @@
-import { useRef } from "@web/owl2/utils";
 import { BuilderComponent } from "@html_builder/core/building_blocks/builder_component";
 import { BuilderListDialog } from "@html_builder/core/building_blocks/builder_list_dialog";
 import { useBuilderComponent, useInputBuilderComponent } from "@html_builder/core/utils";
 import { isSmallInteger } from "@html_builder/utils/utils";
-import { Component, onWillUpdateProps, onPatched, props, types as t, xml, proxy } from "@odoo/owl";
+import { Component, computed, onPatched, useProps, proxy, signal, t, xml } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { SelectMenu } from "@web/core/select_menu/select_menu";
 import { useSortable } from "@web/core/utils/sortable_owl";
@@ -14,14 +13,14 @@ import { localeCompare } from "@web/core/l10n/utils";
 /**
  * Focus the last added input item to a list container.
  *
- * @param {string} refName The list container's ref.
+ * @param {import("@odoo/owl").Signal<HTMLElement | null>} ref The list
+ *  container's ref signal.
  */
-export function useAutoFocusNewItem(refName) {
-    const ref = useRef(refName);
+export function useAutoFocusNewItem(ref) {
     let nbRow = 0;
     function autofocus() {
         const prevSize = nbRow;
-        const rowEls = ref.el?.querySelectorAll(".o_row_draggable") || [];
+        const rowEls = ref()?.querySelectorAll(".o_row_draggable") || [];
         nbRow = rowEls.length;
         if (nbRow <= prevSize) {
             return;
@@ -41,7 +40,7 @@ export function useAutoFocusNewItem(refName) {
 class SortableContainer extends Component {
     static template = xml`<t t-call-slot="default"/>`;
 
-    props = props({
+    props = useProps({
         setupLayoutEffect: t.function(),
     });
 
@@ -54,63 +53,53 @@ export class BuilderList extends Component {
     static template = "html_builder.BuilderList";
     static components = { BuilderComponent, SortableContainer, SelectMenu };
 
-    props = props(
-        {
-            "applyTo?": t.string(),
-            "preview?": t.boolean(),
-            "inheritedActions?": t.array(t.string()),
+    props = useProps({
+        applyTo: t.string().optional(),
+        preview: t.boolean().optional(),
+        inheritedActions: t.array(t.string()).optional(),
 
-            "action?": t.string(),
-            "actionParam?": t.any(),
+        action: t.string().optional(),
+        actionParam: t.any().optional(),
 
-            // Shorthand actions.
-            "classAction?": t.any(),
-            "attributeAction?": t.any(),
-            "dataAttributeAction?": t.any(),
-            "styleAction?": t.any(),
+        // Shorthand actions.
+        classAction: t.any().optional(),
+        attributeAction: t.any().optional(),
+        dataAttributeAction: t.any().optional(),
+        styleAction: t.any().optional(),
 
-            "id?": t.string(),
-            "addItemTitle?": t.string(),
-            "itemShape?": t.customValidator(
+        id: t.string().optional(),
+        addItemTitle: t.string().optional(_t("Add")),
+        itemShape: t
+            .customValidator(
                 t.record(t.selection(["number", "text", "boolean", "exclusive_boolean"])),
                 (value) =>
                     // is not empty object and doesn't include reserved fields
                     Object.keys(value).length > 0 && !Object.keys(value).includes("_id")
-            ),
-            "default?": t.any(),
-            "sortable?": t.any(),
-            "hiddenProperties?": t.array(),
-            "records?": t.string(),
-            "defaultNewValue?": t.object(),
-            "columnWidth?": t.any(),
-            "forbidLastItemRemoval?": t.boolean(),
-            "isEditable?": t.boolean(),
-            "limit?": t.number(),
-            "disableLastCheckedCheckbox?": t.boolean(),
-        },
-        {
-            addItemTitle: _t("Add"),
-            itemShape: { value: "text" },
-            sortable: true,
-            hiddenProperties: [],
-            defaultNewValue: {},
-            columnWidth: {},
-            forbidLastItemRemoval: false,
-            isEditable: true,
-            limit: 50,
-            disableLastCheckedCheckbox: false,
-        }
-    );
+            )
+            .optional({ value: "text" }),
+        default: t.any().optional(),
+        sortable: t.any().optional(true),
+        hiddenProperties: t.array().optional([]),
+        records: t.string().optional(),
+        defaultNewValue: t.object().optional({}),
+        columnWidth: t.any().optional({}),
+        forbidLastItemRemoval: t.boolean().optional(false),
+        isEditable: t.boolean().optional(true),
+        limit: t.number().optional(50),
+        disableLastCheckedCheckbox: t.boolean().optional(false),
+        withScrollbar: t.boolean().optional(true),
+    });
+
+    tableRef = signal.ref();
 
     setup() {
         if (this.props.default) {
             this.validateProps();
         }
         this.dialog = useService("dialog");
-        useBuilderComponent();
-        useAutoFocusNewItem("table");
-        const { state, commit, preview } = useInputBuilderComponent({
-            id: this.props.id,
+        useBuilderComponent(this.props);
+        useAutoFocusNewItem(this.tableRef);
+        const { state, commit, preview } = useInputBuilderComponent(this.props, {
             defaultValue: this.parseDisplayValue([]),
             parseDisplayValue: this.parseDisplayValue,
             formatRawValue: this.formatRawValue.bind(this),
@@ -118,16 +107,11 @@ export class BuilderList extends Component {
         this.state = state;
         this.commit = commit;
         this.preview = preview;
-        this.allRecords = this.formatRawValue(this.props.records);
-        this.tableRef = useRef("table");
+        this.allRecords = computed(() => this.formatRawValue(this.props.records));
         this.visibilityState = proxy({
             limit: this.props.limit,
         });
-        this.onTableScroll = useThrottleForAnimation(this._onTableScroll);
-
-        onWillUpdateProps((props) => {
-            this.allRecords = this.formatRawValue(props.records);
-        });
+        this.onTableScroll = useThrottleForAnimation(this._onTableScroll.bind(this));
     }
 
     get cappedItems() {
@@ -190,7 +174,7 @@ export class BuilderList extends Component {
 
     getExcludedRecords() {
         const itemIds = new Set(this.getIncludedRecords().map((r) => r.id));
-        return this.allRecords.filter((record) => record.id && !itemIds.has(record.id));
+        return this.allRecords().filter((record) => record.id && !itemIds.has(record.id));
     }
 
     openRecordsDialog() {
@@ -229,7 +213,7 @@ export class BuilderList extends Component {
                 .filter((r) => r.id)
                 .map((r) => [r.id, r])
         );
-        const newRecords = this.allRecords
+        const newRecords = this.allRecords()
             .map((record) => selectedRecordsMap.get(record.id) || record)
             .sort((a, b) => localeCompare(a.display_name, b.display_name));
         this.commit(newRecords);

@@ -23,7 +23,6 @@
     ],
     'data': [
         'security/crm_security.xml',
-        'security/ir.model.access.csv',
 
         'data/crm_lead_merge_template.xml',
         'data/crm_lead_prediction_data.xml',
@@ -60,6 +59,7 @@
         'views/crm_menu_views.xml',
         'views/crm_helper_templates.xml',
         'views/crm_lead_templates.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'data/crm_team_demo.xml',
@@ -70,12 +70,27 @@
     ],
     'application': True,
     'assets': {
+        "im_livechat.assets_embed_core": [
+            "crm/static/src/core/common/**/*",
+        ],
+        "mail.assets_public": [
+            "crm/static/src/core/common/**/*",
+        ],
+        "portal.assets_chatter_helpers": [
+            "crm/static/src/core/common/**/*",
+        ],
         'web.assets_backend': [
             'crm/static/src/**',
+            ('remove', 'crm/static/src/views/crm_activity/**'),
+            ('remove', 'crm/static/src/views/crm_graph/**'),
+            ('remove', 'crm/static/src/views/crm_pivot/**'),
             ('remove', 'crm/static/src/views/forecast_graph/**'),
             ('remove', 'crm/static/src/views/forecast_pivot/**'),
         ],
         'web.assets_backend_lazy': [
+            'crm/static/src/views/crm_activity/**',
+            'crm/static/src/views/crm_graph/**',
+            'crm/static/src/views/crm_pivot/**',
             'crm/static/src/views/forecast_graph/**',
             'crm/static/src/views/forecast_pivot/**',
         ],

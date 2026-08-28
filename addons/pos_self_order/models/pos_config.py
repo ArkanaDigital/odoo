@@ -9,14 +9,14 @@ import qrcode
 import qrcode.image.svg
 
 from odoo import _, api, fields, models, release
-from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.exceptions import AccessError, UserError
 
 
 class PosConfig(models.Model):
     _inherit = "pos.config"
 
     def _self_order_kiosk_default_languages(self):
-        return self.env["res.lang"].get_installed()
+        return self.sudo().env["res.lang"]._get_active_langs().sorted('name')
 
     def _self_order_default_user(self):
         users = self.env["res.users"].search(['|', ('company_ids', 'in', self.env.company.id), ('company_id', '=', False)])
@@ -102,16 +102,17 @@ class PosConfig(models.Model):
     @api.model
     def _load_pos_self_data_fields(self, pos_config_id):
         return ['id', 'name', 'company_id', 'journal_id', 'payment_method_ids', 'limit_categories',
-            'iface_available_categ_ids', 'iface_splitbill', 'module_pos_restaurant', 'self_ordering_mode',
+            'iface_available_categ_ids', 'module_pos_restaurant', 'self_ordering_mode',
             'self_ordering_service_mode', 'self_ordering_default_language_id', 'self_ordering_available_language_ids',
             'self_ordering_image_home_ids', 'self_ordering_default_user_id', 'self_ordering_pay_after',
             'self_ordering_image_brand', 'self_ordering_image_brand_name', 'currency_id', 'has_paper',
             'floor_ids', 'fiscal_position_ids', 'receipt_header', 'receipt_footer', 'current_session_id',
             'pricelist_id', 'available_pricelist_ids', 'default_fiscal_position_id', 'use_pricelist', 'module_pos_restaurant',
-            'rounding_method', 'cash_rounding', 'only_round_cash_method', 'has_active_session',
+            'rounding_method', 'cash_rounding', 'only_round_cash_method',
             'available_preset_ids', 'default_preset_id', 'use_presets', 'iface_tax_included',
             'status', 'self_ordering_image_background_ids', 'preparation_printer_ids',
             'receipt_printer_ids', 'use_order_printer', 'other_devices', 'pos_snooze_ids', 'self_ordering_primary_color',
+            'logo', 'receipt_address', 'phone', 'email', 'website', 'tip_product_id',
         ]
 
     def _update_access_token(self):
@@ -166,6 +167,9 @@ class PosConfig(models.Model):
 
     def write(self, vals):
         self._prepare_self_order_splash_screen([vals])
+        product_delivery_template = self.env.ref('pos_self_order.product_delivery_template', raise_if_not_found=False)
+        if vals.get('self_ordering_mode') in ('kiosk', 'mobile') and not product_delivery_template.active:
+            product_delivery_template.active = True
         for record in self:
             if vals.get('self_ordering_mode') == 'kiosk' or (vals.get('pos_self_ordering_mode') == 'mobile' and vals.get('pos_self_ordering_service_mode') == 'counter'):
                 vals['self_ordering_pay_after'] = 'each'
@@ -191,8 +195,10 @@ class PosConfig(models.Model):
         return res
 
     def _ensure_public_attachments(self):
-        self.self_ordering_image_background_ids.write({"public": True})
-        self.self_ordering_image_home_ids.write({"public": True})
+        attachments = self.self_ordering_image_background_ids | self.self_ordering_image_home_ids
+        attachments = attachments.filtered(lambda a: not a.public)
+        if attachments:
+            attachments.sudo().write({"public": True})
 
     @api.depends("module_pos_restaurant")
     def _compute_self_order(self):
@@ -217,11 +223,6 @@ class PosConfig(models.Model):
                 and not record.self_ordering_default_user_id.sudo().has_group("point_of_sale.group_pos_manager")))
             ):
                 raise UserError(_("The Self-Order default user must be a POS user"))
-
-    @api.constrains("payment_method_ids", "self_ordering_mode")
-    def _onchange_payment_method_ids(self):
-        if any(record.self_ordering_mode == 'kiosk' and any(pm.is_cash_count and not pm.payment_provider for pm in record.payment_method_ids) for record in self):
-            raise ValidationError(_("You cannot add cash payment methods in kiosk mode."))
 
     def _get_qr_code_data(self):
         self.ensure_one()
@@ -297,11 +298,11 @@ class PosConfig(models.Model):
             'account.tax.group', 'res.country', 'product.category', 'product.pricelist', 'product.pricelist.item', 'res.currency', 'account.fiscal.position',
             'res.lang', 'product.attribute', 'product.attribute.custom.value', 'product.template.attribute.line', 'product.template.attribute.value', 'product.tag',
             'decimal.precision', 'uom.uom', 'pos_self_order.custom_link', 'restaurant.floor', 'restaurant.table', 'account.cash.rounding',
-            'res.country', 'res.country.state', 'mail.template', 'pos.product.template.snooze', 'pos.prep.order', 'pos.prep.line']
+            'res.country', 'res.country.state', 'mail.template', 'pos.snooze', 'pos.prep.order', 'pos.prep.line', 'ir.ui.view']
 
     @api.model
-    def _load_pos_self_data_domain(self, data, config):
-        return [('id', '=', config.id)]
+    def _load_pos_self_data_domain(self, data):
+        return [('id', '=', data['pos.config'].id)]
 
     @api.model
     def _load_pos_self_data_read(self, records, config):
@@ -311,42 +312,51 @@ class PosConfig(models.Model):
         record = read_records[0]
         record['_self_ordering_image_home_ids'] = config.self_ordering_image_home_ids.read(['mimetype'])
         record['_self_ordering_image_background_ids'] = config.self_ordering_image_background_ids.ids
-        record['_pos_special_products_ids'] = config._get_special_products().ids
         record['_self_order_pos'] = True
+        google_places_api_key = self.env['ir.config_parameter'].sudo().get_str('google_address_autocomplete.google_places_api_key')
+        record['_has_google_places_api_key'] = bool(google_places_api_key)
+        record['_base_url'] = config.get_base_url()
         return read_records
 
     def load_self_data(self):
-        response = {}
-        response['pos.config'] = self.env['pos.config']._load_pos_self_data_search_read(response, self)
+        metadata = self._load_self_metadata()
+        return self._read_pos_self_data_from_metadata(metadata, self)
 
-        for model in self._load_self_data_models():
-            try:
-                response[model] = self.env[model]._load_pos_self_data_search_read(response, self)
-            except AccessError:
-                response[model] = []
-
-        return response
-
-    def load_data_params(self):
-        response = {}
+    def _load_self_metadata(self):
+        models = self._load_self_data_models()
+        records = {}
         fields = self._load_pos_self_data_fields(self)
-        response['pos.config'] = {
+        domain = [('id', '=', self.id)]
+        records['pos.config'] = {
+            'domain': domain,
             'fields': fields,
-            'relations': self.env['pos.session']._load_pos_data_relations('pos.config', fields)
+            'records': self.search(domain, limit=1),
+            'relations': self._load_data_relations(fields),
         }
-
-        for model in self._load_self_data_models():
-            fields = self.env[model]._load_pos_self_data_fields(self)
-            response[model] = {
-                'fields': fields,
-                'relations': self.env['pos.session']._load_pos_data_relations(model, fields)
-            }
-
-        return response
+        for model in models:
+            try:
+                self.env[model]._load_pos_self_metadata(records, {})
+            except AccessError:
+                records[model] = {
+                    **self.env[model]._load_pos_self_data_domain_and_relations(records),
+                    'records': self.env[model],
+                }
+        return records
 
     def _compute_self_ordering_url(self):
         for record in self:
             record.self_ordering_url = record.get_base_url() + record._get_self_order_route()
+
+    def _can_use_cash_payment_method(self, cash_method):
+        self.ensure_one()
+        return (
+                    not cash_method.payment_provider and
+                    (
+                        self.self_ordering_mode == 'kiosk' or
+                        not cash_method.config_ids.filtered(lambda config: config != self and config.self_ordering_mode != 'kiosk')
+                    )
+                ) or \
+            super()._can_use_cash_payment_method(cash_method)
 
     def close_ui(self):
         if self.self_ordering_mode == "kiosk":
@@ -358,11 +368,11 @@ class PosConfig(models.Model):
             self.current_session_id.order_ids.filtered(lambda o: o.state == 'draft').unlink()
 
         self._notify('STATUS', {'status': 'closed'})
-        return self.current_session_id.action_pos_session_closing_control()
+        return self.current_session_id.close_session_from_ui()
 
     def _compute_status(self):
         for record in self:
-            record.status = 'active' if record.has_active_session else 'inactive'
+            record.status = 'active' if record.current_session_id else 'inactive'
 
     def action_open_wizard(self):
         self.ensure_one()
@@ -388,7 +398,7 @@ class PosConfig(models.Model):
     def has_valid_self_payment_method(self):
         """ Checks if the POS config has a valid payment method (terminal or online). """
         self.ensure_one()
-        domain = self.payment_method_ids._load_pos_self_data_domain({}, self)
+        domain = self.payment_method_ids._load_pos_self_data_domain({'pos.config': self})
         return bool(self.payment_method_ids.filtered_domain(domain))
 
     @api.model
@@ -402,18 +412,19 @@ class PosConfig(models.Model):
             'pos_restaurant.drinks',
         ])
         not_cash_payment_methods_ids = self.env['pos.payment.method'].search([
-            ('is_cash_count', '=', False),
+            ('type', '!=', 'cash'),
             ('id', 'in', payment_methods_ids),
         ]).ids
-        self.env['pos.config'].create({
+        config = self.env['pos.config'].create({
             'name': _('Kiosk'),
             'company_id': self.env.company.id,
             'journal_id': journal.id,
             'payment_method_ids': not_cash_payment_methods_ids,
             'limit_categories': True,
             'iface_available_categ_ids': restaurant_categories,
-            'iface_splitbill': True,
             'module_pos_restaurant': True,
+        })
+        config.write({
             'self_ordering_mode': 'kiosk',
             'self_ordering_pay_after': 'each',
         })
@@ -483,3 +494,8 @@ class PosConfig(models.Model):
             'redirect_url': url_form,
             'zip_archive': base64.b64encode(zip_buffer.read()).decode('utf-8'),
         }
+
+    def notify_session_state_changed(self):
+        self.ensure_one()
+        if self.self_ordering_mode == 'mobile':
+            self._notify("SESSION_STATE_CHANGED", {})

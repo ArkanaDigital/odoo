@@ -8,12 +8,12 @@ import {
     queryFirst,
     select,
 } from "@odoo/hoot-dom";
-import { animationFrame, Deferred, runAllTimers } from "@odoo/hoot-mock";
+import { animationFrame, runAllTimers } from "@odoo/hoot-mock";
 import {
     contains,
     defineModels,
     fields,
-    getMockEnv,
+    isSmall,
     models,
     mountView,
     onRpc,
@@ -21,7 +21,6 @@ import {
     serverState,
     toggleSearchBarMenu,
 } from "@web/../tests/web_test_helpers";
-
 import { download } from "@web/core/network/download";
 
 async function exportAllAction() {
@@ -29,9 +28,11 @@ async function exportAllAction() {
     await contains(".o-dropdown--menu .dropdown-item").click();
 }
 const openExportDialog = async () => {
-    if (getMockEnv().isSmall) {
-        await pointerDown(".o_data_row:nth-child(1)");
+    if (isSmall()) {
+        await pointerDown(".o_data_row:nth-child(1), .o_kanban_record:nth-child(1)");
         await runAllTimers();
+    } else if (queryFirst(".o_kanban_view")) {
+        await contains(".o_kanban_record").click({ altKey: true });
     } else {
         await contains(".o_list_record_selector input[type='checkbox']").click();
     }
@@ -267,7 +268,7 @@ test("Export dialog: interacting with export templates", async () => {
     await contains(".o_export_tree_item:nth-child(2) .o_add_field").click();
     expect(`.o_exported_lists_select`).toHaveCount(1);
     expect(`.o_save_list_btn`).toHaveCount(0);
-    expect(`.o_cancel_list_btn .fa-undo`).toHaveCount(1);
+    expect(`.o_cancel_list_btn [data-icon="undo"]`).toHaveCount(1);
     expect(`.o_fields_list .o_export_field`).toHaveCount(2);
     await contains(".o_cancel_list_btn").click();
     expect(`.o_fields_list .o_export_field`).toHaveCount(1, {
@@ -451,10 +452,10 @@ test("Export dialog: compatible and export type options", async () => {
         { tag: "wow", label: "WOW" },
     ]);
     let checkpoint;
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("/web/export/get_fields", async () => {
         if (checkpoint) {
-            await def;
+            await def.promise;
         }
         checkpoint = true;
         return fetchedFields.root;
@@ -545,7 +546,7 @@ test("Export dialog: many2many fields are extendable", async () => {
     );
 });
 
-test("Export dialog: export list with 'exportable: false'", async () => {
+test("Export dialog in list view: export list with 'exportable: false'", async () => {
     Partner._fields.not_exportable = fields.Char({ string: "Not exportable", exportable: false });
     Partner._fields.exportable = fields.Char();
     onRpc("/web/export/formats", () => [{ tag: "csv", label: "CSV" }]);
@@ -577,6 +578,52 @@ test("Export dialog: export list with 'exportable: false'", async () => {
             <field name="not_exportable"/>
             <field name="exportable"/>
         </list>`,
+        loadActionMenus: true,
+    });
+
+    await openExportDialog();
+
+    expect(".o_export_field").toHaveCount(2);
+    expect(".o_fields_list").toHaveText("Foo\nExportable");
+});
+
+test("Export dialog in kanban view: export list with 'exportable: false'", async () => {
+    Partner._fields.not_exportable = fields.Char({ string: "Not exportable", exportable: false });
+    Partner._fields.exportable = fields.Char();
+    onRpc("/web/export/formats", () => [{ tag: "csv", label: "CSV" }]);
+    onRpc("/web/export/get_fields", async (request) => {
+        const { params } = await request.json();
+        if (!params.parent_field) {
+            return [
+                ...fetchedFields.root,
+                {
+                    id: "not_exportable",
+                    string: "Not exportable",
+                    type: "char",
+                    exportable: false,
+                },
+                {
+                    id: "exportable",
+                    string: "Exportable",
+                },
+            ];
+        }
+        return fetchedFields[params.prefix];
+    });
+
+    await mountView({
+        type: "kanban",
+        resModel: "partner",
+        arch: `
+            <kanban>
+                <templates>
+                    <t t-name="card">
+                        <field name="foo"/>
+                        <field name="not_exportable"/>
+                        <field name="exportable"/>
+                    </t>
+                </templates>
+            </kanban>`,
         loadActionMenus: true,
     });
 
@@ -852,7 +899,7 @@ test("Direct export list take optional fields into account on desktop", async ()
         loadActionMenus: true,
     });
 
-    await contains("table .o_optional_columns_dropdown .dropdown-toggle").click();
+    await contains("table .o_optional_columns .dropdown-toggle").click();
     await contains("span.dropdown-item:first-child").click();
     expect("th").toHaveCount(3, {
         message: "should have 3 th, 1 for selector, 1 for columns, 1 for optional columns",
@@ -883,7 +930,7 @@ test("Direct export list take optional fields into account on mobile", async () 
         loadActionMenus: true,
     });
 
-    await contains("table .o_optional_columns_dropdown .dropdown-toggle").click();
+    await contains("table .o_optional_columns .dropdown-toggle").click();
     await contains("span.dropdown-item:first-child").click();
     expect("th").toHaveCount(2, {
         message: "should have 2 th, 1 for columns, 1 for optional columns",
@@ -1081,7 +1128,7 @@ test("Export dialog: search in debug", async () => {
 test("Export dialog: disable button during export", async () => {
     let def;
     patchWithCleanup(download, {
-        _download: () => (def = new Deferred()),
+        _download: () => (def = Promise.withResolvers()).promise,
     });
     onRpc("/web/export/formats", () => [{ tag: "xls", label: "Excel" }]);
     onRpc("/web/export/get_fields", () => fetchedFields.root);
@@ -1158,13 +1205,27 @@ test("Export dialog: fields displayed in same Order as list view when export", a
     });
 });
 
-test("Export dialog: no raw properties fields in default export list", async () => {
+test("Export dialog in list view: excludes raw properties field, includes enabled properties", async () => {
     User._fields.properties_definition = fields.PropertiesDefinition();
     Partner._fields.user_id = fields.Many2one({ relation: "res.users" });
     Partner._fields.properties = fields.Properties({
         definition_record: "user_id",
         definition_record_field: "properties_definition",
     });
+
+    User._records = [
+        {
+            id: 1,
+            properties_definition: [
+                { name: "my_char", string: "My Char", type: "char" },
+                { name: "my_int", string: "My Int", type: "integer" },
+            ],
+        },
+    ];
+
+    Partner._records[0].user_id = 1;
+    Partner._records[0].properties = { my_char: "hello", my_int: 42 };
+
     onRpc("/web/export/formats", () => [{ tag: "csv", label: "CSV" }]);
     onRpc("/web/export/get_fields", async (request) => [
         ...fetchedFields.root,
@@ -1174,6 +1235,20 @@ test("Export dialog: no raw properties fields in default export list", async () 
             required: false,
             value: "properties",
             id: "properties",
+        },
+        {
+            field_type: "char",
+            string: "My Char",
+            required: false,
+            value: "properties.my_char",
+            id: "properties.my_char",
+        },
+        {
+            field_type: "integer",
+            string: "My Int",
+            required: false,
+            value: "properties.my_int",
+            id: "properties.my_int",
         },
     ]);
 
@@ -1188,7 +1263,80 @@ test("Export dialog: no raw properties fields in default export list", async () 
         loadActionMenus: true,
     });
 
+    await contains(".o_optional_columns .dropdown-toggle").click();
+    await contains(".o-dropdown-item:nth-child(1) span:contains('My Char')").click();
+
     await openExportDialog();
-    expect(".modal .o_export_field").toHaveCount(1);
-    expect(".modal .o_export_field").toHaveText("Foo");
+    expect(queryAllTexts(".o_left_field_panel .o_export_tree_item")).toEqual([
+        "Activities",
+        "Foo",
+        "Bar",
+        "Properties",
+        "My Char",
+        "My Int",
+    ]);
+    expect(queryAllTexts(".o_right_field_panel .o_export_field")).toEqual(["Foo", "My Char"]);
+});
+
+test("Export dialog in kanban view: no raw properties fields in default export list", async () => {
+    User._fields.properties_definition = fields.PropertiesDefinition();
+    Partner._fields.user_id = fields.Many2one({ relation: "res.users" });
+    Partner._fields.properties = fields.Properties({
+        definition_record: "user_id",
+        definition_record_field: "properties_definition",
+    });
+
+    User._records = [
+        {
+            id: 1,
+            properties_definition: [{ name: "my_char", string: "My Char", type: "char" }],
+        },
+    ];
+
+    Partner._records[0].user_id = 1;
+    Partner._records[0].properties = { my_char: "hello" };
+
+    onRpc("/web/export/formats", () => [{ tag: "xls", label: "Excel" }]);
+    onRpc("/web/export/get_fields", async (request) => [
+        ...fetchedFields.root,
+        {
+            field_type: "properties",
+            string: "Properties",
+            required: false,
+            value: "properties",
+            id: "properties",
+        },
+        {
+            field_type: "char",
+            string: "My Char",
+            required: false,
+            value: "properties.my_char",
+            id: "properties.my_char",
+        },
+    ]);
+
+    await mountView({
+        type: "kanban",
+        resModel: "partner",
+        arch: `
+            <kanban>
+                <templates>
+                    <t t-name="card">
+                        <field name="foo"/>
+                        <field name="properties"/>
+                    </t>
+                </templates>
+            </kanban>`,
+        loadActionMenus: true,
+    });
+
+    await openExportDialog();
+    expect(queryAllTexts(".o_left_field_panel .o_export_tree_item")).toEqual([
+        "Activities",
+        "Foo",
+        "Bar",
+        "Properties",
+        "My Char",
+    ]);
+    expect(queryAllTexts(".o_right_field_panel .o_export_field")).toEqual(["Foo", "My Char"]);
 });

@@ -283,7 +283,7 @@ export class DynamicList extends DataPoint {
             });
         } catch (e) {
             if (e instanceof ConnectionLostError) {
-                this.model.offline.scheduleORM(
+                this.model.offlinePlugin.scheduleORM(
                     this.resModel,
                     "unlink",
                     [resIds],
@@ -292,7 +292,7 @@ export class DynamicList extends DataPoint {
                         extras: getScheduleORMExtras(this.model, records),
                     }
                 );
-                this._unSelectAll();
+                this._unselectAll();
                 return true;
             }
             throw e;
@@ -492,7 +492,7 @@ export class DynamicList extends DataPoint {
         } catch (e) {
             if (e instanceof ConnectionLostError) {
                 const records = this.records.filter((r) => resIds.includes(r.resId));
-                this.model.offline.scheduleORM(
+                this.model.offlinePlugin.scheduleORM(
                     this.resModel,
                     method,
                     [resIds],
@@ -501,7 +501,7 @@ export class DynamicList extends DataPoint {
                         extras: getScheduleORMExtras(this.model, records),
                     }
                 );
-                this._unSelectAll();
+                this._unselectAll();
                 return true;
             }
             throw e;
@@ -531,11 +531,9 @@ export class DynamicList extends DataPoint {
     }
 
     async _toggleSelection() {
-        if (this.selection.length === this.records.length) {
-            this.records.forEach((record) => {
-                record._toggleSelection(false);
-            });
-            this._selectDomain(false);
+        // As soon as something is selected, clicking the header checkbox clears the selection.
+        if (this.isDomainSelected || this.selection.length > 0) {
+            this._unselectAll();
         } else {
             this.records.forEach((record) => {
                 record._toggleSelection(true);
@@ -543,9 +541,13 @@ export class DynamicList extends DataPoint {
         }
     }
 
-    _unSelectAll() {
+    unselectAll() {
+        return this.model.mutex.exec(() => this._unselectAll());
+    }
+
+    _unselectAll() {
         this.selection.forEach((record) => {
-            record.toggleSelection(false);
+            record._toggleSelection(false);
         });
         this._selectDomain(false);
     }

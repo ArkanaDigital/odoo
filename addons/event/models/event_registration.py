@@ -313,10 +313,9 @@ class EventRegistration(models.Model):
         return ret
 
     def _compute_display_name(self):
-        """ Custom display_name in case a registration is nott linked to an attendee
-        """
+        """Custom display_name when a registration is not linked to an attendee."""
         for registration in self:
-            registration.display_name = registration.name or f"#{registration.id}"
+            registration.display_name = registration.name or (f"#{registration.id}" if registration.id else _("New"))
 
     # ------------------------------------------------------------
     # ACTIONS / BUSINESS
@@ -425,7 +424,7 @@ class EventRegistration(models.Model):
 
         # either trigger the cron, either run schedulers immediately (scaling choice)
         async_scheduler = self.env['ir.config_parameter'].sudo().get_bool('event.event_mail_async')
-        if async_scheduler:
+        if async_scheduler or self.env.context.get('import_file'):
             self.env.ref('event.event_mail_scheduler')._trigger()
             self.env.ref('mail.ir_cron_mail_scheduler_action')._trigger()
         else:

@@ -22,13 +22,11 @@ Pre viac informácií kontaktujte info@26house.com alebo navštívte https://www
 
     """,
     'depends': [
-        'base_vat',
         'account',
     ],
     'auto_install': ['account'],
     'data': [
         'data/tax_report.xml',
-        'views/res_partner_views.xml',
         'views/res_company_views.xml',
         'views/report_invoice.xml',
         'views/report_template.xml',

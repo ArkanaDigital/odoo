@@ -1,7 +1,7 @@
 import { _t } from "@web/core/l10n/translation";
-import { markup } from "@odoo/owl";
+import { markup, useProps, t } from "@odoo/owl";
 import { registry } from "@web/core/registry";
-import { extractData, Many2One } from "@web/views/fields/many2one/many2one";
+import { extractData, Many2One, many2OneProps } from "@web/views/fields/many2one/many2one";
 import { buildM2OFieldDescription, Many2OneField } from "@web/views/fields/many2one/many2one_field";
 import { Many2XAutocomplete } from "@web/views/fields/relational_utils";
 
@@ -13,10 +13,10 @@ import { Many2XAutocomplete } from "@web/views/fields/relational_utils";
 export class Many2XAutocompleteBank extends Many2XAutocomplete {
     buildRecordSuggestion(request, record) {
         const recordSuggestion = super.buildRecordSuggestion(request, record);
-        const icon = record.allow_out_payment ? "fa-shield" : "fa-exclamation-circle";
+        const icon = record.allow_out_payment ? "security" : "error";
         const colorClass = record.allow_out_payment ? "text-success" : "text-danger";
         const title = record.allow_out_payment ? _t("Trusted") : _t("Untrusted");
-        recordSuggestion.label = markup`<i class="me-1 fa ${icon} ${colorClass}" title="${title}"></i> ${recordSuggestion.label}`;
+        recordSuggestion.label = markup`<i class="me-1 oi ${colorClass}" data-icon="${icon}" title="${title}"></i> ${recordSuggestion.label}`;
         return recordSuggestion;
     }
 
@@ -37,10 +37,10 @@ function extractDataBank(record) {
 
 export class Many2OneBank extends Many2One {
     static template = "account.Many2OneBank";
-    static props = {
-        ...Many2One.props,
-        bankAllowOutPayment: { type: Boolean, optional: true },
-    };
+    props = useProps({
+        ...many2OneProps,
+        bankAllowOutPayment: t.boolean().optional(),
+    });
     static components = {
         ...Many2One.components,
         Many2XAutocomplete: Many2XAutocompleteBank,

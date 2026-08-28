@@ -12,6 +12,8 @@ from odoo.addons.account_edi_ubl_cii.tests.common import TestUblCiiCommon
 @tagged('post_install', '-at_install')
 class TestAccountEdiUblCii(TestUblCiiCommon, HttpCase):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -168,42 +170,6 @@ class TestAccountEdiUblCii(TestUblCiiCommon, HttpCase):
         attachment.raw = etree.tostring(xml_tree)
         new_invoice = invoice.journal_id._create_document_from_attachment(attachment.ids)
         self.assertRecordValues(new_invoice.invoice_line_ids, line_vals)
-
-    def test_peppol_eas_endpoint_compute(self):
-        partner = self.partner_a
-        partner.vat = 'DE123456788'
-        partner.country_id = self.env.ref('base.de')
-
-        self.assertRecordValues(partner, [{
-            'peppol_eas': '9930',
-            'peppol_endpoint': 'DE123456788',
-        }])
-
-        partner.country_id = self.env.ref('base.fr')
-        partner.vat = 'FR23334175221'
-
-        self.assertRecordValues(partner, [{
-            'peppol_eas': '9957',
-            'peppol_endpoint': 'FR23334175221',
-        }])
-
-        partner.vat = '23334175221'
-
-        self.assertRecordValues(partner, [{
-            'peppol_eas': '9957',
-            'peppol_endpoint': '23334175221',
-        }])
-
-        partner.write({
-            'vat': 'BE0477472701',
-            'company_registry': '0477472701',
-            'country_id': self.env.ref('base.be'),
-        })
-
-        self.assertRecordValues(partner, [{
-            'peppol_eas': '0208',
-            'peppol_endpoint': '0477472701',
-        }])
 
     def test_import_partner_peppol_fields(self):
         """ Check that the peppol fields are used to retrieve the partner when importing a Bis 3 xml. """
@@ -468,8 +434,7 @@ comment-->1000.0</TaxExclusiveAmount></xpath>"""
     def test_export_zip_includes_ubl_xml(self):
         partner = self._create_partner_be(invoice_edi_format='ubl_bis3')
         self.company_data['company'].partner_id.write({
-            'peppol_eas': '0230',
-            'peppol_endpoint': 'C2584563200',
+            'routing_identifier': '0230:C2584563200',
         })
         invoices = self.env['account.move'].create([
             {
@@ -639,8 +604,8 @@ comment-->1000.0</TaxExclusiveAmount></xpath>"""
 
     def test_oin_code(self):
         partner = self.partner_a
-        partner.peppol_endpoint = '00000000001020304050'
         partner.country_id = self.env.ref('base.nl').id
+        partner.additional_identifiers = {'NL_OIN': '00000000001020304050'}
         partner.bank_ids = [Command.create({'account_number': "0123456789", 'allow_out_payment': True})]
         invoice = self.env['account.move'].create({
             'partner_id': partner.id,
@@ -728,6 +693,28 @@ comment-->1000.0</TaxExclusiveAmount></xpath>"""
             "rsm": "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100",
         })
         self.assertEqual(node[0].text, self.company.vat, "Company VAT fallback")
+
+    def test_facturx_line_without_product_has_name(self):
+        """A line with no product_id (e.g. a sale order down payment invoice line) must still
+        expose a ram:Name in the Factur-X/CII export, falling back to the line's free-text name,
+        without also emitting a redundant ram:Description."""
+        invoice = self.env["account.move"].create({
+            "partner_id": self.partner_a.id,
+            "move_type": "out_invoice",
+            "invoice_line_ids": [Command.create({
+                "name": "Down payment of 40.00%",
+                "price_unit": 100.0,
+            })],
+        })
+        invoice.action_post()
+
+        xml_bytes = self.env["account.edi.xml.cii"]._export_invoice(invoice)[0]
+        xml_tree = etree.fromstring(xml_bytes)
+        name_node = xml_tree.find(".//ram:SpecifiedTradeProduct/ram:Name", self.namespaces)
+        description_node = xml_tree.find(".//ram:SpecifiedTradeProduct/ram:Description", self.namespaces)
+        self.assertIsNotNone(name_node, "ram:Name must be present even when the line has no product")
+        self.assertEqual(name_node.text, "Down payment of 40.00%")
+        self.assertIsNone(description_node)
 
     def test_bank_details_import(self):
         acc_number = '1234567890'
@@ -985,3 +972,43 @@ comment-->1000.0</TaxExclusiveAmount></xpath>"""
         self.assertEqual(due_date.text, '20251231')
         self.assertEqual(days.text, '15')
         self.assertEqual(percent.text, '3.0')
+
+    def test_facturx_export_non_eu_supplier_to_eu_customer(self):
+        """Test that a non-EU/EEA supplier (e.g. Switzerland) exporting goods to an EU customer
+        is classified as 'G' / VATEX-EU-G (export outside the EU).
+        """
+        switzerland = self.env.ref("base.ch")
+        germany = self.env.ref("base.de")
+
+        company = self.env.company
+        company.country_id = switzerland.id
+        company.vat = 'CHE-123.456.788 MWST'
+
+        self.partner_a.country_id = germany.id
+        self.partner_a.invoice_edi_format = 'facturx'
+
+        tax_0_export = self.env['account.tax'].create({
+            'name': 'CH Export 0%',
+            'amount': 0.0,
+            'amount_type': 'percent',
+            'type_tax_use': 'sale',
+        })
+
+        invoice = self.env['account.move'].create({
+            'partner_id': self.partner_a.id,
+            'move_type': 'out_invoice',
+            'invoice_date': fields.Date.from_string('2025-12-22'),
+            'invoice_line_ids': [Command.create({
+                'product_id': self.product_a.id,
+                'tax_ids': [Command.set(tax_0_export.ids)],
+            })],
+        })
+        invoice.action_post()
+
+        xml_bytes = self.env["account.edi.xml.cii"]._export_invoice(invoice)[0]
+        xml_tree = etree.fromstring(xml_bytes)
+
+        category_code = xml_tree.find('.//ram:ApplicableTradeTax/ram:CategoryCode', self.namespaces)
+        exemption_reason_code = xml_tree.find('.//ram:ApplicableTradeTax/ram:ExemptionReasonCode', self.namespaces)
+        self.assertEqual(category_code.text, 'G')
+        self.assertEqual(exemption_reason_code.text, 'VATEX-EU-G')

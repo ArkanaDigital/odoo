@@ -1,18 +1,18 @@
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillStart, proxy, useProps, t } from "@odoo/owl";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { Dialog } from "@web/core/dialog/dialog";
 import { _t } from "@web/core/l10n/translation";
-import { formatDate } from "@web/core/l10n/dates";
+import { getDisplayDateInfo } from "@point_of_sale/utils";
 
 const { DateTime } = luxon;
 
 export class PresetSlotsPopup extends Component {
     static template = "point_of_sale.PresetSlotsPopup";
     static components = { Dialog };
-    static props = {
-        close: Function,
-        getPayload: Function,
-    };
+    props = useProps({
+        close: t.function(),
+        getPayload: t.function(),
+    });
 
     setup() {
         this.pos = usePos();
@@ -26,6 +26,10 @@ export class PresetSlotsPopup extends Component {
         onWillStart(async () => {
             await this.pos.syncPresetSlotAvaibility(this.pos.getOrder().preset_id);
         });
+    }
+
+    getDateInfo(date) {
+        return getDisplayDateInfo(date);
     }
 
     getSlotColor(slot, preset) {
@@ -63,10 +67,6 @@ export class PresetSlotsPopup extends Component {
         };
 
         return periodNames[period];
-    }
-
-    formatedDate(date) {
-        return formatDate(DateTime.fromFormat(date, "yyyy-MM-dd"));
     }
 
     confirm(slot, preset) {

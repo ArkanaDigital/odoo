@@ -1,5 +1,4 @@
 import { Plugin } from "@html_editor/plugin";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 import { parseHTML } from "@html_editor/utils/html";
 import { describe, expect, test } from "@odoo/hoot";
 import { click, pointerDown, pointerUp, press, queryOne, microTick } from "@odoo/hoot-dom";
@@ -28,11 +27,12 @@ describe("reset", () => {
             resources = {
                 normalize_processors: () => {
                     this.editable.firstChild.setAttribute("data-test-normalize", "1");
+                    return this.editable;
                 },
             };
         };
         const { el, plugins } = await setupEditor("<p>a</p>", {
-            config: { Plugins: [...MAIN_PLUGINS, TestPlugin] },
+            config: { includePlugins: [TestPlugin] },
         });
         const historyPlugin = plugins.get("history");
         expect(el.firstChild.getAttribute("data-test-normalize")).toBe("1");
@@ -330,7 +330,6 @@ describe("system classes and attributes", () => {
             system_attributes: ["data-x"],
         };
     }
-    const Plugins = [...MAIN_PLUGINS, TestSystemClassesPlugin];
     test("should prevent system classes to be added", async () => {
         await testEditor({
             contentBefore: `<p>a</p>`,
@@ -341,12 +340,14 @@ describe("system classes and attributes", () => {
                 const history = editor.plugins.find((p) => p.constructor.id === "history");
                 expect(history.commits.length).toBe(1);
             },
-            config: { Plugins: Plugins },
+            config: { includePlugins: [TestSystemClassesPlugin] },
         });
     });
 
     test("system classes are ignored by history (neither added or removed)", async () => {
-        const { editor, el } = await setupEditor(`<p>a[]</p>`, { config: { Plugins: Plugins } });
+        const { editor, el } = await setupEditor(`<p>a[]</p>`, {
+            config: { includePlugins: [TestSystemClassesPlugin] },
+        });
         const p = editor.editable.querySelector("p");
         p.className = "x y";
         commit(editor);
@@ -369,12 +370,14 @@ describe("system classes and attributes", () => {
                 redo(editor);
             },
             contentAfter: `<p class="x">b[]</p>`,
-            config: { Plugins: Plugins },
+            config: { includePlugins: [TestSystemClassesPlugin] },
         });
     });
 
     test("system attributes mutations are ignored by history", async () => {
-        const { editor, el } = await setupEditor(`<p>a[]</p>`, { config: { Plugins: Plugins } });
+        const { editor, el } = await setupEditor(`<p>a[]</p>`, {
+            config: { includePlugins: [TestSystemClassesPlugin] },
+        });
         const p = editor.editable.querySelector("p");
         p.setAttribute("data-x", "1");
         p.setAttribute("data-y", "1");
@@ -386,7 +389,9 @@ describe("system classes and attributes", () => {
     });
 
     test("should skip the mutations if no changes in state", async () => {
-        const { el, plugins } = await setupEditor(`<p class="y">a</p>`, { config: { Plugins } });
+        const { el, plugins } = await setupEditor(`<p class="y">a</p>`, {
+            config: { includePlugins: [TestSystemClassesPlugin] },
+        });
 
         /** @type {import("../src/core/dom_observer_plugin").DomObserverPlugin"} */
         const domObserverPlugin = plugins.get("domObserver");
@@ -400,7 +405,9 @@ describe("system classes and attributes", () => {
     });
 
     test("should not copy system classes when changing a tag name", async () => {
-        const { el, editor } = await setupEditor(`<p class="x">a[]</p>`, { config: { Plugins } });
+        const { el, editor } = await setupEditor(`<p class="x">a[]</p>`, {
+            config: { includePlugins: [TestSystemClassesPlugin] },
+        });
         editor.shared.dom.setBlock({
             tagName: "h1",
         });
@@ -515,6 +522,20 @@ describe("makeSavePoint", () => {
 
         redo(editor);
         expect(getContent(el)).toBe(`<p>ab[]</p>`);
+    });
+    test("makeSavePoint restores a selection invalidated by the reverted mutations", async () => {
+        const { el, editor } = await setupEditor(`<p>abc</p>`);
+        setSelection({
+            anchorNode: el.firstChild,
+            anchorOffset: 0,
+            focusNode: el.firstChild,
+            focusOffset: 1,
+        });
+        editor.shared.selection.stageSelection();
+        const restore = editor.shared.history.makeSavePoint();
+        editor.shared.format.requestFormat("underline", { applyStyle: true, commit: false });
+        restore();
+        expect(getContent(el)).toBe(`<p>[abc]</p>`);
     });
 });
 
@@ -667,6 +688,7 @@ describe("shortcut", () => {
             normalize_processors: (root) => {
                 expect.step("normalize");
                 root.classList.add("test");
+                return root;
             },
         };
         const { editor } = await setupEditor(`<p>[]</p>`, {
@@ -716,9 +738,8 @@ describe("destroy", () => {
                 );
             }
         }
-        const Plugins = [...MAIN_PLUGINS, TestPlugin];
         const { editor } = await setupEditor(`<div class="oe_unbreakable">a[]b</div>`, {
-            config: { Plugins },
+            config: { includePlugins: [TestPlugin] },
         });
         // Ensure dispatch when plugins are alive.
         editor.shared.dom.insert(

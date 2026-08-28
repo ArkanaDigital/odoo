@@ -17,28 +17,24 @@ import { KeepLast } from "@web/core/utils/concurrency";
 import { formatFloat } from "@web/core/utils/numbers";
 import { useDebounced } from "@web/core/utils/timing";
 import { Model } from "@web/model/model";
-import { extractFieldsFromArchInfo } from "@web/model/relational_model/utils";
 import { computeAggregatedValue } from "@web/views/utils";
 
 const { DateTime } = luxon;
 
 export class CalendarModel extends Model {
     static DEBOUNCED_LOAD_DELAY = 600;
-    static services = ["notification"];
+    static services = ["notification", "ui"];
 
-    setup(params, { notification }) {
+    setup(params, { notification, ui }) {
         /** @protected */
         this.keepLast = new KeepLast();
         this.notification = notification;
+        this.uiService = ui;
 
         const formViewFromConfig = (this.env.config.views || []).find((view) => view[1] === "form");
         const formViewIdFromConfig = formViewFromConfig ? formViewFromConfig[0] : false;
-        const fieldNodes = params.popoverFieldNodes;
-        const { activeFields, fields } = extractFieldsFromArchInfo({ fieldNodes }, params.fields);
         this.meta = {
             ...params,
-            activeFields,
-            fields,
             firstDayOfWeek: (localization.weekStart || 0) % 7,
             formViewId: params.formViewId || formViewIdFromConfig,
         };
@@ -145,7 +141,9 @@ export class CalendarModel extends Model {
         return this.meta.hasEditDialog;
     }
     get hasMultiCreate() {
-        return !!this.meta.multiCreateView && !this.env.isSmall && this.meta.scale === "month";
+        return (
+            !!this.meta.multiCreateView && !this.uiService.isSmall && this.meta.scale === "month"
+        );
     }
     get hasQuickCreate() {
         return this.meta.quickCreate;
@@ -161,12 +159,6 @@ export class CalendarModel extends Model {
     }
     get monthOverflow() {
         return this.meta.monthOverflow;
-    }
-    get popoverFieldNodes() {
-        return this.meta.popoverFieldNodes;
-    }
-    get activeFields() {
-        return this.meta.activeFields;
     }
     get rangeEnd() {
         return this.data.range.end;
@@ -707,12 +699,7 @@ export class CalendarModel extends Model {
      */
     fetchRecords(data) {
         const { context, fieldNames, resModel } = this.meta;
-        return this.orm.searchRead(
-            resModel,
-            this.computeDomain(data),
-            [...new Set([...fieldNames, ...Object.keys(this.meta.activeFields)])],
-            { context }
-        );
+        return this.orm.searchRead(resModel, this.computeDomain(data), fieldNames, { context });
     }
     /**
      * @protected
@@ -735,30 +722,71 @@ export class CalendarModel extends Model {
         this.notify();
     }
     /**
-     * @protected
-     * @param {Number} eventId
-     * @param {DateTime} rawRecord
+     * @private
+     * @param {DateTime} date
      */
-    async scheduleEvent(eventId, date) {
+    _getScheduleData(date) {
         const [start, end] = this.hasTimePrecision
             ? [date, date.plus({ hours: 1 })]
             : this.getAllDayDates(date);
         const { date_start, date_stop } = this.meta.fieldMapping;
-        await this.orm.write(this.meta.resModel, [eventId], {
+        return {
             [date_stop]: serializeDateTime(end),
             [date_start]: serializeDateTime(start),
-        });
+        };
+    }
+    /**
+     * @private
+     */
+    _getScheduleContext() {
+        return { ...this.meta.context };
+    }
+    /**
+     * @private
+     * @param {Boolean} result
+     */
+    _onEventScheduled(result) {}
+    /**
+     * @protected
+     * @param {Number} eventId
+     * @param {DateTime} date
+     */
+    async scheduleEvent(eventId, date) {
+        const result = await this.orm.write(
+            this.meta.resModel,
+            [eventId],
+            this._getScheduleData(date),
+            {
+                context: this._getScheduleContext(),
+            }
+        );
+        this._onEventScheduled(result);
         await this.load();
+    }
+    /**
+     * @private
+     * @param {Number} eventId
+     */
+    _getUnscheduleData(eventId) {
+        const { date_start, date_stop } = this.meta.fieldMapping;
+        return {
+            [date_stop]: false,
+            [date_start]: false,
+        };
+    }
+    /**
+     * @private
+     */
+    _getUnscheduleContext() {
+        return { ...this.meta.context };
     }
     /**
      * @protected
      * @param {Number} eventId
      */
     async unscheduleEvent(eventId) {
-        const { date_start, date_stop } = this.meta.fieldMapping;
-        await this.orm.write(this.meta.resModel, [eventId], {
-            [date_stop]: false,
-            [date_start]: false,
+        await this.orm.write(this.meta.resModel, [eventId], this._getUnscheduleData(eventId), {
+            context: this._getUnscheduleContext(),
         });
         await this.load();
     }
@@ -823,7 +851,7 @@ export class CalendarModel extends Model {
             isTimeHidden: isTimeHidden || !showTime,
             isDay: this.meta.scale === "day",
             isMonth: this.meta.scale === "month",
-            isSmall: this.env.isSmall,
+            isSmall: this.uiService.isSmall,
             rawRecord,
         };
     }
@@ -1086,8 +1114,7 @@ export class CalendarModel extends Model {
             colorField &&
             (() => {
                 const sameRelatedModel = colorField.relation === field.relation;
-                const sameRelatedField =
-                    colorField.related === `${fieldName}.${colorFieldName}`;
+                const sameRelatedField = colorField.related === `${fieldName}.${colorFieldName}`;
                 const shouldHaveColor = sameRelatedModel || sameRelatedField;
                 const colorToUse = raw ? value : rawRecord[fieldMapping.color];
                 return shouldHaveColor ? colorToUse : null;

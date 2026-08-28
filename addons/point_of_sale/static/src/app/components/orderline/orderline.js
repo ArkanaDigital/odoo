@@ -1,5 +1,4 @@
-import { useRef } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
+import { Component, useProps, signal, t } from "@odoo/owl";
 import { useTimedPress } from "@point_of_sale/app/utils/use_timed_press";
 import { formatCurrency } from "@web/core/currency";
 import { BadgeTag } from "@web/core/tags_list/badge_tag";
@@ -7,28 +6,21 @@ import { BadgeTag } from "@web/core/tags_list/badge_tag";
 export class Orderline extends Component {
     static components = { BadgeTag };
     static template = "point_of_sale.Orderline";
-    static props = {
-        line: Object,
-        class: { type: Object, optional: true },
-        slots: { type: Object, optional: true },
-        showTaxGroupLabels: { type: Boolean, optional: true },
-        showTaxGroup: { type: Boolean, optional: true },
-        mode: { type: String, optional: true }, // display, split
-        onClick: { type: Function, optional: true },
-        onLongPress: { type: Function, optional: true },
-        toRefund: { type: Number, optional: true },
-    };
-    static defaultProps = {
-        showImage: false,
-        showTaxGroupLabels: false,
-        showTaxGroup: false,
-        mode: "display",
-        onClick: () => {},
-        onLongPress: () => {},
-    };
+    props = useProps({
+        line: t.object(),
+        class: t.object().optional(),
+        showImage: t.boolean().optional(false),
+        showTaxGroupLabels: t.boolean().optional(false),
+        showTaxGroup: t.boolean().optional(false),
+        mode: t.string().optional("display"), // display, split
+        onClick: t.function().optional(() => () => {}),
+        onLongPress: t.function().optional(() => () => {}),
+        toRefund: t.number().optional(),
+    });
+
+    root = signal.ref();
 
     setup() {
-        this.root = useRef("root");
         if (this.props.mode === "display") {
             useTimedPress(this.root, [
                 {
@@ -98,7 +90,10 @@ export class Orderline extends Component {
         const attributeStr = line.orderDisplayProductName.attributeString;
         const taxGroup = this.line.taxGroupLabels;
         const showPrice =
-            line.getQuantityStr() != 1 && line.price_type !== "original" && !line.combo_parent_id;
+            line.getQuantityStr() != 1 &&
+            line.price_type !== "original" &&
+            !line.combo_parent_id &&
+            !line.isServiceFeeLine();
         const priceUnit = `${line.currencyDisplayPriceUnit} / ${
             line.product_id?.uom_id?.name || ""
         }`;
@@ -116,6 +111,8 @@ export class Orderline extends Component {
             productImage: this.props.showImage && imageUrl,
             taxGroup: this.props.showTaxGroup && taxGroup,
             price: this.line.currencyDisplayPrice,
+            isServiceFeeLine: line.isServiceFeeLine(),
+            serviceFeeDisplayInfo: line.getServiceFeeDisplayInfo(),
         };
     }
 }

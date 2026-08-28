@@ -59,9 +59,10 @@ export class AttendeeCalendarController extends CalendarController {
             size: "md",
             context: { ...props.context, ...this.props.context },
             onRecordSave: async (record) => {
+                // first ask fields for their changes, in case user was still typing
+                await record.getChanges();
                 const updates = {
                     ...(!record.data.name && { name: _t("(No Title)") }),
-                    ...(record.data.allday && { show_as: "free" }),
                 };
                 if (Object.keys(updates).length) {
                     await record.update(updates);
@@ -93,21 +94,21 @@ export class AttendeeCalendarController extends CalendarController {
         ) {
             if (record.rawRecord.recurrency) {
                 this.openRecurringDeletionWizard(record);
-            } else if (user.partnerId === record.attendeeId &&
-                record.rawRecord.attendees_count == 1) {
+            } else if (
+                user.partnerId === record.attendeeId &&
+                record.rawRecord.attendees_count === 1
+            ) {
                 super.deleteRecord(...arguments);
             } else {
-                this.orm.call("calendar.event", "action_unlink_event", [
-                    record.id,
-                    record.attendeeId,
-                ])
-                .then((action) => {
-                    if (action && action.context) {
-                        this.actionService.doAction(action);
-                    } else {
-                        location.reload();
-                    }
-                });
+                this.orm
+                    .call("calendar.event", "action_unlink_event", [record.id, record.attendeeId])
+                    .then((action) => {
+                        if (action && action.context) {
+                            this.actionService.doAction(action);
+                        } else {
+                            location.reload();
+                        }
+                    });
             }
         } else {
             // Decline event
@@ -128,7 +129,7 @@ export class AttendeeCalendarController extends CalendarController {
                 context: {
                     default_calendar_event_id: record.id,
                     default_attendee_id: record.attendeeId,
-                    form_view_ref: 'calendar.calendar_popover_delete_view',
+                    form_view_ref: "calendar.calendar_popover_delete_view",
                 },
                 target: "new",
             },

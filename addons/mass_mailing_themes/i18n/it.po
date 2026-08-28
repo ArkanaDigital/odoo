@@ -12,10 +12,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 15.5alpha1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:38+0000\n"
-"PO-Revision-Date: 2026-04-14 09:06+0000\n"
-"Last-Translator: \"Marianna Ciofani (cima)\" <cima@odoo.com>\n"
-"Language-Team: Italian <https://translate.odoo.com/projects/odoo-s19-2/"
+"POT-Creation-Date: 2026-07-26 19:11+0000\n"
+"PO-Revision-Date: 2026-06-22 00:39+0000\n"
+"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Language-Team: Italian <https://translate.odoo.com/projects/odoo-master/"
 "mass_mailing_themes/it/>\n"
 "Language: it\n"
 "MIME-Version: 1.0\n"
@@ -23,7 +23,7 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=3; plural=(n == 1) ? 0 : ((n != 0 && n % 1000000 == "
 "0) ? 1 : 2);\n"
-"X-Generator: Weblate 5.16.2\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_newsletter_template
@@ -262,14 +262,14 @@ msgstr ""
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_promotion_template
 msgid ""
-"<font style=\"font-size: 62px; background-color: rgb(255, 255, 255);"
-"\">&amp;nbsp;10% OFF&amp;nbsp;</font>\n"
+"<font style=\"font-size: 62px; background-color: rgb(255, 255, 255);\">&amp;"
+"nbsp;10% OFF&amp;nbsp;</font>\n"
 "                    <br/>\n"
 "                    <font style=\"font-size: 62px; background-color: "
 "rgb(255, 255, 255);\">&amp;nbsp;SALES&amp;nbsp;</font>"
 msgstr ""
-"<font style=\"font-size: 62px; background-color: rgb(255, 255, 255);"
-"\">&amp;nbsp;10% DI SCONTO&amp;nbsp;</font>\n"
+"<font style=\"font-size: 62px; background-color: rgb(255, 255, 255);\">&amp;"
+"nbsp;10% DI SCONTO&amp;nbsp;</font>\n"
 "                    <br/>\n"
 "                    <font style=\"font-size: 62px; background-color: "
 "rgb(255, 255, 255);\">&amp;nbsp;VENDITE&amp;nbsp;</font>"
@@ -277,15 +277,11 @@ msgstr ""
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_training_template
 msgid ""
-"<i class=\"fa fa-map-marker\" contenteditable=\"false\"/> London, United "
-"Kingdom"
+"<i class=\"oi\" data-icon=\"location_on\" contenteditable=\"false\"/> "
+"London, United Kingdom"
 msgstr ""
-"<i class=\"fa fa-map-marker\" contenteditable=\"false\"/> Londra, Stati Uniti"
-
-#. module: mass_mailing_themes
-#: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_blogging_template
-msgid "<span class=\"fa fa-play\"/>&amp;nbsp;&amp;nbsp;WATCH VIDEO"
-msgstr "<span class=\"fa fa-play\"/>&amp;nbsp;&amp;nbsp;GUARDA VIDEO"
+"<i class=\"oi\" data-icon=\"location_on\" contenteditable=\"false\"/> "
+"Londra, Stati Uniti"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_roadshow1_template
@@ -345,6 +341,13 @@ msgid ""
 msgstr ""
 "<span class=\"font-weight: bolder\">conferenza di [oratore] &amp; [oratore]</"
 "span>"
+
+#. module: mass_mailing_themes
+#: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_blogging_template
+msgid ""
+"<span class=\"oi\" data-icon=\"play_arrow\"/>&amp;nbsp;&amp;nbsp;WATCH VIDEO"
+msgstr ""
+"<span class=\"oi\" data-icon=\"play_arrow\"/>&amp;nbsp;&amp;nbsp;GUARDA VIDEO"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_training_template
@@ -519,7 +522,7 @@ msgstr "<span style=\"font-weight: bolder;\">Registrati ora</span>"
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_promotion_template
 msgid ""
 "<span style=\"font-weight: bolder;\">View in Browser</span>&amp;nbsp;<span "
-"class=\"fa fa-external-link\"/>"
+"class=\"oi\" data-icon=\"open_in_new\"/>"
 msgstr ""
 
 #. module: mass_mailing_themes
@@ -780,10 +783,12 @@ msgstr "Deliziose ricette da tutto il mondo"
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
 msgid ""
 "Delicious recipes from around the world&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 msgstr ""
 "Deliziose ricette da tutto il mondo&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
@@ -794,10 +799,12 @@ msgstr "Destinazioni per una vacanza ecologica"
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
 msgid ""
 "Destinations for an eco-holiday&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 msgstr ""
 "Destinazioni per una vacanza ecologica&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_roadshow1_template
@@ -868,8 +875,12 @@ msgstr "Scopri di più"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
-msgid "Find out more&amp;nbsp;<span class=\"fa fa-angle-right\"/>"
-msgstr "Scopri di più&amp;nbsp;<span class=\"fa fa-angle-right\"/>"
+msgid ""
+"Find out more&amp;nbsp;<span class=\"oi\" data-icon=\"keyboard_arrow_right\"/"
+">"
+msgstr ""
+"Scopri di più&amp;nbsp;<span class=\"oi\" data-icon=\"keyboard_arrow_right\"/"
+">"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_roadshow1_template
@@ -1062,10 +1073,12 @@ msgstr "Dimostrazione tecnica interattiva di Odoo"
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
 msgid ""
 "Interview with Janet James&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 msgstr ""
 "Intervista con Janet James&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
@@ -1252,15 +1265,19 @@ msgstr "LEGGI DI PIÙ"
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
 msgid ""
 "Rainy day ideas&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 msgstr ""
 "Idee per i giorni di pioggia&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
-msgid "Read More&amp;nbsp;<span class=\"fa fa-angle-right\"/>"
-msgstr "Leggi di più&amp;nbsp;<span class=\"fa fa-angle-right\"/>"
+msgid ""
+"Read More&amp;nbsp;<span class=\"oi\" data-icon=\"keyboard_arrow_right\"/>"
+msgstr ""
+"Leggi di più&amp;nbsp;<span class=\"oi\" data-icon=\"keyboard_arrow_right\"/>"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_coupon_template
@@ -1509,10 +1526,12 @@ msgstr "Le 5 migliori routine mattutine per aumentare l'energia"
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_magazine_template
 msgid ""
 "Top 5 energy-boosting morning routines&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 msgstr ""
 "Le 5 migliori routine mattutine per aumentare l'energia&amp;nbsp;\n"
-"                                <span class=\"fa fa-angle-right\"/>"
+"                                <span class=\"oi\" data-"
+"icon=\"keyboard_arrow_right\"/>"
 
 #. module: mass_mailing_themes
 #: model_terms:ir.ui.view,arch_db:mass_mailing_themes.theme_training_template

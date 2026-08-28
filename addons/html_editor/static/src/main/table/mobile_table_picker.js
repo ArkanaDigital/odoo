@@ -1,5 +1,4 @@
-import { useExternalListener } from "@web/owl2/utils";
-import { Component, signal, useEffect } from "@odoo/owl";
+import { Component, signal, useEffect, useListener } from "@odoo/owl";
 
 export class MobileTablePicker extends Component {
     static template = "html_editor.MobileTablePicker";
@@ -11,8 +10,8 @@ export class MobileTablePicker extends Component {
         },
     };
 
-    rowCountRef = signal(null);
-    columnCountRef = signal(null);
+    rowCountRef = signal.ref();
+    columnCountRef = signal.ref();
     rowCount = signal(3);
     columnCount = signal(3);
 
@@ -23,7 +22,7 @@ export class MobileTablePicker extends Component {
                 el.focus();
             }
         });
-        useExternalListener(
+        useListener(
             this.props.editable.ownerDocument,
             "keydown",
             (ev) => {

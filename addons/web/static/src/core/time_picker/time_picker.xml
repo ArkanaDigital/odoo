@@ -6,9 +6,8 @@
             t-att-class="this.cssClass"
         >
             <Dropdown
-                t-if="!this.env.isSmall"
+                t-if="!this.uiService.isSmall"
                 state="this.dropdownState"
-                menuRef="this.menuRef"
                 manual="true"
                 focusToggleOnClosed="false"
                 position="'bottom-start'"
@@ -18,10 +17,10 @@
             >
                 <input
                     type="text"
-                    t-custom-ref="inputRef"
+                    t-ref="this.inputRef"
                     class="o_time_picker_input form-control px-0"
                     t-att-class="this.inputCssClass"
-                    t-custom-model="this.state.inputValue"
+                    t-model.proxy="this.state.inputValue"
                     t-on-input="this.onInput"
                     t-on-focus="this.ensureOpen"
                     t-on-click="this.ensureOpen"
@@ -42,12 +41,12 @@
                 </t>
             </Dropdown>
             <input
-                t-if="this.env.isSmall"
+                t-if="this.uiService.isSmall"
                 type="time"
-                t-custom-ref="inputRef"
+                t-ref="this.inputRef"
                 class="o_time_picker_input form-control px-0"
                 t-att-class="this.inputCssClass"
-                t-custom-model="this.state.inputValue"
+                t-model.proxy="this.state.inputValue"
                 t-on-change="this.onChange"
             />
         </div>

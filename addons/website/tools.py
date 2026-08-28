@@ -1,10 +1,12 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
+import colorsys
 import re
 
 import werkzeug.urls
-from lxml import etree
+from lxml import etree, html
 
 from odoo.tools.misc import hmac
+from odoo.tools.urls import urljoin
 
 
 def distance(s1="", s2="", limit=4):
@@ -93,6 +95,54 @@ def text_from_html(html_fragment, collapse_whitespace=False):
     return content
 
 
+def adapt_dark_palette_content(root):
+    """Keep text and carousel controls readable with dark palettes."""
+    for element in root.iter():
+        class_names = element.get('class', '').split()
+        if 'carousel-dark' in class_names:
+            class_names.remove('carousel-dark')
+            element.set('class', ' '.join(class_names))
+        if 'o_cc1' not in class_names and 'o_cc5' not in class_names:
+            continue
+        for child_el in element:
+            child_class_names = child_el.get('class', '').split()
+            if 'o_we_bg_filter' not in child_class_names:
+                continue
+            # Current custom filters use gradients with a visible dark stop.
+            has_dark_gradient = False
+            for red, green, blue, alpha in re.findall(
+                r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)',
+                child_el.get('style', ''),
+            ):
+                rgb = tuple(map(int, (red, green, blue)))
+                _, lightness, _ = colorsys.rgb_to_hls(*(channel / 255 for channel in rgb))
+                if (not alpha or float(alpha) > 0) and lightness < 0.5:
+                    has_dark_gradient = True
+                    break
+            if any(name.startswith('bg-black-') for name in child_class_names) or has_dark_gradient:
+                source_class, target_class = 'o_cc5', 'o_cc1'
+            elif any(name.startswith('bg-white-') for name in child_class_names):
+                source_class, target_class = 'o_cc1', 'o_cc5'
+            else:
+                continue
+            if source_class in class_names:
+                class_names[class_names.index(source_class)] = target_class
+                element.set('class', ' '.join(class_names))
+            break
+
+
+def images_from_html(html_fragment, base_url):
+    if not html_fragment or not html_fragment.strip():
+        return []
+    tree = html.fromstring(html_fragment)
+    seen = dict.fromkeys(
+        urljoin(base_url, src)
+        for img in tree.xpath('//img[@src]')
+        if (src := img.get('src')) and not src.startswith('data:')
+    )
+    return list(seen)
+
+
 def get_base_domain(url, strip_www=False):
     """
     Returns the domain of a given url without the scheme and the www. and the
@@ -128,12 +178,7 @@ def add_form_signature(html_fragment, env_sudo):
             continue
 
         email_to_value = form_values['email_to'].attrib.get('value')
-        if (not email_to_value
-            or (email_to_value == 'info@yourcompany.example.com'
-                and html_fragment.xpath('//span[@data-for="contactus_form"]')
-                and html_fragment.xpath('//form[@id="contactus_form"]'))):
-            # This means that the mail will be sent to the value of the dataFor
-            # which is the company email.
+        if not email_to_value:
             email_to_value = env_sudo.company.email or ''
 
         has_cc = {'email_cc', 'email_bcc'} & form_values.keys()

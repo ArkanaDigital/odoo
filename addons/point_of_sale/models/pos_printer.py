@@ -75,9 +75,10 @@ class PosPrinter(models.Model):
     ], required=True, default='80')
     paper_size_keys = fields.Char(compute='_compute_paper_size_keys')
     timeout = fields.Integer(string="Connection Timeout (ms)", default=15000, help="Time in milliseconds before considering that the printer is not responding.")
+    is_split_per_product = fields.Boolean(string='Split per product', help="Print one ticket for each product instead of one ticket grouping all products of the order.")
 
     def copy_data(self, default=None):
-        default = dict(default or {}, pos_config_ids=[(5, 0, 0)], printer_ip="0.0.0.0")
+        default = dict(default or {})
         vals_list = super().copy_data(default=default)
         if 'name' not in default:
             for printer, vals in zip(self, vals_list):
@@ -103,12 +104,13 @@ class PosPrinter(models.Model):
                 rec.use_cashdrawer = False
 
     @api.model
-    def _load_pos_data_domain(self, data, config):
+    def _load_pos_data_domain(self, data):
+        config = data['pos.config']
         return [('id', 'in', config.preparation_printer_ids.ids + config.receipt_printer_ids.ids)]
 
     @api.model
     def _load_pos_data_fields(self, config):
-        return ['id', 'name', 'product_categories_ids', 'printer_type', 'use_type', 'use_lna', 'printer_ip', 'paper_size', 'use_cashdrawer', 'timeout']
+        return ['id', 'name', 'product_categories_ids', 'printer_type', 'use_type', 'use_lna', 'printer_ip', 'paper_size', 'use_cashdrawer', 'timeout', 'is_split_per_product']
 
     @api.constrains('printer_ip')
     def _constrains_printer_ip(self):

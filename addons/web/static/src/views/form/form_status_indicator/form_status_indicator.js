@@ -1,5 +1,4 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, t, useProps } from "@odoo/owl";
 import { useBus } from "@web/core/utils/hooks";
 
 export function useStatusIndicator(model, actions = {}) {
@@ -24,32 +23,13 @@ export function useStatusIndicator(model, actions = {}) {
 
 export class FormStatusIndicator extends Component {
     static template = "web.FormStatusIndicator";
-    static props = {
-        isDirty: Boolean,
-        isValid: { type: Boolean, optional: true, default: true },
-        isNew: { type: Boolean, optional: true, default: false },
-        save: Function,
-        discard: Function,
-    };
-
-    static defaultProps = {
-        isValid: true,
-        isNew: false,
-    };
-
-    setup() {
-        this.saveButton = useRef("save");
-        useLayoutEffect(
-            () => {
-                if (!this.props.isNew && this.indicatorMode === "invalid") {
-                    this.saveButton.el.setAttribute("disabled", "1");
-                } else {
-                    this.saveButton.el.removeAttribute("disabled");
-                }
-            },
-            () => [this.props.isValid, this.props.isDirty]
-        );
-    }
+    props = useProps({
+        isDirty: t.boolean(),
+        isValid: t.boolean().optional(true),
+        isNew: t.boolean().optional(false),
+        save: t.function(),
+        discard: t.function(),
+    });
 
     get displayButtons() {
         return this.indicatorMode !== "saved";

@@ -1,15 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-# The codes of the payment methods to activate when Worldline is activated.
-DEFAULT_PAYMENT_METHOD_CODES = {
-    # Primary payment methods.
-    "card",
-    # Brand payment methods.
-    "amex",
-    "discover",
-    "mastercard",
-    "visa",
-}
+# The codes of the default primary payment methods to activate
+DEFAULT_PAYMENT_METHOD_CODES = {"card"}
 
 # Mapping of payment method codes to Worldline codes.
 # See https://docs.direct.worldline-solutions.com/en/payment-methods-and-features/index.
@@ -19,7 +11,7 @@ PAYMENT_METHODS_MAPPING = {
     "bancontact": 3012,
     "bizum": 5001,
     "cartes_bancaires": 130,
-    "cofidis": 3012,
+    "cofidis": 5129,
     "diners": 132,
     "discover": 128,
     "eps": 5406,
@@ -45,6 +37,7 @@ PAYMENT_METHODS_MAPPING = {
 REDIRECT_PAYMENT_METHODS = {
     "alipay_plus",
     "bizum",
+    "cofidis",
     "eps",
     "floa_bank",
     "ideal",

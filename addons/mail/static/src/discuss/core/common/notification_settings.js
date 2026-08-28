@@ -1,4 +1,4 @@
-import { Component, props, types, xml } from "@odoo/owl";
+import { Component, signal, t, useProps, xml } from "@odoo/owl";
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
@@ -22,17 +22,20 @@ export class NotificationSettings extends Component {
     static components = { ActionPanel, Dropdown, DropdownItem };
     static template = "discuss.NotificationSettings";
 
+    muteButtonRef = signal.ref();
+    muteMenuRef = signal.ref();
+
     setup() {
         this.store = useService("mail.store");
-        this.props = props({
-            channel: types.instanceOf(this.store["discuss.channel"].Class),
-            "close?": types.function([]),
+        this.props = useProps({
+            channel: t.instanceOf(this.store["discuss.channel"]),
+            close: t.function([t.instanceOf(MouseEvent)]).optional(),
         });
         this.dialog = useService("dialog");
         this.ui = useService("ui");
         this.DROPDOWN_NESTING = DROPDOWN_NESTING;
         this.muteConversationDropdownState = useDropdownState();
-        this.muteConversationHover = useHover(["mute-button", "mute-menu"], {
+        this.muteConversationHover = useHover([this.muteButtonRef, this.muteMenuRef], {
             onHover: () => (this.muteConversationDropdownState.isOpen = true),
             onAway: () => (this.muteConversationDropdownState.isOpen = false),
         });

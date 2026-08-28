@@ -13,7 +13,9 @@ from odoo.tools.mimetypes import get_extension
 from odoo.tools.sql import SQL
 from odoo.tools.translate import LazyTranslate
 
+from odoo.addons.base.models.avatar_mixin import generate_text_avatar_svg
 from odoo.addons.base.models.ir_qweb_fields import nl2br
+from odoo.addons.mail.models.discuss.discuss_channel import avatar_initials
 from odoo.addons.mail.tools.discuss import Store
 
 _lt = LazyTranslate(__name__)
@@ -335,7 +337,7 @@ class DiscussChannel(models.Model):
                 ("id", "in", value),
             ],
         )
-        return [("id", "in", bot_history_query.subselect("channel_id"))]
+        return [("id", "in", bot_history_query.subselect(bot_history_query.table.channel_id))]
 
     @api.depends("livechat_channel_member_history_ids.livechat_member_type")
     def _compute_livechat_customer_history_ids(self):
@@ -355,7 +357,7 @@ class DiscussChannel(models.Model):
                 ("id", "in", value),
             ],
         )
-        return [("id", "in", customer_history_query.subselect("channel_id"))]
+        return [("id", "in", customer_history_query.subselect(customer_history_query.table.channel_id))]
 
     @api.depends("livechat_agent_history_ids.partner_id")
     def _compute_livechat_agent_partner_ids(self):
@@ -374,7 +376,7 @@ class DiscussChannel(models.Model):
                     "not in",
                     self.env["im_livechat.channel.member.history"]
                     ._search([("livechat_member_type", "=", "agent")])
-                    .subselect("channel_id"),
+                    .subselect(SQL("channel_id")),
                 ),
             ]
         query = (
@@ -388,7 +390,7 @@ class DiscussChannel(models.Model):
                 ("id", "in", query),
             ],
         )
-        return [("id", "in", agent_history_query.subselect("channel_id"))]
+        return [("id", "in", agent_history_query.subselect(agent_history_query.table.channel_id))]
 
     @api.depends("livechat_bot_history_ids.partner_id")
     def _compute_livechat_bot_partner_ids(self):
@@ -857,6 +859,22 @@ class DiscussChannel(models.Model):
                 channel.sudo().livechat_status = "in_progress"
         return all_new_members
 
+    def _generate_avatar(self):
+        """Defer to the correspondent's own avatar when that partner has a real
+        uploaded photo, otherwise show the channel name initial (like the base
+        implementation for the other conversation kinds).
+        """
+        if self.channel_type == "livechat":
+            self_is_visitor = self.self_member_id.livechat_member_type == "visitor"
+            # sudo: discuss.channel - the correspondent's avatar is shown to both sides
+            correspondent = self.sudo().channel_member_ids.filtered(
+                lambda member: (member.livechat_member_type == "visitor") != self_is_visitor
+            ).partner_id[:1]
+            if correspondent.image_128:
+                return False
+            return generate_text_avatar_svg(avatar_initials(self.display_name)[:1], str(self.id))
+        return super()._generate_avatar()
+
     def _get_member_join_notification(self, member):
         if self.channel_type == "livechat":
             if member.is_self:
@@ -932,7 +950,11 @@ class DiscussChannel(models.Model):
             author_history.response_time_hour = (
                 fields.Datetime.now() - author_history.create_date
             ).total_seconds() / 3600
-        if not self.livechat_end_dt and author_history.livechat_member_type == "agent":
+        if (
+            not self.livechat_end_dt
+            and author_history.livechat_member_type == "agent"
+            and self.livechat_failure != "no_failure"
+        ):
             self.livechat_failure = "no_failure"
         return super()._message_post_after_hook(message)
 

@@ -4,7 +4,8 @@
     transition: width ease 400ms, border 400ms;
 
     &.o_builder_sidebar_open {
-        width: $o-we-sidebar-width;
+        // Keep the sidebar below 289px to avoid mobile view at 150% zoom.
+        width: $o-we-sidebar-width - $border-width;
         transition-delay: 200ms;
         box-sizing: content-box;
 
@@ -39,6 +40,18 @@
     &:not(.o_builder_sidebar_open) {
         // Keep it in CSS for better transition.
         border: none !important;
+    }
+
+    .o-website-discard-save-buttons {
+        max-width: $o-we-sidebar-width / 2;
+
+        button {
+            min-width: 40%;
+        }
+    }
+
+    .btn {
+        --gradient: none;
     }
 }
 

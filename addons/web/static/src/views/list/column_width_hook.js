@@ -1,8 +1,4 @@
-import { useComponent, useExternalListener, useLayoutEffect } from "@web/owl2/utils";
 import { browser } from "@web/core/browser/browser";
-import { utils } from "@web/core/ui/ui_service";
-import { renderToElement } from "@web/core/utils/render";
-import { useDebounced } from "@web/core/utils/timing";
 import {
     formatDate,
     formatDateTime,
@@ -10,8 +6,11 @@ import {
     toLocaleDateTimeString,
 } from "@web/core/l10n/dates";
 import { localization } from "@web/core/l10n/localization";
+import { utils } from "@web/core/ui/ui_utils";
+import { renderToElement } from "@web/core/utils/render";
+import { useDebounced } from "@web/core/utils/timing";
 
-import { onMounted, onWillUnmount, status, xml } from "@odoo/owl";
+import { onMounted, onPatched, onWillUnmount, useListener, useScope, xml } from "@odoo/owl";
 
 // This file defines a hook that encapsulates the column width logic of the list view. This logic
 // aims at optimizing the available space between columns and, once computed, at freezing the table
@@ -393,8 +392,7 @@ function getHorizontalPadding(el) {
     return parseFloat(paddingLeft) + parseFloat(paddingRight);
 }
 
-export function useMagicColumnWidths(tableRef, getState) {
-    const renderer = useComponent();
+export function useMagicColumnWidths(tableRef, canUseMagicColumnWidths, getState) {
     let columnWidths = null;
     let allowedWidth = 0;
     let hasAlwaysBeenEmpty = true;
@@ -410,7 +408,7 @@ export function useMagicColumnWidths(tableRef, getState) {
      * render + patch which would occur on the next frame and cause flickering.
      */
     function forceColumnWidths() {
-        const table = tableRef.el;
+        const table = tableRef();
         const headers = [...table.querySelectorAll("thead th")];
         const state = getState();
 
@@ -459,11 +457,14 @@ export function useMagicColumnWidths(tableRef, getState) {
      * Unsets the widths. After next patch, ideal widths will be recomputed.
      */
     function unsetWidths() {
+        if (!tableRef()) {
+            return;
+        }
         columnWidths = null;
         // Unset widths that might have been set on the table by resizing a column
-        tableRef.el.style.width = null;
+        tableRef().style.width = null;
         if (parentWidthFixed) {
-            tableRef.el.parentElement.style.width = null;
+            tableRef().parentElement.style.width = null;
         }
     }
 
@@ -475,7 +476,7 @@ export function useMagicColumnWidths(tableRef, getState) {
      */
     function onStartResize(ev) {
         _resizing = true;
-        const table = tableRef.el;
+        const table = tableRef();
         const th = ev.target.closest("th");
         table.style.width = `${Math.floor(table.getBoundingClientRect().width)}px`;
         const thPosition = [...th.parentNode.children].indexOf(th);
@@ -561,37 +562,34 @@ export function useMagicColumnWidths(tableRef, getState) {
     }
 
     // Side effects
-    if (renderer.constructor.useMagicColumnWidths) {
-        useLayoutEffect(forceColumnWidths);
+    if (canUseMagicColumnWidths) {
+        onMounted(forceColumnWidths);
+        onPatched(forceColumnWidths);
         // Forget computed widths (and potential manual column resize) on window resize
-        useExternalListener(window, "resize", unsetWidths);
+        useListener(window, "resize", unsetWidths);
         // Listen to width changes on the parent node of the table, to recompute ideal widths
         // Note: we compute the widths once, directly, and once after parent width stabilization.
         // The first call is only necessary to avoid an annoying flickering when opening form views
         // with an x2many list and a chatter (when it is displayed below the form) as it may happen
         // that the display of chatter messages introduces a vertical scrollbar, thus reducing the
         // available width.
-        const component = useComponent();
+        const scope = useScope();
         let parentWidth;
         const debouncedForceColumnWidths = useDebounced(
-            () => {
-                if (status(component) !== "destroyed") {
-                    forceColumnWidths();
-                }
-            },
+            () => !scope.isDestroyed() && forceColumnWidths(),
             200,
             { immediate: true, trailing: true }
         );
         const resizeObserver = new ResizeObserver(() => {
-            const newParentWidth = tableRef.el.parentNode.clientWidth;
+            const newParentWidth = tableRef().parentNode.clientWidth;
             if (newParentWidth !== parentWidth) {
                 parentWidth = newParentWidth;
                 debouncedForceColumnWidths();
             }
         });
         onMounted(() => {
-            parentWidth = tableRef.el.parentNode.clientWidth;
-            resizeObserver.observe(tableRef.el.parentNode);
+            parentWidth = tableRef().parentNode.clientWidth;
+            resizeObserver.observe(tableRef().parentNode);
         });
         onWillUnmount(() => resizeObserver.disconnect());
     }

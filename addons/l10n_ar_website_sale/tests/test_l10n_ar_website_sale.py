@@ -8,6 +8,8 @@ from odoo.addons.website_sale.tests.common import MockRequest
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestL10nArWebsiteSale(TestArCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -49,12 +51,14 @@ class TestL10nArWebsiteSale(TestArCommon):
 
     def _get_combination_info(self, product_id=None, quantity=1):
         """Helper method to retrieve combination info for a product."""
-        with MockRequest(self.env, website=self.ar_website):
+        with MockRequest(self.env, website=self.ar_website) as request:
             return self.product_1._get_additional_combination_info(
                 product_or_template=product_id or self.product_1,
                 quantity=quantity,
                 uom=self.uom_unit,
                 website=self.ar_website,
+                pricelist=request.pricelist,
+                fiscal_position=request.fiscal_position,
             )
 
     def test_default_website_sale_legal_values(self):

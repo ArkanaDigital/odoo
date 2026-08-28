@@ -13,6 +13,8 @@ from odoo.addons.base.models.ir_qweb import QWebError
 @tagged('-at_install', 'post_install')
 class TestAccountPayment(AccountPaymentCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_no_amount_available_for_refund_when_no_tx(self):
         payment = self.env['account.payment'].create({'amount': 10})
         self.assertEqual(
@@ -233,7 +235,8 @@ class TestAccountPayment(AccountPaymentCommon):
         """ Deleting an account.payment.method.line that is related to a provider in 'test' or 'enabled' state
         should raise an error.
         """
-        self.assertEqual(self.dummy_provider.state, 'test')
+        self.assertFalse(self.dummy_provider.is_live)
+        self.dummy_provider.module_state = "installed"
         with self.assertRaises(UserError):
             self.dummy_provider.journal_id.inbound_payment_method_line_ids.unlink()
 
@@ -257,8 +260,6 @@ class TestAccountPayment(AccountPaymentCommon):
             # Test duplication of the provider.
             payment_method_line.payment_account_id = self.inbound_payment_method_line.payment_account_id
             copy_provider = self.provider.copy()
-            self.assertRecordValues(copy_provider, [{'journal_id': False}])
-            copy_provider.state = 'test'
             self.assertRecordValues(copy_provider, [{'journal_id': journal.id}])
             self.assertRecordValues(get_payment_method_line(copy_provider), [{
                 'journal_id': journal.id,
@@ -266,10 +267,6 @@ class TestAccountPayment(AccountPaymentCommon):
             }])
 
             # We are able to have both on the same journal...
-            with self.assertRaises(ValidationError):
-                # ...but not having both with the same name.
-                provider.journal_id = journal
-
             method_line = get_payment_method_line(copy_provider)
             method_line.name = "dummy (copy)"
             provider.journal_id = journal
@@ -280,8 +277,8 @@ class TestAccountPayment(AccountPaymentCommon):
                 journal.inbound_payment_method_line_ids = [Command.update(copy_provider_pml.id, {'payment_provider_id': provider.id})]
 
     def test_generate_payment_link_with_no_invoice_line(self):
-        invoice = self.invoice
-        invoice.line_ids.unlink()
+        invoice = self.invoice.copy({'line_ids': self.invoice.line_ids.browse()})
+        assert not invoice.line_ids
         payment_values = invoice._get_default_payment_link_values()
 
         self.assertDictEqual(payment_values, {
@@ -494,6 +491,11 @@ class TestAccountPayment(AccountPaymentCommon):
             'name': 'Test',
             'journal_id': self.company_data['default_journal_bank'].id,
         })
+        payment_method = self.env["payment.method"].create({
+            "name": "Payment method",
+            "code": "unknown",
+            "provider_id": provider.id,
+        })
         invoice = self.env['account.move'].create({
             'move_type': 'out_invoice',
             'partner_id': self.partner_a.id,
@@ -509,7 +511,7 @@ class TestAccountPayment(AccountPaymentCommon):
         })
         payment_transaction = self.env['payment.transaction'].create({
             'provider_id': provider.id,
-            'payment_method_id': self.env.ref('payment.payment_method_unknown').id,
+            'payment_method_id': payment_method.id,
             'invoice_ids': [invoice.id],
             'partner_id': self.partner_a.id,
             'amount': 200,

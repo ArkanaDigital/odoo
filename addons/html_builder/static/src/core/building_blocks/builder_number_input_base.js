@@ -1,19 +1,18 @@
-import { BuilderInputBase } from "./builder_input_base";
+import { t, useProps } from "@odoo/owl";
+import { BuilderInputBase, textInputBaseProps } from "./builder_input_base";
 
 export class BuilderNumberInputBase extends BuilderInputBase {
     static template = "html_builder.BuilderNumberInputBase";
-    static props = {
-        ...super.props,
-        onKeydownArrow: { type: Function, optional: true },
-        clampValue: { type: Function, optional: false },
-        composable: { type: Boolean, optional: true },
-        min: { type: Number, optional: true },
-        max: { type: Number, optional: true },
-        step: { type: Number, optional: true },
-    };
-    static defaultProps = {
-        composable: false,
-    };
+
+    props = useProps({
+        ...textInputBaseProps,
+        clampValue: t.function(),
+        composable: t.boolean().optional(false),
+        max: t.number().optional(),
+        min: t.number().optional(),
+        onKeydownArrow: t.function().optional(),
+        step: t.number().optional(),
+    });
 
     onKeydown(e) {
         if (["ArrowUp", "ArrowDown"].includes(e.key)) {
@@ -29,6 +28,8 @@ export class BuilderNumberInputBase extends BuilderInputBase {
             e.target.value = this.state.value;
             this.props.preview(e.target.value);
             this.props.onKeydownArrow?.(e);
+        } else {
+            super.onKeydown(...arguments);
         }
     }
 

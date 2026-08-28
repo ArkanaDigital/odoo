@@ -1,14 +1,14 @@
 import { registry } from "@web/core/registry";
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillStart, proxy, useProps, signal } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { standardWidgetProps } from "@web/views/widgets/standard_widget_props";
 
 export class PosPaymentProviderCards extends Component {
     static template = "point_of_sale.PosPaymentProviderCards";
     static components = {};
-    static props = {
-        ...standardWidgetProps,
-    };
+    props = useProps(standardWidgetProps);
+
+    cardsContainerRef = signal.ref();
 
     setup() {
         super.setup();

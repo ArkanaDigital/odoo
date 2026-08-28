@@ -20,7 +20,7 @@ export class GeneratePrinterData {
     }
 
     get config() {
-        return this.models["pos.config"].getFirst();
+        return this.models["pos.config"].get(odoo.pos_config_id);
     }
 
     get currency() {
@@ -33,14 +33,15 @@ export class GeneratePrinterData {
 
     get commonExtraData() {
         return {
-            company_state_name: this.company.state_id?.name || "",
-            company_country_name: this.company.country_id?.name || "",
-            vat_label: this.company.country_id.vat_label || "Tax ID",
+            // KOTs don't require company data, so it isn't loaded here while using from kitchen.
+            company_state_name: this.company?.state_id?.name || "",
+            company_country_name: this.company?.country_id?.name || "",
+            vat_label: this.company?.country_id?.vat_label || "Tax ID",
         };
     }
 
-    formatCurrency(amount) {
-        return formatCurrency(amount, this.currency.id);
+    formatCurrency(amount, currency = this.currency) {
+        return formatCurrency(amount, currency.id);
     }
 
     /**
@@ -101,7 +102,10 @@ export class GeneratePrinterData {
                 taxes: processedTaxes,
                 sold: processData(saleDetails.products),
                 refund: processData(saleDetails.refund_products),
+                cancel: processData(saleDetails.cancelled_products),
                 payments: processedPayments,
+                session_state: saleDetails.session_state,
+                date: new Date().toLocaleString(),
             },
         };
     }
@@ -181,7 +185,6 @@ export class GeneratePrinterData {
         return this.order.lines.map((line) => {
             const productData = { ...line.product_id.raw };
             productData.display_name = line.getFullProductName();
-
             return {
                 ...line.raw,
                 product_data: productData,
@@ -189,6 +192,9 @@ export class GeneratePrinterData {
                 unit_price: line.currencyDisplayPriceUnit,
                 product_unit_price: line.product_id.displayPriceUnit,
                 price_subtotal_incl: line.currencyDisplayPrice,
+                is_service_fee_line: line.isServiceFeeLine(),
+                service_fee_display_info: line.getServiceFeeDisplayInfo(),
+                no_discount_price: formatCurrency(line.displayPriceNoDiscount, line.currency.id),
             };
         });
     }
@@ -197,7 +203,7 @@ export class GeneratePrinterData {
         return this.order.payment_ids.map((line) => ({
             ...line.raw,
             payment_method_data: { name: line.payment_method_id?.name || "" },
-            amount: this.formatCurrency(line.amount),
+            amount: this.formatCurrency(line.amount, line.currency),
         }));
     }
 
@@ -205,7 +211,8 @@ export class GeneratePrinterData {
         const baseUrl = this.config._base_url;
         const company = this.company;
         const url = `${baseUrl}/pos/ticket?order_uuid=${this.order.uuid}`;
-        const useQrCode = company.point_of_sale_ticket_portal_url_display_mode !== "url";
+        const useQrCode =
+            company.point_of_sale_ticket_portal_url_display_mode !== "url" && this.order.finalized;
         const useTips = this.config.set_tip_after_payment && this.order.displayPrice > 0;
         const tipPercentages = [
             this.config.tip_percentage_1,
@@ -218,6 +225,17 @@ export class GeneratePrinterData {
                   this.formatCurrency(this.order.displayPrice * (p / 100)),
               ])
             : false;
+
+        const serviceFeeLines = this.order.serviceFeeLines;
+        let serviceFee = false;
+        const serviceFeeLine = serviceFeeLines?.[0];
+        if (serviceFeeLine) {
+            serviceFee = {
+                amount: serviceFeeLine.currencyDisplayPrice,
+                qty: serviceFeeLine.qty,
+                name: serviceFeeLine.getFullProductName(),
+            };
+        }
 
         return {
             order: this.order.raw,
@@ -249,6 +267,8 @@ export class GeneratePrinterData {
                 prices: this.generateTaxData(),
                 cashier_name: this.order.getCashierName(),
                 formated_date_order: this.order.formatDateOrTime("date_order", "datetime"),
+                service_fee: serviceFee,
+                total_item_count: this.order.totalItemQuantity,
             },
         };
     }
@@ -272,7 +292,7 @@ export class GeneratePrinterData {
         return changes;
     }
 
-    generatePreparationChanges(orderChange, categoryIdsSet) {
+    generatePreparationChanges(orderChange, categoryIdsSet, opts = {}) {
         const isPartOfCombo = (line) =>
             line.combo_line_ids?.length ||
             line.combo_parent_uuid ||
@@ -289,11 +309,15 @@ export class GeneratePrinterData {
             return sequenceA - sequenceB;
         });
         orderChange.addedQuantity = [...comboChanges, ...normalChanges];
-        return filterChangeByCategories(categoryIdsSet, orderChange, this.models);
+        // Force print all changes without filtering by categories.
+        if (opts.forcePrint) {
+            return orderChange;
+        }
+        return filterChangeByCategories(categoryIdsSet, orderChange, this.models, opts);
     }
 
-    generatePreparationReceipts(orderChange, categoryIdsSet) {
-        const changes = this.generatePreparationChanges(orderChange, categoryIdsSet);
+    generatePreparationReceipts(orderChange, categoryIdsSet, opts = {}) {
+        const changes = this.generatePreparationChanges(orderChange, categoryIdsSet, opts);
         const receiptsData = [];
         if (changes.addedQuantity.length) {
             receiptsData.push(
@@ -323,7 +347,11 @@ export class GeneratePrinterData {
             );
         }
 
-        if (orderChange.internal_note || orderChange.general_customer_note) {
+        // Print a separate order note ticket only if no other tickets exist
+        if (
+            !receiptsData.length &&
+            (orderChange.internal_note || orderChange.general_customer_note)
+        ) {
             receiptsData.push(this.preparePreparationGroupedData({ title: "", data: [] }));
         }
         return receiptsData;
@@ -335,19 +363,21 @@ export class GeneratePrinterData {
         let orderChange = override || order.getChanges({ cancelled: opts.cancelled });
         let reprint = false;
 
-        if (
-            !orderChange.addedQuantity.length &&
-            !orderChange.removedQuantity.length &&
-            !orderChange.noteUpdate.length &&
-            !orderChange.internal_note &&
-            !orderChange.general_customer_note &&
-            order.lastPrints.length
-        ) {
-            orderChange = [order.lastPrints.at(-1)];
-            reprint = true;
-        } else {
-            order.pushLastPrints(orderChange);
-            orderChange = [orderChange];
+        if (!opts.prepOrderLines) {
+            if (
+                !orderChange.addedQuantity.length &&
+                !orderChange.removedQuantity.length &&
+                !orderChange.noteUpdate.length &&
+                !orderChange.internal_note &&
+                !orderChange.general_customer_note &&
+                order.lastPrints.length
+            ) {
+                orderChange = [order.lastPrints.at(-1)];
+                reprint = true;
+            } else {
+                order.pushLastPrints(orderChange);
+                orderChange = [orderChange];
+            }
         }
 
         if (reprint && opts.orderDone) {
@@ -357,24 +387,28 @@ export class GeneratePrinterData {
         const receipts = [];
         const changes = orderChange.filter(Boolean);
         for (const change of changes) {
-            const data = this.generatePreparationReceipts(change, categoryIdsSet);
-
+            const data = this.generatePreparationReceipts(change, categoryIdsSet, opts);
             for (const changeData of data) {
                 receipts.push({
                     changes: changeData,
                     order: order.raw,
                     config: this.config.raw,
-                    company: this.company.raw,
+                    // KOTs don't require company data, so it isn't loaded here while using from kitchen.
+                    company: this.company?.raw,
                     partner: order.partner_id ? order.partner_id.raw : false,
                     preset: order.preset_id ? order.preset_id.raw : false,
                     extra_data: {
                         ...this.commonExtraData,
+                        prefix: _t("Order"),
+                        order_label: order.floating_order_name || false,
                         reprint: Boolean(reprint),
                         time: DateTime.now().toFormat("HH:mm"),
                         internal_note: getStrNotes(change.internal_note) || false,
-                        general_customer_note: orderChange.general_customer_note || false,
+                        general_customer_note: change.general_customer_note || false,
                         employee_name: order.employee_id?.name || order.user_id?.name || false,
                         preset_time: order.presetDateTime || false,
+                        // This is only used to generate a barcode on the preparation ticket.
+                        prepTicketBarcode: opts.prepBarcode || false,
                     },
                     conditions: {
                         module_pos_restaurant: this.config.module_pos_restaurant,

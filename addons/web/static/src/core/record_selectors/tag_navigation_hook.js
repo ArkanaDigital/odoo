@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import { useNavigation } from "../navigation/navigation";
 
 /**
@@ -7,14 +6,14 @@ import { useNavigation } from "../navigation/navigation";
  * It is meant to be used in component which contains both the components
  * `Autocomplete` and `TagList`.
  *
- * @param {string} refName Name of the t-ref which contains the `Autocomplete` and `TagList` components.
+ * @param {import("@odoo/owl").Signal<HTMLElement | null>} tagsContainerRef Owl 3
+ *  signal returning the element which contains the `Autocomplete` and `TagList`
+ *  components.
  * @param {object} [options]
  * @param {() => boolean} [options.isEnabled]
  * @param {(index: number) => void} [options.delete] Function to be called when a tag is deleted. It should take the index of the tag to delete as parameter.
  */
-export function useTagNavigation(refName, options = {}) {
-    const tagsContainerRef = useRef(refName);
-
+export function useTagNavigation(tagsContainerRef, options = {}) {
     const isEnabled = options.isEnabled ?? (() => true);
 
     const canRemoveTag = (target) =>
@@ -44,7 +43,7 @@ export function useTagNavigation(refName, options = {}) {
 
     useNavigation(tagsContainerRef, {
         getItems: () =>
-            tagsContainerRef.el?.querySelectorAll(":scope .o_tag, :scope .o-autocomplete--input") ??
+            tagsContainerRef()?.querySelectorAll(":scope .o_tag, :scope .o-autocomplete--input") ??
             [],
         isNavigationAvailable: ({ navigator, target }) =>
             isEnabled() && navigator.isFocused && navigator.contains(target),

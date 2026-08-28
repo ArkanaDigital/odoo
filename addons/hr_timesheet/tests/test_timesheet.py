@@ -138,13 +138,6 @@ class TestTimesheet(TestCommonTimesheet):
         # Make sure to clean the plan fields
         self.env.transaction.will_change_registry()
 
-        # Crappy hack to disable the rule from timesheet grid, if it exists
-        # The registry doesn't contain the field timesheet_manager_id.
-        # but there is an ir.rule about it, crashing during its evaluation
-        rule = self.env.ref('timesheet_grid.timesheet_line_rule_user_update-unlink', raise_if_not_found=False)
-        if rule:
-            rule.active = False
-
     def test_log_timesheet(self):
         """ Test when log timesheet: check analytic account, user and employee are correctly set. """
         Timesheet = self.env['account.analytic.line']
@@ -1179,3 +1172,52 @@ class TestTimesheet(TestCommonTimesheet):
             sub_task.remaining_hours, -5,
             "Subtask remaining hours should be negative when parent task has allocated hours.",
         )
+
+    def test_is_project_overtime_filter(self):
+        self.project.allocated_hours = 3.0
+        self.assertEqual(self.project.remaining_hours, 3.0)
+        task_1, task_2 = self.env['project.task'].create([
+            {
+                'name': 'Task 1',
+                'project_id': self.project.id,
+            },
+            {
+                'name': 'Task 2 (done)',
+                'project_id': self.project.id,
+                'state': '1_done',
+            }
+        ])
+        self.env['account.analytic.line'].create([
+            {
+                'name': 'Timesheet Task 1',
+                'unit_amount': 2.0,
+                'project_id': self.project.id,
+                'employee_id': self.empl_employee.id,
+                'task_id': task_1.id,
+            },
+            {
+                'name': 'Timesheet Task 2 (done)',
+                'unit_amount': 2.0,
+                'project_id': self.project.id,
+                'employee_id': self.empl_employee.id,
+                'task_id': task_2.id,
+            },
+        ])
+        self.assertRecordValues(self.project, [{
+            'is_project_overtime': True,
+            'remaining_hours': -1.0
+        }])
+        self.project.flush_model()  # Ensures the `project.allocated_hours` is saved in the database
+        self.assertIn(
+            self.project,
+            self.env['project.project'].search([('is_project_overtime', '=', True)])
+        )
+
+    def test_task_reset_on_project_change(self):
+        """ Changing the project_id of a timesheet should reset its task_id
+            if the task doesn't belong to the new project"""
+
+        self.assertTrue(self.timesheet.task_id)
+        self.timesheet.write({'project_id': self.project_customer.id})
+        self.assertFalse(self.timesheet.task_id)
+        self.assertEqual(self.timesheet.project_id, self.project_customer)

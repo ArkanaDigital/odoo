@@ -5,15 +5,13 @@ import logging
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from lxml import etree
 from requests import RequestException
 
 from odoo import SUPERUSER_ID, api, fields, models
 from odoo.exceptions import MissingError
 from odoo.fields import Domain
 from odoo.http import request
-from odoo.tools import BinaryBytes, file_open
-from odoo.tools.json import scriptsafe as json_scriptsafe
+from odoo.tools import SQL, BinaryBytes, file_open, split_every
 
 from odoo.addons.website_sale import const
 
@@ -48,8 +46,8 @@ class Website(models.Model):
         template_id = (
             self.env["ir.config_parameter"].sudo().get_int("sale.default_confirmation_template")
         )
-        default_template = template_id and self.env["mail.template"].browse(template_id)
-        if default_template.exists():
+        default_template = template_id and self.env["mail.template"].browse(template_id).exists()
+        if default_template:
             return default_template
         return self.env.ref("sale.mail_template_sale_confirmation", raise_if_not_found=False)
 
@@ -91,11 +89,9 @@ class Website(models.Model):
     )
     contact_us_link_url = fields.Char(string="Link URL", translate=True, default="/contactus")
     cart_abandoned_delay = fields.Float(string="Abandoned Delay", default=10.0)
-    send_abandoned_cart_email = fields.Boolean(
-        string="Send email to customers who abandoned their cart."
-    )
+    send_abandoned_cart_followup = fields.Boolean(string="Send Follow-up")
     send_abandoned_cart_email_activation_time = fields.Datetime(
-        string="Time when the 'Send abandoned cart email' feature was activated.",
+        string="Time when the 'Send abandoned cart' feature was activated for emails followup.",
         compute="_compute_send_abandoned_cart_email_activation_time",
         store=True,
     )
@@ -287,6 +283,35 @@ class Website(models.Model):
         check_company=True,
     )
 
+    extra_step_category_ids = fields.Many2many(
+        string="Extra Step Categories",
+        help="If set, the extra step is only shown when the cart contains"
+        " products from these eCommerce categories.",
+        comodel_name="product.public.category",
+        relation="website_extra_step_category_rel",
+    )
+
+    show_category_title = fields.Boolean(
+        string="Show Category Title",
+        default=False,
+        help="Display the category title on the shop page. Corresponds to the 'Show Title' editor"
+        " option.",
+    )
+
+    show_category_description = fields.Boolean(
+        string="Show Category Description",
+        default=True,
+        help="Display the category description on the shop page. Corresponds to the"
+        " 'Show Description' editor option.",
+    )
+
+    align_category_content = fields.Boolean(
+        string="Align Category Content",
+        default=False,
+        help="Align the category content on the shop page. Corresponds to the 'Center Content'"
+        " editor option.",
+    )
+
     # === COMPUTE METHODS ===#
 
     def _compute_pricelist_ids(self):
@@ -308,10 +333,10 @@ class Website(models.Model):
         msg = "website.currency_id is not searchable"
         raise ValueError(msg)  # depends on request
 
-    @api.depends("send_abandoned_cart_email")
+    @api.depends("send_abandoned_cart_followup", "cart_recovery_mail_template_id")
     def _compute_send_abandoned_cart_email_activation_time(self):
         for website in self:
-            if website.send_abandoned_cart_email:
+            if website.send_abandoned_cart_followup and website.cart_recovery_mail_template_id:
                 website.send_abandoned_cart_email_activation_time = fields.Datetime.now()
 
     @api.depends("company_id.account_fiscal_country_id")
@@ -368,21 +393,16 @@ class Website(models.Model):
         """
         res = super().configurator_apply(**kwargs)
 
-        website = self.get_current_website()
+        website = self.env["website"].browse(res["website_id"])
         website_settings = {}
-        category_settings = {}
         views_to_disable = []
         views_to_enable = []
-        scss_customization_params = {}
         ThemeUtils = self.env["theme.utils"].with_context(website_id=website.id)
-        Assets = self.env["website.assets"]
 
         def parse_style_config(style_config_):
             website_settings.update(style_config_["website_fields"])
-            category_settings.update(style_config_.get("category_fields", {}))
             views_to_disable.extend(style_config_["views"]["disable"])
             views_to_enable.extend(style_config_["views"]["enable"])
-            scss_customization_params.update(style_config_.get("scss_customization_params", {}))
 
         # Extract shop page settings.
         if shop_page_style_option:
@@ -397,83 +417,10 @@ class Website(models.Model):
         # Apply eCommerce page style configurations.
         if website_settings:
             website.write(website_settings)
-        if category_settings:
-            self.env["product.public.category"].search(website.website_domain()).write(
-                category_settings
-            )
         for xml_id in views_to_disable:
             ThemeUtils.disable_view(xml_id)
         for xml_id in views_to_enable:
             ThemeUtils.enable_view(xml_id)
-
-        for footer_id in ThemeUtils._footer_templates:
-            footer_view = self.with_context(website_id=website.id).viewref(
-                footer_id,
-                raise_if_not_found=False,  # don't raise on custom footers not installed on website
-            )
-            if not footer_view.active:
-                continue
-
-            footer_updated = False
-            try:
-                arch_tree = etree.fromstring(footer_view.arch)
-            except etree.XMLSyntaxError as e:
-                logger.warning("Failed to update ecommerce footer view %s: %s", footer_id, e)
-            else:
-                # TODO this should be moved as a website feature (not eCommerce-specific)
-                footer_div_node = arch_tree.xpath(
-                    "//section/div[hasclass('container')"
-                    " or hasclass('o_container_small')"
-                    " or hasclass('container-fluid')]"
-                )
-                # The xml view could have been modified in the backend, we don't
-                # want the xpath error to break the configurator feature
-                if not footer_div_node:
-                    logger.warning(
-                        "Failed to match footer width with header in ecommerce footer view %s",
-                        footer_id,
-                    )
-                # Logic for matching header width
-                elif "website.footer_copyright_content_width_fluid" in views_to_enable:
-                    footer_updated = True
-                    footer_div_node[0].set("class", "container-fluid s_allow_columns")
-                elif "website.footer_copyright_content_width_small" in views_to_enable:
-                    footer_updated = True
-                    footer_div_node[0].set("class", "o_container_small s_allow_columns")
-
-                if footer_id == "website_sale.template_footer_website_sale":
-                    ecommerce_categories_node = arch_tree.xpath(
-                        "//t[@t-set='ecommerce_categories']"
-                    )
-                    if not ecommerce_categories_node:
-                        logger.warning(
-                            "Skipping ecommerce categories in ecommerce footer view %s", footer_id
-                        )
-                    else:
-                        # Logic for inserting eCommerce categories in footer
-                        ecommerce_categories = self.env["product.public.category"].search(
-                            [], limit=6
-                        )
-                        # Deliberately hardcode categories inside the view arch, it will be
-                        # transformed into static nodes after a save/edit thanks to the t-ignore
-                        # in parent node.
-                        footer_updated = True
-                        ecommerce_categories_node[0].attrib["t-value"] = json.dumps([
-                            {"name": cat.name, "id": cat.id} for cat in ecommerce_categories
-                        ])
-
-                if footer_updated:
-                    footer_view.write({"arch": etree.tostring(arch_tree)})
-
-        if "website_sale.template_footer_website_sale" in views_to_enable:
-            scss_customization_params["footer-template"] = "website_sale"
-
-        # For a website editor to recognize the correct header/footer templates
-        # (reason `isApplied` method of footer plugin)
-        if scss_customization_params:
-            Assets.make_scss_customization(
-                "/website/static/src/scss/options/user_values.scss", scss_customization_params
-            )
 
         return res
 
@@ -602,7 +549,7 @@ class Website(models.Model):
             pricelists |= (
                 self
                 .env["res.country.group"]
-                .search([("country_ids.code", "=", country_code)])
+                .search([("country_ids.code", "=", country_code)]).sudo()
                 .pricelist_ids.filtered(
                     lambda pl: pl._is_available_on_website(self) and check_pricelist(pl)
                 )
@@ -610,8 +557,13 @@ class Website(models.Model):
 
         # no GeoIP or no pricelist for this country
         if not pricelists:
-            pricelists = pricelists.browse(website_pricelist_ids).filtered(
-                lambda pl: check_pricelist(pl) and not (country_code and pl.country_group_ids)
+            pricelists = (
+                pricelists
+                .browse(website_pricelist_ids)
+                .sudo()
+                .filtered(
+                    lambda pl: check_pricelist(pl) and not (country_code and pl.country_group_ids)
+                )
             )
 
         # if logged in, add partner pl (which is `property_product_pricelist`, might not be website
@@ -641,6 +593,7 @@ class Website(models.Model):
         :returns: pricelist recordset
         """
         self.ensure_one()
+        self = self.with_context(website_id=self.id)  # noqa: PLW0642
 
         ProductPricelist = self.env["product.pricelist"]
 
@@ -688,7 +641,7 @@ class Website(models.Model):
         return (request and request.geoip.country_code) or False
 
     def sale_product_domain(self):
-        website = self or self.get_current_website()
+        website = self or self.env.website
         website_domain = website.website_domain()
         if self.env.user._is_internal():
             user_domain = Domain.TRUE
@@ -736,7 +689,7 @@ class Website(models.Model):
         return {
             "company_id": self.company_id.id,
             "partner_id": partner_sudo.id,
-            "fiscal_position_id": request.fiscal_position.id,
+            **(self.is_public_user() and {"fiscal_position_id": request.fiscal_position.id} or {}),
             "pricelist_id": request.pricelist.id,
             "team_id": self.salesteam_id.id,
             "website_id": self.id,
@@ -751,6 +704,8 @@ class Website(models.Model):
         :rtype: product.pricelist
         """
         self.ensure_one()
+
+        self = self.with_context(website_id=self.id)  # noqa: PLW0642
 
         ProductPricelistSudo = self.env["product.pricelist"].sudo()
         if not self.env["res.groups"]._is_feature_enabled("product.group_product_pricelist"):
@@ -965,34 +920,71 @@ class Website(models.Model):
         )
 
     @api.model
-    def _send_abandoned_cart_email(self):
-        for website in self.search([]):
-            if not website.send_abandoned_cart_email:
-                continue
-            all_abandoned_carts = self.env["sale.order"].search([
-                ("is_abandoned_cart", "=", True),
-                ("cart_recovery_email_sent", "=", False),
-                ("website_id", "=", website.id),
-                ("date_order", ">=", website.send_abandoned_cart_email_activation_time),
-            ])
-            if not all_abandoned_carts:
-                continue
+    def _cron_send_abandoned_cart_email(self):
+        website_domain = Domain([
+            ("send_abandoned_cart_followup", "=", True),
+            ("cart_recovery_mail_template_id", "!=", False),
+        ])
 
-            abandoned_carts = all_abandoned_carts._filter_can_send_abandoned_cart_mail()
-            # Mark abandoned carts that failed the filter as sent to avoid rechecking them more than
-            # once.
-            (all_abandoned_carts - abandoned_carts).cart_recovery_email_sent = True
-            for sale_order in abandoned_carts:
-                template = self.env.ref("website_sale.mail_template_sale_cart_recovery")
-                # fallback email_vals in case partner_to,email_to were emptied or default recipients
-                # is false
-                email_vals = (
-                    {}
-                    if template.email_to or template.partner_to or template.use_default_to
-                    else {"email_to": sale_order.partner_id.email_formatted}
+        all_abandoned_carts = self.env["sale.order"]._read_group(
+            Domain([
+                ("is_abandoned_cart", "=", True),
+                ("website_id", "in", website_domain),
+                ("cart_recovery_email_sent", "=", False),
+            ])
+            & Domain.custom(
+                to_sql=lambda table: SQL(
+                    "%s >= %s",
+                    table.date_order,
+                    table._join("website_id").send_abandoned_cart_email_activation_time,
                 )
-                template.send_mail(sale_order.id, email_values=email_vals)
-                sale_order.cart_recovery_email_sent = True
+            ),
+            groupby=["website_id"],
+            aggregates=["id:recordset", "id:count"],
+        )
+        if not all_abandoned_carts:
+            return
+
+        self.env["ir.cron"]._commit_progress(
+            remaining=sum(count for _website, _cart, count in all_abandoned_carts)
+        )
+
+        # `_filter_can_send_abandoned_cart_followup` has to be called per `website_id`
+        for _website, cart_group, _count in all_abandoned_carts:
+            abandoned_carts = cart_group._filter_can_send_abandoned_cart_followup().filtered(
+                "partner_id.email"
+            )
+            # Mark abandoned carts that failed the filter as sent to avoid rechecking them more
+            # than once.
+            failed_carts = cart_group - abandoned_carts
+            failed_carts.write({"cart_recovery_email_sent": True})
+            self.env["ir.cron"]._commit_progress(len(failed_carts))
+            for carts_batch in split_every(10, abandoned_carts.ids, self.env["sale.order"].browse):
+                carts_batch._cart_recovery_email_send()
+                self.env["ir.cron"]._commit_progress(len(carts_batch))
+
+    @api.model
+    def _toggle_abandoned_cart_email_cron(self):
+        """Enable the abandoned cart email cron if the feature is enabled on some website,
+        disable it otherwise."""
+        cron = self.env.ref("website_sale.ir_cron_send_abandoned_email", raise_if_not_found=False)
+        if not cron:
+            return
+        cron.sudo().active = bool(
+            self.sudo().search_count(
+                [
+                    ("send_abandoned_cart_followup", "=", True),
+                    ("cart_recovery_mail_template_id", "!=", False),
+                ],
+                limit=1,
+            )
+        )
+
+    def write(self, vals):
+        res = super().write(vals)
+        if "send_abandoned_cart_followup" in vals or "cart_recovery_mail_template_id" in vals:
+            self._toggle_abandoned_cart_email_cron()
+        return res
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -1020,8 +1012,13 @@ class Website(models.Model):
         if href == "/shop/address":
             href = "/shop/checkout"
         current_step_sudo = self._get_checkout_step(href)
-        next_step_sudo = current_step_sudo.browse(self._get_next_breadcrumb_step_id(href))
-        previous_step_sudo = current_step_sudo.browse(self._get_previous_breadcrumb_step_id(href))
+        breadcrumb_domain = self._get_breadcrumb_checkout_steps_domain()
+        next_step_sudo = current_step_sudo._get_next_steps(
+            additional_domain=breadcrumb_domain, limit=1
+        )
+        previous_step_sudo = current_step_sudo._get_previous_steps(
+            additional_domain=breadcrumb_domain, limit=1
+        )
 
         return {
             "current_website_checkout_step_href": current_step_sudo.step_href,
@@ -1038,27 +1035,13 @@ class Website(models.Model):
         self.ensure_one()
         return self.env["website.checkout.step"].sudo()._get_step_by_href(href, self).id
 
-    @api.ormcache("self.id", "href")
-    def _get_next_breadcrumb_step_id(self, href):
-        current_step_sudo = self._get_checkout_step(href)
-        return current_step_sudo._get_next_steps(
-            additional_domain=self._get_breadcrumb_checkout_steps_domain(), limit=1
-        ).id
-
-    @api.ormcache("self.id", "href")
-    def _get_previous_breadcrumb_step_id(self, href):
-        current_step_sudo = self._get_checkout_step(href)
-        return current_step_sudo._get_previous_steps(
-            additional_domain=self._get_breadcrumb_checkout_steps_domain(), limit=1
-        ).id
-
     def _get_next_breadcrumb_step_href(self, href):
         # redirect handled by '/shop/address/submit' route when all values are properly filled
         if href == "/shop/address":
             return False
-
-        next_step_sudo = (
-            self.env["website.checkout.step"].sudo().browse(self._get_next_breadcrumb_step_id(href))
+        current_step_sudo = self._get_checkout_step(href)
+        next_step_sudo = current_step_sudo._get_next_steps(
+            additional_domain=self._get_breadcrumb_checkout_steps_domain(), limit=1
         )
 
         # try_skip_step option required on /shop/checkout next button
@@ -1078,7 +1061,22 @@ class Website(models.Model):
         return self._get_allowed_checkout_steps_domain() & Domain("show_in_breadcrumb", "=", True)
 
     def _get_allowed_checkout_steps_domain(self):
-        return Domain([("website_id", "=", self.id), ("is_published", "=", True)])
+        domain = Domain([("website_id", "=", self.id), ("is_published", "=", True)])
+        if not self._cart_has_extra_step_category():
+            domain &= Domain("step_href", "!=", "/shop/extra_info")
+        return domain
+
+    def _cart_has_extra_step_category(self):
+        """Whether the cart contains a product from the restricted extra-step
+        categories."""
+        restricted_categories = self.sudo().extra_step_category_ids
+        order_sudo = request.cart if request else None
+        if not (order_sudo and restricted_categories):
+            return True
+        order_categories = order_sudo.order_line.product_id.public_categ_ids
+        return bool(
+            order_categories.filtered_domain([("id", "child_of", restricted_categories.ids)])
+        )
 
     def has_ecommerce_access(self):
         """Return whether the current user is allowed to access eCommerce-related content."""
@@ -1179,45 +1177,7 @@ class Website(models.Model):
             for website in self.filtered(lambda w: w._default_feed_is_valid())
         ])
 
-    def _prepare_ecommerce_store_markup_data(self):
-        """Generate JSON-LD markup data for the website's eCommerce store.
-
-        See https://schema.org/OnlineStore
-
-        :return: The JSON-LD markup data.
-        :rtype: dict
-        """
-        self.ensure_one()
-        company = self.sudo().company_id
-        socials = [
-            company.social_twitter,
-            company.social_facebook,
-            company.social_github,
-            company.social_linkedin,
-            company.social_youtube,
-            company.social_instagram,
-            company.social_tiktok,
-        ]
-        base_url = self.get_base_url()
-
-        return {
-            "@context": "https://schema.org",
-            "@type": "OnlineStore",
-            "name": self.name,
-            "url": base_url,
-            "logo": f"{base_url}/logo.png?company={self.company_id.id}",
-            "sameAs": [social for social in socials if social],
-        }
-
-    def _get_ecommerce_store_markup_json(self):
-        """Generate JSON-LD markup data for the company of the website.
-
-        :return: The JSON-LD markup data.
-        :rtype: dict
-        """
-        return json_scriptsafe.dumps(self._prepare_ecommerce_store_markup_data(), indent=2)
-
-    def _get_product_available_qty(self, product, **_kwargs):
+    def _get_product_available_qty(self, product, **kwargs):
         """Give the available quantity of a given product.
 
         :param product: product.product record
@@ -1225,4 +1185,15 @@ class Website(models.Model):
         :return: available quantity
         :rtype: float
         """
-        return product.qty_available - product.outgoing_qty
+        return product._get_free_qty(**kwargs)
+
+    @api.model
+    def _get_settings_to_copy_onto_new_default_website(self):
+        """Provides a list of settings that should always be set on the default
+        website. When the default website changes, a check is performed. If some
+        of these settings are not already set on the new default website, they
+        are copied from the previous default website."""
+        return super()._get_settings_to_copy_onto_new_default_website() + [
+            "salesperson_id",
+            "salesteam_id",
+        ]

@@ -1,19 +1,20 @@
 import { _t } from "@web/core/l10n/translation";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, useProps, t } from "@odoo/owl";
 import { Dialog } from "@web/core/dialog/dialog";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { useService } from "@web/core/utils/hooks";
 import { useTrackedAsync } from "@point_of_sale/app/hooks/hooks";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { isValidEmail, isValidPhone } from "@point_of_sale/utils";
+import { PosOrder } from "@point_of_sale/app/models/pos_order";
 
 export class SendReceiptPopup extends Component {
     static template = "point_of_sale.SendReceiptPopup";
     static components = { Dialog };
-    static props = {
-        order: Object,
-        close: Function,
-    };
+    props = useProps({
+        order: t.instanceOf(PosOrder),
+        close: t.function(),
+    });
 
     setup() {
         this.pos = usePos();
@@ -72,7 +73,8 @@ export class SendReceiptPopup extends Component {
                         status:
                             this.sendReceipt.lastArgs?.[0]?.name == "Email" &&
                             this.sendReceipt.status,
-                        icon: "fa-paper-plane",
+                        icon: "send",
+                        iconClass: "oi-filled",
                         disabled: () => !this.isValidEmail,
                     },
                 ],

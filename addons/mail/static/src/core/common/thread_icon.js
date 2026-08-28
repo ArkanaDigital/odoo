@@ -1,6 +1,6 @@
 import { useService } from "@web/core/utils/hooks";
 
-import { Component, props, types } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { ImStatus } from "./im_status";
 import { attClassObjectToString } from "@mail/utils/common/format";
@@ -12,20 +12,13 @@ export class ThreadIcon extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props(
-            {
-                "className?": types.string(),
-                "size?": types.selection(["small", "medium", "large"]),
-                thread: types.instanceOf(this.store["mail.thread"].Class),
-                "title?": types.boolean(),
-                "typing?": types.boolean(),
-            },
-            {
-                className: "",
-                size: "medium",
-                title: true,
-            }
-        );
+        this.props = useProps({
+            className: t.string().optional(""),
+            size: t.selection(["small", "medium", "large"]).optional("medium"),
+            thread: t.instanceOf(this.store["mail.thread"]),
+            title: t.boolean().optional(true),
+            typing: t.boolean().optional(),
+        });
         this.attClassObjectToString = attClassObjectToString;
     }
 
@@ -39,7 +32,8 @@ export class ThreadIcon extends Component {
 
     get defaultChatIcon() {
         return {
-            class: "fa fa-question-circle opacity-75",
+            class: "opacity-75",
+            icon: "help",
             title: _t("No IM status available"),
         };
     }

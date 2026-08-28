@@ -32,8 +32,7 @@ class TestPeppolParticipant(TransactionCase):
         }])
 
         cls.env.company.write({
-            'peppol_eas': '0208',
-            'peppol_endpoint': '0239843188',
+            'routing_identifier': '0208:0239843188',
             'account_peppol_phone_number': '+32483123456',
             'account_peppol_contact_email': 'yourcompany@test.example.com',
         })
@@ -64,6 +63,49 @@ class TestPeppolParticipant(TransactionCase):
         })
         with self.assertRaises(ValidationError):
             wizard.button_register_peppol_participant()
+
+    def test_register_with_odoo_demo_id_without_config_param(self):
+        """ Selecting the 'Odoo Demo ID' EAS must be enough to register in demo mode,
+        even without the 'account_peppol.edi.mode' system parameter (e.g. a fresh database
+        created without demo data, where that parameter is never set).
+        """
+        self.env['ir.config_parameter'].sudo().search([('key', '=', 'account_peppol.edi.mode')]).unlink()
+        wizard = self.env['peppol.registration'].create({
+            'peppol_eas': 'odemo',
+            'peppol_endpoint': 'democompany',
+        })
+        self.assertEqual(wizard.edi_mode, 'demo')
+        wizard.button_register_peppol_participant()
+        self.assertRecordValues(self.env.company, [{'account_peppol_proxy_state': 'receiver'}])
+        self.assertRecordValues(self.env.company.account_peppol_edi_user, [{'edi_mode': 'demo'}])
+
+    def test_peppol_registration_wizard_form_view(self):
+        """ Form-test for the wizard basic registrationflow. """
+        with (
+            mock_can_connect(),
+            mock_lookup_not_found(peppol_identifier='0208:0239843188'),
+            mock_connect(peppol_state='sender'),
+        ):
+            wizard_form = Form(self.env['peppol.registration'])
+            self.assertEqual(wizard_form.peppol_eas, '0208')
+            self.assertEqual(wizard_form.peppol_endpoint, '0239843188')
+            self.assertEqual(wizard_form.edi_mode, 'test')
+            self.assertEqual(wizard_form.contact_email, 'yourcompany@test.example.com')
+            self.assertEqual(wizard_form.phone_number, '+32483123456')
+            self.assertFalse(wizard_form.use_parent_connection)
+            # No authentication required in test mode: the plain "Activate" button is shown.
+            self.assertTrue(wizard_form.display_no_auth_buttons)
+            self.assertFalse(wizard_form.display_itsme_login)
+
+            # The onchange normalizes the phone number
+            wizard_form.phone_number = '+32 483 12 34 56'
+            self.assertEqual(wizard_form.phone_number, '+32483123456')
+
+            wizard = wizard_form.save()
+            self.assertTrue(wizard.smp_registration)
+            wizard.button_register_peppol_participant()
+
+        self.assertEqual(self.env.company.account_peppol_proxy_state, 'sender')
 
     def test_register_participant_for_the_first_time_as_sender_then_receiver_then_unregister(self):
         # Register the use for the very first time as sender.
@@ -185,8 +227,7 @@ class TestPeppolParticipant(TransactionCase):
 
         self.assertRecordValues(branch, [{
             'peppol_parent_company_id': False,
-            'peppol_eas': '0208',
-            'peppol_endpoint': '0477472701',
+            'routing_identifier': '0208:0477472701',
             'account_peppol_contact_email': "turlututu@tsointsoin",
             'account_peppol_phone_number': "+3236656565",
         }])
@@ -259,14 +300,15 @@ class TestPeppolParticipant(TransactionCase):
 
         # Back to the branch.
         wizard = self.env['peppol.registration'].with_context(allowed_company_ids=branch.ids).create({})
+        routing_scheme, _sep, routing_endpoint = (self.env.company.routing_identifier or '').partition(':')
         self.assertRecordValues(wizard, [{
             'company_id': branch.id,
             'parent_company_id': self.env.company.id,
             'selected_company_id': self.env.company.id,
             'display_use_parent_connection_selection': True,
             'use_parent_connection_selection': 'use_parent',
-            'peppol_eas': self.env.company.peppol_eas,
-            'peppol_endpoint': self.env.company.peppol_endpoint,
+            'peppol_eas': routing_scheme,
+            'peppol_endpoint': routing_endpoint,
             'phone_number': self.env.company.account_peppol_phone_number,
             'contact_email': self.env.company.account_peppol_contact_email,
         }])
@@ -275,8 +317,7 @@ class TestPeppolParticipant(TransactionCase):
 
         self.assertRecordValues(branch, [{
             'peppol_parent_company_id': self.env.company.id,
-            'peppol_eas': '0208',
-            'peppol_endpoint': '0239843188',
+            'routing_identifier': '0208:0239843188',
         }])
 
         settings = self.env['res.config.settings'].with_context(allowed_company_ids=branch.ids).create({})
@@ -299,14 +340,15 @@ class TestPeppolParticipant(TransactionCase):
 
         # Back to the initial state.
         wizard = self.env['peppol.registration'].with_context(allowed_company_ids=branch.ids).create({})
+        routing_scheme, _sep, routing_endpoint = (self.env.company.routing_identifier or '').partition(':')
         self.assertRecordValues(wizard, [{
             'company_id': branch.id,
             'parent_company_id': self.env.company.id,
             'selected_company_id': self.env.company.id,
             'display_use_parent_connection_selection': True,
             'use_parent_connection_selection': 'use_parent',
-            'peppol_eas': self.env.company.peppol_eas,
-            'peppol_endpoint': self.env.company.peppol_endpoint,
+            'peppol_eas': routing_scheme,
+            'peppol_endpoint': routing_endpoint,
             'phone_number': self.env.company.account_peppol_phone_number,
             'contact_email': self.env.company.account_peppol_contact_email,
         }])
@@ -371,7 +413,6 @@ class TestPeppolParticipant(TransactionCase):
             self.assertEqual(partner_form.peppol_verification_state, "not_verified")
             partner_form.name = "test"
             partner_form.vat = "BE0477472701"
-            partner_form.peppol_eas = "odemo"
             self.assertFalse(partner_form.commercial_partner_id)
             p_rec = partner_form.save()
             self.assertEqual(p_rec.commercial_partner_id, p_rec)
@@ -384,29 +425,27 @@ class TestPeppolParticipant(TransactionCase):
             'vat': 'BE0477472701',
         })
         with (
-            mock_lookup_success(peppol_identifier='0088:88888888888'),
+            mock_lookup_success(peppol_identifier='0088:9780471117094'),
             mock_can_connect(),
             mock_connect(peppol_state='sender'),
         ):
             wizard = self.env['peppol.registration'].create({
                 'peppol_eas': '0088',
-                'peppol_endpoint': '88888888888',
+                'peppol_endpoint': '9780471117094',
                 'phone_number': '+32483123456',
                 'contact_email': 'yourcompany@test.example.com',
             })
             wizard.button_register_peppol_participant()
         self.env.company.vat = 'BE0475646428'
         self.assertRecordValues(self.env.company.partner_id, [{
-            'peppol_eas': '0088',
-            'peppol_endpoint': '88888888888',
+            'routing_identifier': '0088:9780471117094',
         }])
 
         with Form(self.env.company.partner_id) as partner:
             # Test with NewID record
             partner.vat = 'BE0477472701'
         self.assertRecordValues(self.env.company.partner_id, [{
-            'peppol_eas': '0088',
-            'peppol_endpoint': '88888888888',
+            'routing_identifier': '0088:9780471117094',
         }])
 
         company_partner = self.env.company.partner_id
@@ -417,12 +456,49 @@ class TestPeppolParticipant(TransactionCase):
 
         company_partner.vat = 'BE0477472701'
         self.assertRecordValues(company_partner, [{
-            'peppol_eas': '0088',
-            'peppol_endpoint': '88888888888',
+            'routing_identifier': '0088:9780471117094',
         }])
 
-        self.env.company.vat = 'BE0475646428'
-        self.assertRecordValues(self.env.company.partner_id, [{
-            'peppol_eas': '0208',
-            'peppol_endpoint': '0475646428',
+    def test_do_not_recompute_routing_for_valid_peppol_partner(self):
+        """A partner whose Peppol status is 'valid' keeps its routing scheme/endpoint,
+        even when a field the routing identifier depends on changes.
+        """
+        partner = self.env['res.partner'].create({
+            'name': 'Valid Peppol Partner',
+            'country_id': self.env.ref('base.be').id,
+            'invoice_edi_format': 'ubl_bis3',
+        })
+        partner.routing_identifier = '0208:0475646428'
+
+        with mock_lookup_success(peppol_identifier='0208:0475646428'):
+            partner.button_account_peppol_check_partner_endpoint()
+        self.assertEqual(partner.peppol_verification_state, 'valid')
+
+        # Setting a VAT would normally recompute the routing scheme/endpoint (to
+        # '0208'/'0477472701'), but the partner is a valid Peppol participant whose
+        # scheme/endpoint are already set, so its routing must be left untouched.
+        partner.vat = 'BE0477472701'
+        self.assertRecordValues(partner, [{
+            'routing_scheme': '0208',
+            'routing_endpoint': '0475646428',
+        }])
+
+    def test_recompute_routing_for_unverified_peppol_partner(self):
+        """A partner whose Peppol status is not 'valid' still has its routing
+        scheme/endpoint recomputed when a routing dependency changes.
+        """
+        partner = self.env['res.partner'].create({
+            'name': 'Unverified Peppol Partner',
+            'country_id': self.env.ref('base.be').id,
+            'invoice_edi_format': 'ubl_bis3',
+        })
+        partner.routing_identifier = '0208:0475646428'
+        self.assertNotEqual(partner.peppol_verification_state, 'valid')
+
+        # The partner is not a valid Peppol participant, so changing the VAT
+        # recomputes the routing scheme/endpoint from the partner's identifiers.
+        partner.vat = 'BE0477472701'
+        self.assertRecordValues(partner, [{
+            'routing_scheme': '0208',
+            'routing_endpoint': '0477472701',
         }])

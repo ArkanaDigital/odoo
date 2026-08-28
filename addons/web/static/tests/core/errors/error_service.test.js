@@ -6,11 +6,11 @@ import {
     manuallyDispatchProgrammaticEvent,
     test,
 } from "@odoo/hoot";
-import { Component, onWillStart, props, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import {
-    makeMockEnv,
+    assignTestEnv,
+    makeTestApp,
     mockService,
-    mountWithCleanup,
     patchWithCleanup,
     serverState,
 } from "@web/../tests/web_test_helpers";
@@ -28,7 +28,7 @@ const errorDialogRegistry = registry.category("error_dialogs");
 const errorHandlerRegistry = registry.category("error_handlers");
 
 test("can handle rejected promise errors with a string as reason", async () => {
-    await makeMockEnv();
+    await makeTestApp();
     errorHandlerRegistry.add(
         "__test_handler__",
         (env, err, originalError) => {
@@ -71,7 +71,7 @@ test("handle RPC_ERROR of type='server' and no associated dialog class", async (
             expect.step("dialog.add");
         },
     });
-    await makeMockEnv();
+    await makeTestApp();
 
     expect.errors(1);
     Promise.reject(error);
@@ -84,7 +84,9 @@ test("handle custom RPC_ERROR of type='server' and associated custom dialog clas
     class CustomDialog extends Component {
         static template = xml`<RPCErrorDialog title="'Strange Error'"/>`;
         static components = { RPCErrorDialog };
-        static props = { ...standardErrorDialogProps };
+        props = useProps({
+            ...standardErrorDialogProps,
+        });
     }
     const error = new RPCError();
     error.code = 701;
@@ -113,7 +115,7 @@ test("handle custom RPC_ERROR of type='server' and associated custom dialog clas
             expect.step("dialog.add");
         },
     });
-    await makeMockEnv();
+    await makeTestApp();
     errorDialogRegistry.add("strange_error", CustomDialog);
 
     expect.errors(1);
@@ -127,12 +129,12 @@ test("handle normal RPC_ERROR of type='server' and associated custom dialog clas
     class CustomDialog extends Component {
         static template = xml`<RPCErrorDialog title="'Strange Error'"/>`;
         static components = { RPCErrorDialog };
-        static props = ["*"];
+        props = useProps();
     }
     class NormalDialog extends Component {
         static template = xml`<RPCErrorDialog title="'Normal Error'"/>`;
         static components = { RPCErrorDialog };
-        static props = ["*"];
+        props = useProps();
     }
     const error = new RPCError();
     error.code = 701;
@@ -160,7 +162,7 @@ test("handle normal RPC_ERROR of type='server' and associated custom dialog clas
             expect.step("dialog.add");
         },
     });
-    await makeMockEnv();
+    await makeTestApp();
     errorDialogRegistry.add("strange_error", CustomDialog);
     errorDialogRegistry.add("normal_error", NormalDialog);
 
@@ -172,8 +174,8 @@ test("handle normal RPC_ERROR of type='server' and associated custom dialog clas
 });
 
 test("will let handlers from the registry handle errors first", async () => {
-    const testEnv = await makeMockEnv();
-    testEnv.someValue = 14;
+    assignTestEnv({ someValue: 14 });
+    await makeTestApp();
     errorHandlerRegistry.add("__test_handler__", (env, err, originalError) => {
         expect(originalError).toBe(error);
         expect(env.someValue).toBe(14);
@@ -191,48 +193,25 @@ test("will let handlers from the registry handle errors first", async () => {
 });
 
 test("originalError is the root cause of the error chain", async () => {
-    await makeMockEnv();
+    const rootError = new Error();
+    rootError.name = "boom";
+    const error = new Error();
+    error.name = "boom";
+    error.cause = rootError;
+
     errorHandlerRegistry.add("__test_handler__", (env, err, originalError) => {
         expect(err).toBeInstanceOf(UncaughtPromiseError); // Wrapped by error service
-        // owl no longer wraps lifecycle errors in OwlError, so the cause is the original error directly
-        expect(err.cause).toBe(originalError);
+        expect(err.cause).toBe(error);
+        expect(originalError).toBe(rootError);
         expect.step("in handler");
         return true;
     });
 
-    class ErrHandler extends Component {
-        static template = xml`<t t-component="this.props.comp"/>`;
+    await makeTestApp();
 
-        props = props();
-    }
+    expect.errors(1);
+    Promise.reject(error);
 
-    const error1 = new Error();
-    error1.name = "boom";
-    class ThrowInSetup extends Component {
-        static template = xml``;
-        setup() {
-            throw error1;
-        }
-    }
-
-    expect.errors(2);
-    mountWithCleanup(ErrHandler, { props: { comp: ThrowInSetup } });
-    await expect.waitForSteps(["in handler"]);
-    expect.verifyErrors(["boom"]);
-
-    const error2 = new Error();
-    error2.name = "boom";
-    class ThrowInWillStart extends Component {
-        static template = xml``;
-        static props = ["*"];
-        setup() {
-            onWillStart(() => {
-                throw error2;
-            });
-        }
-    }
-
-    mountWithCleanup(ErrHandler, { props: { comp: ThrowInWillStart } });
     await expect.waitForSteps(["in handler"]);
     expect.verifyErrors(["boom"]);
 });
@@ -254,7 +233,7 @@ test("handle uncaught promise errors", async () => {
             expect.step("dialog.add");
         },
     });
-    await makeMockEnv();
+    await makeTestApp();
 
     expect.errors(1);
     Promise.reject(error);
@@ -277,7 +256,7 @@ test("handle uncaught client errors", async () => {
             expect.step("dialog.add");
         },
     });
-    await makeMockEnv();
+    await makeTestApp();
 
     expect.errors(1);
     setTimeout(() => {
@@ -298,7 +277,7 @@ test("don't show dialog for errors in third-party scripts", async () => {
             throw new Error("should not pass here");
         },
     });
-    await makeMockEnv();
+    await makeTestApp();
 
     expect.errors(1);
     // Error events from errors in third-party scripts have no colno, no lineno and no filename
@@ -320,7 +299,7 @@ test("show dialog for errors in third-party scripts in debug mode", async () => 
             return () => {};
         },
     });
-    await makeMockEnv();
+    await makeTestApp();
 
     expect.errors(1);
     // Error events from errors in third-party scripts have no colno, no lineno and no filename
@@ -331,7 +310,7 @@ test("show dialog for errors in third-party scripts in debug mode", async () => 
 });
 
 test("lazy loaded handlers", async () => {
-    await makeMockEnv();
+    await makeTestApp();
 
     expect.errors(2);
     Promise.reject(new Error("error"));
@@ -384,7 +363,7 @@ describe("Error Service Logs", () => {
         error.cause = new Error("This is a second wrapper error");
         error.cause.cause = new Error("This is the original error");
 
-        await makeMockEnv();
+        await makeTestApp();
         const errorEvent = new PromiseRejectionEvent("unhandledrejection", {
             reason: error,
             promise: null,
@@ -413,7 +392,7 @@ describe("Error Service Logs", () => {
         error.cause = new Error("This is a second wrapper error");
         error.cause.cause = new Error("This is the original error");
 
-        await makeMockEnv();
+        await makeTestApp();
         const errorEvent = new Event("error", {
             promise: null,
             cancelable: true,
@@ -448,7 +427,7 @@ describe("Error Service Logs", () => {
             },
         });
 
-        await makeMockEnv();
+        await makeTestApp();
         let errorEvent = new Event("error", {
             promise: null,
             cancelable: true,

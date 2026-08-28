@@ -61,6 +61,7 @@ class ResConfigSettings(models.TransientModel):
         string="Cookie Policy Page",
         related='website_id.cookie_policy_id',
         readonly=False)
+    has_cookie_policy = fields.Boolean(compute='_compute_has_cookie_policy')
     website_block_third_party_domains = fields.Boolean(
         'Block 3rd-party domains',
         related='website_id.block_third_party_domains',
@@ -125,11 +126,17 @@ class ResConfigSettings(models.TransientModel):
         compute='_compute_has_plausible_shared_key',
         inverse='_inverse_has_plausible_shared_key')
     module_website_livechat = fields.Boolean()
+    module_website_address_autocomplete = fields.Boolean("Website Address Autocomplete")
 
     @api.depends('website_id')
     def _compute_shared_user_account(self):
         for config in self:
             config.shared_user_account = not config.website_id.specific_user_account
+
+    @api.depends('website_id')
+    def _compute_has_cookie_policy(self):
+        for config in self:
+            config.has_cookie_policy = bool(config.website_id.cookie_policy_id)
 
     @api.onchange('plausible_shared_key')
     def _onchange_shared_key(self):
@@ -232,6 +239,22 @@ class ResConfigSettings(models.TransientModel):
             'type': 'ir.actions.act_window',
             "views": [[False, "form"]],
             'target': 'new',
+            'context': {
+                'website_id': self.website_id.id,
+            },
+        }
+
+    def action_open_llms(self):
+        self.ensure_one()
+        return {
+            'name': _("LLMs.txt"),
+            'type': 'ir.actions.act_window',
+            'res_model': 'website.llms',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_website_id': self.website_id.id,
+            },
         }
 
     def action_open_blocked_third_party_domains(self):

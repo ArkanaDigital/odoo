@@ -10,7 +10,7 @@ from wsgiref.handlers import format_date_time
 
 import h11
 
-from odoo.netsvc import (
+from odoo.logging import (
     BOLD_SEQ,
     COLOR_PATTERN,
     CYAN,
@@ -139,49 +139,55 @@ def http_log(
     if res:
         extra['http_response_status'] = res.status_code
         extra['http_headers'] = res.headers
-        res_content_length = next(
-            (v for k, v in res.headers if k == b'content-length'), None)
+        headers_get = dict(res.headers).get
+        res_content_length = headers_get(b'content-length')
         extra['http_response_body'] = (
             int(res_content_length) if res_content_length is not None
             else 0 if res.status_code in _NO_BODY_STATUS
             else 'stream'
         )
         # "Thu, 30 Apr 2026 16:18:06 GMT" => "30/Apr/2026 16:18:06"
-        res_http_date = next(v for k, v in res.headers if k == b'date').decode()
+        res_http_date = headers_get(b'date').decode()
         extra['date'] = res_http_date[5:-4].replace(' ', '/', 2)
 
     extra.update(kwargs.get('extra', {}))
-    kwargs['extra'] = extra.copy()  # before we set colors
-
-    # colors
-    if config.colors['perf']:
-        extra['query_count'] = _colorize_query_count(extra['query_count'])
-        extra['query_time'] = _colorize_query_time(extra['query_time'])
-        extra['remaining_time'] = _colorize_remaining_time(extra['remaining_time'])
-    else:
-        extra['query_time'] = round(extra['query_time'], 3)
-        extra['remaining_time'] = round(extra['remaining_time'], 3)
-
-    if config.colors['http_request_line'] and extra['http_response_status'] != '-':
-        extra['http_request_line'] = _colorize_request_line(
-            extra['http_request_line'], extra['http_response_status'])
-    if config.colors['cursor_mode'] and extra['cursor_mode'] != '-':
-        extra['cursor_mode'] = _colorize_cursor_mode(extra['cursor_mode'])
-    if config.colors['http_response_body']:
-        extra['http_response_body'] = _colorize_body_length(extra['http_response_body'])
-    if config.colors['session_id']:
-        extra['ident'] = _colorize_ident(extra['ident'])
+    kwargs['extra'] = extra.copy()  # before we set colors and formating
 
     if extra['http_headers'] and _logger_headers.isEnabledFor(logging.DEBUG):
         extra['http_headers'] = pprint.pformat(list(extra['http_headers']))
 
-    msg += (
+    # Round the timings before they are formatted
+    extra['query_time'] = round(extra['query_time'], 3)
+    extra['remaining_time'] = round(extra['remaining_time'], 3)
+
+    colored_extra = extra.copy()
+
+    # colors
+    if config.colors['perf']:
+        colored_extra['query_count'] = _colorize_query_count(colored_extra['query_count'])
+        colored_extra['query_time'] = _colorize_query_time(colored_extra['query_time'])
+        colored_extra['remaining_time'] = _colorize_remaining_time(colored_extra['remaining_time'])
+
+    if config.colors['http_request_line'] and extra['http_response_status'] != '-':
+        colored_extra['http_request_line'] = _colorize_request_line(
+            colored_extra['http_request_line'], colored_extra['http_response_status'])
+    if config.colors['cursor_mode'] and extra['cursor_mode'] != '-':
+        colored_extra['cursor_mode'] = _colorize_cursor_mode(extra['cursor_mode'])
+    if config.colors['http_response_body']:
+        colored_extra['http_response_body'] = _colorize_body_length(colored_extra['http_response_body'])
+    if config.colors['session_id']:
+        colored_extra['ident'] = _colorize_ident(colored_extra['ident'])
+
+    msg_format = (
         _HTTP_FORMAT_HEADERS
         if extra['http_headers'] and _logger_headers.isEnabledFor(logging.DEBUG) else
         _HTTP_FORMAT
-    ) % extra
+    )
+    uncolored_message = msg + (msg_format % extra)
+    colored_message = msg + (msg_format % colored_extra)
+    kwargs['extra']['colored_message'] = colored_message
 
-    _logger.log(level, msg, *args, **kwargs)
+    _logger.log(level, uncolored_message, *args, **kwargs)
 
 
 def _colorize_ident(ident: str) -> str:

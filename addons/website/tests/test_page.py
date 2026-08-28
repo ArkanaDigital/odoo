@@ -1,14 +1,18 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from unittest.mock import patch
+from freezegun import freeze_time
+from datetime import date
 
 from lxml import html
 
+from odoo.exceptions import AccessError
 from odoo.fields import Command
 from odoo.http.session import session_store
 from odoo.tests import HttpCase, common, tagged
 from odoo.tools import mute_logger
 
+from odoo.addons.base.tests.common import TransactionCaseWithUserDemo
 from odoo.addons.http_routing.tests.common import MockRequest
 from odoo.addons.website.controllers.main import Website
 
@@ -48,9 +52,10 @@ class TestPage(common.TransactionCase):
         })
 
     def test_copy_page(self):
-        View = self.env['ir.ui.view']
-        Page = self.env['website.page']
-        Menu = self.env['website.menu']
+        website_id = self.ref('base.default_website')
+        View = self.env['ir.ui.view'].with_context(website_id=website_id)
+        Page = self.env['website.page'].with_context(website_id=website_id)
+        Menu = self.env['website.menu'].with_context(website_id=website_id)
         # Specific page
         self.specific_view = View.create({
             'name': 'Base',
@@ -106,7 +111,7 @@ class TestPage(common.TransactionCase):
 
     def test_clone_page_edited_in_default_language(self):
         self.env['res.lang']._activate_lang('fr_FR')
-        website = self.env['website'].get_current_website()
+        website = self.env.ref('base.default_website')
 
         self.assertEqual(website.default_lang_id.code, 'en_US')
 
@@ -270,7 +275,7 @@ class WithContext(HttpCase):
         })
 
     def test_unpublished_page(self):
-        specific_page = self.page.copy({'website_id': self.env['website'].get_current_website().id})
+        specific_page = self.page.copy({'website_id': self.env.ref('base.default_website').id})
         specific_page.write({'is_published': False, 'arch': self.page.arch.replace('I am a generic page', 'I am a specific page')})
 
         self.authenticate(None, None)
@@ -282,15 +287,28 @@ class WithContext(HttpCase):
         self.assertEqual(r.status_code, 200, "Admin should see the specific unpublished page")
         self.assertEqual('I am a specific page' in r.text, True, "Admin should see the specific unpublished page")
 
+    def test_unpublished_page_no_cache(self):
+        """Ensure that a previously-published page that is now unpublished will not be cached."""
+        self.authenticate(None, None)
+
+        with freeze_time(date(2025, 12, 30)):
+            r = self.url_open(self.page.url)
+        self.assertEqual(r.status_code, 200, "Restricted users should see the published page")
+
+        self.page.write({'is_published': False})
+
+        with freeze_time(date(2025, 12, 31)):
+            r = self.url_open(self.page.url)
+        self.assertEqual(r.status_code, 404, "Restricted users should see a 404 as the page is unpublished")
+
     @mute_logger('odoo.addons.rpc.controllers.xmlrpc')
     def test_search(self):
         dbname = common.get_db_name()
         admin_uid = self.env.ref('base.user_admin').id
-        website = self.env['website'].get_current_website()
 
         pages = self.xmlrpc_object.execute(
             dbname, admin_uid, 'admin',
-            'website', 'search_pages', [website.id], 'page'
+            'website', 'search_pages', [self.ref('base.default_website')], 'page'
         )
         self.assertIn(
             '/page_1',
@@ -573,7 +591,7 @@ class WithContext(HttpCase):
             self.assertEqual(alternate_fr_url, f'{self.base_url()}/fr/page_1')
 
     def test_alternate_hreflang(self):
-        website = self.env['website'].get_current_website() or self.env.ref('base.default_website')
+        website = self.env.ref('base.default_website')
         lang_en = self.env.ref('base.lang_en')
         ResLang = self.env['res.lang'].with_context(website_id=website.id)
         lang_fr = ResLang._activate_lang('fr_FR')
@@ -605,7 +623,22 @@ class WithContext(HttpCase):
 
     def test_07_not_authorized(self):
         # Create page that requires specific user role.
-        specific_page = self.page.copy({'website_id': self.env['website'].get_current_website().id})
+        specific_page = self.page.copy({'website_id': self.ref('base.default_website'), 'url': '/page_2'})
+        specific_page.write({
+            'arch': self.page.arch.replace('I am a generic page', 'I am a specific page not available for visitors'),
+            'is_published': True,
+            'visibility': 'restricted_group',
+            'group_ids': [Command.link(self.ref('website.group_website_designer'))],
+        })
+        # Access page as anonymous visitor.
+        self.authenticate(None, None)
+        r = self.url_open('/page_2')
+        # Check that is is rendered as a website page.
+        self.assertEqual(403, r.status_code, "Must fail with 403")
+
+        # with the same page url
+
+        specific_page = self.page.copy({'website_id': self.ref('base.default_website'), 'url': '/page_1'})
         specific_page.write({
             'arch': self.page.arch.replace('I am a generic page', 'I am a specific page not available for visitors'),
             'is_published': True,
@@ -669,6 +702,112 @@ class WithContext(HttpCase):
         self.assertEqual(self.env['website.page'].with_context({'lang': 'en_US'}).search([('url', '=', '/page_1')]).arch, '''<t name="Homepage" t-name="test.base_view">BIDULE EN !</t>''')
         self.assertEqual(self.env['website.page'].with_context({'lang': lang_fr.code}).search([('url', '=', '/page_1')]).arch, '''<t name="Homepage" t-name="test.base_view">BIDULE FR !</t>''')
 
+    def test_url_unicity(self):
+        website = self.env.ref('base.default_website')
+        website.write({
+            'name': 'Test Website',
+            'domain': self.base_url(),
+            'homepage_url': False,
+        })
+
+        cafe_url = "/cafe"
+        cafe_url_full = website.domain + cafe_url
+        test_cafe_page = self.env['website.page'].with_context(website_id=website.id).create({
+            'name': 'Cafe',
+            'type': 'qweb',
+            'arch': '<div>CafeTest</div>',
+            'key': 'test.cafe_page_test',
+            'url': "/temp_url",
+            'is_published': True,
+            'website_id': website.id
+        })
+        # Ensure the url goes through slugify and get_unique_path
+        with MockRequest(self.env, website=website):
+            test_cafe_page.url = cafe_url
+        r1 = self.url_open(cafe_url)
+        self.assertEqual(r1.status_code, 200)
+        self.assertURLEqual(r1.url, cafe_url_full)
+
+        cafe_with_accent_url = '/café'
+        expected_cafe_with_accent_url_full = website.domain + "/café-1"
+        test_cafe_with_accent_page = self.env['website.page'].with_context(website_id=website.id).create({
+            'name': 'CaféWithAccent',
+            'type': 'qweb',
+            'arch': '<div>CaféWithAccentTest</div>',
+            'key': 'test.cafe_with_accent_page_test',
+            'url': "/temp_url",
+            'is_published': True,
+            'website_id': website.id
+        })
+        # Ensure the url goes through slugify and get_unique_path
+        with MockRequest(self.env, website=website):
+            test_cafe_with_accent_page.url = cafe_with_accent_url
+        r2 = self.url_open(expected_cafe_with_accent_url_full)
+        self.assertEqual(r2.status_code, 200)
+        self.assertURLEqual(test_cafe_with_accent_page.url, expected_cafe_with_accent_url_full)
+
+    def test_duplicate_page_created_out_of_order(self):
+        website = self.env.ref('base.default_website')
+        website.write({
+            'name': 'Test Website',
+            'domain': self.base_url(),
+            'homepage_url': False,
+        })
+
+        cafe_one_url = "/cafe-1"
+        cafe_one_url_full = website.domain + cafe_one_url
+        test_cafe_one_page = self.env['website.page'].with_context(website_id=website.id).create({
+            'name': 'Cafe-1',
+            'type': 'qweb',
+            'arch': '<div>CafeOneTest</div>',
+            'key': 'test.cafe_one_page_test',
+            'url': "/temp_url",
+            'is_published': True,
+            'website_id': website.id
+        })
+        # Ensure the url goes through slugify and get_unique_path
+        with MockRequest(self.env, website=website):
+            test_cafe_one_page.url = cafe_one_url
+        r1 = self.url_open(cafe_one_url)
+        self.assertEqual(r1.status_code, 200)
+        self.assertURLEqual(r1.url, cafe_one_url_full)
+
+        cafe_url = "/cafe"
+        cafe_url_full = website.domain + cafe_url
+        test_cafe_page = self.env['website.page'].with_context(website_id=website.id).create({
+            'name': 'Cafe',
+            'type': 'qweb',
+            'arch': '<div>CafeTest</div>',
+            'key': 'test.cafe_page_test',
+            'url': "/temp_url",
+            'is_published': True,
+            'website_id': website.id
+        })
+        # Ensure the url goes through slugify and get_unique_path
+        with MockRequest(self.env, website=website):
+            test_cafe_page.url = cafe_url
+        r2 = self.url_open(cafe_url)
+        self.assertEqual(r2.status_code, 200)
+        self.assertURLEqual(r2.url, cafe_url_full)
+
+        cafe_with_accent_url = '/café'
+        expected_cafe_with_accent_url_full = website.domain + "/café-2"
+        test_cafe_with_accent_page = self.env['website.page'].with_context(website_id=website.id).create({
+            'name': 'CaféWithAccent',
+            'type': 'qweb',
+            'arch': '<div>CaféWithAccentTest</div>',
+            'key': 'test.cafe_with_accent_page_test',
+            'url': "/temp_url",
+            'is_published': True,
+            'website_id': website.id
+        })
+        # Ensure the url goes through slugify and get_unique_path
+        with MockRequest(self.env, website=website):
+            test_cafe_with_accent_page.url = cafe_with_accent_url
+        r3 = self.url_open(expected_cafe_with_accent_url_full)
+        self.assertEqual(r3.status_code, 200)
+        self.assertURLEqual(test_cafe_with_accent_page.url, expected_cafe_with_accent_url_full)
+
 
 @tagged('-at_install', 'post_install')
 class TestNewPage(common.TransactionCase):
@@ -706,3 +845,36 @@ class TestNewPage(common.TransactionCase):
                     menu.page_id,
                     f"Menu '{menu.name}' was not linked to the created page."
                 )
+
+
+class TestUrlDependencies(TransactionCaseWithUserDemo):
+    def test_search_url_dependencies_with_restricted_html_field(self):
+        page = self.env['website.page'].create({
+            'name': 'Test Page',
+            'url': '/test-page',
+            'type': 'qweb',
+            'arch': '<div>Test</div>',
+        })
+        # Add a website page into restricted HTML field (here robots_txt) to
+        # make sure the page dependency is found in case of field level access
+        # rights restriction.
+        website = self.env['website'].search([], limit=1)
+        website.robots_txt = '''
+            <a href="/test-page">Test Page</a>
+        '''
+        self.env['ir.access'].create([{
+            'name': 'read',
+            'model_id': self.env['ir.model']._get_id(model),
+            'group_id': self.env.ref("base.group_user").id,
+            'operation': 'r',
+        } for model in ['ir.ui.view', 'website.page']])
+
+        website = website.with_user(self.user_demo)
+        with self.assertRaises(AccessError):
+            website.robots_txt
+
+        dependencies = website.search_url_dependencies('website.page', page.ids)
+        self.assertEqual(
+            dependencies['Website'][0]['record_name'],
+            website.display_name,
+        )

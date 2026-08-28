@@ -1,7 +1,7 @@
 import { describe, expect, press, test } from "@odoo/hoot";
 import { drag, queryAll, queryAllTexts, queryFirst, scroll } from "@odoo/hoot-dom";
-import { Deferred, animationFrame } from "@odoo/hoot-mock";
-import { Component, onWillUpdateProps, xml } from "@odoo/owl";
+import { animationFrame } from "@odoo/hoot-mock";
+import { Component, useOnChange, useProps, xml } from "@odoo/owl";
 import {
     contains,
     defineActions,
@@ -52,20 +52,24 @@ function getFiltersCounter() {
 class TestComponent extends Component {
     static components = { SearchBarMenu, SearchPanel };
     static template = xml`
-        <div class="o_test_component">
+        <div class="o_test_component o_component_with_search_panel">
             <SearchPanel t-if="this.env.searchModel.display.searchPanel" />
             <SearchBarMenu />
         </div>
     `;
-    static props = ["*"];
+    props = useProps();
 
     setup() {
         this.domain = this.props.domain;
-        onWillUpdateProps((np) => this.willUpdateProps(np));
+        useOnChange(
+            () => [this.props.domain],
+            (domain) => this.updateDomain(domain),
+            { initialRun: false }
+        );
     }
 
-    async willUpdateProps(np) {
-        this.domain = np.domain;
+    async updateDomain(domain) {
+        this.domain = domain;
     }
 }
 
@@ -255,7 +259,10 @@ test("basic rendering of a component with search panel", async () => {
     expect(`.o_search_panel_section`).toHaveCount(2);
 
     const firstSection = `.o_search_panel_section:eq(0)`;
-    expect(`${firstSection} .o_search_panel_section_header i`).toHaveClass("fa-folder");
+    expect(`${firstSection} .o_search_panel_section_header i`).toHaveAttribute(
+        "data-icon",
+        "folder"
+    );
     expect(`${firstSection} .o_search_panel_section_header`).toHaveText(/company/i);
     expect(`${firstSection} .o_search_panel_category_value`).toHaveCount(3);
     expect(`${firstSection} .o_search_panel_category_value:first .active`).toHaveCount(1);
@@ -266,7 +273,10 @@ test("basic rendering of a component with search panel", async () => {
     ]);
 
     const secondSection = `.o_search_panel_section:eq(1)`;
-    expect(`${secondSection} .o_search_panel_section_header i`).toHaveClass("fa-filter");
+    expect(`${secondSection} .o_search_panel_section_header i`).toHaveAttribute(
+        "data-icon",
+        "filter_alt"
+    );
     expect(`${secondSection} .o_search_panel_section_header`).toHaveText(/category/i);
     expect(`${secondSection} .o_search_panel_filter_value`).toHaveCount(2);
     expect(queryAllTexts`${secondSection} .o_search_panel_filter_value`).toEqual([
@@ -309,8 +319,8 @@ test("when category is empty fallback to All", async () => {
 test("cache search panel", async () => {
     let spSelectRangeDef;
     let spSelectMultiRangeDef;
-    onRpc("search_panel_select_range", () => spSelectRangeDef);
-    onRpc("search_panel_select_multi_range", () => spSelectMultiRangeDef);
+    onRpc("search_panel_select_range", () => spSelectRangeDef?.promise);
+    onRpc("search_panel_select_multi_range", () => spSelectMultiRangeDef?.promise);
 
     await mountWithCleanup(WebClient);
     await getService("action").doAction(1);
@@ -327,8 +337,8 @@ test("cache search panel", async () => {
         "silver\n3",
     ]);
 
-    spSelectRangeDef = new Deferred();
-    spSelectMultiRangeDef = new Deferred();
+    spSelectRangeDef = Promise.withResolvers();
+    spSelectMultiRangeDef = Promise.withResolvers();
 
     // Go to a form view
     await getService("action").doAction(2);
@@ -426,9 +436,9 @@ test("cache search panel", async () => {
 });
 
 test("cache search panel (onFinish called after anoter load - Category)", async () => {
-    const spSelectRangeDef = [null, new Deferred(), new Deferred()];
+    const spSelectRangeDef = [null, Promise.withResolvers(), Promise.withResolvers()];
     let spSelectRangeCount = 0;
-    onRpc("search_panel_select_range", () => spSelectRangeDef[spSelectRangeCount++]);
+    onRpc("search_panel_select_range", () => spSelectRangeDef[spSelectRangeCount++]?.promise);
 
     await mountWithCleanup(WebClient);
     await getService("action").doAction(1);
@@ -507,11 +517,11 @@ test("cache search panel (onFinish called after anoter load - Category)", async 
 });
 
 test("cache search panel (onFinish called after anoter load - Filters)", async () => {
-    const spSelectMultiRangeDef = [null, new Deferred(), new Deferred()];
+    const spSelectMultiRangeDef = [null, Promise.withResolvers(), Promise.withResolvers()];
     let spSelectMultiRangeCount = 0;
     onRpc(
         "search_panel_select_multi_range",
-        () => spSelectMultiRangeDef[spSelectMultiRangeCount++]
+        () => spSelectMultiRangeDef[spSelectMultiRangeCount++]?.promise
     );
 
     await mountWithCleanup(WebClient);
@@ -587,8 +597,8 @@ test("sections with custom icon and color", async () => {
         search: /* xml */ `
             <search>
                 <searchpanel view_types="toy">
-                    <field name="company_id" icon="fa-car" color="blue" enable_counters="1"/>
-                    <field name="state" select="multi" icon="fa-star" color="#000" enable_counters="1"/>
+                    <field name="company_id" icon="directions_car" color="blue" enable_counters="1"/>
+                    <field name="state" select="multi" icon="star" icon_class="oi-filled" color="#000" enable_counters="1"/>
                 </searchpanel>
             </search>
         `,
@@ -598,9 +608,9 @@ test("sections with custom icon and color", async () => {
         searchViewId: false,
     });
 
-    expect(`.o_search_panel_section_header:eq(0) i`).toHaveClass("fa-car");
+    expect(`.o_search_panel_section_header:eq(0) i`).toHaveAttribute("data-icon", "directions_car");
     expect(`.o_search_panel_section_header:eq(0) i`).toHaveStyle({ color: "rgb(0, 0, 255)" });
-    expect(`.o_search_panel_section_header:eq(1) i`).toHaveClass("fa-star");
+    expect(`.o_search_panel_section_header:eq(1) i`).toHaveAttribute("data-icon", "star");
     expect(`.o_search_panel_section_header:eq(1) i`).toHaveStyle({ color: "rgb(0, 0, 0)" });
     expect(component.domain).toEqual([]);
 });
@@ -1047,7 +1057,7 @@ test("can (un)fold parent category values", async () => {
     expect(`.o_search_panel_category_value:contains(agrolait) .o_toggle_fold > i`).toHaveCount(1);
     expect(
         `.o_search_panel_category_value header:contains(agrolait) .o_toggle_fold > i`
-    ).toHaveClass("fa-caret-right");
+    ).toHaveAttribute("data-icon", "arrow_right");
     expect(`.o_search_panel_category_value`).toHaveCount(3);
 
     // unfold agrolait
@@ -1056,7 +1066,7 @@ test("can (un)fold parent category values", async () => {
     ).click();
     expect(
         `.o_search_panel_category_value header:contains(agrolait) .o_toggle_fold > i`
-    ).toHaveClass("fa-caret-down");
+    ).toHaveAttribute("data-icon", "arrow_drop_down");
     expect(`.o_search_panel_category_value`).toHaveCount(5);
 
     // fold agrolait
@@ -1065,7 +1075,7 @@ test("can (un)fold parent category values", async () => {
     ).click();
     expect(
         `.o_search_panel_category_value header:contains(agrolait) .o_toggle_fold > i`
-    ).toHaveClass("fa-caret-right");
+    ).toHaveAttribute("data-icon", "arrow_right");
     expect(`.o_search_panel_category_value`).toHaveCount(3);
 });
 
@@ -1095,14 +1105,14 @@ test("fold status is kept at reload", async () => {
     await contains(queryFirst`.o_search_panel_category_value > header:contains(agrolait)`).click();
     expect(
         queryFirst`.o_search_panel_category_value > header:contains(agrolait) .o_toggle_fold > i`
-    ).toHaveClass("fa-caret-down");
+    ).toHaveAttribute("data-icon", "arrow_drop_down");
     expect(`.o_search_panel_category_value`).toHaveCount(5);
 
     await toggleSearchBarMenu();
     await toggleMenuItem("True Domain");
     expect(
         queryFirst`.o_search_panel_category_value > header:contains(agrolait) .o_toggle_fold > i`
-    ).toHaveClass("fa-caret-down");
+    ).toHaveAttribute("data-icon", "arrow_drop_down");
     expect(`.o_search_panel_category_value`).toHaveCount(5);
 });
 
@@ -1117,11 +1127,11 @@ test("concurrency: delayed component update", async () => {
         `,
     };
 
-    let promise = new Deferred();
+    let promise = Promise.withResolvers();
     class DeferredTestComponent extends TestComponent {
-        async willUpdateProps(np) {
-            await promise;
-            super.willUpdateProps(np);
+        async updateDomain(domain) {
+            await promise.promise;
+            super.updateDomain(domain);
         }
     }
     const component = await mountWithSearch(DeferredTestComponent, {
@@ -1139,26 +1149,27 @@ test("concurrency: delayed component update", async () => {
     const asustekPromise = promise;
     await contains(`.o_search_panel_category_value:eq(1) header`).click();
 
-    // 'asustek' should not be selected yet, and there should still be 3 records
+    // the panel selects 'asustek' right away, but the component has not reacted
+    // to the new domain yet, so there should still be 3 records
     expect(`.o_search_panel_category_value .active`).toHaveCount(1);
-    expect(`.o_search_panel_category_value:first .active`).toHaveCount(1);
+    expect(`.o_search_panel_category_value:eq(1) .active`).toHaveCount(1);
     expect(component.domain).toEqual([["bar", "=", true]]);
 
     // select 'agrolait' (delay the reload)
-    promise = new Deferred();
+    promise = Promise.withResolvers();
     const agrolaitPromise = promise;
     await contains(`.o_search_panel_category_value:eq(2) header`).click();
 
-    // 'agrolait' should not be selected yet, and there should still be 3 records
+    // same as above: 'agrolait' is selected, but the component still lags behind
     expect(`.o_search_panel_category_value .active`).toHaveCount(1);
-    expect(`.o_search_panel_category_value:first .active`).toHaveCount(1);
+    expect(`.o_search_panel_category_value:eq(2) .active`).toHaveCount(1);
     expect(component.domain).toEqual([["bar", "=", true]]);
 
-    // unlock asustek search (should be ignored, so there should still be 3 records)
+    // unlock asustek search (should not re-select 'asustek' in the panel)
     asustekPromise.resolve();
     await animationFrame();
     expect(`.o_search_panel_category_value .active`).toHaveCount(1);
-    expect(`.o_search_panel_category_value:first .active`).toHaveCount(1);
+    expect(`.o_search_panel_category_value:eq(2) .active`).toHaveCount(1);
     expect(component.domain).toEqual(["&", ["bar", "=", true], ["company_id", "child_of", 3]]);
 
     // unlock agrolait search, there should now be 1 record
@@ -1181,9 +1192,9 @@ test("concurrency: single category", async () => {
         `,
     };
 
-    let promise = new Deferred();
+    let promise = Promise.withResolvers();
     onRpc(async ({ method }) => {
-        await promise;
+        await promise.promise;
         expect.step(method);
     });
     const compPromise = mountWithSearch(TestComponent, {
@@ -1200,7 +1211,7 @@ test("concurrency: single category", async () => {
     expect.verifySteps(["get_views", "search_panel_select_range"]);
 
     // Case 2: search domain changed so we wait for the search panel once again
-    promise = new Deferred();
+    promise = Promise.withResolvers();
     await toggleSearchBarMenu();
     await toggleMenuItem("Filter");
     expect.verifySteps([]);
@@ -1210,7 +1221,7 @@ test("concurrency: single category", async () => {
     expect.verifySteps(["search_panel_select_range"]);
 
     // Case 3: search domain is the same and default values do not matter anymore
-    promise = new Deferred();
+    promise = Promise.withResolvers();
     await contains(`.o_search_panel_category_value header:eq(1)`).click();
 
     // The search read is executed right away in this case
@@ -1232,9 +1243,9 @@ test("concurrency: category and filter", async () => {
         `,
     };
 
-    const promise = new Deferred();
+    const promise = Promise.withResolvers();
     onRpc(async ({ method }) => {
-        await promise;
+        await promise.promise;
         expect.step(method);
     });
     const compPromise = mountWithSearch(TestComponent, {
@@ -1269,9 +1280,9 @@ test("concurrency: category and filter with a domain", async () => {
         `,
     };
 
-    const promise = new Deferred();
+    const promise = Promise.withResolvers();
     onRpc(async ({ method }) => {
-        await promise;
+        await promise.promise;
         expect.step(method);
     });
     const compPromise = mountWithSearch(TestComponent, {
@@ -1304,7 +1315,7 @@ test("concurrency: misordered get_filters", async () => {
     };
 
     let promise;
-    onRpc("search_panel_select_multi_range", () => promise);
+    onRpc("search_panel_select_multi_range", () => promise?.promise);
     const component = await mountWithSearch(TestComponent, {
         resModel: "partner",
         searchViewId: false,
@@ -1315,7 +1326,7 @@ test("concurrency: misordered get_filters", async () => {
     expect(component.domain).toEqual([]);
 
     // select 'abc' (delay the reload)
-    promise = new Deferred();
+    promise = Promise.withResolvers();
     const abcDef = promise;
     await contains(`.o_search_panel_category_value header:eq(1)`).click();
 
@@ -1325,7 +1336,7 @@ test("concurrency: misordered get_filters", async () => {
     expect(component.domain).toEqual([["state", "=", "abc"]]);
 
     // select 'ghi' (delay the reload)
-    promise = new Deferred();
+    promise = Promise.withResolvers();
     const ghiDef = promise;
     await contains(`.o_search_panel_category_value header:eq(3)`).click();
 
@@ -1362,22 +1373,25 @@ test("concurrency: delayed get_filter", async () => {
     };
 
     let promise;
-    onRpc("search_panel_select_multi_range", () => promise);
-    const component = await mountWithSearch(TestComponent, {
+    onRpc("search_panel_select_multi_range", () => promise?.promise);
+    await mountWithSearch(TestComponent, {
         resModel: "partner",
         searchViewId: false,
     });
-    expect(component.domain).toEqual([]);
+
+    expect(".o_search_panel_filter_value").toHaveCount(2);
 
     // trigger a reload and delay the get_filter
-    promise = new Deferred();
+    promise = Promise.withResolvers();
     await toggleSearchBarMenu();
     await toggleMenuItem("Filter");
-    expect(component.domain).toEqual([]);
+
+    expect(".o_search_panel_filter_value").toHaveCount(2);
 
     promise.resolve();
     await animationFrame();
-    expect(component.domain).toEqual([["id", "=", 1]]);
+
+    expect(".o_search_panel_filter_value").toHaveCount(1);
 });
 
 test("use filter (on many2one) to refine search", async () => {
@@ -2187,7 +2201,6 @@ test("scroll kanban view with searchpanel and kept scroll position", async () =>
     }
 
     class WebClientContainer extends Component {
-        static props = ["*"];
         static components = { WebClient };
         static template = xml`
             <div class="o_web_client" style="max-height: 300px"><WebClient/></div>
@@ -2215,7 +2228,6 @@ test("scroll position is kept when switching between controllers", async () => {
     }
 
     class WebClientContainer extends Component {
-        static props = ["*"];
         static components = { WebClient };
         static template = xml`
             <div class="o_web_client" style="max-height: 300px"><WebClient/></div>
@@ -2238,7 +2250,7 @@ test("scroll position is kept when switching between controllers", async () => {
     await scroll(`.o_search_panel`, { y: 25 });
     await getService("action").switchView("kanban");
     expect(`.o_kanban_view .o_content`).toHaveCount(1);
-    expect(queryFirst(`.o_search_panel`).scrollTop).toBe(25);
+    expect(queryFirst(`.o_search_panel`).scrollTop).toBeCloseTo(25);
 });
 
 test("search panel is not instantiated in dialogs", async () => {

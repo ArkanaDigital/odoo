@@ -12,25 +12,14 @@ from odoo.addons.portal.controllers.portal import pager as portal_pager
 
 
 class CustomerPortal(payment_portal.PaymentPortal):
-    def _prepare_home_portal_values(self, counters):
-        values = super()._prepare_home_portal_values(counters)
+
+    def _prepare_portal_counter_values(self, counter):
         partner = self.env.user.partner_id
-
-        SaleOrder = self.env["sale.order"]
-        if "quotation_count" in counters:
-            values["quotation_count"] = (
-                SaleOrder.search_count(self._prepare_quotations_domain(partner))
-                if SaleOrder.has_access("read")
-                else 0
-            )
-        if "order_count" in counters:
-            values["order_count"] = (
-                SaleOrder.search_count(self._prepare_orders_domain(partner), limit=1)
-                if SaleOrder.has_access("read")
-                else 0
-            )
-
-        return values
+        if counter == 'quotation_count':
+            return 'sale.order', self._prepare_quotations_domain(partner), 'read'
+        if counter == 'order_count':
+            return 'sale.order', self._prepare_orders_domain(partner), 'read'
+        return super()._prepare_portal_counter_values(counter)
 
     def _prepare_quotations_domain(self, partner):
         return [
@@ -176,9 +165,14 @@ class CustomerPortal(payment_portal.PaymentPortal):
 
         # If the route is fetched from the link previewer avoid triggering that quotation is viewed.
         is_link_preview = request.httprequest.headers.get("Odoo-Link-Preview")
-        if self.env.user.share and access_token and is_link_preview != "True":
-            # If a public/portal user accesses the order with the access token
-            # Log a note on the chatter.
+        if (
+            self.env.user.share
+            and access_token
+            and is_link_preview != "True"
+            and order_sudo.state in ["draft", "sent"]
+        ):
+            # If a public/portal user accesses the order which is in draft or sent state with the
+            # access token. Log a note on the chatter.
             today = fields.Date.today().isoformat()
             session_obj_date = request.session.get("view_quote_%s" % order_sudo.id)
             if session_obj_date != today:
@@ -266,8 +260,7 @@ class CustomerPortal(payment_portal.PaymentPortal):
         :param sale.order order_sudo: The sales order being paid.
         :param bool is_down_payment: Whether the current payment is a down payment.
         :param float payment_amount: The amount suggested in the payment link.
-        :param dict kwargs: Locally unused data passed to `_get_compatible_providers` and
-                            `_get_available_tokens`.
+        :param dict kwargs: Forwarded to underlying methods
         :return: The payment-specific values.
         :rtype: dict
         """
@@ -286,65 +279,30 @@ class CustomerPortal(payment_portal.PaymentPortal):
         else:
             amount = order_sudo.amount_total
 
-        availability_report = {}
-        # Select all the payment methods and tokens that match the payment context.
-        providers_sudo = (
-            self
-            .env["payment.provider"]
-            .sudo()
-            ._get_compatible_providers(
-                company.id,
-                partner_sudo.id,
-                amount,
-                currency_id=currency.id,
-                sale_order_id=order_sudo.id,
-                report=availability_report,
-                **kwargs,
-            )
-        )  # In sudo mode to read the fields of providers and partner (if logged out).
-        payment_methods_sudo = (
-            self
-            .env["payment.method"]
-            .sudo()
-            ._get_compatible_payment_methods(
-                providers_sudo.ids,
-                partner_sudo.id,
-                currency_id=currency.id,
-                sale_order_id=order_sudo.id,
-                report=availability_report,
-                **kwargs,
-            )
-        )  # In sudo mode to read the fields of providers.
-        tokens_sudo = (
-            self
-            .env["payment.token"]
-            .sudo()
-            ._get_available_tokens(providers_sudo.ids, partner_sudo.id, **kwargs)
-        )  # In sudo mode to read the partner's tokens (if logged out) and provider fields.
-
-        # Make sure that the partner's company matches the invoice's company.
+        # Prepare the portal page values
         company_mismatch = not payment_portal.PaymentPortal._can_partner_pay_in_company(
             partner_sudo, company
         )
-
         portal_page_values = {
             "company_mismatch": company_mismatch,
             "expected_company": company,
             "payment_amount": payment_amount,
         }
-        payment_form_values = {
-            "show_tokenize_input_mapping": PaymentPortal._compute_show_tokenize_input_mapping(
-                providers_sudo, sale_order_id=order_sudo.id
-            )
-        }
+
+        # Prepare the payment form values
+        payment_form_values = self._prepare_payment_form_values(
+            company.id,
+            partner_sudo.id,
+            amount,
+            currency_id=currency.id,
+            sale_order_id=order_sudo.id,
+            **kwargs,
+        )
+
         payment_context = {
             "amount": amount,
             "currency": currency,
             "partner_id": partner_sudo.id,
-            "providers_sudo": providers_sudo,
-            "payment_methods_sudo": payment_methods_sudo,
-            "tokens_sudo": tokens_sudo,
-            "availability_report": availability_report,
             "transaction_route": order_sudo.get_portal_url(suffix="/transaction"),
             "landing_route": order_sudo.get_portal_url(),
             "access_token": order_sudo._portal_ensure_token(),
@@ -386,7 +344,7 @@ class CustomerPortal(payment_portal.PaymentPortal):
             return {"error": self.env._("Invalid signature data.")}
 
         if not order_sudo._has_to_be_paid():
-            order_sudo._validate_order()
+            order_sudo.with_context(sale_include_signature=True)._validate_order()
 
         pdf = (
             self

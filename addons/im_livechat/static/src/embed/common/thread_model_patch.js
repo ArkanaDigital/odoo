@@ -71,14 +71,14 @@ patch(Thread.prototype, {
         if (this.channel?.channel_type !== "livechat") {
             return super.computeComposerDisabled(...arguments);
         }
-        if (this.channel?.livechat_agent_history_ids.length && !this.livechat_end_dt) {
+        if (this.channel?.livechat_agent_history_ids.length && !this.channel.livechat_end_dt) {
             return false;
         }
         const step = this.channel?.chatbot?.currentStep;
         return (
             this.channel?.chatbot?.isProcessingAnswer ||
             (step &&
-                !step.operatorFound &&
+                !step.operatorFoundEver &&
                 (step.completed || !step.expectAnswer || step.answer_ids.length > 0))
         );
     },
@@ -88,5 +88,15 @@ patch(Thread.prototype, {
             this.composer.autofocus++;
         }
         this._prevComposerDisabled = this.composerDisabled;
+    },
+    get shouldTranslateNewMessages() {
+        if (
+            this.channel?.channel_type === "livechat" &&
+            this.channel.self_member_id?.livechat_member_type === "visitor" &&
+            this.store.hasMessageTranslationFeature
+        ) {
+            return this.autoTranslateEnabled === undefined ? true : this.autoTranslateEnabled;
+        }
+        return super.shouldTranslateNewMessages;
     },
 });

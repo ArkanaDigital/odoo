@@ -1,22 +1,23 @@
-import { useExternalListener, useRef } from "@web/owl2/utils";
 import {
     activateCropper,
+    cropperDataFieldsWithAspectRatio,
     loadImage,
     loadImageInfo,
-    cropperDataFieldsWithAspectRatio,
 } from "@html_editor/utils/image_processing";
-import { _t } from "@web/core/l10n/translation";
 import {
     Component,
+    markup,
     onMounted,
     onWillDestroy,
-    markup,
+    signal,
     status,
+    useListener,
 } from "@odoo/owl";
-import { useService } from "@web/core/utils/hooks";
-import { scrollTo, closestScrollableY } from "@web/core/utils/scrolling";
-import { useActiveElement } from "@web/core/ui/ui_service";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
+import { _t } from "@web/core/l10n/translation";
+import { useActiveElement } from "@web/core/ui/ui_plugin";
+import { useService } from "@web/core/utils/hooks";
+import { closestScrollableY, scrollTo } from "@web/core/utils/scrolling";
 
 export const cropperAspectRatios = {
     "0/0": { label: _t("Flexible"), value: 0 },
@@ -37,23 +38,24 @@ export class ImageCrop extends Component {
         onSave: { type: Function, optional: true },
     };
 
+    elRef = signal.ref();
+    imageRef = signal.ref();
+    discardButtonRef = signal.ref();
+    cropperWrapperRef = signal.ref();
+
     setup() {
         this.aspectRatios = cropperAspectRatios;
         this.notification = useService("notification");
         this.media = this.props.media;
         this.document = this.props.document;
 
-        this.elRef = useRef("el");
-        this.cropperWrapper = useRef("cropperWrapper");
-        this.imageRef = useRef("imageRef");
-        this.discardButtonRef = useRef("discardButton");
         this.isCropperActive = false;
-        useActiveElement("cropperWrapper");
+        useActiveElement(this.cropperWrapperRef);
 
         // We use capture so that the handler is called before other editor handlers
         // like save, such that we can restore the src before a save.
         // We need to add event listeners to the owner document of the widget.
-        useExternalListener(this.document, "mousedown", this.onDocumentMousedown, {
+        useListener(this.document, "mousedown", this.onDocumentMousedown.bind(this), {
             capture: true,
         });
 
@@ -61,7 +63,7 @@ export class ImageCrop extends Component {
         useHotkey("Backspace", () => this.closeCropper());
         useHotkey("Escape", () => this.closeCropper());
 
-        useExternalListener(
+        useListener(
             this.document,
             "selectionchange",
             () => {
@@ -157,10 +159,10 @@ export class ImageCrop extends Component {
         await loadImage(this.originalSrc, this.media);
         if (status(this) !== "mounted") {
             // Abort if the component has been destroyed in the meantime
-            // since `this.imageRef.el` is `null` when it is not mounted.
+            // since `this.imageRef()` is `null` when it is not mounted.
             return;
         }
-        const cropperImage = this.imageRef.el;
+        const cropperImage = this.imageRef();
         [cropperImage.style.width, cropperImage.style.height] = [
             this.media.width + "px",
             this.media.height + "px",
@@ -190,8 +192,8 @@ export class ImageCrop extends Component {
             offset.top += frameRect.top;
         }
 
-        this.cropperWrapper.el.style.left = `${offset.left}px`;
-        this.cropperWrapper.el.style.top = `${offset.top}px`;
+        this.cropperWrapperRef().style.left = `${offset.left}px`;
+        this.cropperWrapperRef().style.top = `${offset.top}px`;
 
         await loadImage(this.originalSrc, cropperImage);
         if (status(this) !== "mounted") {
@@ -299,7 +301,7 @@ export class ImageCrop extends Component {
     onDocumentMousedown(ev) {
         if (
             this.props.document.body.contains(ev.target) &&
-            (this.elRef.el === ev.target || !this.elRef.el.contains(ev.target))
+            (this.elRef() === ev.target || !this.elRef().contains(ev.target))
         ) {
             return this.closeCropper();
         }
@@ -309,7 +311,7 @@ export class ImageCrop extends Component {
         if (!this.isCropperActive) {
             return;
         }
-        if (target === this.discardButtonRef.el) {
+        if (target === this.discardButtonRef()) {
             return this.closeCropper();
         }
         return this.save();

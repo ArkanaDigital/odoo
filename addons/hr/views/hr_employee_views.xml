@@ -9,11 +9,11 @@
                     <field name="name" string="Employee"
                         filter_domain="['|', ('work_email', 'ilike', self), ('name', 'ilike', self)]"/>
                     <searchpanel view_types="kanban,list,graph,pivot,hierarchy">
-                        <field name="company_id" groups="base.group_multi_company" icon="fa-building" enable_counters="1"/>
-                        <field name="department_id" icon="fa-users" enable_counters="1"/>
+                        <field name="company_id" groups="base.group_multi_company" icon="business" enable_counters="1"/>
+                        <field name="department_id" icon="group" icon_class="oi-filled" enable_counters="1"/>
                     </searchpanel>
                     <field name="parent_id" string="Manager" domain="[('company_id', 'in', allowed_company_ids)]"/>
-                    <field name="contract_date_start" groups="hr.group_hr_manager"/>
+                    <field name="contract_date_start"/>
                     <field name="job_id"/>
                     <field name="category_ids" groups="hr.group_hr_user"/>
                     <separator/>
@@ -33,8 +33,7 @@
                             domain="[
                                 ('contract_date_start', '!=', False),
                                 ('contract_date_end', '=', False)
-                            ]"
-                            groups="hr.group_hr_manager"/>
+                            ]"/>
                     <filter string="Fixed-term Contract" name="fixed_term_contract"
                             domain="[
                                 ('contract_date_start', '!=', False),
@@ -59,11 +58,10 @@
                                         '&amp;',
                                             ('contract_date_end', '!=', False),
                                             ('contract_date_end', '&lt;', 'today')
-                             ]"
-                            groups="hr.group_hr_manager"/>
+                             ]"/>
                     <separator />
-                    <filter string="Contract Start" name="contract_date_start" date="contract_date_start" groups="hr.group_hr_manager"/>
-                    <filter string="Contract End" name="contract_date_end" date="contract_date_end" groups="hr.group_hr_manager"/>
+                    <filter string="Contract Start" name="contract_date_start" date="contract_date_start"/>
+                    <filter string="Contract End" name="contract_date_end" date="contract_date_end"/>
                     <separator />
                     <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
                     <group>
@@ -75,7 +73,7 @@
                         <separator name="main_groupby_separator"/>
                         <filter name="_search_today_location" string="Work location" domain="[]" context="{'group_by':'today_location_name'}"/>
                         <filter name="group_birthday" domain="[]" context="{'group_by': 'birthday_month'}" invisible="1"/>
-                        <filter name="group_start" string="Contract Start" domain="[]" context="{'group_by': 'contract_date_start'}" groups="hr.group_hr_manager"/>
+                        <filter name="group_start" string="Contract Start" domain="[]" context="{'group_by': 'contract_date_start'}"/>
                         <filter name="group_departure_date" string="Departure Date" domain="[]" context="{'group_by': 'departure_date'}" groups="hr.group_hr_manager"/>
                         <separator name="secondary_groupby_separator"/>
                         <separator name="managers_groupby_separator"/>
@@ -110,22 +108,22 @@
             <field name="arch" type="xml">
                 <form string="Employee" js_class="hr_employee_form" duplicate="false">
                     <header groups="hr.group_hr_user">
-                        <button string="Create User" name="action_create_user" type="object"
-                                class="btn btn-primary" invisible="user_id" groups="base.group_erp_manager"
-                                context="{'default_create_employee': True}"/>
-                        <button name="%(plan_wizard_action)d" string="Launch Plan" type="action"
+                        <button string="Invite" name="action_send_invitation" type="object"
+                                class="btn btn-primary" invisible="user_id" groups="base.group_erp_manager"/>
+                        <button name="%(plan_wizard_action)d" string="Launch Plan" type="action" class="o_button_plan_wizard_action"
                             groups="hr.group_hr_user" invisible="not active or not id" context="{'sort_by_responsible': True}"/>
-                        <button name="action_cancel_departure" string="Cancel End of Collaboration" type="object"
-                            groups="hr.group_hr_user" invisible="not id or not departure_id or departure_apply_date"/>
-                        <field name="version_id" widget="versions_timeline" invisible="not id" options="{'clickable': True}" readonly="False"/>
+                        <field name="user_state" widget="employee_user_status"/>
+                        <field name="version_id" widget="versions_timeline" context="{'version_revision': version_revision}" invisible="not id" options="{'clickable': True}" readonly="False"/>
+                        <field name="version_revision" invisible="1"/>
                     </header>
                     <sheet>
                         <div name="button_box" class="oe_button_box">
                             <button name="action_open_versions"
                                 class="oe_stat_button"
-                                icon="fa-address-book"
+                                icon="contact_page" icon_class="oi-filled"
                                 type="object"
-                                groups="hr.group_hr_user">
+                                groups="hr.group_hr_user"
+                                invisible="not id">
                                 <div class="o_stat_info">
                                     History
                                     <span class="o_stat_value">
@@ -137,43 +135,43 @@
                         <div class="d-flex flex-column flex-md-row align-items-center gap-3" name="employee_photo_and_info">
                             <div class="o_employee_avatar">
                                 <field name="hr_icon_display" invisible="not show_hr_icon_display or not id" widget="hr_presence_status"/>
-                                <field name="image_1920" widget='image' options='{"size": [128,158], "zoom": true, "preview_image":"avatar_128"}'/>
+                                <field name="image_1920" widget="image" options="{'size': [128,158], 'zoom': true, 'preview_image':'avatar_128', 'img_class': 'border rounded h-100 object-fit-contain'}"/>
                                 <field name="show_hr_icon_display" invisible="1" />
                             </div>
                             <group class="d-flex flex-column gap-md-0 w-100">
                                 <label for="name" class="d-md-none"/>
-                                <h1>
+                                <h1 class="o_employee_form_header_info d-flex flex-row align-items-center gap-2">
                                     <field name="name" placeholder="Employee's Name (e.g. John Doe, ...)" required="True"/>
+                                    <widget name="hr_employee_chat" options="{'show_label': True}" invisible="not user_id"/>
                                 </h1>
                                 <label for="work_email" class="d-md-none"/>
                                 <div class="d-flex align-items-baseline w-md-50 gap-2">
-                                    <i class="d-none d-md-inline-flex fa fa-envelope" title="Work Email"/>
+                                    <i class="oi oi-filled d-none d-md-inline-flex" data-icon="mail" title="Work Email"/>
                                     <field name="work_email" widget="email" placeholder="e.g. johndoe@example.com" string="Work Email"/>
                                 </div>
                                 <label for="work_phone" class="d-md-none"/>
                                 <div class="d-flex align-items-baseline w-md-50 gap-2">
-                                    <i class="d-none d-md-inline-flex fa fa-phone" title="Work Phone"/>
+                                    <i class="oi oi-filled d-none d-md-inline-flex" data-icon="phone" title="Work Phone"/>
                                     <field name="work_phone_sanitized" invisible="1"/>
                                     <field name="work_phone_formatted" invisible="1"/>
                                     <field name="work_phone" widget="phone" placeholder="Work Phone" string="Work Phone"/>
                                 </div>
                                 <label for="mobile_phone" class="d-md-none"/>
                                 <div class="d-flex align-items-baseline w-md-50 gap-2">
-                                    <i class="d-none d-md-inline-flex fa fa-mobile" title="Work Mobile"/>
+                                    <i class="oi d-none d-md-inline-flex" data-icon="smartphone" title="Work Mobile"/>
                                     <field name="mobile_phone_sanitized" invisible="1"/>
                                     <field name="mobile_phone_formatted" invisible="1"/>
                                     <field name="mobile_phone" widget="phone" placeholder="Work Mobile" string="Work Mobile"/>
                                 </div>
                                 <label for="category_ids" class="d-md-none"/>
                                 <div class="d-flex align-items-baseline w-md-50 gap-2">
-                                    <i class="d-none d-md-inline-flex fa fa-tags" title="Tags"/>
+                                    <i class="oi d-none d-md-inline-flex" data-icon="sell" title="Tags"/>
                                     <field name="category_ids" widget="many2many_tags"
                                         options="{'color_field': 'color', 'no_create_edit': True}"
                                         placeholder="e.g. Founder, Motorized, Building B, ..." groups="hr.group_hr_user"/>
                                 </div>
                             </group>
                         </div>
-                        <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
                         <field name="employee_properties" columns="2"/>
                         <notebook>
                             <page name="work_information" string="Work">
@@ -194,15 +192,6 @@
                                                 context="{'default_address_id': address_id}"
                                                 placeholder="e.g. Building 2, Remote, etc."/>
                                         </group>
-                                        <group string="Usual Work Location">
-                                            <field name="monday_location_id" placeholder="Unspecified" force_save="1"/>
-                                            <field name="tuesday_location_id" placeholder="Unspecified" force_save="1"/>
-                                            <field name="wednesday_location_id" placeholder="Unspecified" force_save="1"/>
-                                            <field name="thursday_location_id" placeholder="Unspecified" force_save="1"/>
-                                            <field name="friday_location_id" placeholder="Unspecified" force_save="1"/>
-                                            <field name="saturday_location_id" placeholder="Unspecified" force_save="1"/>
-                                            <field name="sunday_location_id" placeholder="Unspecified" force_save="1"/>
-                                        </group>
                                         <group string="Note" name="note" groups="hr.group_hr_user">
                                             <field name="additional_note" placeholder="Provide additional information about this version..." colspan="2" nolabel="1"/>
                                         </group>
@@ -215,7 +204,7 @@
                                                 role="button"
                                                 class="float-end me-2 cursor-pointer"
                                                 context="{'hierarchy_res_id': id}">
-                                                <i class="fa fa-share-alt fa-rotate-90 ms-1 mt-1" role="img" aria-label="Full Chart"/>
+                                                <i class="oi oi-filled oi-rotate-90 ms-1 mt-1" data-icon="share" role="img" aria-label="Full Chart"/>
                                                 Full Chart
                                             </a>
                                         </div>
@@ -248,8 +237,7 @@
                                                 <field name="bank_account_ids"
                                                         widget="many2many_tags_salary_bank"
                                                         context="{'default_partner_id': work_contact_id}"
-                                                        options="{'color_field': 'color', 'no_quick_create': True, 'on_tag_click': 'open_form'}"
-                                                        readonly="not id"/>
+                                                        options="{'color_field': 'color', 'no_quick_create': True, 'on_tag_click': 'open_form'}"/>
                                             <div class="pt-0 ms-2">
                                                 <button name="action_open_allocation_wizard"
                                                         type="object"
@@ -263,8 +251,7 @@
                                             <field name="bank_account_ids"
                                                 widget="many2many_tags_salary_bank"
                                                 context="{'default_partner_id': work_contact_id}"
-                                                options="{'color_field': 'color', 'no_quick_create': True, 'on_tag_click': 'open_form'}"
-                                                readonly="not id"/>
+                                                options="{'color_field': 'color', 'no_quick_create': True, 'on_tag_click': 'open_form'}"/>
                                             <div class="d-flex align-items-start" invisible="not bank_account_ids">
                                                 <span class="d-flex w-50">
                                                     <span invisible="is_trusted_bank_account" class="text-muted">Untrusted</span>
@@ -273,14 +260,14 @@
                                                 <button
                                                     title="Trust Bank Account"
                                                     class="pt-0" 
-                                                    icon="fa-toggle-off fa-lg"  
+                                                    icon="toggle_off" icon_class="oi-lg"  
                                                     type="object" 
                                                     name="action_toggle_primary_bank_account_trust" 
                                                     invisible="is_trusted_bank_account"/>
                                                 <button 
                                                     title="Untrust Bank Account"
                                                     class="button-on pt-0" 
-                                                    icon="fa-toggle-on fa-lg"   
+                                                    icon="toggle_on" icon_class="oi-lg"   
                                                     type="object" 
                                                     name="action_toggle_primary_bank_account_trust" 
                                                     invisible="not is_trusted_bank_account"/>
@@ -333,7 +320,7 @@
                                     </group>
                                     <group string="Location" name="hr_location_group">
                                         <label for="private_street" string="Private Address"/>
-                                        <div class="o_address_format">
+                                        <div class="o_address_format o_hr_address">
                                             <field name="private_street" placeholder="Street..." class="o_address_street"/>
                                             <field name="private_street2" placeholder="Street 2..." class="o_address_street"/>
                                             <field name="private_city" placeholder="City" class="o_address_city"/>
@@ -379,8 +366,7 @@
                                                 nolabel="1"/>
                                             </div>
                                         <field name="employee_type_id" string="Employee Type" placeholder="Select employee type"
-                                                domain="[('country_id', 'in', [company_country_id, False]), '|', ('company_id', 'in', [company_id, False]), ('company_id', '=', parent_company_id)]"
-                                                required="contract_date_start"/>
+                                                domain="[('country_id', 'in', [company_country_id, False]), '|', ('company_id', 'in', [company_id, False]), ('company_id', '=', parent_company_id)]"/>
                                         <label for="contract_date_start" string="Contract"/>
                                         <div class="o_row" name="contract_dates">
                                             <field name="contract_date_start" string="Start Date" placeholder="Not Employed" class="o_hr_narrow_field me-3"/>
@@ -427,7 +413,7 @@
                                         <field name="departure_apply_date" readonly="1" class="oe_inline"/>
                                         <a name="action_cancel_departure" type="object" class="oe_inline"
                                            confirm="This action will delete the departure entirely. Are you sure you want to proceed?">
-                                            <i class="oi oi-arrow-right ms-1"/>
+                                            <i class="oi ms-1" data-icon="east"/>
                                             Cancel Departure
                                         </a>
                                     </span>
@@ -436,7 +422,14 @@
                                     <group readonly="1">
                                         <field name="departure_reason_id" readonly="1"
                                                options="{'no_edit': True, 'no_create': True, 'no_open': True}"/>
-                                        <field name="dismissal_date" readonly="1"/>
+                                        <label for="dismissal_date"/>
+                                        <div class="o_row">
+                                            <field name="dismissal_date" readonly="1"/>
+                                            <button name="action_cancel_departure" string="Cancel End of Collaboration"
+                                                    type="object" class="btn btn-link p-0 ms-2 text-decoration-none"
+                                                    groups="hr.group_hr_user"
+                                                    invisible="not id or not departure_id or departure_apply_date"/>
+                                        </div>
                                     </group>
                                     <group>
                                         <field name="departure_description" string="Reason"
@@ -478,11 +471,8 @@
                                                 widget="many2one_avatar_user"
                                                 groups="!base.group_erp_manager"
                                                 options="{'no_open': True}"/>
-                                            <span invisible="not user_id or is_user_active">
-                                                (User is Inactive)
-                                            </span>
-                                            <field name="tz" required="id" placeholder="User Timezone"/>
                                         </div>
+                                        <field name="tz" required="id" placeholder="User Timezone"/>
                                     </group>
                                     <group name="managers" string="Approvers">
                                         <field name="hr_responsible_id" widget="many2one_avatar_user"/>
@@ -651,7 +641,7 @@
                     <field name="work_phone_formatted"/>
                     <templates>
                         <t t-name="card" class="flex-row">
-                            <aside class="o_kanban_aside_full">
+                            <aside class="o_card_aside_full">
                                 <t t-if="record.image_1024.raw_value">
                                     <field name="image_1024" widget="background_image" options="{'zoom': true, 'zoom_delay': 1000, 'preview_image':'image_128'}" class="d-block position-relative"/>
                                 </t>
@@ -675,25 +665,25 @@
                                     <field class="fw-bold fs-5" name="name" placeholder="Employee's Name"/>
                                 </div>
                                 <div t-if="record.job_title.raw_value" class="text-truncate">
-                                    <i class="fa fa-fw me-2 fa-suitcase text-primary" title="Job Position"/>
+                                    <i class="oi oi-fw oi-filled me-2 text-primary" data-icon="work" title="Job Position"/>
                                     <field name="job_title"/>
                                 </div>
                                 <div t-if="record.work_email.raw_value" class="text-truncate">
-                                    <i class="fa fa-fw me-2 fa-envelope text-primary" title="Email"/>
+                                    <i class="oi oi-fw oi-filled me-2 text-primary" data-icon="mail" title="Email"/>
                                     <field name="work_email" />
                                 </div>
-                                <div t-if="record.work_phone.raw_value">
-                                    <i class="fa fa-fw me-2 fa-phone text-primary" title="Phone"/>
+                                <div t-if="record.work_phone.raw_value" class="d-flex align-items-baseline">
+                                    <i class="oi oi-fw oi-filled me-2 text-primary" data-icon="phone" title="Phone"/>
                                     <field name="work_phone" widget="phone"/>
                                 </div>
-                                <div t-if="record.first_contract_date.raw_value" groups="hr.group_hr_manager" t-att-class="{'text-danger': record.contract_date_end.raw_value &lt; luxon.DateTime.now().toISO()}">
-                                    <i class="fa fa-fw me-2 fa-briefcase text-primary" title="Contract"/>
+                                <div t-if="record.first_contract_date.raw_value" groups="hr.group_hr_user" t-att-class="{'text-danger': record.contract_date_end.raw_value &lt; luxon.DateTime.now().toISO()}">
+                                    <i class="oi oi-fw oi-filled me-2 text-primary" data-icon="contract" title="Contract"/>
                                     <field name="first_contract_date"/>
                                     <span t-if="record.contract_date_end.raw_value"> - </span>
                                     <field t-if="record.contract_date_end.raw_value" name="contract_date_end"/>
                                 </div>
-                                <div invisible="not birthday" groups="hr.group_hr_user">
-                                    <i class="fa fa-fw me-2 fa-birthday-cake text-primary" title="Birthday"/>
+                                <div invisible="not birthday or not birthday_public_display" groups="hr.group_hr_user">
+                                    <i class="oi oi-fw me-2 text-primary" data-icon="cake" title="Birthday"/>
                                     <field name="birthday"/>
                                 </div>
                                 <field name="employee_properties" widget="properties"/>
@@ -723,17 +713,17 @@
                     <field name="department_id" />
                     <templates>
                         <t t-name="hierarchy-box">
-                            <div t-attf-class="o_hierarchy_node_header d-flex justify-content-center pb-4 o_hierarchy_node_color_{{ record.department_color.raw_value }}"
+                            <div t-attf-class="o_hierarchy_node_header d-flex justify-content-center m-2 mb-0 rounded-3 pb-4 o_hierarchy_node_color_{{ record.department_color.raw_value }}"
                                 t-att-title="record.department_id.value"
                             >
                                 <field name="image_1024" preview_image="image_128" options="{'zoom': true, 'zoom_delay': 1000}" widget="background_image" />
                             </div>
-                            <div class="d-flex flex-column text-center">
-                                <div class="d-flex">
+                            <div class="d-flex flex-column gap-1 p-2 text-center">
+                                <div class="position-relative d-flex">
                                     <field class="fw-bold w-100" name="name" />
                                     <field name="hr_icon_display" class="flex-shrink-0" widget="hr_presence_status" />
                                 </div>
-                                <field name="job_title"/>
+                                <field name="job_title" class="text-muted"/>
                             </div>
                         </t>
                     </templates>
@@ -752,7 +742,7 @@
                 <button name="action_open_versions" position="before">
                     <button name="action_related_contacts"
                         class="oe_stat_button"
-                        icon="fa-address-card-o"
+                        icon="contact_mail"
                         type="object"
                         help="Related Contacts"
                         groups="base.group_no_one">
@@ -784,15 +774,6 @@
             </field>
         </record>
 
-        <record id="action_hr_employee_load_demo_data" model="ir.actions.server">
-            <field name="name">Load Sample Data</field>
-            <field name="model_id" ref="model_hr_employee"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = model._load_demo_data()
-            </field>
-        </record>
-
         <record id="open_view_employee_list_my" model="ir.actions.act_window">
             <field name="name">Employees</field>
             <field name="explanation">Displays the main directory of employees. Use this action when the user wants to manage staff, view org charts, or look up internal HR profiles.</field>
@@ -804,107 +785,11 @@
             <field name="view_id" eval="False"/>
             <field name="search_view_id" ref="view_employee_filter"/>
             <field name="help" type="html">
-                <div>
-                    <div class="o_nocontent_help">
-                        <div>
-                            <p class="text-center fs-1">
-                                Ready to start your experience?
-                            </p>
-                            <div class="px-2 py-2 row justify-content-center g-2">
-                                <div class="col-12 col-md-3">
-                                    <a class="btn btn-primary w-100 text-nowrap text-overflow-ellipsis" type="action" name="%(action_hr_employee_load_demo_data)d" tabindex="-1">Load sample data.</a>
-                                </div>
-                            </div>
-                            <hr class="my-4"/>
-                        </div>
-                        <div>
-                            <div class="container">
-                                <div class="row text-center">
-                                    <div class="col-12 col-sm-4">
-                                        <p class="fs-2 mb-0">Hiring</p>
-                                    </div>
-                                    <div class="col-12 col-sm-4">
-                                        <p class="fs-2 mb-0">Experience</p>
-                                    </div>
-                                    <div class="col-12 col-sm-4">
-                                        <p class="fs-2 mb-0">Development</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="container mt-4 d-none d-md-block">
-                                <div class="row text-center">
-                                    <div class="col-md-4 d-flex flex-column align-items-center gap-4 mb-4">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/hr_recruitment/static/description/icon.png" width="60"/>
-                                            <small>Hiring</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/sign/static/description/icon.png" width="60"/>
-                                            <small>Sign</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/hr_referral/static/description/icon.png" width="60"/>
-                                            <small>Referral</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4 d-flex flex-wrap justify-content-center gap-4 mb-4">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/ai/static/description/icon.png" width="60"/>
-                                            <small>AI</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/hr_payroll/static/description/icon.png" width="60"/>
-                                            <small>Payroll</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/planning/static/description/icon.png" width="60"/>
-                                            <small>Planning</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/hr_holidays/static/description/icon.png" width="60"/>
-                                            <small>Leaves</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/fleet/static/description/icon.png" width="60"/>
-                                            <small>Fleet</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/lunch/static/description/icon.png" width="60"/>
-                                            <small>Lunch</small>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4 d-flex flex-wrap justify-content-center gap-4 mb-4">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/hr_appraisal/static/description/icon.png" width="60"/>
-                                            <small>Performance</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/hr_skills/static/description/icon.png" width="60"/>
-                                            <small>Talent</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/website_slides/static/description/icon.png" width="60"/>
-                                            <small>eLearning</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/event/static/description/icon.png" width="60"/>
-                                            <small>Trainings</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/documents/static/description/icon.png" width="60"/>
-                                            <small>Documents</small>
-                                        </div>
-                                        <div class="d-flex flex-column align-items-center">
-                                            <img src="/board/static/description/icon.png" width="60"/>
-                                            <small>Dashboard</small>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <p class="o_view_nocontent_smiling_face">
+                    Create an employee
+                </p><p>
+                    Find all the information on employees
+                </p>
             </field>
         </record>
 
@@ -987,28 +872,6 @@
             </field>
         </record>
 
-        <record id="action_hr_employee_create_users_confirmation" model="ir.actions.server">
-            <field name="name">Create User</field>
-            <field name="model_id" ref="model_hr_employee"/>
-            <field name="binding_model_id" ref="model_hr_employee" />
-            <field name="state">code</field>
-            <field name="code">
-                if records:
-                    action = records.action_create_users_confirmation()
-            </field>
-        </record>
-
-        <record id="action_hr_employee_create_users" model="ir.actions.server">
-            <field name="name">Create User</field>
-            <field name="model_id" ref="model_hr_employee"/>
-            <field name="state">code</field>
-            <field name="code">
-employees = env['hr.employee'].browse(env.context.get('selected_ids', []))
-if employees:
-    action = employees.action_create_users()
-            </field>
-        </record>
-
         <record id="action_partner_mass_mail" model="ir.actions.act_window">
             <field name="name">Send Email</field>
             <field name="res_model">mail.compose.message</field>
@@ -1020,5 +883,17 @@ if employees:
             <field name="binding_model_id" ref="hr.model_hr_employee"/>
             <field name="binding_view_types">list,kanban</field>
         </record>
+
+        <record id="action_hr_employee_create_versions" model="ir.actions.server">
+            <field name="name">New Employee Records</field>
+            <field name="model_id" ref="hr.model_hr_employee"/>
+            <field name="binding_model_id" ref="hr.model_hr_employee"/>
+            <field name="binding_view_types">list</field>
+            <field name="state">code</field>
+            <field name="code">
+action = env.ref('hr.action_open_hr_employee_create_version_wizard').read()[0]
+            </field>
+        </record>
+
     </data>
 </odoo>

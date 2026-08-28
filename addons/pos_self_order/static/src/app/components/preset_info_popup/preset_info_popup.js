@@ -1,4 +1,4 @@
-import { Component, EventBus, onWillStart, proxy } from "@odoo/owl";
+import { Component, EventBus, onWillStart, proxy, useProps, signal, t } from "@odoo/owl";
 import { rpc } from "@web/core/network/rpc";
 import { Dialog } from "@web/core/dialog/dialog";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
@@ -89,14 +89,16 @@ const { DateTime } = luxon;
 export class PresetInfoPopup extends Component {
     static template = "pos_self_order.PresetInfoPopup";
     static components = { Dialog, AddressAutoComplete: SelfOrderAddressAutoComplete };
-    static props = {
-        close: Function,
-        getPayload: Function,
-    };
+    props = useProps({
+        close: t.function(),
+        getPayload: t.function(),
+    });
+
+    autofocusRef = signal.ref();
 
     setup() {
         this.selfOrder = useService("self_order");
-        useAutofocus({ mobile: true });
+        useAutofocus({ ref: this.autofocusRef, mobile: true });
         this.dialog = useService("dialog");
 
         const partner = this.selfOrder.currentOrder.partner_id;
@@ -263,7 +265,7 @@ export class PresetInfoPopup extends Component {
         return {
             record: this.addressRecord,
             name: "street",
-            placeholder: "Address",
+            placeholder: _t("Address"),
             addressFieldMap: {
                 street: "street",
                 city: "city",

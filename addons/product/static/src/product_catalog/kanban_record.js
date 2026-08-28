@@ -13,7 +13,7 @@ export class ProductCatalogKanbanRecord extends KanbanRecord {
 
     setup() {
         super.setup();
-        this.debouncedUpdateQuantity = useDebounced(this._onQuantityChange, 500, {
+        this.debouncedUpdateQuantity = useDebounced(this._onQuantityChange.bind(this), 500, {
             execBeforeUnmount: true,
         });
         this._pendingUpdate = Promise.resolve();
@@ -26,7 +26,6 @@ export class ProductCatalogKanbanRecord extends KanbanRecord {
             precision: this.props.record.context.precision,
             productId: this.props.record.resId,
             addProduct: this.addProduct.bind(this),
-            removeProduct: this.removeProduct.bind(this),
             increaseQuantity: this.increaseQuantity.bind(this),
             setQuantity: this.setQuantity.bind(this),
             decreaseQuantity: this.decreaseQuantity.bind(this),
@@ -60,8 +59,12 @@ export class ProductCatalogKanbanRecord extends KanbanRecord {
     //--------------------------------------------------------------------------
 
     async _onQuantityChange() {
-        const price = await this._updateQuantityAndGetPrice();
-        this.productCatalogData.price = parseFloat(price);
+        const result = await this._updateQuantityAndGetPrice();
+        this._updateProductCatalogData(result);
+    }
+
+    _updateProductCatalogData(result) {
+        this.productCatalogData.price = parseFloat(result.price);
     }
 
     _updateQuantityAndGetPrice() {
@@ -76,10 +79,10 @@ export class ProductCatalogKanbanRecord extends KanbanRecord {
 
     _getUpdateQuantityAndGetPriceParams() {
         return {
+            res_model: this.env.orderResModel,
             order_id: this.env.orderId,
             product_id: this.env.productId,
             quantity: this.productCatalogData.quantity,
-            res_model: this.env.orderResModel,
             child_field: this.env.childField,
             uom_id: this.productCatalogData.uomId || false,
         };
@@ -102,8 +105,7 @@ export class ProductCatalogKanbanRecord extends KanbanRecord {
             if (data.productUomFactor !== undefined) {
                 data.productUomFactor = data.productUomFactor * oldUom.factor / newUom.factor;
             }
-            const price = await this._updateQuantityAndGetPrice();
-            data.price = parseFloat(price);
+            await this._onQuantityChange();
         }
     }
 
@@ -120,13 +122,6 @@ export class ProductCatalogKanbanRecord extends KanbanRecord {
      */
     addProduct(qty=1) {
         this.updateQuantity(qty);
-    }
-
-    /**
-     * Remove the product to the order
-     */
-    removeProduct() {
-        this.updateQuantity(0);
     }
 
     /**

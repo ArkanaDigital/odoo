@@ -58,9 +58,7 @@ class StockMoveLine(models.Model):
     package_history_id = fields.Many2one('stock.package.history', string="Package History", index='btree_not_null')
     is_entire_pack = fields.Boolean('Is added through entire package')
     date = fields.Datetime(
-        'Date', default=fields.Datetime.now, required=True,
-        help="Creation date of this move line until updated due to: quantity being increased, 'picked' status has updated, or move line is done.")
-    scheduled_date = fields.Datetime('Scheduled Date', related='move_id.date')
+        'Date', related="move_id.date", store=True)
     owner_id = fields.Many2one(
         'res.partner', 'From Owner',
         check_company=True, index='btree_not_null',
@@ -69,7 +67,7 @@ class StockMoveLine(models.Model):
         'stock.location', 'From', domain="[('usage', '!=', 'view')]", check_company=True, required=True,
         compute="_compute_location_id", store=True, readonly=False, precompute=True, index=True,
     )
-    location_dest_id = fields.Many2one('stock.location', 'To', domain="[('usage', '!=', 'view')]", check_company=True, required=True, compute="_compute_location_id", store=True, index=True, readonly=False, precompute=True)
+    location_dest_id = fields.Many2one('stock.location', 'To', domain="[('usage', '!=', 'view')]", check_company=True, required=True, compute="_compute_location_dest_id", store=True, index=True, readonly=False, precompute=True)
     location_usage = fields.Selection(string="Source Location Type", related='location_id.usage')
     location_dest_usage = fields.Selection(string="Destination Location Type", related='location_dest_id.usage')
     lots_visible = fields.Boolean(compute='_compute_lots_visible')
@@ -133,11 +131,15 @@ class StockMoveLine(models.Model):
             if line.picking_id:
                 line.picking_type_id = line.picking_id.picking_type_id
 
-    @api.depends('move_id', 'move_id.location_id', 'move_id.location_dest_id', 'picking_id')
+    @api.depends('move_id', 'move_id.location_id', 'picking_id')
     def _compute_location_id(self):
         for line in self:
             if not line.location_id or line._origin.picking_id.location_id != line.picking_id.location_id:
                 line.location_id = line.move_id.location_id or line.picking_id.location_id
+
+    @api.depends('move_id', 'move_id.location_dest_id', 'picking_id')
+    def _compute_location_dest_id(self):
+        for line in self:
             if not line.location_dest_id or line._origin.picking_id.location_dest_id != line.picking_id.location_dest_id:
                 line.location_dest_id = line.move_id.location_dest_id or line.picking_id.location_dest_id
 
@@ -188,6 +190,11 @@ class StockMoveLine(models.Model):
     def _onchange_product_id(self):
         if self.product_id:
             self.lots_visible = self.product_id.tracking in ['lot', 'serial']
+
+    @api.onchange('quant_id')
+    def _onchange_quant_id(self):
+        if self.quant_id:
+            self.update(self._copy_quant_info({'quant_id': self.quant_id.id}))
 
     @api.onchange('lot_name', 'lot_id')
     def _onchange_serial_number(self):
@@ -507,22 +514,6 @@ class StockMoveLine(models.Model):
             if move_done:
                 move_done._check_quantity()
 
-        # update the date when it seems like (additional) quantities are "done" and the date hasn't been manually updated
-        if 'date' not in vals and ('uom_id' in vals or 'quantity' in vals or vals.get('picked', False)):
-            updated_ml_ids = set()
-            for ml in self:
-                if ml.state in ['draft', 'cancel', 'done']:
-                    continue
-                if vals.get('picked', False) and not ml.picked:
-                    updated_ml_ids.add(ml.id)
-                    continue
-                if ('quantity' in vals or 'uom_id' in vals) and ml.picked:
-                    new_qty = updates.get('uom_id', ml.uom_id)._compute_quantity(vals.get('quantity', ml.quantity), ml.product_id.uom_id, rounding_method='HALF-UP')
-                    old_qty = ml.uom_id._compute_quantity(ml.quantity, ml.product_id.uom_id, rounding_method='HALF-UP')
-                    if ml.uom_id.compare(old_qty, new_qty) < 0:
-                        updated_ml_ids.add(ml.id)
-            self.env['stock.move.line'].browse(updated_ml_ids).date = fields.Datetime.now()
-
         res = super(StockMoveLine, self).write(vals)
 
         for ml in mls:
@@ -641,10 +632,10 @@ class StockMoveLine(models.Model):
             elif not ml.is_inventory:
                 ml_ids_to_delete.add(ml.id)
 
-        for (product, _company), mls in ml_ids_to_check.items():
+        for (product, company), mls in ml_ids_to_check.items():
             mls = self.env['stock.move.line'].browse(mls)
             lots = self.env['stock.lot'].search([
-                '|', ('company_id', '=', False), ('company_id', '=', ml.company_id.id),
+                '|', ('company_id', '=', False), ('company_id', '=', company.id),
                 ('product_id', '=', product.id),
                 ('name', 'in', mls.mapped('lot_name')),
             ])
@@ -688,25 +679,29 @@ class StockMoveLine(models.Model):
             if package_history_vals:
                 self.env['stock.package.history'].create(package_history_vals)
 
+        moves_to_check_pack = set()
         for ml in mls_todo.with_context(quants_cache=quants_cache):
             # if this move line is force assigned, unreserve elsewhere if needed
             ml._synchronize_quant(-ml.quantity_product_uom, ml.location_id, action="reserved")
             available_qty, in_date = ml._synchronize_quant(-ml.quantity_product_uom, ml.location_id)
             ml._synchronize_quant(ml.quantity_product_uom, ml.location_dest_id, package=ml.result_package_id, in_date=in_date)
             if available_qty < 0:
-                ml.with_context(quants_cache=None)._free_reservation(
+                moves_to_check = ml.with_context(quants_cache=None, bypass_entire_pack=True)._free_reservation(
                     ml.product_id, ml.location_id,
                     abs(available_qty), lot_id=ml.lot_id, package_id=ml.package_id,
-                    owner_id=ml.owner_id, ml_ids_to_ignore=ml_ids_to_ignore)
+                    owner_id=ml.owner_id, ml_ids_to_ignore=ml_ids_to_ignore).ids
+                if moves_to_check:
+                    moves_to_check_pack.update(moves_to_check)
             ml_ids_to_ignore.add(ml.id)
 
         if not self.env.context.get('ignore_dest_packages'):
             mls_todo.result_package_id._apply_dest_to_package()
 
         # Reset the reserved quantity as we just moved it to the destination location.
-        mls_todo.write({
-            'date': fields.Datetime.now(),
-        })
+        other_pickings = self.env['stock.move'].browse(moves_to_check_pack).picking_id
+        affected_pickings = mls_todo.picking_id | other_pickings
+        if affected_pickings:
+            affected_pickings._check_entire_pack()
 
     def _synchronize_quant(self, quantity, location, action="available", in_date=False, **quants_value):
         """ quantity should be express in product's UoM"""
@@ -800,7 +795,7 @@ class StockMoveLine(models.Model):
         ml_ids_to_ignore |= self.ids
 
         if self.move_id._should_bypass_reservation(location_id):
-            return
+            return self.env['stock.move']
 
         # We now have to find the move lines that reserved our now unavailable quantity. We
         # take care to exclude ourselves and the move lines were work had already been done.
@@ -849,7 +844,8 @@ class StockMoveLine(models.Model):
                 'move_orig_ids': [Command.clear()]
             })
         move_line_to_unlink.unlink()
-        move_to_reassign._action_assign()
+        move_to_reassign[::-1]._action_assign()
+        return move_to_reassign
 
     def _get_aggregated_properties(self, move_line=False, move=False):
         move = move or move_line.move_id
@@ -1191,7 +1187,7 @@ class StockMoveLine(models.Model):
                 'location_dest_id': self.location_id.id,
                 'company_id': self.company_id.id or self.env.company.id,
                 'lot_id': self.lot_id.id,
-                'package_id': self.package_id.id,
+                'package_id': self.result_package_id.id,
                 'result_package_id': self.package_id.id,
                 'owner_id': self.owner_id.id,
             })]

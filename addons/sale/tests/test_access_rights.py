@@ -1,5 +1,6 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+from odoo import Command
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import tagged
 from odoo.tools import mute_logger
@@ -10,6 +11,13 @@ from odoo.addons.sale.tests.common import SaleCommon
 
 @tagged("post_install", "-at_install")
 class TestAccessRights(SaleCommon, MailCommon):
+    _test_user_groups = (
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -17,7 +25,7 @@ class TestAccessRights(SaleCommon, MailCommon):
         cls.user_portal = cls._create_new_portal_user()
         cls.user_internal = cls._create_new_internal_user()
 
-        cls.sale_user2 = cls.env["res.users"].create({
+        cls.sale_user2 = cls.env["res.users"].sudo().create({
             "name": "salesman_2",
             "login": "salesman_2",
             "email": "default_user_salesman_2@example.com",
@@ -60,7 +68,7 @@ class TestAccessRights(SaleCommon, MailCommon):
             "Sales manager should be able to delete the SO",
         )
 
-    @mute_logger("odoo.addons.base.models.ir_model", "odoo.addons.base.models.ir_rule")
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_access_sales_person(self):
         """Test Salesperson's access rights."""
         SaleOrder = self.env["sale.order"].with_user(self.sale_user2)
@@ -112,7 +120,7 @@ class TestAccessRights(SaleCommon, MailCommon):
         with self.mock_mail_gateway(mail_unlink_sent=False):
             composer.action_send_and_print()
 
-    @mute_logger("odoo.addons.base.models.ir_model", "odoo.addons.base.models.ir_rule")
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_access_portal_user(self):
         """Test portal user's access rights."""
         SaleOrder = self.env["sale.order"].with_user(self.user_portal)
@@ -135,7 +143,7 @@ class TestAccessRights(SaleCommon, MailCommon):
         with self.assertRaises(AccessError):
             so_as_portal_user.unlink()
 
-    @mute_logger("odoo.addons.base.models.ir_model")
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_access_employee(self):
         """Test classic employee's access rights."""
         SaleOrder = self.env["sale.order"].with_user(self.user_internal)
@@ -153,3 +161,18 @@ class TestAccessRights(SaleCommon, MailCommon):
         # Employee can't delete the SO
         with self.assertRaises(AccessError):
             so_as_internal_user.unlink()
+
+    def test_demo_user_creates_sale_order_with_tracked_product(self):
+        """Verify user with product view access can create sales order with tracked product."""
+        self.product.is_storable = True
+        sale_order = (
+            self
+            .env["sale.order"]
+            .with_user(self.sale_user2)
+            .create({
+                "partner_id": self.partner.id,
+                "order_line": [Command.create({"product_id": self.product.id})],
+            })
+        )
+        sale_order.action_confirm()
+        self.assertTrue(sale_order.state == "sale")

@@ -30,6 +30,7 @@ class PaymentTransaction(models.Model):
         transaction_token = self._dpo_create_token()
         return {
             "api_url": "https://secure.3gdirectpay.com/payv2.php",
+            "http_method": "get",  # `payv2.php` redirects to `payv3.php`, dropping POSTed params.
             "url_params": {"ID": transaction_token},
         }
 
@@ -43,6 +44,7 @@ class PaymentTransaction(models.Model):
         """
         self.ensure_one()
 
+        pm_code = const.PAYMENT_METHODS_MAPPING.get(self.payment_method_id.code)
         return_url = urls.urljoin(self.provider_id.get_base_url(), DPOController._return_url)
         first_name, last_name = payment_utils.split_partner_name(self.partner_name)
         create_date = self.create_date.strftime("%Y/%m/%d %H:%M")
@@ -52,6 +54,7 @@ class PaymentTransaction(models.Model):
             f"<CompanyToken>{self.provider_id.dpo_company_token}</CompanyToken>"
             f"<Request>createToken</Request>"
             f"<Transaction>"
+            f"<DefaultPayment>{pm_code}</DefaultPayment>"
             f"<PaymentAmount>{self.amount}</PaymentAmount>"
             f"<PaymentCurrency>{self.currency_id.name}</PaymentCurrency>"
             f"<CompanyRef>{self.reference}</CompanyRef>"

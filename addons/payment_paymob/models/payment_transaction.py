@@ -60,8 +60,7 @@ class PaymentTransaction(models.Model):
             self._set_error(str(error))
             return {}
 
-        # The provider reference is set to allow fetching the payment status after redirection.
-        self.provider_reference = payment_data.get("id")
+        self.provider_reference = payment_data["intention_order_id"]
         paymob_client_secret = payment_data.get("client_secret")
 
         paymob_url = self.provider_id._paymob_get_api_url()
@@ -88,7 +87,7 @@ class PaymentTransaction(models.Model):
             payment_method_codes.append("card")
 
         # Suffix to all payment methods with the environment.
-        environment = "live" if self.provider_id.state == "enabled" else "test"
+        environment = "live" if self.provider_id.is_live else "test"
         payment_method_codes = [
             f"{code.replace('_', '')}{environment}" for code in payment_method_codes
         ]
@@ -137,13 +136,7 @@ class PaymentTransaction(models.Model):
                 "Received data with unsuccessful payment status for transaction %s.", self.reference
             )
             message = payment_data.get("data.message")
-            self._set_error(
-                self.env._(
-                    "An error occurred during the processing of your payment (%(msg)s). Please try"
-                    " again.",
-                    msg=message,
-                )
-            )
+            self._set_error(self.env._("Reason: %s", message))
 
     def _extract_amount_data(self, payment_data):
         """Override of payment to extract the amount and currency from the payment data."""

@@ -35,9 +35,10 @@ class PaymentTransaction(models.Model):
         string="Provider", comodel_name="payment.provider", readonly=True, required=True, index=True
     )
     provider_code = fields.Selection(string="Provider Code", related="provider_id.code")
+    capture_manually = fields.Boolean(related="provider_id.capture_manually")
     company_id = fields.Many2one(
         related="provider_id.company_id", store=True, index=True
-    )  # Indexed to speed-up ORM searches (from ir_rule or others)
+    )  # Indexed to speed-up ORM searches (from ir_access or others)
     payment_method_id = fields.Many2one(
         string="Payment Method",
         comodel_name="payment.method",
@@ -139,6 +140,7 @@ class PaymentTransaction(models.Model):
         readonly=True,
     )
     refunds_count = fields.Integer(string="Refunds Count", compute="_compute_refunds_count")
+    child_transaction_count = fields.Integer(compute="_compute_child_transaction_count")
 
     # Fields used for user redirection & payment post-processing
     is_post_processed = fields.Boolean(
@@ -198,6 +200,17 @@ class PaymentTransaction(models.Model):
         for record in self:
             record.refunds_count = data.get(record.id, 0)
 
+    @api.depends("child_transaction_ids")
+    def _compute_child_transaction_count(self):
+        rg_data = self.env["payment.transaction"]._read_group(
+            domain=[("source_transaction_id", "in", self.ids)],
+            groupby=["source_transaction_id"],
+            aggregates=["__count"],
+        )
+        data = {source_transaction.id: count for source_transaction, count in rg_data}
+        for record in self:
+            record.child_transaction_count = data.get(record.id, 0)
+
     # === CONSTRAINT METHODS === #
 
     @api.constrains("state")
@@ -233,7 +246,7 @@ class PaymentTransaction(models.Model):
             if not values.get("reference"):
                 values["reference"] = self._compute_reference(provider.code, **values)
 
-            values["is_live"] = provider.state == "enabled"
+            values["is_live"] = provider.is_live
 
             # Duplicate partner values.
             partner = self.env["res.partner"].browse(values["partner_id"])
@@ -341,6 +354,21 @@ class PaymentTransaction(models.Model):
         if self.payment_data_count == 1:
             action.update({"view_mode": "form", "res_id": self.payment_data_ids.id})
         return action
+
+    def action_view_child_transactions(self):
+        """Return a window action to browse the child transactions.
+
+        :return: A window action
+        :rtype: dict
+        """
+        self.ensure_one()
+        return {
+            "name": self.env._("Operations"),
+            "type": "ir.actions.act_window",
+            "res_model": "payment.transaction",
+            "view_mode": "list,form",
+            "domain": [("source_transaction_id", "=", self.id)],
+        }
 
     def action_capture(self):
         """Open the partial capture wizard if it is supported by the related providers, otherwise
@@ -677,7 +705,7 @@ class PaymentTransaction(models.Model):
         :return: None
         """
         self.ensure_one()
-        self._ensure_provider_is_not_disabled()
+        self._ensure_provider_is_active()
         self._log_sent_message()
         try:
             self._send_payment_request()
@@ -711,7 +739,7 @@ class PaymentTransaction(models.Model):
         :rtype: payment.transaction
         """
         self.ensure_one()
-        self._ensure_provider_is_not_disabled()
+        self._ensure_provider_is_active()
 
         capture_tx = self._create_child_transaction(amount_to_capture or self.amount)
         capture_tx._log_sent_message()
@@ -745,7 +773,7 @@ class PaymentTransaction(models.Model):
         :rtype: payment.transaction
         """
         self.ensure_one()
-        self._ensure_provider_is_not_disabled()
+        self._ensure_provider_is_active()
 
         void_tx = self._create_child_transaction(amount_to_void or self.amount)
         void_tx._log_sent_message()
@@ -779,7 +807,7 @@ class PaymentTransaction(models.Model):
         :rtype: payment.transaction
         """
         self.ensure_one()
-        self._ensure_provider_is_not_disabled()
+        self._ensure_provider_is_active()
 
         refund_tx = self._create_child_transaction(amount_to_refund or self.amount, is_refund=True)
         refund_tx._log_sent_message()
@@ -803,20 +831,14 @@ class PaymentTransaction(models.Model):
         """
         return
 
-    def _ensure_provider_is_not_disabled(self):
-        """Ensure that the provider's state is not `disabled` before sending a request to its
-        provider.
+    def _ensure_provider_is_active(self):
+        """Ensure that the provider is active before sending a request.
 
         :return: None
         :raise UserError: If the provider's state is `disabled`.
         """
-        if self.provider_id.state == "disabled":
-            raise UserError(
-                self.env._(
-                    "Making a request to the provider is not possible because the provider is"
-                    " disabled."
-                )
-            )
+        if not self.provider_id.active:
+            raise UserError(self.env._("The provider must not be archived to make a request."))
 
     def _create_child_transaction(self, amount, is_refund=False, **custom_create_values):
         """Create a new transaction with the current transaction as its parent transaction.
@@ -1256,12 +1278,14 @@ class PaymentTransaction(models.Model):
                 ("last_state_change", ">=", retry_limit_date),
             ])
         for tx in txs_to_post_process:
+            tx = tx.with_prefetch()  # Restrict pre-fetching before cache invalidation
             try:
-                tx.with_context(
-                    # Post-processing is idempotent and can be rolled back in case of failure
-                    payment_safe_write=True
-                )._post_process()
-                self.env.cr.commit()
+                if not tx.is_post_processed:  # No other flow post-processed the tx since the search
+                    tx.with_context(
+                        # Post-processing is idempotent and can be rolled back in case of failure
+                        payment_safe_write=True
+                    )._post_process()
+                    self.env.cr.commit()
             except psycopg2.OperationalError:
                 self.env.cr.rollback()  # Rollback and try later.
             except Exception:
@@ -1484,3 +1508,11 @@ class PaymentTransaction(models.Model):
                 ),
             }
         return status_messages.get(self.state)
+
+    def _requires_payment_instructions(self):
+        """Return whether payment instructions should be given to the user.
+
+        :return: True if payment instructions are required
+        :rtype: bool
+        """
+        return False

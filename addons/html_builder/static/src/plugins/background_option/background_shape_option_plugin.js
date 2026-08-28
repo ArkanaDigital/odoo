@@ -27,6 +27,23 @@ import { selectElements } from "@html_editor/utils/dom_traversal";
  * @typedef {((shapeGroups: BackgroundShapeGroups) => BackgroundShapeGroups | void)[]} background_shape_groups_providers
  * @typedef {((editingElement: HTMLElement) => HTMLElement)[]} background_shape_target_providers
  * @typedef {((el: HTMLElement) => boolean)[]} is_element_in_invisible_panel_predicates
+ * @typedef {((el: HTMLElement) => boolean)[]} should_ignore_background_color_for_shapes_predicates
+ */
+
+/**
+ * @typedef { Object } BackgroundShapeOptionShared
+ * @property { BackgroundShapeOptionPlugin['getShapeStyleUrl'] } getShapeStyleUrl
+ * @property { BackgroundShapeOptionPlugin['getShapeData'] } getShapeData
+ * @property { BackgroundShapeOptionPlugin['getBackgroundShapeGroups'] } getBackgroundShapeGroups
+ * @property { BackgroundShapeOptionPlugin['getBackgroundShapes'] } getBackgroundShapes
+ * @property { BackgroundShapeOptionPlugin['getImplicitColors'] } getImplicitColors
+ * @property { BackgroundShapeOptionPlugin['applyShape'] } applyShape
+ * @property { BackgroundShapeOptionPlugin['createShapeContainer'] } createShapeContainer
+ * @property { BackgroundShapeOptionPlugin['getComputedConnectionsColors'] } getComputedConnectionsColors
+ * @property { BackgroundShapeOptionPlugin['handleBgColorUpdated'] } handleBgColorUpdated
+ * @property { BackgroundShapeOptionPlugin['isShapeEligibleForComputation'] } isShapeEligibleForComputation
+ * @property { BackgroundShapeOptionPlugin['getShapeSrc'] } getShapeSrc
+ * @property { BackgroundShapeOptionPlugin['getShapeStylePosition'] } getShapeStylePosition
  */
 
 export class BackgroundShapeOptionPlugin extends Plugin {
@@ -69,6 +86,7 @@ export class BackgroundShapeOptionPlugin extends Plugin {
             }),
         on_snippet_dropped_handlers: ({ snippetEl }) => this.handleBgColorUpdated(snippetEl),
         on_cloned_handlers: ({ cloneEl }) => this.handleBgColorUpdated(cloneEl),
+        on_website_color_updated_handlers: this.syncBackgroundShapeColorsWithTheme.bind(this),
     };
     static shared = [
         "getShapeStyleUrl",
@@ -205,6 +223,32 @@ export class BackgroundShapeOptionPlugin extends Plugin {
         return shapeInfo.subgroup === "connections";
     }
     /**
+     * Update the shape color (when a theme color is selected) whenever the
+     * theme preset color changes.
+     *
+     * @param {String[]} updatedColorVariables - Updated theme color variables.
+     */
+    syncBackgroundShapeColorsWithTheme(updatedColorVariables) {
+        for (const colorVar of updatedColorVariables) {
+            if (!colorVar.startsWith("o-color-")) {
+                continue;
+            }
+            const selector = `[data-oe-shape-data*='"${colorVar}"'] .o_we_shape[style*="background-image"]`;
+            this.refreshBgShapes([...this.document.querySelectorAll(selector)]);
+            this.config.snippetModel.updateContent("snippet_custom", (snippetContent) => {
+                this.refreshBgShapes([...snippetContent.querySelectorAll(selector)]);
+            });
+        }
+    }
+    refreshBgShapes(shapeEls) {
+        for (const shapeEl of shapeEls) {
+            shapeEl.style.setProperty(
+                "background-image",
+                `url("${this.getShapeSrc(this.getShapeData(shapeEl.parentElement))}")`
+            );
+        }
+    }
+    /**
      * Handles everything related to saving state before preview and restoring
      * it after a preview or locking in the changes when not in preview.
      *
@@ -246,19 +290,19 @@ export class BackgroundShapeOptionPlugin extends Plugin {
 
         shapeContainerEl.classList.toggle("o_we_animated", animated === "true");
 
-        // We need to check if the colors are the default ones because since we
-        // do not apply a shape by default anymore, "getDefaultColors" might
-        // return an empty object if its the first time a shape is added.
-        const defaultColors = getDefaultColors(editingElement);
-        const areCustomColors =
-            Boolean(colors) &&
-            !Object.entries(colors).every(
-                ([colorName, colorValue]) =>
-                    colorValue.toLowerCase() === defaultColors[colorName]?.toLowerCase()
-            );
+        let defaultColors;
+        const areDefaultColors = Object.entries(colors || {}).every(([colorName, colorValue]) => {
+            if (colorValue === `o-color-${colorName.slice(1)}`) {
+                return true;
+            }
+            defaultColors ??= getDefaultColors(editingElement);
+            return colorValue.toLowerCase() === defaultColors[colorName]?.toLowerCase();
+        });
 
         const shouldCustomize =
-            areCustomColors || flip.length > 0 || parseFloat(shapeAnimationSpeed) !== 0;
+            (Boolean(colors) && !areDefaultColors) ||
+            flip.length > 0 ||
+            parseFloat(shapeAnimationSpeed) !== 0;
 
         if (shouldCustomize) {
             // Apply custom image, flip, speed
@@ -320,7 +364,12 @@ export class BackgroundShapeOptionPlugin extends Plugin {
      */
     getImplicitColors(editingElement, shapeName, previousColors = {}) {
         const selectedBackgroundUrl = this.getShapeStyleUrl(shapeName);
-        const defaultColors = this.getShapeDefaultColors(selectedBackgroundUrl);
+        const defaultColors = Object.fromEntries(
+            Object.keys(this.getShapeDefaultColors(selectedBackgroundUrl)).map((key) => [
+                key,
+                `o-color-${key.slice(1)}`,
+            ])
+        );
         let colors = Object.assign(
             { ...previousColors },
             this.getComputedConnectionsColors(editingElement, shapeName)
@@ -376,6 +425,8 @@ export class BackgroundShapeOptionPlugin extends Plugin {
             return "";
         }
         const searchParams = Object.entries(colors).map(([colorName, colorValue]) => {
+            // To convert 'o-color-*' colorValue to respective hex code.
+            colorValue = normalizeColor(colorValue, getHtmlStyle(this.document));
             const encodedCol = encodeURIComponent(colorValue);
             return `${colorName}=${encodedCol}`;
         });
@@ -568,7 +619,11 @@ export class BackgroundShapeOptionPlugin extends Plugin {
 
         return {
             [defaultKey]:
-                curBgHexColor !== computedHexColor
+                curBgHexColor !== computedHexColor ||
+                this.checkPredicates(
+                    "should_ignore_background_color_for_shapes_predicates",
+                    editingElement
+                )
                     ? computedHexColor
                     : this.getContrastingColor(computedHexColor),
         };

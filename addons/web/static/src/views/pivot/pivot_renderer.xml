@@ -4,11 +4,11 @@
     <t t-name="web.PivotRenderer">
         <div>
             <t t-call="{{ this.props.buttonTemplate }}"/>
-            <div t-if="this.model.hasData() and this.model.metaData.activeMeasures.length" t-att-class="this.env.isSmall ? 'table-responsive' : ''" class="o_pivot mx-3">
+            <div t-if="this.model.hasData() and this.model.metaData.activeMeasures.length" t-att-class="this.uiService.isSmall ? 'table-responsive' : ''" class="o_pivot mx-3">
                 <table
                     class="table-hover table table-sm table-bordered table-borderless"
                     t-att-class="{ o_enable_linking: !this.model.metaData.disableLinking }"
-                    t-custom-ref="table"
+                    t-ref="this.tableRef"
                 >
                     <thead>
                         <tr t-foreach="this.table.headers" t-as="row" t-key="'header_' + row_index" class="border-top-0">
@@ -129,7 +129,7 @@
             t-on-pointerdown.capture.stop.synthetic=""
             t-on-click.stop.synthetic="(ev) => this.onHeaderClick(ev, cell, isXAxis)"
         >
-            <i t-attf-class="fa fa-{{ cell.isLeaf ? 'plus-square' : 'minus-square-o' }} me-1"/>
+            <i class="oi me-1" t-att-class="{'oi-filled': cell.isLeaf}" t-attf-data-icon="{{ cell.isLeaf ? 'add_box' : 'indeterminate_check_box' }}"/>
             <span t-out="cell.title"/>
         </th>
     </t>
@@ -140,7 +140,7 @@
                 o_pivot_sort_order_desc: cell.order === 'desc',
             }" t-on-click.prevent="() => this.onMeasureClick(cell)" t-on-mouseover="this.onMouseEnter" t-on-mouseout="this.onMouseLeave">
             <t t-out="cell.title"/>
-            <i t-if="cell.order === 'asc' || cell.order ==='desc'" t-attf-class="fa fa-caret-{{ cell.order === 'asc' ? 'up' : 'down' }} ms-1"/>
+            <i t-if="cell.order === 'asc' || cell.order ==='desc'" class="oi ms-1" t-attf-data-icon="{{ cell.order === 'asc' ? 'arrow_drop_up' : 'arrow_drop_down' }}"/>
         </th>
     </t>
 

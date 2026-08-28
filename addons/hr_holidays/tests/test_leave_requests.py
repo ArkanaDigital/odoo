@@ -126,6 +126,8 @@ class TestLeaveRequests(TestHrHolidaysCommon):
         cls.irregular_calendar = cls.env['resource.calendar'].create({
             'name': 'Irregular Calendar With Gaps',
             'company_id': False,
+            'hours_per_day': 6.6,
+            'hours_per_week': 33,
             'attendance_ids': [(5, 0, 0),
                 ## Hours Per Week: 33, Avg hours_per_day = 6.6, 75% = 4.95
                 (0, 0, {'dayofweek': '0', 'hour_from': 8, 'hour_to': 12}),
@@ -1525,6 +1527,7 @@ class TestLeaveRequests(TestHrHolidaysCommon):
             # `date_from/to` in UTC to simulate client values
             'default_date_from': '2024-03-27 23:00:00',
             'default_date_to': '2024-03-28 08:00:00',
+            'default_employee_id': self.employee_emp.id,
         }
         leave_form = Form(self.env['hr.leave'].with_user(self.user_employee).with_context(context))
         leave_form.work_entry_type_id = self.holidays_type_3
@@ -1643,16 +1646,17 @@ class TestLeaveRequests(TestHrHolidaysCommon):
     def test_time_off_date_edit(self):
         user_id = self.employee_emp.user_id
         employee_id = self.employee_emp.id
+        base_date = datetime(2024, 3, 4, 10, 0, 0)
 
         leave = self.env['hr.leave'].with_user(user_id).create({
             'name': 'Test leave',
             'employee_id': employee_id,
             'work_entry_type_id': self.holidays_type_1.id,
-            'date_from': (datetime.today() - relativedelta(days=2)),
-            'date_to': datetime.today()
+            'date_from': (base_date - relativedelta(days=2)),
+            'date_to': base_date
         })
 
-        two_days_after = (datetime.today() + relativedelta(days=2)).date()
+        two_days_after = (base_date + relativedelta(days=2)).date()
         with Form(leave.with_user(user_id)) as leave_form:
             leave_form.request_date_from = two_days_after
             leave_form.request_date_to = two_days_after
@@ -1898,6 +1902,48 @@ class TestLeaveRequests(TestHrHolidaysCommon):
             'request_date_to_period': 'am',
         })
         self.assertEqual(leave_half_day_multi4.duration_display, '2 days')
+
+    @freeze_time('2026-03-16')
+    def test_leave_duration_with_absence_attendances(self):
+        """
+        Ensure that a leave on a calendar mixing working time and absence attendances
+        only counts the part of the day the employee is supposed to work.
+        """
+        partial_incapacity = self.env['hr.work.entry.type'].create({
+            'name': 'Partial Incapacity',
+            'code': 'TESTPARTIALINCAPACITY',
+            'count_as': 'absence',
+        })
+        # The employee works every morning and is medically unavailable every afternoon.
+        calendar = self.env['resource.calendar'].create({
+            'name': 'Half Time Partial Incapacity',
+            'company_id': self.company.id,
+            'attendance_ids': [
+                Command.create({'dayofweek': str(dayofweek), 'hour_from': 8, 'hour_to': 12})
+                for dayofweek in range(5)
+            ] + [
+                Command.create({
+                    'dayofweek': str(dayofweek), 'hour_from': 13, 'hour_to': 17,
+                    'work_entry_type_id': partial_incapacity.id,
+                })
+                for dayofweek in range(5)
+            ],
+        })
+        self.employee_emp.resource_calendar_id = calendar
+        # Only the 4 hours of the mornings are working time, the afternoons are not.
+        self.assertEqual(calendar.hours_per_day, 4, "Only the mornings should be counted as working time.")
+
+        # A whole week off, from Monday to Friday.
+        week_off = self.env['hr.leave'].create({
+            'name': 'Week Off',
+            'employee_id': self.employee_emp_id,
+            'work_entry_type_id': self.holidays_type_half.id,
+            'request_date_from': '2026-03-16',
+            'request_date_to': '2026-03-20',
+        })
+        # The afternoons are already off, so the employee only takes 5 mornings.
+        self.assertEqual(week_off.number_of_days, 2.5, "A week off should only count the mornings.")
+        self.assertEqual(week_off.number_of_hours, 20, "A week off should only count the worked hours.")
 
     def test_unified_time_off_half_day_scenarios_irregular_calendar(self):
         employee = self.employee_emp
@@ -2459,25 +2505,28 @@ class TestLeaveRequests(TestHrHolidaysCommon):
         Customers defined custom ACLs and record rules to support the possibility to assign a portal user to employees
         and still be able to manage their holidays.
         """
-        # Add the required ACLs and record rules to allow portal users to create `calendar.event`.
+        # Add the required accesses to allow portal users to create `calendar.event`.
         # This reflects the customization done by customers for the reason explained above.
-        self.env['ir.model.access'].create([
+        self.env['ir.access'].create([
             # Read access on `mail.activity.type` for portal required for
             # https://github.com/odoo/odoo/blob/cc0060e889603eb2e47fa44a8a22a70d7d784185/addons/calendar/models/calendar_event.py#L734
             {
                 'name': 'Portal can read mail.activity.type',
                 'model_id': self.env.ref('mail.model_mail_activity_type').id,
                 'group_id': self.env.ref('base.group_portal').id,
-                'perm_read': True, 'perm_create': False, 'perm_write': False, 'perm_unlink': False,
+                'operation': 'r',
             },
             # Read access on `mail.activity` for portal required for
             # https://github.com/odoo/odoo/blob/cc0060e889603eb2e47fa44a8a22a70d7d784185/addons/calendar/models/calendar_event.py#L786
             # https://github.com/odoo/odoo/blob/cc0060e889603eb2e47fa44a8a22a70d7d784185/addons/calendar/models/calendar_event.py#L882
+            # Restrict portals to their own activities
+            # so they cannot read the activities of other users
             {
-                'name': 'Portal can read mail.activity',
+                'name': 'Portal own mail activity',
                 'model_id': self.env.ref('mail.model_mail_activity').id,
                 'group_id': self.env.ref('base.group_portal').id,
-                'perm_read': True, 'perm_create': False, 'perm_write': False, 'perm_unlink': False,
+                'operation': 'r',
+                'domain': "['|', ('user_id', '=', user.id), ('create_uid', '=', user.id)]",
             },
             # Read and create acess on `calendar.event` for portal required for
             # https://github.com/odoo/odoo/blob/cc0060e889603eb2e47fa44a8a22a70d7d784185/addons/hr_holidays/models/hr_leave.py#L894-L898
@@ -2485,10 +2534,11 @@ class TestLeaveRequests(TestHrHolidaysCommon):
             # if you give create to portal for their own events,
             # you give write and unlink so they can manage their own events
             {
-                'name': 'Portal all CRUD on calendar.event',
+                'name': 'Portal own calendar events',
                 'model_id': self.env.ref('calendar.model_calendar_event').id,
                 'group_id': self.env.ref('base.group_portal').id,
-                'perm_read': True, 'perm_create': True, 'perm_write': True, 'perm_unlink': True,
+                'operation': 'crud',
+                'domain': "[('partner_ids', 'in', user.partner_id.id)]",
             },
             # Read and create acess on `calendar.event` for portal required for
             # https://github.com/odoo/odoo/blob/cc0060e889603eb2e47fa44a8a22a70d7d784185/addons/calendar/models/calendar_event.py#L760-L768
@@ -2496,37 +2546,12 @@ class TestLeaveRequests(TestHrHolidaysCommon):
             # if you give create to portal for their own events attendees,
             # you give write and unlink so they can manage their own attendees
             {
-                'name': 'Portal all CRUD on calendar.attendee',
-                'model_id': self.env.ref('calendar.model_calendar_attendee').id,
-                'group_id': self.env.ref('base.group_portal').id,
-                'perm_read': True, 'perm_create': True, 'perm_write': True, 'perm_unlink': True,
-            }])
-        self.env['ir.rule'].create([
-            # Restrict portals to their own activities
-            # so they cannot read the activities of other users
-            {
-                'name': 'Portal own mail activity',
-                'model_id': self.env.ref('mail.model_mail_activity').id,
-                'groups': [(4, self.env.ref('base.group_portal').id)],
-                'domain_force': "['|', ('user_id', '=', user.id), ('create_uid', '=', user.id)]",
-            },
-            # Restrict portals to their own events
-            # so they cannot read the events of other users
-            {
-                'name': 'Portal own calendar events',
-                'model_id': self.env.ref('calendar.model_calendar_event').id,
-                'groups': [(4, self.env.ref('base.group_portal').id)],
-                'domain_force': "[('partner_ids', 'in', user.partner_id.id)]",
-            },
-            # Restrict portals to their own attendees
-            # so they cannot read the attendees of other users
-            {
                 'name': 'Portal own calendar attendees',
                 'model_id': self.env.ref('calendar.model_calendar_attendee').id,
-                'groups': [(4, self.env.ref('base.group_portal').id)],
-                'domain_force': "[('partner_id', '=', user.partner_id.id)]",
-            }
-        ])
+                'group_id': self.env.ref('base.group_portal').id,
+                'operation': 'crud',
+                'domain': "[('partner_id', '=', user.partner_id.id)]",
+            }])
 
         # Create a portal user and assign it to the employee
         user_portal = self.env['res.users'].create({
@@ -2560,6 +2585,28 @@ class TestLeaveRequests(TestHrHolidaysCommon):
         leave_req_form.employee_id = self.employee_responsible
 
         self.assertFalse(leave_req_form.can_approve)
+
+    def test_flexible_single_day_leave_on_public_holiday_include_in_duration(self):
+        """
+        Test that a single-day flexible leave on a public holiday counts
+        as 1 day when include_public_holidays_in_duration is True on the leave type.
+        """
+        self.employee_emp.resource_calendar_id = False
+        self.env['resource.calendar.leaves'].create({
+            'date_from': datetime(2022, 3, 9, 0, 0, 0),
+            'date_to': datetime(2022, 3, 9, 23, 59, 59),
+            'company_id': self.employee_emp.company_id.id,
+            'resource_id': False,
+        })
+        self.holidays_type_1.include_public_holidays_in_duration = True
+        leave = self.env['hr.leave'].with_user(self.user_employee_id).create({
+            'name': 'Holiday Request',
+            'employee_id': self.employee_emp.id,
+            'work_entry_type_id': self.holidays_type_1.id,
+            'request_date_from': date(2022, 3, 9),
+            'request_date_to': date(2022, 3, 9),
+        })
+        self.assertEqual(leave.number_of_days, 1)
 
     def test_flexible_schedule_full_day_off(self):
         """this tests checks that if the morning and afternoon have been selected as time off and the schedule type of
@@ -2746,7 +2793,7 @@ class TestLeaveRequests(TestHrHolidaysCommon):
         user_admin = self.env.ref('base.user_admin')
         employee_admin = self.env['hr.employee'].search([('user_id', '=', user_admin.id)])
         self.employee_emp.write({"parent_id": employee_admin.id, "leave_manager_id": False})
-        leave_type = self.env['hr.work.entry.type'].with_user(self.user_hrmanager_id).with_context(tracking_disable=True)
+        leave_type = self.env['hr.work.entry.type'].with_user(self.user_hrmanager_id)
         holidays_type_5 = leave_type.create({
             'name': 'Limited with 2 approvals and Responsible IDS',
             'request_unit': 'hour',
@@ -2769,3 +2816,60 @@ class TestLeaveRequests(TestHrHolidaysCommon):
         self.assertEqual(len(request.message_partner_ids), 2)
         self.assertIn(self.employee_emp.user_id.partner_id, message_partner_ids)
         self.assertIn(user_admin.partner_id, message_partner_ids)
+
+    def test_group_time_off_wizard_without_work_entry_type(self):
+        """Test group time off wizard creation when no work entry types exist."""
+        # Archive all existing work entry types to control the test environment
+        self.env["hr.work.entry.type"].search([]).write({'active': False})
+
+        wizard = self.env['hr.leave.generate.multi.wizard'].new({
+            'employee_ids': (self.employee_emp + self.employee_hruser).ids,
+        })
+
+        self.assertFalse(wizard.valid_work_entry_type_ids)
+
+    def test_single_day_leave_shows_date_range(self):
+        """Test that a single-day leave exposes both request_date_from and request_date_to.
+        """
+        with Form(self.env['hr.leave'].with_user(self.user_hrmanager_id)) as leave_form:
+            leave_form.employee_id = self.employee_emp
+            leave_form.work_entry_type_id = self.holidays_type_1
+            leave_form.request_date_from = date(2026, 8, 27)
+            leave_form.request_date_to = date(2026, 8, 27)
+            leave = leave_form.save()
+
+        self.assertEqual(leave.request_date_from, date(2026, 8, 27))
+        self.assertEqual(leave.request_date_to, date(2026, 8, 27))
+
+    def test_hour_based_leave_request_date_synced_on_daterange_change(self):
+        """Test that request_date_from/to and request_hour_from/to are synced when
+        request_date_hour_from/to changes via the daterange widget.
+        """
+        self.employee_emp.tz = 'UTC'
+        with Form(self.env['hr.leave'].with_user(self.user_hrmanager_id)) as leave_form:
+            leave_form.employee_id = self.employee_emp
+            leave_form.work_entry_type_id = self.holidays_type_hours
+            leave_form.request_date_hour_from = datetime(2026, 8, 10, 8, 0, 0)
+            leave_form.request_date_hour_to = datetime(2026, 8, 10, 12, 0, 0)
+
+            # Simulate the daterange widget changing the datetime span to a different day
+            leave_form.request_date_hour_from = datetime(2026, 8, 11, 7, 0, 0)
+            leave_form.request_date_hour_to = datetime(2026, 8, 11, 11, 0, 0)
+            leave = leave_form.save()
+
+        self.assertEqual(
+            leave.request_date_from, date(2026, 8, 11),
+            "request_date_from should be updated when request_date_hour_from changes",
+        )
+        self.assertEqual(
+            leave.request_date_to, date(2026, 8, 11),
+            "request_date_to should be updated when request_date_hour_to changes",
+        )
+        self.assertEqual(
+            leave.request_hour_from, 7,
+            "request_hour_from should be updated when request_date_hour_from changes",
+        )
+        self.assertEqual(
+            leave.request_hour_to, 11,
+            "request_hour_to should be updated when request_date_hour_to changes",
+        )

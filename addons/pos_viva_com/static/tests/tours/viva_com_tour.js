@@ -9,9 +9,9 @@ import * as Dialog from "@point_of_sale/../tests/generic_helpers/dialog_util";
 import { registry } from "@web/core/registry";
 import * as PaymentScreenViva from "./utils/payment_screen_viva_com_util";
 
-const mockVivaWebhook = () => ({
+const mockVivaWebhook = (isRefund) => ({
     content: "Waiting for Viva payment to be processed",
-    trigger: ".paymentline_status_title",
+    trigger: `.paymentline_status_title_${isRefund ? "waiting_refund" : "waiting_card"}`,
     run: async function () {
         const payment_terminal =
             posmodel.getPendingPaymentLine("viva_com").payment_method_id.payment_interface;
@@ -46,7 +46,8 @@ registry.category("web_tour.tours").add("VivaComTour", {
             ProductScreen.clickPayButton(),
             PaymentScreen.isShown(),
             PaymentScreen.clickPaymentMethod("Viva"),
-            mockVivaWebhook(),
+            PaymentScreen.clickSendButton(),
+            mockVivaWebhook(false),
             FeedbackScreen.isShown(),
             FeedbackScreen.clickNextOrder(),
             Chrome.clickOrders(),
@@ -56,7 +57,7 @@ registry.category("web_tour.tours").add("VivaComTour", {
             PaymentScreen.isShown(),
             PaymentScreen.clickPaymentMethod("Viva"),
             PaymentScreen.clickRefundButton(),
-            mockVivaWebhook(),
+            mockVivaWebhook(true),
             FeedbackScreen.isShown(),
         ].flat(),
 });

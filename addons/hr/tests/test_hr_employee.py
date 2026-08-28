@@ -10,7 +10,7 @@ from odoo.fields import Domain
 from odoo.tests import Form, users, new_test_user, HttpCase, tagged, TransactionCase
 from odoo.addons.hr.tests.common import TestHrCommon
 from odoo.tools import mute_logger
-from odoo.exceptions import ValidationError, AccessError
+from odoo.exceptions import UserError, ValidationError
 from psycopg2.errors import NotNullViolation
 
 
@@ -602,58 +602,46 @@ class TestHrEmployee(TestHrCommon):
             'name': 'Test Employee',
             'work_email': 'test'
         })
-
-        action = employee.action_create_users()
-        self.assertEqual(action['params']['message'], f'You need to set a valid work email address for {employee.name}')
+        with self.assertRaises(ValidationError):
+            employee.user_id = employee._get_or_create_light_user()
         self.assertFalse(employee.user_id)
 
-    def test_user_creation_from_employee_multi_emails(self):
-        employees = self.env['hr.employee'].create([
-            {
-                'name': 'Existing Email Employee',
-                'work_email': self.user_without_image.email,
-            }, {
-                'name': 'New Employee',
-                'work_email': 'newuser@example.com',
-            }, {
-                'name': 'Invalid Email Employee',
-                'work_email': 'invalid-email',
-            }, {
-                'name': 'Without Email Employee',
-                'work_email': False,
-            }, {
-                'name': 'Formatted Email Employee',
-                'work_email': f'"John Doe" <{self.user_without_image.email_normalized}>',
-            }, {
-                'name': 'Multi Email Employee',
-                'work_email': '"Name1" <name@test.example.com>, "Name 2" <name2@test.example.com>',
-            }, {
-                'name': 'Duplicate Email Employee 1',
-                'work_email': 'duplicate@example.com',
-            }, {
-                'name': 'Duplicate Email Employee 2',
-                'work_email': 'duplicate@example.com',
-            },
-        ])
-        # Add an existing employee who already has a user to the employee list
-        employees += self.employee_without_image
-        context = {'selected_ids': employees.ids}
-        confirmed_employees = self.env['hr.employee'].with_context(context).browse(employees.ids)
-        action = confirmed_employees.action_create_users()
+    def test_user_creation_from_employee_emails(self):
+        # A new employee creates a lite user with that login.
+        new_emp = self.env['hr.employee'].create({
+            'name': 'New Employee', 'work_email': 'newuser@example.com'})
+        self.assertFalse(new_emp.user_id)
+        new_emp.action_send_invitation()
+        self.assertEqual(new_emp.user_id.login, 'newuser@example.com')
+        self.assertFalse(new_emp.user_id.share)
 
-        params = action.get('params')
-        self.assertEqual(params.get('message'), f"The following employees have the same work email address: {employees[6].name}, {employees[7].name}")
-        params = params.get('next').get('params')
-        self.assertEqual(params.get('message'), f"User already exists with the same email for Employees {employees[0].name}, {employees[4].name}")
-        params = params.get('next').get('params')
-        self.assertEqual(params.get('message'), f"You need to set a valid work email address for {employees[2].name}, {employees[5].name}")
-        params = params.get('next').get('params')
-        self.assertEqual(params.get('message'), f"You need to set the work email address for {employees[3].name}")
-        params = params.get('next').get('params')
-        self.assertEqual(params.get('message'), f"User already exists for Those Employees {employees[8].name}")
-        params = params.get('next').get('params')
-        self.assertEqual(params.get('message'), f"Users {employees[1].name} creation successful")
-        self.assertTrue(employees[1].user_id)
+        # An email matching an existing user that has no employee links to it
+        # (by login or email address) rather than creating a duplicate.
+        free_user = self.env['res.users'].create({
+            'name': 'Free', 'login': 'free_login', 'email': 'free@example.com'})
+        linked_emp = self.env['hr.employee'].create({
+            'name': 'Linked', 'work_email': 'free@example.com'})
+        self.assertFalse(linked_emp.user_id)
+        linked_emp.user_id = linked_emp._get_or_create_light_user()
+        self.assertEqual(linked_emp.user_id, free_user)
+
+        # An email matching a user that already backs an employee does not reuse it:
+        # it cannot create the employee.
+        existing_user_emp = self.env['hr.employee'].create({
+                'name': 'Other', 'work_email': 'free@example.com'})
+        with self.assertRaises(UserError):
+            existing_user_emp.user_id = existing_user_emp._get_or_create_light_user()
+
+        # A multi/RFC-formatted email uses the first address as the login.
+        multi_emp = self.env['hr.employee'].create({
+            'name': 'Multi', 'work_email': '"N1" <n1@example.com>, "N2" <n2@example.com>'})
+        multi_emp.user_id = multi_emp._get_or_create_light_user()
+        self.assertEqual(multi_emp.user_id.login, 'n1@example.com')
+
+        # No email at all still yields a user with a synthetic login (no crash).
+        no_email_emp = self.env['hr.employee'].create({'name': 'No Email'})
+        with self.assertRaises(ValidationError):
+            no_email_emp.user_id = no_email_emp._get_or_create_light_user()
 
     def test_user_contact_phone_sync(self):
         partner = self.env['res.partner'].create({'name': 'Partner Test'})
@@ -832,70 +820,21 @@ class TestHrEmployee(TestHrCommon):
             if presence_state == 'out_of_working_hour':
                 self.assertEqual(employees.ids, [out_working_emp.id])
 
-    def test_employee_can_edit_proxy_fields_on_own_user(self):
-        user = new_test_user(
-            self.env,
-            login='emp_test',
-            groups='base.group_user',
-        )
-        employee = self.env['hr.employee'].create({
-            'name': 'Employee Test',
-            'user_id': user.id,
-        })
+    def test_exclude_archived_employees_from_direct_subordinate_filter(self):
+        """ Test that archived subordinates aren't included when searching on child_ids. """
+        employee_1, employee_2 = self.env['hr.employee'].create([
+            {'name': 'first employee'},
+            {'name': 'second employee'}
+        ])
+        employee_2.parent_id = employee_1
 
-        user_env = user.with_user(user)
+        result = self.env['hr.employee'].search([('child_ids', '!=', False)])
+        self.assertIn(employee_1, result)
 
-        vals = {
-            'legal_name': 'Legal Name Self',
-            'children': 2,
-            'birthday': date(1990, 1, 1),
-            'birthday_public_display': True,
-            'place_of_birth': 'Brussels',
-            'country_of_birth': self.env.ref('base.be').id,
-            'marital': 'married',
-            'spouse_complete_name': 'Alex Test',
-            'spouse_birthdate': date(1991, 2, 3),
-            'sex': 'male',
-        }
-        user_env.write(vals)
+        employee_2.active = False
 
-        self.assertEqual(user_env.legal_name, vals['legal_name'])
-        self.assertEqual(user_env.children, vals['children'])
-        self.assertEqual(user_env.birthday, vals['birthday'])
-        self.assertEqual(user_env.birthday_public_display, vals['birthday_public_display'])
-        self.assertEqual(user_env.place_of_birth, vals['place_of_birth'])
-        self.assertEqual(user_env.country_of_birth.id, vals['country_of_birth'])
-        self.assertEqual(user_env.marital, vals['marital'])
-        self.assertEqual(user_env.spouse_complete_name, vals['spouse_complete_name'])
-        self.assertEqual(user_env.spouse_birthdate, vals['spouse_birthdate'])
-        self.assertEqual(user_env.sex, vals['sex'])
-
-        self.assertEqual(employee.legal_name, vals['legal_name'])
-        self.assertEqual(employee.children, vals['children'])
-        self.assertEqual(employee.birthday, vals['birthday'])
-        self.assertEqual(employee.birthday_public_display, vals['birthday_public_display'])
-        self.assertEqual(employee.place_of_birth, vals['place_of_birth'])
-        self.assertEqual(employee.country_of_birth.id, vals['country_of_birth'])
-        self.assertEqual(employee.marital, vals['marital'])
-        self.assertEqual(employee.spouse_complete_name, vals['spouse_complete_name'])
-        self.assertEqual(employee.spouse_birthdate, vals['spouse_birthdate'])
-        self.assertEqual(employee.sex, vals['sex'])
-
-    def test_employee_cannot_edit_others_proxy_fields(self):
-        user1 = new_test_user(self.env, login='emp_u1', groups='base.group_user')
-        user2 = new_test_user(self.env, login='emp_u2', groups='base.group_user')
-
-        emp1 = self.env['hr.employee'].create({'name': 'Emp 1', 'user_id': user1.id})
-        self.env['hr.employee'].create({'name': 'Emp 2', 'user_id': user2.id})
-
-        with self.assertRaises(AccessError):
-            user1.with_user(user2).write({
-                'legal_name': 'Hacked',
-                'children': 99,
-            })
-
-        self.assertNotEqual(emp1.sudo().legal_name, 'Hacked')
-        self.assertNotEqual(emp1.sudo().children, 99)
+        result = self.env['hr.employee'].search([('child_ids', '!=', False)])
+        self.assertNotIn(employee_1, result)
 
 
 @tagged('-at_install', 'post_install')

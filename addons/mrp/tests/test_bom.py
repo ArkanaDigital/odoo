@@ -14,6 +14,17 @@ from odoo.addons.mrp.tests.common import TestMrpCommon
 @freeze_time(fields.Date.today())
 class TestBoM(TestMrpCommon):
 
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'mrp.group_mrp_manager',
+        'mrp.group_mrp_routings',  # view visibility (duration/workorder fields) granted to cls.env.user in Common
+        'mrp.group_mrp_byproducts',  # view visibility (byproducts) granted to mrp users in Common
+        'stock.group_stock_manager',  # setup: warehouse/route/rule/orderpoint/location/picking_type config in test bodies
+        'uom.group_uom',  # view visibility (uom_id) granted to cls.env.user in Common
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -48,7 +59,7 @@ class TestBoM(TestMrpCommon):
 
     def test_02_explode_rounding(self):
         fns, cmp1, cmp2 = self.env['product.product'].create([{'name': 'FNS'}, {'name': 'CMP1'}, {'name': 'CMP2'}])
-        self.env['decimal.precision'].search([('name', '=', 'Product Unit')]).digits = 2
+        self.env['decimal.precision'].sudo().search([('name', '=', 'Product Unit')]).digits = 2
 
         fns_bom = self.env['mrp.bom'].create({
             'product_tmpl_id': fns.product_tmpl_id.id,
@@ -187,11 +198,12 @@ class TestBoM(TestMrpCommon):
         self.assertEqual(mrp_order.move_byproduct_ids.product_id, self.product_1 | self.product_3)
 
     def test_11_multi_level_variants(self):
-        tmp_picking_type = self.env['stock.picking.type'].create({
+        # setup: creating a picking type writes ir.sequence via the sequence_code related inverse
+        tmp_picking_type = self.env['stock.picking.type'].sudo().create({
             'name': 'Manufacturing',
             'code': 'mrp_operation',
             'sequence_code': 'TMP',
-            'sequence_id': self.env['ir.sequence'].create({
+            'sequence_id': self.env['ir.sequence'].sudo().create({
                 'code': 'mrp.production',
                 'name': 'tmp_production_sequence',
             }).id,
@@ -413,7 +425,7 @@ class TestBoM(TestMrpCommon):
         # the kit `product_7_3`. `product_2` and `product_3` gets protected at the first call of the compute method,
         # ending the recurse call to not call the compute method and just left the Falsy value `0.0`
         # for the components available qty.
-        kit_product_qty, _, _ = (self.product_7_3 + self.product_2 + self.product_3).mapped("qty_available")
+        kit_product_qty, _, _ = (self.product_7_3 + self.product_2 + self.product_3).with_company(self.stock_location.company_id).mapped("qty_available")
         self.assertEqual(kit_product_qty, 8)
 
     def test_14_bom_kit_qty_multi_uom(self):
@@ -450,7 +462,7 @@ class TestBoM(TestMrpCommon):
         # We set the Product Unit digits to 5.
         # Because float_round(-384.0, 5) = -384.00000000000006
         # And float_round(-384.0, 2) = -384.0
-        precision = self.env.ref('uom.decimal_product_uom')
+        precision = self.env.ref('uom.decimal_product_uom').sudo()
         precision.digits = 5
 
         _ = self.env['mrp.bom'].create({
@@ -827,10 +839,12 @@ class TestBoM(TestMrpCommon):
         """
         # Workcenter is working 24/7
         self.full_availability()
+        routes = self.env.ref('mrp.route_warehouse0_manufacture')
+        routes.product_selectable = True
         pickaxe = self.env['product.product'].create({
             'name': 'Iron Pickaxe',
             'is_storable': True,
-            'route_ids': [(6, 0, [self.ref('mrp.route_warehouse0_manufacture')])],
+            'route_ids': routes,
         })
         stick = self.env['product.product'].create({
             'name': 'Stick',
@@ -1988,7 +2002,8 @@ class TestBoM(TestMrpCommon):
         mo_form.bom_id = self.bom_1
         mo_form.picking_type_id = self.picking_type_manu
         mo_1 = mo_form.save()
-        picking_type_manu_clone = self.picking_type_manu.copy({'sequence_code': 'NEW_CODE'})
+        # setup: copying a picking type writes ir.sequence via the sequence_code related inverse
+        picking_type_manu_clone = self.picking_type_manu.sudo().copy({'sequence_code': 'NEW_CODE'})
         mo_1.picking_type_id = picking_type_manu_clone
         mo_1.action_confirm()
         picking = mo_1.picking_ids
@@ -2542,6 +2557,8 @@ class TestBoM(TestMrpCommon):
     def test_bom_never_attribute_mix(self):
         """ For a product that has two 'no_variant' attributes but only one used in its bom,
             check that it computes properly which line to get when using the other attribute.
+            Additionally check that to match a bom line, a product must have at least one
+            matching value for every attribute specified on the bom line.
         """
         color, size = self.env['product.attribute'].create([{
             'name': name,
@@ -2550,9 +2567,9 @@ class TestBoM(TestMrpCommon):
         } for name in ['color', 'size']])
 
         self.env['product.attribute.value'].create([{
-            'name': 'Meh',
+            'name': name,
             'attribute_id': attribute.id,
-        } for attribute in [color, size]])
+        } for name, attribute in [("Meh", color), ("Noice", color), ("Meh", size)]])
 
         tmpl_attr_line_color, tmpl_attr_line_size = self.env['product.template.attribute.line'].create([{
             'attribute_id': attribute.id,
@@ -2583,6 +2600,36 @@ class TestBoM(TestMrpCommon):
             ],
         })
         self.assertEqual(len(order.move_raw_ids), 0, "No component should be selected")
+
+        bom.write({
+            'bom_line_ids': [
+                Command.create({
+                    'product_id': self.product_4.id,
+                    'product_qty': 1,
+                    'bom_product_template_attribute_value_ids': [
+                        Command.link(tmpl_attr_line_color.product_template_value_ids[0].id), Command.link(tmpl_attr_line_color.product_template_value_ids[1].id),
+                    ],
+                }),
+                Command.create({
+                    'product_id': self.product_3.id,
+                    'product_qty': 1,
+                    'bom_product_template_attribute_value_ids': [
+                        Command.link(tmpl_attr_line_color.product_template_value_ids[0].id), Command.link(tmpl_attr_line_size.product_template_value_ids[0].id),
+                    ],
+                }),
+            ],
+        })
+        order2 = self.env['mrp.production'].create({
+            'product_id': self.product_1.id,
+            'bom_id': bom.id,
+            'never_product_template_attribute_value_ids': [
+                Command.link(tmpl_attr_line_color.product_template_value_ids[0].id),
+            ],
+        })
+        self.assertRecordValues(order2.move_raw_ids, [
+            {'product_id': self.product_2.id, 'product_uom_qty': 1.0},
+            {'product_id': self.product_4.id, 'product_uom_qty': 1.0},
+            ])
 
     def test_workorders_on_bom_changes(self):
         """

@@ -2,7 +2,7 @@ import { isBlock } from "@html_editor/utils/blocks";
 import { getAdjacentPreviousSiblings } from "@html_editor/utils/dom_traversal";
 import { loadImage } from "@html_editor/utils/image_processing";
 import { getImageSrc } from "@html_editor/utils/image";
-import { blendColors } from "@web/core/utils/colors";
+import { blendColors, convertCSSColorToRgba } from "@web/core/utils/colors";
 import { range } from "@web/core/utils/numbers";
 
 function parentsGet(node, root = undefined) {
@@ -906,7 +906,7 @@ function enforceImagesResponsivity(element) {
  *                            specificity: number;}>
  */
 export async function toInline(element, cssRules) {
-    await waitUntilImagesLoaded(element);
+    await Promise.all([element.ownerDocument.fonts.ready, waitUntilImagesLoaded(element)]);
     // Fix card-img-top heights (must happen before we transform everything).
     for (const imgTop of element.querySelectorAll(".card-img-top")) {
         imgTop.style.setProperty("height", _getHeight(imgTop) + "px");
@@ -922,6 +922,8 @@ export async function toInline(element, cssRules) {
     attachmentThumbnailToLinkImg(element);
     fontToImg(element);
     await svgToPng(element);
+    await waitUntilImagesLoaded(element);
+    await webpToPng(element);
 
     // Fix img-fluid for Outlook.
     for (const image of element.querySelectorAll("img.img-fluid")) {
@@ -949,6 +951,8 @@ export async function toInline(element, cssRules) {
     formatTables(element);
     normalizeColors(element);
     responsiveToStaticForOutlook(element);
+
+    await waitUntilImagesLoaded(element);
     // Fix Outlook image rendering bug.
     for (const attributeName of ["width", "height"]) {
         const images = element.querySelectorAll("img");
@@ -1020,6 +1024,40 @@ function flattenBackgroundImages(element) {
         }
     }
 }
+function convertCSSColorToPILRgba(color) {
+    const obj = convertCSSColorToRgba(color);
+    const bind8bitsIntToHex = (value) =>
+        Math.max(0, Math.min(255, Math.round(value)))
+            .toString(16)
+            .padStart(2, "0");
+    if (obj) {
+        obj.red = bind8bitsIntToHex(obj.red);
+        obj.green = bind8bitsIntToHex(obj.green);
+        obj.blue = bind8bitsIntToHex(obj.blue);
+        // convertCSSColorToRgba returns opacity as a float percentage,
+        // but PIL library needs a 8 bits integer.
+        obj.opacity = bind8bitsIntToHex((255 * obj.opacity) / 100);
+        return `${obj.red}${obj.green}${obj.blue}${obj.opacity}`;
+    }
+    return false;
+}
+
+/**
+ * Return whether the icon rendered by the given `::before` style is the filled
+ * variant of its glyph. It can be reached two ways: the `FILL` variation axis
+ * of the icon font, which snaps at 0.5, and a `_f` suffix on the ligature name.
+ *
+ * @param {CSSStyleDeclaration} beforeStyle the `::before` computed style
+ * @param {string} content the `content` value of that style, without quotes
+ * @returns {boolean}
+ */
+function isIconFilled(beforeStyle, content) {
+    if (content.endsWith("_f")) {
+        return true;
+    }
+    const fillAxis = beforeStyle["font-variation-settings"].match(/["']FILL["']\s+([\d.]+)/);
+    return parseFloat(fillAxis?.[1]) >= 0.5;
+}
 /**
  * Convert font icons to images.
  *
@@ -1027,21 +1065,20 @@ function flattenBackgroundImages(element) {
  *                           converted to images
  */
 function fontToImg(element) {
-    const { fonts } = odoo.loader.modules.get("@html_editor/utils/fonts");
-
-    for (const font of element.querySelectorAll(".fa")) {
-        let icon, content;
-        fonts.fontIcons.find((fontIcon) =>
-            fonts.getCssSelectors(fontIcon.parser).find((data) => {
-                if (font.matches(data.selector.replace(/::?before/g, ""))) {
-                    icon = data.names[0].split("-").shift();
-                    content = data.css.match(/content:\s*['"]?(.)['"]?/)[1];
-                    return true;
-                }
-            })
-        );
-        if (content) {
-            const color = _getStylePropertyValue(font, "color").replace(/\s/g, "");
+    for (const font of element.querySelectorAll(".oi")) {
+        const beforeStyle = getComputedStyle(font, "::before");
+        const content = beforeStyle["content"].trim().replace(/['"]/g, "");
+        let icon = content;
+        let fill = 0;
+        if (font.matches("[data-icon^='oi_']")) {
+            icon = content.codePointAt(0);
+        } else {
+            icon = content.replace(/_f$/, "");
+            fill = isIconFilled(beforeStyle, content) ? 1 : 0;
+        }
+        if (icon) {
+            const color =
+                convertCSSColorToPILRgba(_getStylePropertyValue(font, "color")) || "000000ff";
             let backgroundColoredElement = font;
             let bg, isTransparent;
             do {
@@ -1057,6 +1094,7 @@ function fontToImg(element) {
                 // is not supported.
                 bg = "rgb(255,255,255)";
             }
+            bg = convertCSSColorToPILRgba(bg) || "00000000";
             const style = font.getAttribute("style");
             const width = _getWidth(font);
             const height = _getHeight(font);
@@ -1068,8 +1106,9 @@ function fontToImg(element) {
             font.style.setProperty("line-height", "normal");
             const intrinsicWidth = _getWidth(font);
             const intrinsicHeight = _getHeight(font);
-            const hPadding = width && intrinsicWidth && (width - intrinsicWidth) / 2;
-            const vPadding = height && intrinsicHeight && (height - intrinsicHeight) / 2;
+            const hPadding = width && intrinsicWidth && Math.max(0, (width - intrinsicWidth) / 2);
+            const vPadding =
+                height && intrinsicHeight && Math.max(0, (height - intrinsicHeight) / 2);
             let padding = "";
             if (hPadding || vPadding) {
                 padding = vPadding ? vPadding + "px " : "0 ";
@@ -1078,14 +1117,11 @@ function fontToImg(element) {
             const image = document.createElement("img");
             image.setAttribute("width", intrinsicWidth);
             image.setAttribute("height", intrinsicHeight);
+            const renderWidth = Math.max(1, Math.round(intrinsicWidth));
+            const renderHeight = Math.max(1, Math.round(intrinsicHeight));
             image.setAttribute(
                 "src",
-                `/mail/font_to_img/${content.charCodeAt(0)}/${encodeURIComponent(
-                    color
-                )}/${encodeURIComponent(bg)}/${Math.max(1, Math.round(intrinsicWidth))}x${Math.max(
-                    1,
-                    Math.round(intrinsicHeight)
-                )}`
+                `/mail/font_to_img/${icon}/oi/${fill}/${color}/${bg}/${renderWidth}x${renderHeight}fs${renderHeight}`
             );
             image.setAttribute("data-class", font.getAttribute("class"));
             image.setAttribute("data-style", style);
@@ -1122,13 +1158,9 @@ function fontToImg(element) {
             wrapper.style.setProperty("height", height + "px");
             wrapper.style.setProperty("vertical-align", "text-bottom");
             wrapper.style.setProperty("background-color", image.style.backgroundColor);
-            wrapper.setAttribute(
-                "class",
-                "oe_unbreakable " + // prevent sanitize from grouping image wrappers
-                    font
-                        .getAttribute("class")
-                        .replace(new RegExp("(^|\\s+)" + icon + "(-[^\\s]+)?", "gi"), "") // remove inline font-awsome style
-            );
+            wrapper.className = font.className;
+            wrapper.classList.remove("oi");
+            wrapper.classList.add("oe_unbreakable"); // prevent sanitize from grouping image wrappers
         } else {
             font.remove();
         }
@@ -1501,38 +1533,73 @@ function responsiveToStaticForOutlook(element) {
     }
 }
 /**
+ * Convert image element to an image element with type png
+ *
+ * @param {HTMLElement} img
+ */
+async function convertToPng(img) {
+    // Make sure the image is loaded before we convert it.
+    await new Promise((resolve) => {
+        img.onload = () => resolve();
+        if (img.complete) {
+            resolve();
+        }
+    });
+    const image = document.createElement("img");
+    const canvas = document.createElement("CANVAS");
+    const width = _getWidth(img);
+    const height = _getHeight(img);
+
+    canvas.setAttribute("width", width);
+    canvas.setAttribute("height", height);
+    canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+
+    for (const attribute of img.attributes) {
+        image.setAttribute(attribute.name, attribute.value);
+    }
+
+    image.setAttribute("src", canvas.toDataURL("png"));
+    image.setAttribute("width", width);
+    image.setAttribute("height", height);
+    return image;
+}
+/**
  * Convert images of type svg to png.
  *
- * @param {HTMLElement} element
+ * @param {HTMLElement} editable
  */
-async function svgToPng(element) {
-    for (const svg of element.querySelectorAll('img[src*=".svg"]')) {
-        // Make sure the svg is loaded before we convert it.
-        await new Promise((resolve) => {
-            svg.onload = () => resolve();
-            if (svg.complete) {
-                resolve();
-            }
-        });
-        const image = document.createElement("img");
-        const canvas = document.createElement("CANVAS");
-        const width = _getWidth(svg);
-        const height = _getHeight(svg);
-
-        canvas.setAttribute("width", width);
-        canvas.setAttribute("height", height);
-        canvas.getContext("2d").drawImage(svg, 0, 0, width, height);
-
-        for (const attribute of svg.attributes) {
-            image.setAttribute(attribute.name, attribute.value);
-        }
-
-        image.setAttribute("src", canvas.toDataURL("png"));
-        image.setAttribute("width", width);
-        image.setAttribute("height", height);
-
+async function svgToPng(editable) {
+    for (const svg of editable.querySelectorAll('img[src*=".svg"]')) {
+        const image = await convertToPng(svg);
         svg.before(image);
         svg.remove();
+    }
+}
+/**
+ * Convert images of type webp to png.
+ *
+ * @param {HTMLElement} editable
+ */
+async function webpToPng(editable) {
+    for (const webp of editable.querySelectorAll('img[src*=".webp"]')) {
+        const image = await convertToPng(webp);
+        webp.before(image);
+        webp.remove();
+    }
+
+    for (const webp of editable.querySelectorAll('[style*="background-image"][style*=".webp"]')) {
+        // Create an image element with the background image and replace the url
+        // with the png converted image url
+        const width = _getWidth(webp);
+        const height = _getHeight(webp);
+        const tempImage = document.createElement("img");
+        tempImage.setAttribute("src", webp.style.backgroundImage.slice(5, -2));
+        tempImage.setAttribute("width", width);
+        tempImage.setAttribute("height", height);
+        webp.before(tempImage);
+        const image = await convertToPng(tempImage);
+        webp.style.backgroundImage = `url(${image.getAttribute("src")})`;
+        tempImage.remove();
     }
 }
 
@@ -2172,6 +2239,9 @@ function correctBorderAttributes(style) {
 function waitUntilImagesLoaded(root) {
     const promises = [];
     for (const img of root.querySelectorAll('img[src]:not([src=""])')) {
+        if (img.complete) {
+            continue;
+        }
         const src = getImageSrc(img);
         if (src) {
             promises.push(loadImage(src));

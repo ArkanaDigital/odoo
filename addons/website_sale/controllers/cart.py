@@ -16,15 +16,13 @@ from odoo.addons.website_sale.controllers.main import WebsiteSale
 
 class Cart(PaymentPortal):
     @route(route="/shop/cart", type="http", auth="public", website=True, sitemap=False)
-    def cart(self, id=None, access_token=None, revive_method="", **post):
+    def cart(self, id=None, access_token=None, **post):
         """Display the cart page.
 
         This route is responsible for the main cart management and abandoned cart revival logic.
 
         :param str id: The abandoned cart's id.
         :param str access_token: The abandoned cart's access token.
-        :param str revive_method: The revival method for abandoned carts. Can be 'merge' or
-                                'squash'.
         :return: The rendered cart page.
         :rtype: str
         """
@@ -40,23 +38,15 @@ class Cart(PaymentPortal):
                 abandoned_order.access_token, access_token
             ):  # wrong token (or SO has been deleted)
                 raise NotFound
-            if abandoned_order.state != "draft":  # abandoned cart already finished
+            if abandoned_order.state not in ("draft", "sent"):  # abandoned cart already finished
                 values.update({"abandoned_proceed": True})
-            elif revive_method == "squash" or (
-                revive_method == "merge" and not request.session.get("sale_order_id")
-            ):  # restore old cart or merge with unexistant
+            elif not request.session.get("sale_order_id"):
                 request.session["sale_order_id"] = abandoned_order.id
-                return request.redirect("/shop/cart")
-            elif revive_method == "merge":
+                request.cart = abandoned_order
+                order_sudo = abandoned_order
+            elif abandoned_order.id != request.session.get("sale_order_id"):
                 abandoned_order.order_line.write({"order_id": request.session["sale_order_id"]})
                 abandoned_order.action_cancel()
-            elif abandoned_order.id != request.session.get(
-                "sale_order_id"
-            ):  # abandoned cart found, user have to choose what to do
-                values.update({
-                    "id": abandoned_order.id,
-                    "access_token": abandoned_order.access_token,
-                })
 
         values.update({
             "website_sale_order": order_sudo,
@@ -69,6 +59,8 @@ class Cart(PaymentPortal):
             ).unlink()
             values["suggested_products"] = order_sudo._cart_accessories()
             values.update(self._get_express_shop_payment_values(order_sudo))
+            if self.env.website.google_analytics_key:
+                values["cart_tracking_info"] = order_sudo._get_order_tracking_info()
 
         values.update(self.env.website._get_checkout_step_values("/shop/cart"))
         values.update(self._cart_values(**post))
@@ -124,6 +116,14 @@ class Cart(PaymentPortal):
         quantity = (quantity and int(quantity)) or 1
 
         product = self.env["product.product"].browse(product_id).exists()
+        if product and no_variant_attribute_value_ids:
+            product = product.with_context(
+                **product._get_product_price_context(
+                    self.env["product.template.attribute.value"].browse([
+                        int(v) for v in no_variant_attribute_value_ids
+                    ])
+                )
+            )
         if not product or not product._is_add_to_cart_allowed():
             raise UserError(
                 self.env._("The given product does not exist therefore it cannot be added to cart.")
@@ -140,6 +140,7 @@ class Cart(PaymentPortal):
         )
         line_ids = {product_template_id: values["line_id"]}
         added_qty_per_line[values["line_id"]] = values["added_qty"]
+        tracking_info = values.get("tracking_info", [])
         is_combo = product.type == "combo"
         updated_line = (
             values["line_id"]
@@ -199,6 +200,7 @@ class Cart(PaymentPortal):
 
                 line_ids[product_data["product_template_id"]] = product_values["line_id"]
                 added_qty_per_line[product_values["line_id"]] = product_values["added_qty"]
+                tracking_info += product_values.get("tracking_info", [])
 
         warning = values.pop("warning", "")
         if is_combo and (changed_reason := order_sudo._check_combo_quantities(updated_line)):
@@ -239,7 +241,8 @@ class Cart(PaymentPortal):
             "cart_quantity": order_sudo.cart_quantity,
             "notifications": notifications,
             "quantity": values.pop("quantity", 0),
-            "tracking_info": self._get_tracking_information(order_sudo, line_ids.values()),
+            "tracking_info": tracking_info,
+            "currency": order_sudo.currency_id.name,
         }
 
     @route(
@@ -283,15 +286,15 @@ class Cart(PaymentPortal):
             "transaction_route": f"/shop/payment/transaction/{order.id}",
             "express_checkout_route": WebsiteSale._express_checkout_route,
             "landing_route": "/shop/payment/validate",
-            "payment_method_unknown_id": self.env.ref("payment.payment_method_unknown").id,
             "shipping_info_required": order._has_deliverable_products(),
-            # Todo: remove in master
-            "delivery_amount": payment_utils.to_minor_currency_units(
-                order.amount_total - order._compute_amount_total_without_delivery(),
-                order.currency_id,
-            ),
             "shipping_address_update_route": WebsiteSale._express_checkout_delivery_route,
         })
+        provider_sudo = payment_form_values["providers_sudo"][:1]
+        if provider_sudo:
+            payment_form_values["express_checkout_provider_sudo"] = provider_sudo
+            payment_form_values["payment_method_unknown_id"] = provider_sudo._get_pm_from_code(
+                "unknown"
+            ).id
         if self.env.website.is_public_user():
             payment_form_values["partner_id"] = -1
         return payment_form_values
@@ -347,6 +350,7 @@ class Cart(PaymentPortal):
         return {
             "cart_has_blocking_alerts": order_sudo._has_blocking_alerts(),
             "cart_quantity": order_sudo.cart_quantity,
+            "currency": order_sudo.currency_id.name,
             "amount": order_sudo.amount_total,
             "minor_amount": payment_utils.to_minor_currency_units(
                 order_sudo.amount_total, order_sudo.currency_id
@@ -501,30 +505,6 @@ class Cart(PaymentPortal):
                 for line in lines
             ],
         }
-
-    def _get_tracking_information(self, order_sudo, line_ids):
-        """Get the tracking information about the sales order lines.
-
-        :param sale.order order: The sales order.
-        :param list[int] line_ids: The ids of the lines to track.
-        :rtype: dict
-        :return: The tracking information.
-        """
-        lines = order_sudo.order_line.filtered(lambda line: line.id in line_ids).with_context(
-            display_default_code=False
-        )
-        return [
-            {
-                "item_id": line.product_id.barcode or line.product_id.id,
-                "item_name": line.product_id.display_name,
-                "item_category": line.product_id.categ_id.name,
-                "currency": line.currency_id.name,
-                "price": line.price_reduce_taxexcl,
-                "discount": line.price_unit - line.price_reduce_taxexcl,
-                "quantity": line.product_uom_qty,
-            }
-            for line in lines
-        ]
 
     def _get_additional_cart_update_values(self, data):
         """Look for extra information in a given dictionary to be included in a `_cart_add` call.

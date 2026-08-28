@@ -1,4 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
+import base64
+import io
+import zipfile
 from datetime import datetime
 from unittest import mock
 from unittest.mock import patch
@@ -6,12 +9,15 @@ from unittest.mock import patch
 from freezegun import freeze_time
 
 from odoo import Command, fields
+from odoo.exceptions import UserError
 from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 from odoo.tests import tagged
 
 
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestVNEDI(AccountTestInvoicingCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     @AccountTestInvoicingCommon.setup_country('vn')
@@ -22,6 +28,10 @@ class TestVNEDI(AccountTestInvoicingCommon):
         cls.template = '1/001'
         cls.symbol = cls.env['l10n_vn_edi_viettel.sinvoice.symbol'].create({
             'name': 'K24TUT',
+            'invoice_template_code': cls.template,
+        })
+        cls.c_symbol = cls.env['l10n_vn_edi_viettel.sinvoice.symbol'].create({
+            'name': 'C24TUT',
             'invoice_template_code': cls.template,
         })
         cls.env.company.write({
@@ -644,3 +654,168 @@ class TestVNEDI(AccountTestInvoicingCommon):
         json_values = invoice._l10n_vn_edi_generate_invoice_json()
         itemInfo = json_values['itemInfo'][0]
         self.assertEqual(itemInfo['taxAmount'], 100.03, "Tax amount should be correctly rounded to 2 decimals.")
+
+    def test_unzip_single_zip_response(self):
+        invoice = self.init_invoice(
+            move_type='out_invoice',
+            products=self.product_a,
+            taxes=self.tax_sale_a,
+            post=True,
+            currency=self.other_currency,
+        )
+        self._send_invoice(invoice)
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('sinvoice.xml', b'<invoice>test xml content</invoice>')
+        zip_bytes = zip_buffer.getvalue()
+
+        zip_response = {
+            'fileToBytes': base64.b64encode(zip_bytes).decode('utf-8'),
+            'fileName': 'sinvoice.zip',
+        }, ""
+
+        with patch(
+            'odoo.addons.l10n_vn_edi_viettel.models.sinvoice_service.SInvoiceService.get_invoice_file',
+            return_value=zip_response,
+        ):
+            result, error = invoice._l10n_vn_edi_fetch_invoice_xml_file_data()
+
+        self.assertFalse(error, f"Expected no error, got: {error}")
+        self.assertEqual(result['name'], 'sinvoice.xml')
+        self.assertEqual(result['mimetype'], 'application/xml')
+        self.assertEqual(result['raw'], b'<invoice>test xml content</invoice>')
+        self.assertEqual(result['res_field'], 'l10n_vn_edi_sinvoice_xml_file')
+
+    def test_unzip_double_zip_response(self):
+        invoice = self.init_invoice(
+            move_type='out_invoice',
+            products=self.product_a,
+            taxes=self.tax_sale_a,
+            post=True,
+            currency=self.other_currency,
+        )
+        self._send_invoice(invoice)
+
+        inner_buffer = io.BytesIO()
+        with zipfile.ZipFile(inner_buffer, 'w', zipfile.ZIP_DEFLATED) as inner_zf:
+            inner_zf.writestr('sinvoice.xml', b'<invoice>nested xml content</invoice>')
+        inner_zip_bytes = inner_buffer.getvalue()
+
+        outer_buffer = io.BytesIO()
+        with zipfile.ZipFile(outer_buffer, 'w', zipfile.ZIP_DEFLATED) as outer_zf:
+            outer_zf.writestr('sinvoice.zip', inner_zip_bytes)
+        outer_zip_bytes = outer_buffer.getvalue()
+
+        zip_response = {
+            'fileToBytes': base64.b64encode(outer_zip_bytes).decode('utf-8'),
+            'fileName': 'sinvoice.zip',
+        }, ""
+
+        with patch(
+            'odoo.addons.l10n_vn_edi_viettel.models.sinvoice_service.SInvoiceService.get_invoice_file',
+            return_value=zip_response,
+        ):
+            result, error = invoice._l10n_vn_edi_fetch_invoice_xml_file_data()
+
+        self.assertFalse(error, f"Expected no error, got: {error}")
+        self.assertEqual(result['name'], 'sinvoice.xml')
+        self.assertEqual(result['mimetype'], 'application/xml')
+        self.assertEqual(result['raw'], b'<invoice>nested xml content</invoice>')
+        self.assertEqual(result['res_field'], 'l10n_vn_edi_sinvoice_xml_file')
+
+    def test_unzip_no_xml_in_zip(self):
+        invoice = self.init_invoice(
+            move_type='out_invoice',
+            products=self.product_a,
+            taxes=self.tax_sale_a,
+            post=True,
+            currency=self.other_currency,
+        )
+        self._send_invoice(invoice)
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('readme.txt', b'no xml here')
+        zip_bytes = zip_buffer.getvalue()
+
+        zip_response = {
+            'fileToBytes': base64.b64encode(zip_bytes).decode('utf-8'),
+            'fileName': 'sinvoice.zip',
+        }, ""
+
+        with patch(
+            'odoo.addons.l10n_vn_edi_viettel.models.sinvoice_service.SInvoiceService.get_invoice_file',
+            return_value=zip_response,
+        ):
+            result, error = invoice._l10n_vn_edi_fetch_invoice_xml_file_data()
+
+        self.assertTrue(error, "Expected an error when no XML file is present in the ZIP.")
+        self.assertFalse(result, "Expected no result when no XML file is found.")
+
+    def test_reverse_moves_with_c_symbol_approved(self):
+        invoice = self.init_invoice(
+            move_type='out_invoice',
+            products=self.product_a,
+            taxes=self.tax_sale_a,
+            post=True,
+            currency=self.other_currency,
+        )
+
+        invoice.l10n_vn_edi_invoice_symbol = self.c_symbol
+        self._send_invoice(invoice)
+
+        move_reversal = self.env['account.move.reversal'].with_context(active_model="account.move", active_ids=invoice.ids).create({
+            'journal_id': invoice.journal_id.id,
+        })
+
+        request_response = {
+            'access_token': '123',
+            'expires_in': '600',
+        }
+        lookup_response = {
+            'result': [{
+                'exchangeStatus': 'INVOICE_HAS_CODE_APPROVED',
+            }]
+        }
+
+        with patch('odoo.addons.l10n_vn_edi_viettel.models.sinvoice_service.SInvoiceService.get_access_token', return_value=(request_response, None)), \
+             patch('odoo.addons.l10n_vn_edi_viettel.models.sinvoice_service.SInvoiceService.lookup_invoice', return_value=(lookup_response, None)):
+            reversal = move_reversal.reverse_moves()
+
+        self.assertEqual(invoice.l10n_vn_edi_invoice_state, 'adjusted')
+        reverse_move = self.env['account.move'].browse(reversal['res_id'])
+        self.assertTrue(reverse_move.exists())
+
+    def test_reverse_moves_with_c_symbol_not_approved(self):
+        invoice = self.init_invoice(
+            move_type='out_invoice',
+            products=self.product_a,
+            taxes=self.tax_sale_a,
+            post=True,
+            currency=self.other_currency,
+        )
+        invoice.l10n_vn_edi_invoice_symbol = self.c_symbol
+        self._send_invoice(invoice)
+
+        move_reversal = self.env['account.move.reversal'].with_context(active_model="account.move", active_ids=invoice.ids).create({
+            'journal_id': invoice.journal_id.id,
+        })
+
+        request_response = {
+            'access_token': '123',
+            'expires_in': '600',
+        }
+        lookup_response = {
+            'result': [{
+                'exchangeStatus': 'INVOICE_HAS_CODE_NOT_APPROVED',
+            }]
+        }
+
+        with patch('odoo.addons.l10n_vn_edi_viettel.models.sinvoice_service.SInvoiceService.get_access_token', return_value=(request_response, None)), \
+             patch('odoo.addons.l10n_vn_edi_viettel.models.sinvoice_service.SInvoiceService.lookup_invoice', return_value=(lookup_response, None)):
+            with self.assertRaises(UserError) as error:
+                move_reversal.reverse_moves()
+            self.assertIn('has not been approved by the tax authorities', str(error.exception))
+
+        self.assertEqual(invoice.l10n_vn_edi_invoice_state, 'sent')

@@ -52,7 +52,9 @@ class MailScheduledMessage(models.Model):
     # origin
     author_id = fields.Many2one('res.partner', 'Author', required=True)
     # recipients
-    partner_ids = fields.Many2many('res.partner', string='Recipients')
+    partner_ids = fields.Many2many('res.partner', string='Recipients (To)')
+    partner_cc_ids = fields.Many2many('res.partner', relation='mail_scheduled_message_res_partner_cc_rel',
+                                      string='Recipients (Cc)', context={'active_test': False})
     # characteristics
     is_note = fields.Boolean('Is a note', default=False, help="If the message will be posted as a Note.")
     # notify parameters (email_from, mail_server_id, force_email_lang,...)
@@ -87,7 +89,7 @@ class MailScheduledMessage(models.Model):
         for scheduled_message in scheduled_messages:
             if attachments := scheduled_message.attachment_ids:
                 attachments.filtered(
-                    lambda a: a.res_model == 'mail.compose.message' and not a.res_id and a.create_uid.id == self.env.uid
+                    lambda a: a.res_model == 'mail.compose.message' and a.create_uid.id == self.env.uid
                 ).write({
                     'res_model': scheduled_message._name,
                     'res_id': scheduled_message.id,
@@ -160,6 +162,9 @@ class MailScheduledMessage(models.Model):
             'views': [[False, 'form']],
             'target': 'new',
             'res_id': self.id,
+            'context': {
+                'is_thread_composer': True,
+            }
         }
 
     def post_message(self):
@@ -196,6 +201,7 @@ class MailScheduledMessage(models.Model):
                     subject=scheduled_message.subject,
                     body=scheduled_message.body,
                     partner_ids=list(scheduled_message.partner_ids.ids),
+                    partner_cc_ids=list(scheduled_message.partner_cc_ids.ids),
                     subtype_xmlid='mail.mt_note' if scheduled_message.is_note else 'mail.mt_comment',
                     **{k: v for k, v in json.loads(scheduled_message.notification_parameters or '{}').items() if k in notification_parameters_whitelist},
                 )

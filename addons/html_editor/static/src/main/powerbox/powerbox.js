@@ -1,5 +1,4 @@
-import { useExternalListener, useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onPatched } from "@odoo/owl";
+import { Component, onPatched, signal, useEffect, useListener } from "@odoo/owl";
 
 /**
  * @todo @phoenix i think that most of the "control" code in this component
@@ -16,10 +15,10 @@ export class Powerbox extends Component {
     };
 
     setup() {
-        const ref = useRef("root");
+        this.root = signal.ref();
 
         onPatched(() => {
-            const activeCommand = ref.el.querySelector(".o-we-command.active");
+            const activeCommand = this.root().querySelector(".o-we-command.active");
             if (activeCommand) {
                 activeCommand.scrollIntoView({ block: "nearest", inline: "nearest" });
             }
@@ -27,20 +26,18 @@ export class Powerbox extends Component {
 
         this.mouseSelectionActive = false;
         const onMouseMove = () => (this.mouseSelectionActive = true);
-        useExternalListener(this.props.document, "mousemove", onMouseMove);
+        useListener(this.props.document, "mousemove", onMouseMove);
 
         // If necessary attach the same listener on the document on which
         // the powerbox is mounted, serving the same purpose:
         // do not trigger re-renderings when we are scrolling the powerbox
-        useLayoutEffect(
-            (ownDoc, propsDoc) => {
-                if (ownDoc && propsDoc && ownDoc !== propsDoc) {
-                    ownDoc.addEventListener("mousemove", onMouseMove);
-                    return () => ownDoc.removeEventListener("mousemove", onMouseMove);
-                }
-            },
-            () => [ref.el?.ownerDocument, this.props.document]
-        );
+        useEffect(() => {
+            const doc = this.root()?.ownerDocument;
+            if (doc && doc !== this.props.document) {
+                doc.addEventListener("mousemove", onMouseMove);
+                return () => doc.removeEventListener("mousemove", onMouseMove);
+            }
+        });
     }
 
     get commands() {

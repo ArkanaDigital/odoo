@@ -10,7 +10,7 @@ import {
     resize,
     unload,
 } from "@odoo/hoot-dom";
-import { Deferred, animationFrame, mockSendBeacon, runAllTimers } from "@odoo/hoot-mock";
+import { animationFrame, mockSendBeacon, runAllTimers } from "@odoo/hoot-mock";
 import {
     clickModalButton,
     contains,
@@ -416,7 +416,7 @@ test("quick create record flickering", async () => {
             state: "def",
         });
     });
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
 
     await mountView({
         type: "kanban",
@@ -446,7 +446,7 @@ test("quick create record flickering", async () => {
     await editKanbanRecordQuickCreateInput("int_field", "4");
 
     await click(".o_kanban_quick_create .o_field_widget[name=state] .o_priority_star:first-child");
-    def = new Deferred();
+    def = Promise.withResolvers();
     await validateKanbanRecord();
 
     expect(".o_kanban_group:first-child .o_kanban_record").toHaveCount(2);
@@ -464,7 +464,7 @@ test("quick create record flickering (load more)", async () => {
     let def;
     Partner._views["form,some_view_ref"] = `<form><field name="foo"/></form>`;
 
-    onRpc("read", () => def);
+    onRpc("read", () => def?.promise);
 
     await mountView({
         type: "kanban",
@@ -485,7 +485,7 @@ test("quick create record flickering (load more)", async () => {
 
     // fill the quick create and validate
     await editKanbanRecordQuickCreateInput("foo", "new partner");
-    def = new Deferred();
+    def = Promise.withResolvers();
     await validateKanbanRecord();
     expect(".o_kanban_load_more").toHaveCount(0);
     def.resolve();
@@ -1260,10 +1260,10 @@ test("quick create record: prevent multiple adds with ENTER", async () => {
             <field name="int_field"/>
         </form>`;
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("web_save", () => {
         expect.step("web_save");
-        return def;
+        return def?.promise;
     });
 
     await mountView({
@@ -1309,10 +1309,10 @@ test("quick create record: prevent multiple adds with Add clicked", async () => 
             <field name="int_field"/>
         </form>`;
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("web_save", () => {
         expect.step("web_save");
-        return def;
+        return def?.promise;
     });
 
     await mountView({
@@ -1353,11 +1353,11 @@ test("quick create record: prevent multiple adds with Add clicked", async () => 
 
 test.tags("desktop");
 test("save a quick create record and create a new one simultaneously", async () => {
-    const def = new Deferred();
+    const def = Promise.withResolvers();
 
     onRpc("name_create", () => {
         expect.step("name_create");
-        return def;
+        return def?.promise;
     });
 
     await mountView({
@@ -1413,7 +1413,7 @@ test("quick create record: prevent multiple adds with ENTER, with onchange", asy
     onRpc("onchange", () => {
         expect.step("onchange");
         if (shouldDelayOnchange) {
-            return def;
+            return def?.promise;
         }
     });
     onRpc("web_save", ({ args }) => {
@@ -1424,7 +1424,7 @@ test("quick create record: prevent multiple adds with ENTER, with onchange", asy
     });
 
     let shouldDelayOnchange = false;
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     await mountView({
         type: "kanban",
         resModel: "partner",
@@ -1492,7 +1492,7 @@ test("quick create record: click Add to create, with delayed onchange", async ()
     onRpc("onchange", () => {
         expect.step("onchange");
         if (shouldDelayOnchange) {
-            return def;
+            return def?.promise;
         }
     });
     onRpc("web_save", ({ args }) => {
@@ -1504,7 +1504,7 @@ test("quick create record: click Add to create, with delayed onchange", async ()
     });
 
     let shouldDelayOnchange = false;
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     await mountView({
         type: "kanban",
         resModel: "partner",
@@ -1741,6 +1741,58 @@ test("quick create record: cancel when modal is opened", async () => {
     });
 });
 
+test.tags("desktop");
+test("quick create record: hiding tab doesn't close it while a dialog it opened is still open", async () => {
+    Partner._views["form,some_view_ref"] = `
+        <form>
+            <field name="product_id"/>
+            <field name="foo"/>
+        </form>
+    `;
+    Product._views.form = '<form><field name="name"/></form>';
+
+    onRpc("partner", "web_save", () => {
+        throw new Error("should not save/close the quick create while the dialog is open");
+    });
+
+    await mountView({
+        type: "kanban",
+        resModel: "partner",
+        groupBy: ["bar"],
+        arch: `
+            <kanban on_create="quick_create" quick_create_view="some_view_ref">
+                <templates>
+                    <t t-name="card">
+                        <field name="foo"/>
+                    </t>
+                </templates>
+            </kanban>`,
+    });
+
+    // click to add an element
+    await quickCreateKanbanRecord();
+    expect(".o_kanban_quick_create").toHaveCount(1);
+
+    await press("t");
+    await press("e");
+    await press("s");
+    await press("t");
+    await runAllTimers();
+    await click(".o_m2o_dropdown_option_create_edit"); // open create and edit dialog
+    await animationFrame();
+    expect(".o_dialog").toHaveCount(1);
+
+    // simulate a tab switch while the "create and edit" dialog is open
+    await hideTab();
+    await animationFrame();
+    expect(".o_kanban_quick_create").toHaveCount(1, {
+        message: "quick create should stay open while a dialog it opened is still open",
+    });
+    expect(".o_dialog").toHaveCount(1, {
+        message: "the dialog opened from the quick create should not be closed either",
+    });
+});
+
 test("quick create record: cancel when dirty", async () => {
     await mountView({
         type: "kanban",
@@ -1888,8 +1940,8 @@ test("quick create several records in a row", async () => {
 test("quick create is re-enabled directly after the validation", async () => {
     let webSaveDef;
     let webReadDef;
-    onRpc("web_save", () => webSaveDef);
-    onRpc("web_read", () => webReadDef);
+    onRpc("web_save", () => webSaveDef?.promise);
+    onRpc("web_read", () => webReadDef?.promise);
 
     await mountView({
         type: "kanban",
@@ -1915,8 +1967,8 @@ test("quick create is re-enabled directly after the validation", async () => {
     expect(".o_kanban_quick_create").toHaveCount(1, { message: "the quick create should be open" });
 
     await editKanbanRecordQuickCreateInput("display_name", "new partner 1");
-    webSaveDef = new Deferred();
-    webReadDef = new Deferred();
+    webSaveDef = Promise.withResolvers();
+    webReadDef = Promise.withResolvers();
     await validateKanbanRecord();
 
     expect(".o_kanban_group:first-child .o_kanban_record").toHaveCount(1, {
@@ -2535,8 +2587,8 @@ test("quick create record in grouped by selection field (within quick_create_vie
 
 test.tags("desktop");
 test("quick create record while adding a new column", async () => {
-    const def = new Deferred();
-    onRpc("product", "name_create", () => def);
+    const def = Promise.withResolvers();
+    onRpc("product", "name_create", () => def?.promise);
 
     await mountView({
         type: "kanban",
@@ -2596,7 +2648,7 @@ test("close a column while quick creating a record", async () => {
     onRpc("get_views", () => {
         if (def) {
             expect.step("get_views");
-            return def;
+            return def?.promise;
         }
     });
     await mountView({
@@ -2613,7 +2665,7 @@ test("close a column while quick creating a record", async () => {
         groupBy: ["product_id"],
     });
 
-    def = new Deferred();
+    def = Promise.withResolvers();
 
     expect.verifySteps([]);
     expect(".o_kanban_group").toHaveCount(2);
@@ -3053,7 +3105,7 @@ test("Quick created record is rendered after load", async () => {
     let def;
     onRpc("web_read", () => {
         expect.step("web_read");
-        return def;
+        return def?.promise;
     });
     onRpc("name_create", () => {
         expect.step("name_create");
@@ -3077,7 +3129,7 @@ test("Quick created record is rendered after load", async () => {
     expect(getKanbanRecordTexts(0)).toEqual(["0", "1"]);
     expect.verifySteps([]);
 
-    def = new Deferred();
+    def = Promise.withResolvers();
 
     await quickCreateKanbanRecord(0);
     await editKanbanRecordQuickCreateInput("display_name", "Test");
@@ -3290,7 +3342,7 @@ test("quick create record in grouped kanban in a form view dialog", async () => 
 });
 
 test("click on New while kanban is loading (with quick create)", async () => {
-    onRpc("web_read_group", () => new Deferred());
+    onRpc("web_read_group", () => new Promise(() => {}));
     await mountView({
         arch: `
             <kanban on_create="quick_create">
@@ -3786,7 +3838,7 @@ test("Auto save on closing tab/browser (quick create view)", async () => {
             <field name="foo"/>
         </form>`;
 
-    const sendBeaconDeferred = new Deferred();
+    const sendBeaconDeferred = Promise.withResolvers();
     mockSendBeacon((_, blob) => {
         expect.step("sendBeacon");
         blob.text().then((r) => {

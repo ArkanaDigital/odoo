@@ -1,10 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 __all__ = [
-    'convert_csv_import',
     'convert_file',
-    'convert_sql_import',
-    'convert_xml_import'
 ]
 import csv
 import io
@@ -28,6 +25,7 @@ except ImportError:
 from .binary import BinaryBytes
 from .config import config
 from .misc import file_open, file_path, SKIPPED_ELEMENT_TYPES
+from .safe_eval import _UNSAFE_ATTRIBUTES
 from odoo.exceptions import ValidationError
 
 from .safe_eval import safe_eval, time
@@ -185,7 +183,9 @@ def _eval_xml(self, node, env):
         from odoo.models import BaseModel  # noqa: PLC0415
         model_str = node.get('model')
         model = env[model_str]
-        method_name = node.get('name')
+        method_name = node.get('name') or ''
+        if '__' in method_name or method_name in _UNSAFE_ATTRIBUTES:
+            raise NameError(f'Access to forbidden name {method_name!r}')
         # determine arguments
         args = []
         kwargs = {}
@@ -415,15 +415,15 @@ form: module.record_id""" % (xml_id,)
             if '@' in f_name:
                 continue  # used for translations
             f_model = field.get("model")
-            if not f_model and f_name in model._fields:
+            if not f_model and f_name in model._fields and model._fields[f_name].relational:
                 f_model = model._fields[f_name].comodel_name
             f_use = field.get("use",'') or 'id'
             f_val = False
 
             if f_search := field.get("search"):
+                assert f_model, 'Define an attribute model="..." in your .XML file!'
                 context = _get_eval_context(self, env, f_model)
                 q = safe_eval(f_search, context)
-                assert f_model, 'Define an attribute model="..." in your .XML file!'
                 # browse the objects searched
                 s = env[f_model].search(q)
                 # column definitions of the "local" object
@@ -711,17 +711,13 @@ def convert_file(
         if ext == '.csv':
             convert_csv_import(env, module, pathname, fp.read(), idref, mode, noupdate)
         elif ext == '.sql':
-            convert_sql_import(env, fp)
+            env.cr.execute(fp.read())  # pylint: disable=sql-injection
         elif ext == '.xml':
             convert_xml_import(env, module, fp, idref, mode, noupdate)
         elif ext == '.js':
             pass # .js files are valid but ignored here.
         else:
             raise ValueError("Can't load unknown file type %s.", filename)
-
-
-def convert_sql_import(env, fp):
-    env.cr.execute(fp.read()) # pylint: disable=sql-injection
 
 
 def convert_csv_import(
@@ -799,7 +795,11 @@ def convert_xml_import(
     except Exception:
         _logger.exception("The XML file '%s' does not fit the required schema!", xmlfile.name)
         if jingtrang:
-            p = subprocess.run(['pyjing', schema, xmlfile.name], stdout=subprocess.PIPE)
+            environ = os.environ.copy()
+            environ['JAVA_TOOL_OPTIONS'] = '-Xmx64m -XX:-UseCompressedClassPointers'
+            p = subprocess.run(
+                ["pyjing", schema, xmlfile.name], stdout=subprocess.PIPE, env=environ,
+            )
             _logger.warning(p.stdout.decode())
         else:
             for e in relaxng.error_log:

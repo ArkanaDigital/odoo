@@ -1,25 +1,26 @@
-import { useChildSubEnv } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
+import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { Dialog } from "@web/core/dialog/dialog";
-import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
-import { usePos } from "@point_of_sale/app/hooks/pos_hook";
+import { useService } from "@web/core/utils/hooks";
+import { useSubEnv } from "@web/owl2/utils";
 
 export class ScaleScreen extends Component {
     static template = "point_of_sale.ScaleScreen";
     static components = { Dialog };
-    static props = {
-        getPayload: Function,
-        close: Function,
-    };
+    props = useProps({
+        getPayload: t.function(),
+        close: t.function(),
+    });
 
     setup() {
         this.dialog = useService("dialog");
+        this.uiService = useService("ui");
         this.pos = usePos();
         this.scale = this.pos.scale;
         this.scale.setErrorCallback(this.onError.bind(this));
-        useChildSubEnv({ dialogData: { ...this.env.dialogData, close: this.close.bind(this) } });
+        useSubEnv({ dialogData: { ...this.env.dialogData, close: this.close.bind(this) } });
     }
 
     confirm() {

@@ -1,5 +1,5 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
-from odoo import fields, Command
+from odoo import api, fields, Command
 from odoo.models import BaseModel
 from odoo.tests import HttpCase, new_test_user, tagged, save_test_file
 from odoo.tools import BinaryValue, config, file_path, file_open
@@ -43,6 +43,8 @@ def skip_unless_external(func):
 
 class AccountTestInvoicingCommon(ProductCommon):
     # to override by the helper methods setup_country and setup_chart_template to adapt to a localization
+    _test_user_groups = None  # FIXME list needed groups
+
     chart_template = False
     country_code = False
     extra_tags = ('-standard', 'external') if 'EXTERNAL_MODE' in (config['test_tags'] or {}) else ()
@@ -384,6 +386,7 @@ class AccountTestInvoicingCommon(ProductCommon):
             'default_journal_cash': cls.env['account.journal'].create({
                 'type': 'cash',
                 'name': 'Cash',
+                'code': 'CASH1',
                 'company_id': company.id,
             }),
             'default_journal_credit': cls.env['account.journal'].create({
@@ -1638,6 +1641,8 @@ class AccountTestInvoicingCommon(ProductCommon):
 
 
 class AccountTestInvoicingWithBanksCommon(AccountTestInvoicingCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -1671,6 +1676,7 @@ class AccountTestMockOnlineSyncCommon(HttpCase):
     @classmethod
     @contextmanager
     def mock_online_sync_favorite_institutions(cls):
+        @api.model
         def get_institutions(*args, **kwargs):
             return [
                 {
@@ -1695,11 +1701,15 @@ class AccountTestMockOnlineSyncCommon(HttpCase):
 
 
 class AccountTestInvoicingHttpCommon(AccountTestInvoicingCommon, AccountTestMockOnlineSyncCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     pass
 
 
 @tagged('is_tour')
 class TestTaxCommon(AccountTestInvoicingHttpCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -2335,6 +2345,8 @@ class TestTaxCommon(AccountTestInvoicingHttpCommon):
 
 
 class TestAccountMergeCommon(AccountTestInvoicingCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

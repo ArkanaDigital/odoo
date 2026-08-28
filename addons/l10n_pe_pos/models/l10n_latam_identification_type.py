@@ -8,15 +8,15 @@ class L10n_LatamIdentificationType(models.Model):
     _inherit = ['l10n_latam.identification.type', 'pos.load.mixin']
 
     @api.model
-    def _load_pos_data_domain(self, data, config):
-        if self.env.company.country_id.code == "PE":
+    def _load_pos_data_domain(self, data):
+        if self.env.company.country_id.code == "PE" or self.env.company.account_fiscal_country_id.code == "PE":
             return [("l10n_pe_vat_code", "!=", False)]
         else:
-            return super()._load_pos_data_domain(data, config)
+            return super()._load_pos_data_domain(data)
 
     @api.model
     def _load_pos_data_fields(self, config):
         fields = super()._load_pos_data_fields(config)
-        if self.env.company.country_id.code == 'PE':
+        if self.env.company.country_id.code == 'PE' or self.env.company.account_fiscal_country_id.code == 'PE':
             fields.append('name')
         return fields

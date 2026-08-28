@@ -7,6 +7,12 @@ from odoo.tests import Form, tagged
 
 
 class TestPackingCommon(TestStockCommon):
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -20,6 +26,13 @@ class TestPackingCommon(TestStockCommon):
 
 
 class TestPacking(TestPackingCommon):
+
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'stock.group_stock_manager',
+    )
+
+    _test_user_name = 'Test Product Manager'
 
     def test_put_in_pack(self):
         """ In a pick pack ship scenario, create two packs in pick and check that
@@ -725,7 +738,7 @@ class TestPacking(TestPackingCommon):
         # Update quantity on hand: 100 units in package
         self.env['stock.quant']._update_available_quantity(self.productA, self.stock_location, 100, package_id=package)
 
-        # Check Availability
+        # Reserve
         picking.action_assign()
 
         self.assertEqual(picking.state, "assigned")
@@ -743,7 +756,7 @@ class TestPacking(TestPackingCommon):
         new_package = self.env["stock.package"].create({"name": "New Pack"})
         self.env['stock.quant']._update_available_quantity(self.productA, self.stock_location, 20, package_id=new_package)
 
-        # Check Availability
+        # Reserve
         picking.action_assign()
 
         # Check that result package is not changed on first line
@@ -1754,6 +1767,13 @@ class TestPacking(TestPackingCommon):
 
 @tagged('post_install', '-at_install')
 class TestPackagePropagation(TestPackingCommon):
+
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'stock.group_stock_manager',
+    )
+
+    _test_user_name = 'Test Product Manager'
 
     def test_reusable_package_propagation(self):
         """ Test a reusable package should not be propagated to the next picking

@@ -15,10 +15,10 @@ class TestInboxPerformance(HttpCase, MailCommon):
         Computation of rating_stats should run a single query per model with rating_stats enabled.
         """
         # Queries (in order):
-        #   - search website (get_current_website by domain)
-        #   - search website (get_current_website default)
+        #   - search website (by domain)
+        #   - search website (default)
         #   - sometimes could occur depending on the routing cache (website_rewrite, ir_config_parameter, res.lang flag_image)
-        #   4 _message_fetch:
+        #   4 messaging_menu/load_more:
         #       - fetch res_users (search_needaction)
         #       - search mail_message (_filter_accessible_from_query)
         #       - search mail_notification
@@ -78,4 +78,14 @@ class TestInboxPerformance(HttpCase, MailCommon):
             )
         self.authenticate(self.user_employee.login, self.user_employee.password)
         with self.assertQueryCount(37):
-            self.make_jsonrpc_request("/mail/store", {"fetch_params": ["/mail/inbox/messages"]})
+            self.make_jsonrpc_request(
+                "/mail/store",
+                {
+                    "fetch_params": [
+                        [
+                            "/mail/messaging_menu/mail.message/load_more",
+                            {"tab_id": "notification", "filter_id": "notification_unread", "limit": 20},
+                        ],
+                    ],
+                },
+            )

@@ -1,29 +1,34 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from enum import Enum
-from functools import cache, wraps
-from ipaddress import ip_address
+import contextlib
 import inspect
 import io
 import logging
-from pathlib import Path
-import requests
+import re
 import socket
-from urllib.parse import parse_qs
-import urllib3.util
 import threading
 import time
 import zipfile
+from enum import Enum
+from functools import cache, wraps
+from ipaddress import ip_address
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+import requests
+import sentry_sdk
+import urllib3.util
 from werkzeug.exceptions import Locked
 
 from odoo import service
+
 from odoo.addons.iot_drivers.tools import system
 from odoo.addons.iot_drivers.tools.system import (
     IOT_IDENTIFIER,
-    IS_RPI,
-    IS_WINDOWS,
     IOT_RPI_CHAR,
     IOT_WINDOWS_CHAR,
+    IS_RPI,
+    IS_WINDOWS,
 )
 
 _logger = logging.getLogger(__name__)
@@ -151,10 +156,10 @@ def download_iot_handlers(server_url=None):
         _logger.info('No new IoT handler to download')
         return
 
-    try:
-        system.update_conf({'iot_handlers_etag': response.headers['ETag'].strip('"')})
-    except KeyError:
-        _logger.exception('No ETag in the response headers')
+    if "ETag" in response.headers:
+        system.update_conf({
+            "iot_handlers_etag": response.headers["ETag"].strip('"'),
+        })
 
     try:
         zip_file = zipfile.ZipFile(io.BytesIO(data))
@@ -364,3 +369,61 @@ def toggle_custom_handlers(enable: bool):
         # Reset to the default handlers and restart
         system.git("clean", "-dfx")  # remove only non-standard handlers
         odoo_restart()
+
+
+def _sentry_before_send(event, _hint):
+    """Discard events raised from custom IoT handlers.
+
+    Covers both raised exceptions and log records with no
+    exception (e.g. `_logger.error(...)`).
+    """
+    default_handlers = system.get_default_handlers()
+    if default_handlers is None:
+        return event
+
+    stacked = (
+        event.get("exception", {}).get("values", []) +
+        event.get("threads", {}).get("values", [])
+    )
+    for entry in stacked:
+        for frame in (entry.get("stacktrace") or {}).get("frames", []):
+            path = frame.get("abs_path") or frame.get("filename") or ""
+            if "iot_handlers" in path and path not in default_handlers:
+                return None
+    return event
+
+
+@require_db
+def init_sentry(server_url: str = ""):
+    """Setup Sentry using DSN fetched from database.
+
+    We don't initialize if no db or if db is local (private IP).
+
+    :param server_url: url of the associated db (provided by decorator).
+    """
+    if sentry_sdk.is_initialized():
+        return
+
+    with contextlib.suppress(ValueError):
+        host = urlsplit(server_url).hostname
+        if host and (
+            ip_address(host).is_private
+            or host.endswith(".dev.odoo.com")  # staging dbs
+            or (
+                host.endswith(".odoo.com")
+                and re.search(r"\.runbot\d+\.|-support-\d{8}-", host)  # runbot or support dbs
+            )
+        ):
+            _logger.info("Local/dev database, not initializing Sentry")
+            return
+
+    sentry_sdk.init(
+        dsn="https://7e68ee5a4977e68047d56d64d19e2585@o11005.ingest.us.sentry.io/4511624592162816",
+        server_name=system.format_hostname(),
+        before_send=_sentry_before_send,
+    )
+    global_scope = sentry_sdk.get_global_scope()
+    global_scope.set_tags({
+        "iot_version": system.get_version(detailed_version=True),
+        "database": server_url,
+    })

@@ -16,7 +16,10 @@ class RepeatTranslationStatePlugin extends Plugin {
 
     /** @type {import("plugins").WebsiteResources} */
     resources = {
-        force_background_translation_state_selectors: ".alert > .o_file_name_container",
+        force_background_translation_state_selectors: [
+            ".alert > .o_file_name_container",
+            "span.d-block",
+        ],
         // lower sequence than the default to run before FeffPlugin's handler
         normalize_processors: withSequence(5, (root) => {
             const cursors = this.dependencies.selection.preserveSelection();
@@ -36,11 +39,13 @@ class RepeatTranslationStatePlugin extends Plugin {
                 el.replaceChildren(repeater);
             }
             cursors.restore();
+            return root;
         }),
         clean_for_save_processors: (root) => {
             for (const el of selectElements(root, ".o_translation_state_inner_span")) {
                 unwrapContents(el);
             }
+            return root;
         },
     };
 }

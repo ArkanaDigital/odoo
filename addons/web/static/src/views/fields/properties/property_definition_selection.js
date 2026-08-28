@@ -1,20 +1,23 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { useService } from "@web/core/utils/hooks";
-import { uuid } from "@web/core/utils/strings";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, onMounted, onPatched, proxy, signal, t, useProps } from "@odoo/owl";
 import { useSortable } from "@web/core/utils/sortable_owl";
 
 export class PropertyDefinitionSelection extends Component {
     static template = "web.PropertyDefinitionSelection";
-    static props = {
-        default: { type: String, optional: true },
-        options: {},
-        readonly: { type: Boolean, optional: true },
-        canChangeDefinition: { type: Boolean, optional: true },
-        onOptionsChange: { type: Function, optional: true }, // we add / remove / rename an option
-        onDefaultOptionChange: { type: Function, optional: true }, // we select a default value
-    };
+    props = useProps({
+        default: t.string().optional(),
+        options: t.any(),
+        readonly: t.boolean().optional(),
+        canChangeDefinition: t.boolean().optional(),
+        onOptionsChange: t.function().optional(),
+        // we add / remove / rename an option
+        onDefaultOptionChange: t.function().optional(),
+        // we select a default value
+    });
+
+    propertyDefinitionSelectionRef = signal.ref();
+    addButtonRef = signal.ref();
 
     setup() {
         this.notification = useService("notification");
@@ -26,21 +29,8 @@ export class PropertyDefinitionSelection extends Component {
             newOption: null,
         });
 
-        this.propertyDefinitionSelectionRef = useRef("propertyDefinitionSelection");
-        this.addButtonRef = useRef("addButton");
-
-        useLayoutEffect(() => {
-            // automatically give the focus to the new option if it is empty
-            if (!this.state.newOption) {
-                return;
-            }
-            const inputs = this.propertyDefinitionSelectionRef.el.querySelectorAll(
-                ".o_field_property_selection_option input"
-            );
-            if (inputs && inputs.length && !inputs[this.state.newOption.index].value) {
-                inputs[this.state.newOption.index].focus();
-            }
-        });
+        onMounted(() => this._focusNewOption());
+        onPatched(() => this._focusNewOption());
 
         useSortable({
             enable: () => this.props.canChangeDefinition && !this.props.readonly,
@@ -54,6 +44,21 @@ export class PropertyDefinitionSelection extends Component {
                 await this.onOptionMoveTo(movedOption, destinationOption);
             },
         });
+    }
+
+    /**
+     * Automatically give the focus to the new option if it is empty.
+     */
+    _focusNewOption() {
+        if (!this.state.newOption) {
+            return;
+        }
+        const inputs = this.propertyDefinitionSelectionRef().querySelectorAll(
+            ".o_field_property_selection_option input"
+        );
+        if (inputs && inputs.length && !inputs[this.state.newOption.index].value) {
+            inputs[this.state.newOption.index].focus();
+        }
     }
 
     /* --------------------------------------------------------
@@ -96,7 +101,7 @@ export class PropertyDefinitionSelection extends Component {
     onOptionCreate(index) {
         this.state.newOption = {
             index: index,
-            name: uuid(),
+            name: "", // Empty until a key is generated from the label.
         };
     }
 
@@ -122,6 +127,9 @@ export class PropertyDefinitionSelection extends Component {
             // if the label is empty, remove the option
             options.splice(optionIndex, 1);
         } else {
+            if (options[optionIndex][0] === "") {
+                options[optionIndex][0] = this.generateUniqueOptionKey(newLabel, options);
+            }
             options[optionIndex][1] = newLabel;
         }
 
@@ -154,7 +162,7 @@ export class PropertyDefinitionSelection extends Component {
             return;
         }
 
-        if (event.relatedTarget === this.addButtonRef.el) {
+        if (event.relatedTarget === this.addButtonRef()) {
             // lost the focus because we click on the add button
             // if the value is empty, just ignore and cancel the event
             event.stopPropagation();
@@ -257,7 +265,7 @@ export class PropertyDefinitionSelection extends Component {
         const activeEl = document.activeElement;
         if (
             activeEl &&
-            this.propertyDefinitionSelectionRef.el.contains(activeEl) &&
+            this.propertyDefinitionSelectionRef().contains(activeEl) &&
             activeEl.tagName === "INPUT"
         ) {
             const optionName = activeEl
@@ -288,5 +296,21 @@ export class PropertyDefinitionSelection extends Component {
         }
 
         this.props.onOptionsChange(options);
+    }
+
+    /**
+     * Generate a unique key for a selection option.
+     *
+     * @param {string} label
+     * @param {array} options
+     * @returns {string}
+     */
+    generateUniqueOptionKey(label, options) {
+        let key = label;
+        let suffix = 1;
+        while (options.some(([existingKey]) => existingKey === key)) {
+            key = `${label}_${suffix++}`;
+        }
+        return key;
     }
 }

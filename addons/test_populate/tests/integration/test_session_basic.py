@@ -14,7 +14,8 @@ class TestSessionCreation(TransactionCase):
             'name': 'Test Product Blueprint',
             'definition_json': [
                 {
-                    'name': 'test_populate.product',
+                    'operation': 'create',
+                    'model': 'test_populate.product',
                     'count': 5,
                     'fields': {
                         'name': {'generator': 'textual.char', 'length': 20},
@@ -37,7 +38,8 @@ class TestSessionCreation(TransactionCase):
             'name': 'Job Test Blueprint',
             'definition_json': [
                 {
-                    'name': 'test_populate.product',
+                    'operation': 'create',
+                    'model': 'test_populate.product',
                     'count': 2,
                     'fields': {
                         'name': {'generator': 'textual.char'},
@@ -58,6 +60,26 @@ class TestSessionCreation(TransactionCase):
         self.assertEqual(job.session_id, session)
 
     @mute_logger('odoo.sql_db')
+    def test_create_job_with_domain_fails(self):
+        blueprint = self.env['populate.blueprint'].create({
+            'name': 'Create Domain Blueprint',
+            'definition_json': [{
+                'operation': 'create',
+                'model': 'test_populate.product',
+                'count': 1,
+                'domain': "[('category', '=', 'books')]",
+                'fields': {
+                    'name': {'generator': 'textual.char'},
+                },
+            }],
+        })
+
+        with self.assertRaises(IntegrityError):
+            self.env['populate.session'].create({
+                'blueprint_id': blueprint.id,
+            })
+
+    @mute_logger('odoo.sql_db')
     def test_blueprint_constraint_validation(self):
         with self.assertRaises(IntegrityError):
             self.env['populate.blueprint'].create({
@@ -72,7 +94,8 @@ class TestSessionExecution(PopulateTestCase):
             'name': 'Customer Test Blueprint',
             'definition_json': [
                 {
-                    'name': 'test_populate.customer',
+                    'operation': 'create',
+                    'model': 'test_populate.customer',
                     'count': 3,
                     'fields': {
                         'name': {'generator': 'textual.char', 'length': 15},
@@ -101,7 +124,8 @@ class TestSessionExecution(PopulateTestCase):
             'name': 'Multi-Model Blueprint',
             'definition_json': [
                 {
-                    'name': 'test_populate.supplier',
+                    'operation': 'create',
+                    'model': 'test_populate.supplier',
                     'count': 2,
                     'fields': {
                         'name': {'generator': 'textual.char', 'length': 20},
@@ -110,7 +134,8 @@ class TestSessionExecution(PopulateTestCase):
                     },
                 },
                 {
-                    'name': 'test_populate.product',
+                    'operation': 'create',
+                    'model': 'test_populate.product',
                     'count': 5,
                     'fields': {
                         'name': {'generator': 'textual.char', 'length': 15},
@@ -141,7 +166,8 @@ class TestSessionExecution(PopulateTestCase):
             'name': 'State Test Blueprint',
             'definition_json': [
                 {
-                    'name': 'test_populate.customer',
+                    'operation': 'create',
+                    'model': 'test_populate.customer',
                     'count': 1,
                     'fields': {
                         'name': {'generator': 'textual.char'},
@@ -158,3 +184,37 @@ class TestSessionExecution(PopulateTestCase):
         start_populate(session)
 
         self.assertTrue(session.is_done)
+
+    def test_deleting_blueprint_cascades_to_leftover_session_data(self):
+        blueprint = self.env['populate.blueprint'].create({
+            'name': 'Cascade Test Blueprint',
+            'definition_json': [
+                {
+                    'operation': 'create',
+                    'model': 'test_populate.product',
+                    'count': 2,
+                    'fields': {
+                        'name': {'generator': 'textual.char'},
+                    },
+                },
+            ],
+        })
+        session = self.env['populate.session'].create({
+            'blueprint_id': blueprint.id,
+        })
+
+        start_populate(session)
+
+        jobs = self.env['populate.job'].search([('session_id', '=', session.id)])
+        model_data = self.env['populate.model.data'].search([('job_id', 'in', jobs.ids)])
+        products = self.env['test_populate.product'].browse(model_data.mapped('res_id'))
+        self.assertTrue(jobs)
+        self.assertTrue(model_data)
+        self.assertTrue(products)
+
+        blueprint.unlink()
+
+        self.assertFalse(session.exists())
+        self.assertFalse(jobs.exists())
+        self.assertFalse(model_data.exists())
+        self.assertTrue(products.exists())

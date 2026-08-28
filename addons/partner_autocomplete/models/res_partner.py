@@ -83,6 +83,16 @@ class ResPartner(models.Model):
         return iap_data
 
     @api.model
+    def autocomplete_by_field(self, fieldName, query, query_country_id, timeout=15):
+        match fieldName:
+            case "name":
+                return self.autocomplete_by_name(query, query_country_id)
+            case "duns":
+                return self.autocomplete_by_duns(query, query_country_id)
+            case _:
+                return self.autocomplete_by_vat(query, query_country_id)
+
+    @api.model
     def autocomplete_by_name(self, query, query_country_id, timeout=15):
         if query_country_id is False:  # If it's 0, we purposely do not want to filter on the country
             query_country_id = self.env.company.country_id.id
@@ -138,6 +148,22 @@ class ResPartner(models.Model):
             return []
 
     @api.model
+    def autocomplete_by_duns(self, duns, query_country_id, timeout=15):
+        query_country_id = query_country_id or self.env.company.country_id.id
+        query_country_code = self.env['res.country'].browse(query_country_id).code
+        response, _ = self.env['iap.autocomplete.api']._request_partner_autocomplete('search_by_duns', {
+            'query': duns,
+            'query_country_code': query_country_code,
+        }, timeout=timeout)
+        if not response or response.get("error"):
+            return []
+
+        results = []
+        for suggestion in response.get("data"):
+            results.append(self._format_data_company(suggestion))
+        return results
+
+    @api.model
     def _process_enriched_response(self, response, error):
         if response and response.get('data'):
             result = self._format_data_company(response.get('data'))
@@ -164,8 +190,7 @@ class ResPartner(models.Model):
     @api.model
     def _validate_partner_autocomplete_response(self, autocomplete_response):
         if (
-            self.env['ir.module.module']._get('base_vat').state == 'installed'
-            and (vat_number := autocomplete_response.get('vat'))
+            (vat_number := autocomplete_response.get('vat'))
             and (enriched_company := self.env.context.get('enriched_company_data'))
             ):
             country = self.env['res.country'].browse(enriched_company['country_id']['id']).exists()
@@ -215,7 +240,7 @@ class ResPartner(models.Model):
             'name': self.name,
             'email': self.email,
             'company_type': data.get('entity_type', ''),
-            'vat': self.vat or self.company_registry,
+            'vat': self.vat,
             'website': self.website,
             'logo': self.image_1920,
             'street': self.street,

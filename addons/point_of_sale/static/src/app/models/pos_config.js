@@ -66,7 +66,7 @@ export class PosConfig extends Base {
         return this.cash_rounding && !this.only_round_cash_method;
     }
     get canInvoice() {
-        return Boolean(this.raw.invoice_journal_id);
+        return Boolean(this.raw.journal_id);
     }
 
     get isShareable() {
@@ -100,7 +100,7 @@ export class PosConfig extends Base {
     }
 
     get receiptLogoUrl() {
-        return this.logo ? imageDataUri(this.logo) : false;
+        return this.logo ? imageDataUri(this.logo.content) : false;
     }
 
     get availablePricelists() {
@@ -116,6 +116,10 @@ export class PosConfig extends Base {
 
     get paymentMethods() {
         return this.payment_method_ids.slice().sort((a, b) => a.sequence - b.sequence);
+    }
+
+    get autoPrint() {
+        return this.iface_print_auto;
     }
 }
 

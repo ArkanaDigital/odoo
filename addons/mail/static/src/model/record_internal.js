@@ -2,19 +2,92 @@
 /** @typedef {import("./record_list").RecordList} RecordList */
 
 import {
-    IS_DELETED_SYM,
     IS_RECORD_SYM,
     isFieldDefinition,
+    isMany,
     isRelation,
     makeRecordFieldLocalId,
+    technicalKeysOnRecords,
+    untrackFunctions,
 } from "./misc";
 import { RecordList } from "./record_list";
-import { immediateEffect, toRaw, untrack } from "@odoo/owl";
+import { Scope, computed, immediateEffect, markRaw, proxy, signal, untrack } from "@odoo/owl";
 import { RecordUses } from "./record_uses";
 import { LocalStorageEntry } from "@mail/utils/common/local_storage";
 
+/**
+ * Observe one field of a record, without running the callback on the initial
+ * read. Only the lazy compute flags need this: they watch a single
+ * field name resolved at runtime, while `Record.onChange` takes the reads to
+ * observe as a function.
+ *
+ * @param {Record} recordProxy
+ * @param {string} fieldName
+ * @param {Function} callback
+ * @returns {Function} dispose function
+ */
+function observeField(recordProxy, fieldName, callback) {
+    let running = false;
+    const disposeFn = untrack(() =>
+        immediateEffect(() => {
+            // read once: a reactive get() per read would be observed as many times
+            const val = recordProxy[fieldName];
+            if (typeof val === "object" && val !== null) {
+                void Object.keys(val);
+            }
+            if (Array.isArray(val)) {
+                void val.length;
+                void val.forEach((i) => i);
+            }
+            if (running) {
+                untrack(() => callback());
+            }
+        })
+    );
+    running = true;
+    return disposeFn;
+}
+
+/**
+ * Owner of the owl computeds of one record. owl attaches a computed to the
+ * scope that is active when it is created and disposes it with that scope, so
+ * without a scope of its own a record loses its computeds as soon as the
+ * component that happened to create them is destroyed.
+ */
+class RecordScope extends Scope {
+    /** @param {import("models").Store} store */
+    constructor(store) {
+        super(store._.app);
+        this.store = store;
+    }
+
+    destroy() {
+        this.finalize((error) => this.store.handleError(error));
+    }
+
+    /**
+     * A deleted record can still be read, and owl refuses to run in a
+     * destroyed scope: ignore this scope then, and let the calling one own the
+     * computeds.
+     *
+     * @param {Function} fn returning a promise here ties it to the record: owl
+     *  rejects it with an AbortError once the record is deleted
+     */
+    run(fn, ...args) {
+        return this.isDestroyed() ? fn(...args) : super.run(fn, ...args);
+    }
+}
+
 export class RecordInternal {
     [IS_RECORD_SYM] = true;
+    /**
+     * Whether the record is being created: set until Record.new assigned the
+     * ids and registered the record. A signal, so that clearing it re-runs the
+     * onChange registrations held during setup().
+     *
+     * @type {import("@odoo/owl").Signal<boolean>}
+     */
+    isConstructing = signal(true);
     /**
      * All dispose functions for this record.
      * For the store, this stores the dispose functions of all records.
@@ -23,6 +96,20 @@ export class RecordInternal {
      * @type {Set<Function>}
      */
     disposeFns = new Set();
+    /**
+     * Computeds of this record that go stale on their own, by the key their
+     * getter reads them under.
+     *
+     * @type {Map<string, () => any>|undefined}
+     */
+    staleComputeds;
+    /**
+     * Scope holding the owl computeds of this record, made on the first one and
+     * disposed with the record.
+     *
+     * @type {RecordScope}
+     */
+    scope;
     // Note: state of fields in Maps rather than object is intentional for improved performance.
     /**
      * For computed field, determines whether the field is computing its value.
@@ -30,26 +117,6 @@ export class RecordInternal {
      * @type {Map<string, boolean>}
      */
     fieldsComputing = new Map();
-    /**
-     * On lazy-sorted field, determines whether the field should be (re-)sorted
-     * when it's needed (i.e. accessed). Eager sorted fields are immediately re-sorted at end of update cycle,
-     * whereas lazy sorted fields wait extra for them being needed.
-     *
-     * @type {Map<string, boolean>}
-     */
-    fieldsSortOnNeed = new Map();
-    /**
-     * On lazy sorted-fields, determines whether this field is needed (i.e. accessed).
-     *
-     * @type {Map<string, boolean>}
-     */
-    fieldsSortInNeed = new Map();
-    /**
-     * For sorted field, determines whether the field is sorting its value.
-     *
-     * @type {Map<string, boolean>}
-     */
-    fieldsSorting = new Map();
     /**
      * On lazy computed-fields, determines whether this field is needed (i.e. accessed).
      *
@@ -72,27 +139,39 @@ export class RecordInternal {
      */
     fieldsComputeStop = new Map();
     /**
+     * Value of a field kept in a per-record owl computed(): computed on the
+     * first read and cached until one of the values it reads changes, instead
+     * of being scheduled and stored by the model. Key is fieldName.
+     *
+     * @type {Map<string, () => any>}
+     */
+    fieldsComputed = new Map();
+    /**
      * Fields that have an `onUpdate` defined. Key is fieldName, Value is function of ongoing `onChange` that can be disposed.
      * Useful to prevent any ongoing onChange and restart if need be.
      *
      * @type {Map<string, Function>}
      */
     fieldsOnUpdateStop = new Map();
-    /**
-     * Fields that have an `sort` defined. Key is fieldName, Value is function of ongoing `immediateEffect` that let it stop.
-     * Useful to prevent any ongoing `immediateEffect` and restart if need be.
-     *
-     * @type {Map<string, Function>}
-     */
-    fieldsSortStop = new Map();
     /** @type {Map<string, any>} */
     fieldsDefault = new Map();
+    /**
+     * Value of each attr field of this record, declared or not, one signal per
+     * field: the sole storage, and the only thing a read of that field observes.
+     *
+     * @type {Map<string, import("@odoo/owl").Signal<any>>}
+     */
+    fieldsAttrSignal = new Map();
+    /**
+     * Whether the record is deleted. A signal, so that setting it re-runs the
+     * readers of `exists()`.
+     *
+     * @type {import("@odoo/owl").Signal<boolean>}
+     */
+    isDeleted = signal(false);
     uses = new RecordUses();
-    updatingAttrs = new Map();
-    proxyUsed = new Map();
     /** @type {string} */
     localId;
-    gettingField = false;
     /** @type {Map<string, import("@mail/model/field_version").SingleFieldVersion|import("@mail/model/field_version").ManyFieldVersion>} */
     fieldsVersion = new Map();
 
@@ -105,13 +184,57 @@ export class RecordInternal {
      */
     fieldsLocalStorage = new Map();
 
+    constructor() {
+        markRaw(this);
+    }
+
+    /**
+     * Get-or-create the signal holding the value of the attr field `fieldName`,
+     * declared or not.
+     *
+     * @param {Record} record
+     * @param {string} fieldName
+     * @param {any} [value] initial value, on creation only
+     * @param {Object} [param3={}]
+     * @param {boolean} [param3.accessor=true] whether to define the accessor
+     *  that reads and writes the field as a property of the record
+     * @returns {import("@odoo/owl").Signal<any>}
+     */
+    ensureFieldSignal(record, fieldName, value, { accessor = true } = {}) {
+        let sig = this.fieldsAttrSignal.get(fieldName);
+        if (sig) {
+            return sig;
+        }
+        sig = signal(value);
+        this.fieldsAttrSignal.set(fieldName, sig);
+        if (accessor) {
+            Object.defineProperty(record, fieldName, {
+                configurable: true,
+                enumerable: true,
+                get: () => sig(),
+                set: (val) => {
+                    sig.set(val);
+                },
+            });
+        }
+        return sig;
+    }
+
+    /**
+     * @param {Record} record
+     * @returns {RecordScope} the scope owning the computeds of this record
+     */
+    ensureScope(record) {
+        return (this.scope ??= new RecordScope(record._rawStore));
+    }
+
     /**
      * @param {Record} record
      * @param {string} fieldName
      * @param {Record} recordProxy
      */
     prepareField(record, fieldName, recordProxy) {
-        const Model = toRaw(record).Model;
+        const Model = record.Model;
         if (isRelation(Model, fieldName)) {
             // Relational fields contain symbols for detection in original class.
             // This constructor is called on genuine records:
@@ -129,9 +252,10 @@ export class RecordInternal {
             });
             record[fieldName] = recordList;
         } else {
-            record[fieldName] = isFieldDefinition(record[fieldName])
+            const value = isFieldDefinition(record[fieldName])
                 ? record[fieldName].default
                 : record[fieldName];
+            this.ensureFieldSignal(record, fieldName, value);
         }
         this.fieldsDefault.set(fieldName, record[fieldName]);
         // register local storage fields
@@ -145,39 +269,22 @@ export class RecordInternal {
             this.fieldsLocalStorage.set(lsFieldName, new LocalStorageEntry(localStorageKey));
         }
         if (Model._.fieldsCompute.get(fieldName)) {
-            if (!Model._.fieldsEager.get(fieldName)) {
-                record.registerOnChange(recordProxy, fieldName, () => {
-                    if (this.fieldsComputing.get(fieldName)) {
-                        /**
-                         * Use a reactive to reset the computeInNeed flag when there is
-                         * a change. This assumes when other reactive are still
-                         * observing the value, its own callback will reset the flag to
-                         * true through the proxy getters.
-                         */
-                        this.fieldsComputeInNeed.delete(fieldName);
-                    }
-                });
+            if (!Model._.fieldsEager.get(fieldName) && !Model._.fieldsComputable.get(fieldName)) {
+                record._registerDisposeFn(
+                    observeField(recordProxy, fieldName, () => {
+                        if (this.fieldsComputing.get(fieldName)) {
+                            /**
+                             * Use a reactive to reset the computeInNeed flag when there is
+                             * a change. This assumes when other reactive are still
+                             * observing the value, its own callback will reset the flag to
+                             * true through the proxy getters.
+                             */
+                            this.fieldsComputeInNeed.delete(fieldName);
+                        }
+                    })
+                );
                 // reset flags triggered by registering onChange
                 this.fieldsComputeInNeed.delete(fieldName);
-                this.fieldsSortInNeed.delete(fieldName);
-            }
-        }
-        if (Model._.fieldsSort.get(fieldName)) {
-            if (!Model._.fieldsEager.get(fieldName)) {
-                record.registerOnChange(recordProxy, fieldName, () => {
-                    if (this.fieldsSorting.get(fieldName)) {
-                        /**
-                         * Use a reactive to reset the inNeed flag when there is a
-                         * change. This assumes if another reactive is still observing
-                         * the value, its own callback will reset the flag to true
-                         * through the proxy getters.
-                         */
-                        this.fieldsSortInNeed.delete(fieldName);
-                    }
-                });
-                // reset flags triggered by registering onChange
-                this.fieldsComputeInNeed.delete(fieldName);
-                this.fieldsSortInNeed.delete(fieldName);
             }
         }
         if (Model._.fieldsOnUpdate.get(fieldName)) {
@@ -191,7 +298,7 @@ export class RecordInternal {
      * @param {Record} recordProxy
      */
     prepareFieldOnUpdate(record, fieldName, recordProxy) {
-        const Model = toRaw(record).Model;
+        const Model = record.Model;
         const store = Model.store;
         const fn = store._onChange(recordProxy, fieldName, (obs) => {
             if (store._.UPDATE !== 0) {
@@ -203,8 +310,140 @@ export class RecordInternal {
         this.fieldsOnUpdateStop.set(fieldName, fn);
     }
 
+    /**
+     * @param {Record} record
+     * @param {string} name
+     */
+    proxyDeleteProperty(record, name) {
+        const Model = record.Model;
+        if (Model._.parentFields.has(name)) {
+            const parentFieldName = Model._.parentFields.get(name);
+            const parentRecordProxy = record._proxy[parentFieldName];
+            return Reflect.deleteProperty(parentRecordProxy, name);
+        }
+        return Model._rawStore.MAKE_UPDATE(function recordDeleteProperty() {
+            if (isRelation(Model, name)) {
+                const recordList = record[name];
+                recordList.clear();
+                return true;
+            }
+            record._.ensureFieldSignal(record, name).set(undefined);
+            return true;
+        });
+    }
+
+    /**
+     * @param {Record} record
+     * @param {string} name
+     * @param {Record} recordProxy
+     */
+    proxyGet(record, name, recordProxy) {
+        const Model = record.Model;
+        const modelInternal = Model._;
+        if (modelInternal.parentFields.has(name)) {
+            const parentFieldName = modelInternal.parentFields.get(name);
+            const parentRecordProxy = recordProxy[parentFieldName];
+            if (!parentRecordProxy) {
+                const Models = record._rawStore.Models;
+                const ParentModel = Models[modelInternal.fieldsTargetModel.get(parentFieldName)];
+                if (isMany(ParentModel, name)) {
+                    return [];
+                }
+                return;
+            }
+            return Reflect.get(parentRecordProxy, name);
+        }
+        if (!modelInternal.fields.get(name)) {
+            const sig = record._.fieldsAttrSignal.get(name);
+            if (sig) {
+                return sig();
+            }
+            let res = Reflect.get(...arguments);
+            if (
+                res === undefined &&
+                typeof name === "string" &&
+                !technicalKeysOnRecords.has(name) &&
+                !(name in record)
+            ) {
+                // Create the signal on read, so a reader before the first write observes it.
+                return record._.ensureFieldSignal(record, name, undefined, {
+                    accessor: false,
+                })();
+            }
+            // a model is a class, so a function: binding it would hide its statics
+            if (typeof res === "function" && !res._) {
+                res = res.bind(recordProxy);
+            }
+            return res;
+        }
+        if (modelInternal.fieldsComputable.get(name)) {
+            let computedField = record._.fieldsComputed.get(name);
+            if (!computedField) {
+                const compute = modelInternal.fieldsCompute.get(name);
+                const { isUpdateInProgress } = record._rawStore._;
+                let lastValue = record._.fieldsDefault.get(name);
+                computedField = record._.ensureScope(record).run(() =>
+                    computed(function computeFieldValue() {
+                        if (untrack(isUpdateInProgress)) {
+                            // Hold while a write is being applied: the relations this
+                            // reads are written one by one. onAdd, onDelete and onUpdate
+                            // run between writes, at depth 0, so they read fresh values.
+                            // Subscribe only while held, so the release computes once.
+                            void isUpdateInProgress();
+                            return lastValue;
+                        }
+                        lastValue = compute.call(record._proxy);
+                        return lastValue;
+                    })
+                );
+                record._.fieldsComputed.set(name, computedField);
+            }
+            return computedField();
+        }
+        if (modelInternal.fieldsCompute.get(name) && !modelInternal.fieldsEager.get(name)) {
+            record._.fieldsComputeInNeed.set(name, true);
+            if (record._.fieldsComputeOnNeed.get(name)) {
+                record._.compute(record, name, { fromInNeed: true });
+            }
+        }
+        if (isRelation(Model, name)) {
+            const recordListProxy = record[name]._proxy;
+            if (isMany(Model, name)) {
+                return recordListProxy;
+            }
+            return recordListProxy[0];
+        }
+        const val = (
+            record._.fieldsAttrSignal.get(name) ?? record._.ensureFieldSignal(record, name)
+        )();
+        if (typeof val === "object" && val !== null && modelInternal.fieldsAttrAsProxy.has(name)) {
+            // Return the value as a proxy, as this field is mutated in place.
+            return proxy(val);
+        }
+        return val;
+    }
+
+    /**
+     * @param {Record} record
+     * @param {string} name
+     * @param {any} val
+     */
+    proxySet(record, name, val) {
+        const Model = record.Model;
+        const store = record._rawStore;
+        if (Model._.parentFields.has(name)) {
+            const parentFieldName = Model._.parentFields.get(name);
+            const parentRecordProxy = record._proxy[parentFieldName];
+            return Reflect.set(parentRecordProxy, name, val);
+        }
+        return store.MAKE_UPDATE(function recordSet() {
+            store._.updateFields(record, { [name]: val });
+            return true;
+        });
+    }
+
     requestCompute(record, fieldName, { force = false } = {}) {
-        if (record[IS_DELETED_SYM]) {
+        if (untrack(this.isDeleted)) {
             return;
         }
         const Model = record.Model;
@@ -219,25 +458,6 @@ export class RecordInternal {
                 this.compute(record, fieldName);
             } else {
                 this.fieldsComputeOnNeed.set(fieldName, true);
-            }
-        }
-    }
-    requestSort(record, fieldName, { force } = {}) {
-        if (record[IS_DELETED_SYM]) {
-            return;
-        }
-        const Model = record.Model;
-        if (!Model._.fieldsSort.get(fieldName)) {
-            return;
-        }
-        const store = record._rawStore;
-        if (store._.UPDATE !== 0 && !force) {
-            store._.ADD_QUEUE("sort", record, fieldName);
-        } else {
-            if (Model._.fieldsEager.get(fieldName) || this.fieldsSortInNeed.get(fieldName)) {
-                this.sort(record, fieldName);
-            } else {
-                this.fieldsSortOnNeed.set(fieldName, true);
             }
         }
     }
@@ -289,61 +509,6 @@ export class RecordInternal {
         }
         triggered = true;
     }
-    /**
-     * @param {Record} record
-     * @param {string} fieldName
-     * @param {Object} [param2={}]
-     * @param {boolean} [param2.fromInNeed] whether the sort is triggered from an "in-need" observer.
-     *  Useful to force keeping the "in-need" flag, as the "in-need" is automatically reset whenever a sorting value has changed.
-     *  The "in-need" flag is expected to be set again by observed on the next read, but if the sort is immediately triggered
-     *  by the "in-need" then that's the case the `fromInNeed: true` and it should preserve for this ongoing sort.
-     */
-    sort(record, fieldName, { fromInNeed } = {}) {
-        const Model = record.Model;
-        if (!Model._.fieldsSort.get(fieldName)) {
-            return;
-        }
-        const prevStopFn = this.fieldsSortStop.get(fieldName);
-        if (prevStopFn) {
-            record._runDisposeFn(prevStopFn);
-        }
-        let triggered = false;
-        const stopFn = untrack(() =>
-            immediateEffect(() => {
-                if (triggered) {
-                    return untrack(() => this.requestSort(record, fieldName));
-                }
-                const store = record._rawStore;
-                this.fieldsSortOnNeed.delete(fieldName);
-                this.fieldsSorting.set(fieldName, true);
-                const func = Model._.fieldsSort.get(fieldName).bind(record._proxy);
-                if (isRelation(Model, fieldName)) {
-                    try {
-                        store._.sortRecordList(record._proxy[fieldName]._proxy, func);
-                    } catch (err) {
-                        store.handleError(err);
-                    }
-                } else {
-                    // sort on copy of list so that reactive observers not triggered while sorting
-                    const copy = [...record._proxy[fieldName]];
-                    copy.sort(func);
-                    const hasChanged = copy.some(
-                        (item, index) => item !== record[fieldName][index]
-                    );
-                    if (hasChanged) {
-                        record._proxy[fieldName] = copy;
-                    }
-                }
-                this.fieldsSorting.delete(fieldName);
-            })
-        );
-        this.fieldsSortStop.set(fieldName, stopFn);
-        record._registerDisposeFn(stopFn);
-        if (fromInNeed) {
-            this.fieldsSortInNeed.set(fieldName, true);
-        }
-        triggered = true;
-    }
     onUpdate(record, fieldName) {
         const store = record._rawStore;
         const Model = record.Model;
@@ -354,10 +519,6 @@ export class RecordInternal {
         const recordProxy = record._proxy;
         untrack(() => {
             try {
-                /**
-                 * Forward internal proxy for performance as onUpdate does not
-                 * need reactive (observe is called separately).
-                 */
                 Model._.fieldsOnUpdate
                     .get(fieldName)
                     .forEach((fn) => fn.call(recordProxy, recordProxy[fieldName]));
@@ -368,3 +529,5 @@ export class RecordInternal {
         this.prepareFieldOnUpdate(record, fieldName, recordProxy);
     }
 }
+
+untrackFunctions(RecordInternal.prototype, ["proxyDeleteProperty", "proxySet"]);

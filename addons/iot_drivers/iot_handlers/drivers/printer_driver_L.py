@@ -2,7 +2,7 @@
 
 from base64 import b64decode
 from threading import Lock
-from cups import IPPError, IPP_JOB_COMPLETED, IPP_JOB_PROCESSING, IPP_JOB_PENDING, CUPS_FORMAT_AUTO, Connection
+from cups import IPPError, IPP_JOB_COMPLETED, IPP_JOB_PROCESSING, IPP_JOB_PENDING, IPP_JOB_CANCELED, CUPS_FORMAT_AUTO, Connection
 import logging
 import netifaces as ni
 import time
@@ -30,7 +30,7 @@ class PrinterDriver(PrinterDriverBase):
         self.ip = device.get('ip')
 
         device_id = device.get('device-id', '')
-        self.receipt_protocol = 'star' if 'STR_T' in device_id else 'escpos'
+        self.receipt_protocol = 'star' if 'STR_T' in self.device_name else 'escpos'
 
         if any(cmd in device_id for cmd in ['CMD:STAR;', 'CMD:ESC/POS;']) or "tm-m30" in self.device_name.lower():
             self.device_subtype = "receipt_printer"
@@ -49,11 +49,12 @@ class PrinterDriver(PrinterDriverBase):
         self.send_status('disconnected', 'Printer was disconnected')
         super().disconnect()
 
-    def print_raw(self, data, action_unique_id=None, duplex=True):
+    def print_raw(self, data, action_unique_id=None, duplex=True, session_id=None):
         """Print raw data to the printer
 
         :param data: The data to print
         :param action_unique_id: The unique identifier of the action triggering the print
+        :param session_id: Identifier of the session, used to match callbacks front-end side
         :param duplex: Whether to print on both sides of the paper (if supported by the printer)
         """
         try:
@@ -65,7 +66,8 @@ class PrinterDriver(PrinterDriverBase):
                 self.conn.startDocument(self.device_identifier, job_id, 'Odoo print job', CUPS_FORMAT_AUTO, 1)
                 self.conn.writeRequestData(data, len(data))
                 self.conn.finishDocument(self.device_identifier)
-            self.job_ids.append(job_id)
+            self.job_ids.add(job_id)
+            self.job_session_ids[job_id] = session_id
             if action_unique_id:
                 self.job_action_ids[job_id] = action_unique_id
         except IPPError:
@@ -125,10 +127,11 @@ class PrinterDriver(PrinterDriverBase):
 
     def print_status_receipt(self, data=None):
         """Prints the status ticket of the IoT Box on the current printer."""
-        title, body = self._printer_status_content()
         if data and data.get('printer_name'):
             title = b""
-            body = b"Test print for " + data['printer_name'].encode()
+            body = b"Test print for " + data['printer_name'].encode() + b"\n"
+        else:
+            title, body = self._printer_status_content()
         commands = self.RECEIPT_PRINTER_COMMANDS[self.receipt_protocol]
         title = commands['title'] % title
         self.print_raw(commands['center'] + title + b'\n' + body + commands['cut'])
@@ -213,18 +216,17 @@ class PrinterDriver(PrinterDriverBase):
     def _action_default(self, data):
         _logger.debug("_action_default called for printer %s", self.device_name)
         self.print_raw(
-            b64decode(data['document']),
-            action_unique_id=data.get('action_unique_id'),
+            b64decode(data["document"]),
+            action_unique_id=data.get("action_unique_id"),
             duplex=data.get("duplex", True),
+            session_id=data.get("session_id"),
         )
         return {'print_id': data['print_id']} if 'print_id' in data else {}
 
     def _cancel_job_with_error(self, job_id, error_message):
         self.job_ids.remove(job_id)
         self.conn.cancelJob(job_id)
-        self.send_status(
-            status='error', message=error_message, action_unique_id=self.job_action_ids.pop(job_id, None)
-        )
+        self.send_status(status='error', message=error_message, job_id=job_id)
 
     def _check_job_status(self, job_id):
         try:
@@ -234,18 +236,21 @@ class PrinterDriver(PrinterDriverBase):
                 job_state = job['job-state']
                 if job_state == IPP_JOB_COMPLETED:
                     self.job_ids.remove(job_id)
-                    self.job_action_ids.pop(job_id, None)
-                    self.send_status(status='success')
+                    self.send_status(status="success", job_id=job_id)
                 # Generic timeout, e.g. USB printer has been unplugged
                 elif job['time-at-creation'] + self.job_timeout_seconds < time.time():
                     self._cancel_job_with_error(job_id, 'ERROR_TIMEOUT')
                 # Cannot reach network printer
                 elif job_state == IPP_JOB_PROCESSING and 'printer is unreachable' in job.get('job-printer-state-message', ''):
                     self._cancel_job_with_error(job_id, 'ERROR_UNREACHABLE')
+                # Already cancelled
+                elif job_state == IPP_JOB_CANCELED:
+                    self.job_ids.remove(job_id)
+                    self.send_status(status='error', message='ERROR_UNKNOWN', job_id=job_id)
                 # Any other failure state
                 elif job_state not in [IPP_JOB_PROCESSING, IPP_JOB_PENDING]:
                     self._cancel_job_with_error(job_id, 'ERROR_UNKNOWN')
         except IPPError:
             _logger.exception('IPP error occurred while fetching CUPS jobs')
-            self.job_ids.remove(job_id)
-            self._recent_action_ids.pop(self.job_action_ids.pop(job_id, None), None)
+            self.job_ids.discard(job_id)
+            self.send_status(status='error', message='ERROR_UNKNOWN', job_id=job_id)

@@ -16,7 +16,7 @@ import {
     TOUR_RECORDER_ACTIVE_LOCAL_STORAGE_KEY,
     tourRecorderState,
 } from "@web_tour/js/tour_recorder/tour_recorder_state";
-import { Component, xml } from "@odoo/owl";
+import { Component, signal, xml } from "@odoo/owl";
 import { useAutofocus } from "@web/core/utils/hooks";
 import { WebClient } from "@web/webclient/webclient";
 
@@ -389,7 +389,7 @@ test("Selecting item in autocomplete field through Enter", async () => {
     await press("Enter");
     checkTourSteps([
         ".o-autocomplete--input",
-        ".o-autocomplete--dropdown-item > a:contains('World'), .fa-circle-o-notch",
+        ".o-autocomplete--dropdown-item > a:contains('World'), [data-icon='autorenew']",
     ]);
     expect(tourRecorder.state.steps.map((s) => s.run)).toEqual(["click", "click"]);
 });
@@ -400,14 +400,16 @@ test("Edit input after autofocus", async () => {
         static template = xml/*html*/ `
             <t>
                 <div class="container">
-                    <input type="text" class="o_input" t-custom-ref="input"/>
+                    <input type="text" class="o_input" t-ref="this.inputRef"/>
                 </div>
             </t>
         `;
         static props = ["*"];
 
+        inputRef = signal.ref();
+
         setup() {
-            useAutofocus({ refName: "input" });
+            useAutofocus({ ref: this.inputRef });
         }
     }
 

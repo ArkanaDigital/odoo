@@ -1,9 +1,13 @@
-import { onWillStart, proxy } from "@odoo/owl";
+import { onWillStart, useProps, proxy } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { FloatTimeSelectionPopover } from "./float_time_selection_popover";
 
-import { FloatTimeField, floatTimeField } from "@web/views/fields/float_time/float_time_field";
+import {
+    FloatTimeField,
+    floatTimeField,
+    floatTimeFieldProps,
+} from "@web/views/fields/float_time/float_time_field";
 const { DateTime } = luxon;
 
 function floatToHoursMinutes(floatValue) {
@@ -18,9 +22,9 @@ function hoursMinutesToFloat(hours, minutes) {
 
 export class FloatTimeSelectionField extends FloatTimeField {
     static template = "hr_holidays.FloatTimeSelectionField";
-    static props = {
-        ...FloatTimeField.props,
-    };
+    props = useProps({
+        ...floatTimeFieldProps,
+    });
 
     setup() {
         super.setup();
@@ -43,17 +47,8 @@ export class FloatTimeSelectionField extends FloatTimeField {
     }
 
     get formattedValue() {
-        const unitAmount = super.formattedValue;
-        let hours = 0;
-        let minutes = 0;
-
-        unitAmount.split(" ").forEach((data) => {
-            if (data.endsWith("h")) {
-                hours = parseInt(data);
-            } else if (data.endsWith("m")) {
-                minutes = parseInt(data);
-            }
-        });
+        const floatValue = this.props.record.data[this.props.name];
+        const { hours, minutes } = floatToHoursMinutes(floatValue);
 
         return DateTime.fromObject(
             { hour: hours, minute: minutes },
@@ -68,7 +63,7 @@ export class FloatTimeSelectionField extends FloatTimeField {
             onTimeChange: this.onTimeChange.bind(this),
         });
         setTimeout(() => {
-            this.inputFloatTimeRef.el.focus(); // focus on the input rather than the popover
+            this.inputFloatTimeRef()?.focus(); // focus on the input rather than the popover
         }, 0);
     }
 
@@ -80,7 +75,7 @@ export class FloatTimeSelectionField extends FloatTimeField {
 
     handleInputChange() {
         this.popover.close();
-        const inputValue = this.inputFloatTimeRef.el.value;
+        const inputValue = this.inputFloatTimeRef().value;
         const [hours, minutes] = inputValue.split(":").map(Number);
         if (!isNaN(hours) && !isNaN(minutes)) {
             this.timeValues.hours = String(hours).padStart(2, "0");

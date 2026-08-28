@@ -120,10 +120,10 @@ class PropertiesCase(TestPropertiesMixin):
     @mute_logger('odoo.sql_db')
     def test_base_properties_model_access(self):
         with self.assertRaises(AccessError):
-            self.env['res.partner'].with_user(self.test_user).create({
+            self.env['test_orm.properties'].with_user(self.test_user).create({
                 'name': 'test', 'properties': [{'name': 'test', 'type': 'char', 'definition_changed': True}]})
 
-        definition_record = self.env['properties.base.definition']._get_definition_for_property_field('res.partner', 'properties')
+        definition_record = self.env['properties.base.definition']._get_definition_for_property_field('test_orm.properties', 'properties')
         self.assertEqual(definition_record.properties_definition, [])
 
         field = self.env["ir.model.fields"].sudo()._get('test_orm.emailmessage', 'properties')
@@ -137,7 +137,7 @@ class PropertiesCase(TestPropertiesMixin):
         with self.assertRaises(AccessError):
             definition_record.with_user(self.test_user).unlink()
 
-        record_0 = self.env['res.partner'].create([{'properties': [{'name': 'test', 'type': 'char', 'definition_changed': True, 'value': 'test'}], 'name': 'test'}, {'name': 'test'}])[0]
+        record_0 = self.env['test_orm.properties'].create([{'properties': [{'name': 'test', 'type': 'char', 'definition_changed': True, 'value': 'test'}], 'name': 'test'}, {'name': 'test'}])[0]
         self.assertEqual(record_0.properties_base_definition_id, definition_record)
         self.assertEqual(definition_record.properties_definition, [{'name': 'test', 'type': 'char'}])
 
@@ -148,7 +148,7 @@ class PropertiesCase(TestPropertiesMixin):
         self.assertEqual(definition_record.properties_definition, [{'name': 'test', 'type': 'char'}])
 
         with self.assertRaises(AccessError):
-            self.env['res.partner'].with_user(self.test_user).create({
+            self.env['test_orm.properties'].with_user(self.test_user).create({
                 'name': 'test', 'properties': [{'name': 'test', 'type': 'char', 'definition_deleted': True}]})
 
     def test_properties_field(self):
@@ -360,6 +360,7 @@ class PropertiesCase(TestPropertiesMixin):
                        "test_orm_partner"."email",
                        "test_orm_partner"."active",
                        "test_orm_partner"."website",
+                       "test_orm_partner"."business_id",
                        "test_orm_partner"."parent_id",
                        "test_orm_partner"."country_id",
                        "test_orm_partner"."state_id",
@@ -841,11 +842,11 @@ class PropertiesCase(TestPropertiesMixin):
             self.assertEqual(value[1]['comodel'], 'test_orm.partner')
 
         # many2one properties in a default value
-        partner = self.env['res.partner'].create({'name': 'test unlink'})
+        partner = self.env['test_orm.partner'].create({'name': 'test unlink'})
         self.message_2.attributes = [{
             'name': 'moderator_partner_id',
             'type': 'many2one',
-            'comodel': 'res.partner',
+            'comodel': 'test_orm.partner',
             'default': [partner.id, 'Bob'],
             'definition_changed': True,
         }]
@@ -854,7 +855,7 @@ class PropertiesCase(TestPropertiesMixin):
             [{
                 'name': 'moderator_partner_id',
                 'type': 'many2one',
-                'comodel': 'res.partner',
+                'comodel': 'test_orm.partner',
                 'default': (partner.id, partner.display_name),
             }],
         )
@@ -864,7 +865,7 @@ class PropertiesCase(TestPropertiesMixin):
             [{
                 'name': 'moderator_partner_id',
                 'type': 'many2one',
-                'comodel': 'res.partner',
+                'comodel': 'test_orm.partner',
                 'default': False,
             }],
         )
@@ -1274,7 +1275,7 @@ class PropertiesCase(TestPropertiesMixin):
         def name_get(records):
             return list(zip(records._ids, records.mapped('display_name')))
 
-        with self.assertQueryCount(4):
+        with self.assertQueryCount(3):
             self.message_1.attributes = [
                 {
                     "name": "moderator_partner_ids",
@@ -1376,7 +1377,7 @@ class PropertiesCase(TestPropertiesMixin):
             }]
 
     @users('test')
-    @mute_logger('odoo.addons.base.models.ir_rule', 'odoo.fields')
+    @mute_logger('odoo.addons.base.models.ir_access', 'odoo.fields')
     def test_properties_field_many2many_filtering(self):
         # a user read a properties with a many2many and he doesn't have access to all records
         tags = self.env['test_orm.multi.tag'].create(
@@ -1395,16 +1396,13 @@ class PropertiesCase(TestPropertiesMixin):
             }],
         })
 
-        self.env['ir.rule'].sudo().create({
+        # restrict access to tags
+        self.env['ir.access'].sudo().create({
             'name': 'test_rule_tags',
             'model_id': self.env['ir.model']._get('test_orm.multi.tag').id,
-            'domain_force': [('id', 'not in', tags[5:].ids)],
-            'perm_read': True,
-            'perm_create': True,
-            'perm_write': True,
+            'operation': 'crud',
+            'domain': [('id', 'not in', tags[5:].ids)],
         })
-
-        self.env.invalidate_all()
 
         values = message.read(['attributes'])[0]['attributes'][0]['value']
         self.assertEqual(values, [(tag.id, None if i >= 5 else tag.name) for i, tag in enumerate(tags.sudo())])
@@ -1422,9 +1420,9 @@ class PropertiesCase(TestPropertiesMixin):
 
         expected = ["""
             UPDATE "test_orm_message"
-            SET "attributes" = "__tmp"."attributes"::jsonb,
-                "write_date" = "__tmp"."write_date"::timestamp,
-                "write_uid" = "__tmp"."write_uid"::int4
+            SET "attributes" = "__tmp"."attributes"::"jsonb",
+                "write_date" = "__tmp"."write_date"::"timestamp",
+                "write_uid" = "__tmp"."write_uid"::"int4"
             FROM (VALUES %s) AS "__tmp"("id", "attributes", "write_date", "write_uid")
             WHERE "test_orm_message"."id" = "__tmp"."id"
         """]
@@ -1600,10 +1598,11 @@ class PropertiesCase(TestPropertiesMixin):
         of the new property definition should be added should be added even if
         the record is not accessible.
         """
-        self.env['ir.rule'].sudo().create({
+        self.env['ir.access'].sudo().create({
             'name': 'only discussion_1',
             'model_id': self.env['ir.model']._get('test_orm.message').id,
-            'domain_force': [('discussion', '=', self.discussion_1.id)],
+            'operation': 'crud',
+            'domain': [('discussion', '=', self.discussion_1.id)],
         })
 
         message = self.env['test_orm.message'].create({
@@ -1675,6 +1674,25 @@ class PropertiesCase(TestPropertiesMixin):
                 'string': 'Color Code',
                 'default': 'blue',
                 'value': 'red',
+            },
+            {
+                'name': 'discussion_color_size',
+                'type': 'selection',
+                'string': 'Color Size',
+                'selection': [
+                    ('small', 'Small'),
+                    ('medium', 'Medium'),
+                    ('large', 'Large'),
+                ],
+                'default': 'medium',
+                'value': 'small',
+                'definition_changed': True,
+            },
+            {
+                'name': 'discussion_color_partner_ids',
+                'type': 'many2many',
+                'comodel': 'test_orm.partner',
+                'string': 'Color Partner',
             }],
         })
 
@@ -1690,6 +1708,17 @@ class PropertiesCase(TestPropertiesMixin):
         self.assertEqual(email['attributes']['discussion_color_code'], 'red')
         action.with_context(active_id=email.id).run()
         self.assertEqual(email['attributes']['discussion_color_code'], 'green')
+
+        action.update_path = 'attributes.discussion_color_size'
+        action.value = 'large'
+        self.assertEqual(email['attributes']['discussion_color_size'], 'small')
+        action.with_context(active_id=email.id).run()
+        self.assertEqual(email['attributes']['discussion_color_size'], 'large')
+
+        action.update_path = 'attributes.discussion_color_partner_ids'
+        action.resource_ref = self.partner_2
+        action.with_context(active_id=email.id).run()
+        self.assertEqual(email['attributes']['discussion_color_partner_ids'], self.partner_2)
 
     def test_getitem_property(self):
         # read a property that exist nowhere
@@ -1772,7 +1801,7 @@ class PropertiesCase(TestPropertiesMixin):
         messages = self.message_1 | self.message_2 | self.message_3
         self.env.invalidate_all()
 
-        with self.assertQueryCount(9):
+        with self.assertQueryCount(7):
             messages[0]['attributes']['many2many']
             messages[1]['attributes']['many2many']
 
@@ -1921,11 +1950,11 @@ class PropertiesSearchCase(TransactionExpressionCase, TestPropertiesMixin):
 
     def test_properties_field_search_many2many(self):
         self.messages.discussion = self.discussion_1
-        partners = self.env['res.partner'].create([{'name': 'A'}, {'name': 'B'}, {'name': 'C'}])
+        partners = self.env['test_orm.partner'].create([{'name': 'A'}, {'name': 'B'}, {'name': 'C'}])
         self.message_1.attributes = [{
             'name': 'mymany2many',
             'type': 'many2many',
-            'comodel': 'res.partner',
+            'comodel': 'test_orm.partner',
             'value': partners.ids,
             'definition_changed': True,
         }]
@@ -1957,7 +1986,7 @@ class PropertiesSearchCase(TransactionExpressionCase, TestPropertiesMixin):
         self.message_1.attributes = [{
             'name': 'mypartner',
             'type': 'many2one',
-            'comodel': 'res.partner',
+            'comodel': 'test_orm.partner',
             'value': self.partner.id,
             'definition_changed': True,
         }]

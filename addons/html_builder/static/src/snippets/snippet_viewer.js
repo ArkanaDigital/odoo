@@ -1,7 +1,6 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, markup } from "@odoo/owl";
+import { Component, markup, signal } from "@odoo/owl";
 import { useMatrixKeyNavigation } from "@html_builder/utils/keyboard_navigation";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { localization } from "@web/core/l10n/localization";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
@@ -21,13 +20,14 @@ export class SnippetViewer extends Component {
         frontendDirection: { type: String },
     };
 
+    content = signal.ref();
+
     setup() {
         this.dialog = useService("dialog");
-        this.content = useRef("content");
         this.backendDirection = localization.direction;
 
         this.handleMatrixKeyNavigation = useMatrixKeyNavigation(
-            () => [this.content.el],
+            () => [this.content()],
             ".o_snippet_preview_wrap"
         );
     }
@@ -78,7 +78,7 @@ export class SnippetViewer extends Component {
             icons.push({
                 keyClass: "o_prefix_conditional",
                 title: "Conditionally visible",
-                content: markup`<span class="fa fa-eye-slash"/>`,
+                content: markup`<span class="oi" data-icon="visibility_off"/>`,
             });
         }
         return icons;
@@ -171,8 +171,8 @@ export class SnippetViewer extends Component {
         );
         if (this.previousSearch !== this.props.state.search) {
             this.previousSearch = this.props.state.search;
-            if (this.content.el) {
-                this.content.el.ownerDocument.body.scrollTop = 0;
+            if (this.content()) {
+                this.content().ownerDocument.body.scrollTop = 0;
             }
         }
         if (this.props.state.search) {

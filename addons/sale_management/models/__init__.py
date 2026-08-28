@@ -2,7 +2,7 @@
 
 from . import (
     digest,
-    res_config_settings,
+    product_attribute_custom_value,
     sale_order,
     sale_order_line,
     sale_order_template,

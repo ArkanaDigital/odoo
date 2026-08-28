@@ -10,6 +10,10 @@ from odoo import Command
 @tagged('post_install', '-at_install')
 @skip('Temporary to fast merge new valuation')
 class TestStockLandedCostsLots(TestLotValuation):
+    _test_user_groups = ('base.group_user',)
+
+    _test_user_name = 'Test User'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

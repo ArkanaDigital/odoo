@@ -6,6 +6,14 @@
         <field name="arch" type="xml">
             <form string="Pos Product Categories">
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button"
+                            name="action_open_associated_products"
+                            type="object"
+                            icon="view_list">
+                            <field name="product_count" string="Products" widget="statinfo"/>
+                        </button>
+                    </div>
                     <field name="image_512" widget="image" class="oe_avatar"/>
                     <div class="oe_title row">
                         <h1>
@@ -75,6 +83,16 @@
                     </t>
                 </templates>
             </kanban>
+        </field>
+    </record>
+
+    <record id="view_pos_category_search" model="ir.ui.view">
+        <field name="name">pos.category.search.view</field>
+        <field name="model">pos.category</field>
+        <field name="arch" type="xml">
+            <search string="Point of Sale Product Categories">
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+            </search>
         </field>
     </record>
 

@@ -3,12 +3,13 @@
 import logging
 
 from psycopg2.extras import Json
+from zeep.cache import Base as ZeepCache
 
 from odoo import api, fields, models, modules, tools
-from odoo.api import SUPERUSER_ID
+from odoo.api import SUPERUSER_ID, ormcache
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Command, Domain
-from odoo.tools import SQL, BinaryBytes, file_open, html2plaintext
+from odoo.tools import SQL, BinaryBytes, file_open, html2plaintext, zeep
 from odoo.tools.image import image_process
 from odoo.tools.sql import table_columns
 
@@ -52,6 +53,7 @@ def company_default_for(fname, target_model, target_fname):
         'inverse': _inverse_to_ir_default,
         'compute_sql': _compute_sql_ir_default,
         'compute_sudo': True,
+        'write_sequence': -10,  # inverse before other fields to apply the company default
     }
 
 
@@ -70,7 +72,7 @@ class ResCompany(models.CachedModel):
 
     def _get_logo(self):
         with file_open('base/static/img/res_company_logo.png', 'rb') as f:
-            return BinaryBytes(f.read())
+            return BinaryBytes(f.read(), filename='logo.png')
 
     def _default_currency_id(self):
         if not self.env.registry.ready and not (set(self._cached_data_fields) <= table_columns(self.env.cr, self._table).keys()):
@@ -114,7 +116,8 @@ class ResCompany(models.CachedModel):
     phone = fields.Char(related='partner_id.phone', store=True, readonly=False)
     website = fields.Char(related='partner_id.website', readonly=False)
     vat = fields.Char(related='partner_id.vat', string="Tax ID", readonly=False)
-    company_registry = fields.Char(related='partner_id.company_registry', string="Company ID", readonly=False)
+    additional_identifiers = fields.Json(related='partner_id.additional_identifiers', readonly=False)
+    available_additional_identifiers_metadata = fields.Json(related='partner_id.available_additional_identifiers_metadata')
     paperformat_id = fields.Many2one('report.paperformat', 'Paper format', default=lambda self: self.env.ref('base.paperformat_euro', raise_if_not_found=False))
     external_report_layout_id = fields.Many2one('ir.ui.view', 'Document Template')
     report_tables_id = fields.Selection([
@@ -124,6 +127,7 @@ class ResCompany(models.CachedModel):
         ('striped', 'Striped'),
         ('bubble', 'Bubble'),
         ('column', 'Column'),
+        ('compact', 'Compact'),
     ], string='Table Design', default='light')
     font = fields.Selection([("Lato", "Lato"), ("Roboto", "Roboto"), ("Open_Sans", "Open Sans"), ("Montserrat", "Montserrat"), ("Oswald", "Oswald"), ("Raleway", "Raleway"), ('Tajawal', 'Tajawal'), ('Noto_Sans_Mono', 'Noto Sans Mono')], default="Lato")
     primary_color = fields.Char()
@@ -208,7 +212,7 @@ class ResCompany(models.CachedModel):
     def _compute_logo_web(self):
         for company in self:
             img = company.partner_id.image_1920
-            company.logo_web = img and BinaryBytes(image_process(img.content, size=(180, 0)))
+            company.logo_web = img and BinaryBytes(image_process(img.content, size=(180, 0)), filename='logo.png')
 
     @api.depends('partner_id.image_1920')
     def _compute_uses_default_logo(self):
@@ -538,3 +542,29 @@ class ResCompany(models.CachedModel):
                 existing = self.env['ir.default'].with_user(SUPERUSER_ID).with_company(company)._get_model_defaults(target_model).get(target_fname)
                 if existing is None:
                     company[fname] = field.default(company)
+
+    @ormcache('self.id', cache='stable')
+    def _get_zeep_cache__(self):  # noqa: PLW3201
+        """Return a cache bucket used by ``odoo.tools.zeep`` for XSDs/WSDLs."""
+        return {}
+
+    def _get_zeep_client__(self, url, *args, **kwargs):  # noqa: PLW3201
+        """Return a Zeep Client which uses the ORM cache for XSDs/WSDLs."""
+        self.ensure_one()
+        transport = kwargs.setdefault('transport', zeep.Transport())
+        if not transport.cache:
+            transport.cache = ZeepOrmCache(self)
+        return zeep.Client(url, *args, **kwargs)
+
+
+class ZeepOrmCache(ZeepCache):
+    """Zeep cache for XSD/WSDL resources backed by the ORM cache."""
+
+    def __init__(self, company):
+        self.company = company
+
+    def add(self, url, content):
+        self.company._get_zeep_cache__()[url] = content
+
+    def get(self, url):
+        return self.company._get_zeep_cache__().get(url)

@@ -19,6 +19,7 @@ import { user } from "@web/core/user";
  * @property {number} [after]
  * @property {number} [around]
  * @property {number} [before]
+ * @property {number} [limit]
  */
 
 /**
@@ -63,9 +64,13 @@ export class Thread extends Record {
     }
 
     autofocus = 0;
-    activities = fields.Many("mail.activity", {
-        sort: (a, b) => compareDatetime(a.date_deadline, b.date_deadline) || a.id - b.id,
-        onDelete: (r) => r?.remove(),
+    activities = fields.Many("mail.activity", { onDelete: (r) => r?.remove() });
+    sortedActivities = fields.Many("mail.activity", {
+        compute() {
+            return [...this.activities].sort(
+                (a, b) => compareDatetime(a.date_deadline, b.date_deadline) || a.id - b.id
+            );
+        },
     });
     create_uid = fields.One("res.users");
     /**
@@ -85,12 +90,11 @@ export class Thread extends Record {
     });
     areAttachmentsLoaded = false;
     group_public_id = fields.One("res.groups");
-    attachments = fields.Many("ir.attachment", {
-        /**
-         * @param {import("models").Attachment} a1
-         * @param {import("models").Attachment} a2
-         */
-        sort: (a1, a2) => a2.id - a1.id,
+    attachments = fields.Many("ir.attachment");
+    sortedAttachments = fields.Many("ir.attachment", {
+        compute() {
+            return [...this.attachments].sort((a1, a2) => a2.id - a1.id);
+        },
     });
     can_react = true;
     close_chat_window = fields.Attr(undefined, {
@@ -204,9 +208,11 @@ export class Thread extends Record {
     priority;
     /** @type {Array<[string,string]>} */
     priority_definition;
-    needactionMessages = fields.Many("mail.message", {
-        inverse: "threadAsNeedaction",
-        sort: (message1, message2) => message1.id - message2.id,
+    needactionMessages = fields.Many("mail.message", { inverse: "threadAsNeedaction" });
+    sortedNeedactionMessages = fields.Many("mail.message", {
+        compute() {
+            return [...this.needactionMessages].sort((m1, m2) => m1.id - m2.id);
+        },
     });
     // FIXME: should be in the portal/frontend bundle but live chat can be loaded
     // before portal resulting in the field not being properly initialized.
@@ -219,9 +225,11 @@ export class Thread extends Record {
      */
     scrollTop = "bottom";
     transientMessages = fields.Many("mail.message");
+    /** @type {boolean|undefined} */
+    autoTranslateEnabled = fields.Attr(undefined, { localStorage: true });
     /* The additional recipients are the recipients that are manually added
-     * by the user by using the "To" field of the Chatter. */
-    additionalRecipients = fields.Attr([]);
+     * by the user by using the "To" or "Cc" fields of the Chatter. */
+    additionalRecipients = fields.Attr([], { asProxy: true });
     /** @type {number|undefined} */
     recipients = fields.Many("mail.followers");
     recipientsCount = undefined;
@@ -231,7 +239,7 @@ export class Thread extends Record {
     suggestedRecipients = fields.Attr([]);
     /** @type {Boolean|undefined} */
     showSubjectInSmallComposer;
-    /** 
+    /**
      * similar to suggested recipients, except for the subject and optional per model.
     @type {String|undefined} */
     suggestedSubject;
@@ -244,6 +252,8 @@ export class Thread extends Record {
     hasLoadingFailedError;
     /** @type {boolean|undefined} */
     hasReadAccess;
+    /** @type {boolean|undefined} */
+    hasWriteAccess;
     canPostOnReadonly;
     /** @type {Boolean} */
     is_editable;
@@ -266,13 +276,15 @@ export class Thread extends Record {
             this.composerDisabledonUpdate();
         },
     });
-    pinnedMessages = fields.Many("mail.message", {
-        inverse: "threadAsPinned",
-        sort: (m1, m2) => {
-            if (m1.pinned_at === m2.pinned_at) {
-                return m2.id - m1.id;
-            }
-            return m1.pinned_at < m2.pinned_at ? 1 : -1;
+    pinnedMessages = fields.Many("mail.message", { inverse: "threadAsPinned" });
+    sortedPinnedMessages = fields.Many("mail.message", {
+        compute() {
+            return [...this.pinnedMessages].sort((m1, m2) => {
+                if (m1.pinned_at === m2.pinned_at) {
+                    return m2.id - m1.id;
+                }
+                return m1.pinned_at < m2.pinned_at ? 1 : -1;
+            });
         },
     });
 
@@ -427,7 +439,7 @@ export class Thread extends Record {
      */
     async fetchMessages({ fetchParams = {}, routeParams = {} } = {}) {
         this.status = "loading";
-        if (!["mail.box", "discuss.channel"].includes(this.model) && !this.id) {
+        if (!this.channel && !this.id) {
             this.isLoaded = true;
             return [];
         }
@@ -453,7 +465,7 @@ export class Thread extends Record {
      * @returns {Promise<{messages: number[]}>}
      */
     async fetchMessagesData({
-        fetchParams: { after, around, before } = {},
+        fetchParams: { after, around, before, limit } = {},
         routeParams = {},
     } = {}) {
         // ordered messages received: newest to oldest
@@ -463,16 +475,13 @@ export class Thread extends Record {
                 ...this.getFetchParams(),
                 ...routeParams,
                 fetch_params: {
-                    limit:
-                        !around && around !== 0
-                            ? this.store.FETCH_LIMIT
-                            : this.store.FETCH_LIMIT * 2,
+                    limit: limit ?? this.initialFetchLimit,
                     after,
                     around,
                     before,
                 },
             },
-            { readonly: this.model === "mail.box", requestData: true }
+            { readonly: false, requestData: true }
         );
     }
 
@@ -493,7 +502,10 @@ export class Thread extends Record {
         const after = epoch === "newer" ? this.newestPersistentMessage?.id : undefined;
         let fetched = [];
         try {
-            fetched = await this.fetchMessages({ fetchParams: { after, before }, routeParams });
+            fetched = await this.fetchMessages({
+                fetchParams: { after, before, limit: this.moreFetchLimit },
+                routeParams,
+            });
         } catch {
             return;
         }
@@ -512,7 +524,7 @@ export class Thread extends Record {
         } else {
             this.messages.push(...messagesToAdd);
         }
-        if (fetched.length < this.store.FETCH_LIMIT) {
+        if (fetched.length < this.moreFetchLimit) {
             if (epoch === "older") {
                 this.loadOlder = false;
             } else if (epoch === "newer") {
@@ -547,11 +559,14 @@ export class Thread extends Record {
     async fetchNewMessages({ routeParams = {} } = {}) {
         if (
             this.status === "loading" ||
-            (this.isLoaded && ["discuss.channel", "mail.box"].includes(this.model))
+            (this.isLoaded && !this.hasLoadingFailed && this.channel)
         ) {
             return;
         }
-        const after = this.isLoaded ? this.newestPersistentMessage?.id : undefined;
+        const after = this.getFetchNewMessagesAfter();
+        if (after === undefined && this.isLoaded) {
+            this.messages.splice(0, this.messages.length);
+        }
         let fetched = [];
         try {
             fetched = await this.fetchMessages({ fetchParams: { after }, routeParams });
@@ -585,40 +600,40 @@ export class Thread extends Record {
         this.messages.splice(startIndex, 0, ...filtered);
         Object.assign(this, {
             loadOlder:
-                after === undefined && fetched.length === this.store.FETCH_LIMIT
+                after === undefined && fetched.length === this.initialFetchLimit
                     ? true
-                    : after === undefined && fetched.length !== this.store.FETCH_LIMIT
+                    : after === undefined && fetched.length !== this.initialFetchLimit
                     ? false
                     : this.loadOlder,
         });
+    }
+
+    getFetchNewMessagesAfter() {
+        return this.isLoaded ? this.newestPersistentMessage?.id : undefined;
+    }
+
+    get initialFetchLimit() {
+        return this.store.FETCH_LIMIT;
+    }
+
+    get moreFetchLimit() {
+        return this.store.FETCH_LIMIT;
     }
 
     getFetchParams() {
         if (this.channel) {
             return { channel_id: this.id };
         }
-        if (this.model === "mail.box") {
-            return {};
-        }
         return {
             thread_id: this.id,
             thread_model: this.model,
-            ...this.rpcParams,
+            ...(Object.keys(this.rpcParams).length > 0 && { access_params: this.rpcParams }),
         };
     }
 
     getFetchRoute() {
         if (this.channel) {
             return "/discuss/channel/messages";
-        }
-        if (this.model === "mail.box" && this.id === "inbox") {
-            return `/mail/inbox/messages`;
-        }
-        if (this.model === "mail.box" && this.id === "bookmark") {
-            return `/mail/bookmark/messages`;
-        }
-        if (this.model === "mail.box" && this.id === "history") {
-            return `/mail/history/messages`;
         }
         return this.fetchRouteChatter;
     }
@@ -645,10 +660,11 @@ export class Thread extends Record {
         }
         this.isLoaded = false;
         this.scrollTop = undefined;
+        const limit = !messageId && messageId !== 0 ? this.moreFetchLimit : this.moreFetchLimit * 2;
         try {
             this.phantomMessages = this.messages;
             this.messages = await this.fetchMessages({
-                fetchParams: { around: messageId },
+                fetchParams: { around: messageId, limit },
                 routeParams,
             });
             this.phantomMessages = [];
@@ -659,8 +675,6 @@ export class Thread extends Record {
         this.isLoaded = true;
         this.loadNewer = messageId !== undefined ? true : false;
         this.loadOlder = true;
-        const limit =
-            !messageId && messageId !== 0 ? this.store.FETCH_LIMIT : this.store.FETCH_LIMIT * 2;
         if (this.messages.length < limit) {
             const olderMessagesCount = this.messages.filter(({ id }) => id < messageId).length;
             const newerMessagesCount = this.messages.filter(({ id }) => id > messageId).length;
@@ -799,6 +813,7 @@ export class Thread extends Record {
         } else {
             const tmpData = {
                 id: tmpId,
+                message_type: params.post_data.message_type,
                 attachment_ids: attachments,
                 res_id: this.id,
                 model: "discuss.channel",
@@ -855,6 +870,10 @@ export class Thread extends Record {
 
     get shouldMarkAsReadOnFocus() {
         return this.scrollTop === "bottom" && !this.scrollUnread && !this.channel?.markedAsUnread;
+    }
+
+    get shouldTranslateNewMessages() {
+        return this.autoTranslateEnabled;
     }
 
     /**

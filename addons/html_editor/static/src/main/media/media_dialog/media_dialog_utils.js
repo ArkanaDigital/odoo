@@ -32,6 +32,7 @@ export async function renderMedia({
     orm,
     activeTab,
     availableTabs,
+    document,
     oldMediaNode,
     selectedMedia,
     extraClassesToAdd,
@@ -39,10 +40,20 @@ export async function renderMedia({
 }) {
     const elements = await availableTabs[activeTab].Component.createElements(selectedMedia, {
         orm: orm,
+        document,
     });
     elements.forEach((element) => {
         if (oldMediaNode) {
-            element.classList.add(...oldMediaNode.classList);
+            const oldMediaClasses = [...oldMediaNode.classList].filter(
+                // If we replace an existing icon from the media dialog, we
+                // don't want to keep the filled state if the new icon is not
+                // filled. We also want to remove FA classes in case we replace
+                // a legacy FA icon.
+                (cls) =>
+                    !["oi-filled", "fab", "fad", "far", "fa"].includes(cls) &&
+                    !cls.startsWith("fa-")
+            );
+            element.classList.add(...oldMediaClasses);
             const style = oldMediaNode.getAttribute("style");
             if (style) {
                 element.setAttribute("style", style);

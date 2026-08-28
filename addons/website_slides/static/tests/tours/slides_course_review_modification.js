@@ -37,7 +37,7 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger:
-                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .o_website_rating_table_row[data-star='4']:contains(100%)",
+                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .o_website_rating_table_row[data-star='4'][title='100%']",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message:contains(First review)",
@@ -53,10 +53,10 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger:
-                "#chatterRoot:shadow .o-mail-Chatter:not(:has(.o_website_rating_card_container))",
+                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .text-muted:text(0 reviews)",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Thread:contains(No messages yet.)",
+            trigger: "#chatterRoot:shadow .o-mail-Chatter:contains(No reviews yet.)",
         },
         {
             trigger: ".o_wslides_course_header .o_website_rating_static[title='0 stars on 5']",
@@ -74,7 +74,7 @@ registry.category("web_tour.tours").add("course_review_modification", {
             run: "edit Second review",
         },
         {
-            trigger: ".modal.modal_shown .modal-body i.fa.fa-star:eq(2)",
+            trigger: ".modal.modal_shown .modal-body i[data-icon='star'].oi-filled:eq(2)",
             run: "click",
         },
         {
@@ -91,7 +91,7 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger:
-                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .o_website_rating_table_row[data-star='3']:contains(100%)",
+                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .o_website_rating_table_row[data-star='3'][title='100%']",
         },
         {
             trigger:
@@ -110,7 +110,7 @@ registry.category("web_tour.tours").add("course_review_modification", {
             run: "edit Second review is edited in rating composer",
         },
         {
-            trigger: ".modal.modal_shown .modal-body i.fa.fa-star:eq(1)",
+            trigger: ".modal.modal_shown .modal-body i[data-icon='star'].oi-filled:eq(1)",
             run: "click",
         },
         {
@@ -127,7 +127,7 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger:
-                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .o_website_rating_table_row[data-star='2']:contains(100%)",
+                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .o_website_rating_table_row[data-star='2'][title='100%']",
         },
         {
             trigger:
@@ -204,7 +204,7 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger:
-                "#chatterRoot:shadow .o-mail-Chatter:not(:has(.o_website_rating_card_container))",
+                "#chatterRoot:shadow .o-mail-Chatter .o_website_rating_card_container .text-muted:text(0 reviews)",
         },
         {
             trigger: "span:contains(Add Review)",
@@ -318,6 +318,23 @@ registry.category("web_tour.tours").add("course_review_modification_by_admin", {
         {
             trigger: ".o_rating_popup_composer span:text(Edit Review)",
         },
+        // Click the 4 star row: only "New comment from admin" should remain visible.
+        {
+            trigger: "#chatterRoot:shadow .o_website_rating_table_row[data-star='4']",
+            run: "click",
+        },
+        {
+            trigger:
+                "#chatterRoot:shadow .o-mail-Chatter .o-mail-Message:count(1) .o-mail-Message-body:text(New comment from admin)",
+        },
+        // Reset the filter before continuing: click the same star row again.
+        {
+            trigger: "#chatterRoot:shadow .o_website_rating_table_row[data-star='4']",
+            run: "click",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Chatter .o-mail-Message:count(2)",
+        },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-body:contains(Admin edited this review.)",
             run: "hover && click #chatterRoot:shadow .o-mail-Message:contains(Admin edited this review.) [title='Expand']",
@@ -338,5 +355,42 @@ registry.category("web_tour.tours").add("course_review_modification_by_admin", {
         {
             trigger: ".o_rating_popup_composer span:text(Edit Review)",
         },
+        {
+            trigger: "a[id=home-tab]",
+            run: "click",
+        },
+        {
+            trigger: 'a.o_wslides_js_slides_list_slide_link:contains("Gardening: The Know-How")',
+            run: "click",
+            expectUnloadPage: true,
+        },
+        {
+            trigger: 'a[title="Exit Fullscreen"]',
+            run: "click",
+            expectUnloadPage: true,
+        },
+        { trigger: "a[href='#discuss'].active:text(Comments (4))" },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Composer-input",
+            run: "edit Test comment",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Composer-send:enabled",
+            run: "click",
+        },
+        { trigger: "a[href='#discuss']:text(Comments (5))" },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message",
+            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu [name='delete']",
+            run: "click",
+        },
+        {
+            trigger: "#chatterRoot:shadow .modal button:contains(Delete)",
+            run: "click",
+        },
+        { trigger: "a[href='#discuss']:text(Comments (4))" },
     ],
 });

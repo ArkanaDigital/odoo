@@ -1,5 +1,5 @@
-import { useExternalListener, useLayoutEffect, useRef } from "@web/owl2/utils";
-import { onMounted, onWillUnmount } from "@odoo/owl";
+import { useLayoutEffect } from "@web/owl2/utils";
+import { onMounted, onWillUnmount, useListener, signal, useProps, t } from "@odoo/owl";
 import { EditDecorProperties } from "./edit_decor/edit_decor";
 import { EditTableProperties } from "./edit_table/edit_table";
 import { EditFloorProperties } from "./edit_floor/edit_floor";
@@ -27,7 +27,7 @@ import {
     loadImage,
     STATIC_IMG_BASE_URL,
 } from "@pos_restaurant/app/services/floor_plan/utils/utils";
-import { SIZES } from "@web/core/ui/ui_service";
+import { SIZES } from "@web/core/ui/ui_utils";
 
 const SETTING_MENU_SPACE = 320;
 const TABLE_SPACING = 20;
@@ -39,13 +39,15 @@ const IMG_SIZE = 220;
 export class FloorPlanEditor extends FloorPlanBase {
     static template = "pos_restaurant.floor_plan_editor";
     static components = { Handles, EditTableProperties, EditDecorProperties, EditFloorProperties };
-    static props = {
-        initActionHandler: Function,
-    };
+    props = useProps({
+        initActionHandler: t.function(),
+    });
+
+    snapGuidesRef = signal.ref();
+    actionMenuRef = signal.ref();
 
     setup() {
         super.setup();
-        this.snapGuidesRef = useRef("snapGuides");
         this.dialog = useService("dialog");
         this.ui = useService("ui");
 
@@ -68,9 +70,9 @@ export class FloorPlanEditor extends FloorPlanBase {
 
         onMounted(() => {
             this.snapping = new Snapping(
-                this.snapGuidesRef.el,
+                this.snapGuidesRef(),
                 this.floorPlanStore,
-                this.containerRef.el
+                this.containerRef()
             );
             this.textEditHandler = new TextEditHandler({
                 canvasRef: this.canvasRef,
@@ -130,7 +132,7 @@ export class FloorPlanEditor extends FloorPlanBase {
         );
 
         this.actionMenu = useActionMenu(
-            "actionMenu",
+            this.actionMenuRef,
             this.containerRef,
             () => ({ domElement: this.selectedDOMElement, floorElement: this.selectedElement }),
             (direction) => {
@@ -139,13 +141,13 @@ export class FloorPlanEditor extends FloorPlanBase {
         );
         this.state.actionMenuPosition = this.actionMenu.position;
 
-        useExternalListener(document, "mousemove", this.handleMove);
-        useExternalListener(document, "touchmove", this.handleMove, { passive: false });
-        useExternalListener(document, "mouseup", this.handleEnd);
-        useExternalListener(document, "touchend", this.handleEnd, { passive: false });
-        useExternalListener(document, "keydown", this.handleKeyDown);
-        useExternalListener(window, "resize", useDebounced(this.handleWindowResize, 100));
-        useExternalListener(window, "beforeunload", this.handleBeforeUnload);
+        useListener(document, "mousemove", this.handleMove.bind(this));
+        useListener(document, "touchmove", this.handleMove.bind(this), { passive: false });
+        useListener(document, "mouseup", this.handleEnd.bind(this));
+        useListener(document, "touchend", this.handleEnd.bind(this), { passive: false });
+        useListener(document, "keydown", this.handleKeyDown.bind(this));
+        useListener(window, "resize", useDebounced(this.handleWindowResize.bind(this), 100));
+        useListener(window, "beforeunload", this.handleBeforeUnload.bind(this));
 
         onWillUnmount(() => {
             this.operation?.stop();
@@ -176,9 +178,9 @@ export class FloorPlanEditor extends FloorPlanBase {
         }
 
         if (
-            e.target === this.canvasRef.el ||
-            e.target === this.snapGuidesRef.el ||
-            e.target === this.containerRef.el
+            e.target === this.canvasRef() ||
+            e.target === this.snapGuidesRef() ||
+            e.target === this.containerRef()
         ) {
             this.floorPlanStore.selectElementByUuid(null);
             this.endEditFloor();
@@ -319,9 +321,9 @@ export class FloorPlanEditor extends FloorPlanBase {
     }
 
     getCenterPosition(width, height) {
-        const containerRect = this.containerRef.el.getBoundingClientRect();
-        const scrollLeft = this.containerRef.el.scrollLeft;
-        const scrollTop = this.containerRef.el.scrollTop;
+        const containerRect = this.containerRef().getBoundingClientRect();
+        const scrollLeft = this.containerRef().scrollLeft;
+        const scrollTop = this.containerRef().scrollTop;
 
         // Calculate the center point of the viewport
         const viewportCenterX = scrollLeft + containerRect.width / 2;
@@ -338,7 +340,7 @@ export class FloorPlanEditor extends FloorPlanBase {
         if (tables.length === 0) {
             return { left: TABLE_START_X, top: TABLE_START_Y };
         }
-        const canvasWidth = this.canvasRef.el.clientWidth;
+        const canvasWidth = this.canvasRef().clientWidth;
         const maxRight = canvasWidth - TABLE_SPACING;
         let currentRow = 0;
         while (currentRow < 100) {
@@ -447,7 +449,7 @@ export class FloorPlanEditor extends FloorPlanBase {
         // If element has transparent area, check if click is on border
         const transparentInfo = element.getTransparentAreaInfo();
         const borderInfo = element.getTransparentAreaBorderInfo();
-        const canvasRect = this.canvasRef.el.getBoundingClientRect();
+        const canvasRect = this.canvasRef().getBoundingClientRect();
 
         // Convert canvas coordinates to screen coordinates
         // transparentInfo.left/top are relative to canvas, canvasRect gives us canvas position in viewport
@@ -615,8 +617,8 @@ export class FloorPlanEditor extends FloorPlanBase {
 
         if (this.ui.size > SIZES.XS) {
             const bounds = this.selectedElement.getBounds();
-            const containerRect = this.containerRef.el.getBoundingClientRect();
-            const scrollLeft = this.containerRef.el.scrollLeft;
+            const containerRect = this.containerRef().getBoundingClientRect();
+            const scrollLeft = this.containerRef().scrollLeft;
             const elementRightInViewport = bounds.left + bounds.width - scrollLeft;
             let spaceLeft = 0;
             if (elementRightInViewport < containerRect.width) {
@@ -702,6 +704,7 @@ export class FloorPlanEditor extends FloorPlanBase {
             getPayload: async (newName) => {
                 this.floorPlanStore.addFloor(newName);
             },
+            size: "md",
         });
     }
 
@@ -726,7 +729,7 @@ export class FloorPlanEditor extends FloorPlanBase {
         let maxW = floorSize.width;
         let maxH = floorSize.height;
 
-        const scrollContainerEl = this.containerRef.el;
+        const scrollContainerEl = this.containerRef();
 
         if (scrollContainerEl) {
             const containerWidth = scrollContainerEl.clientWidth;
@@ -750,8 +753,8 @@ export class FloorPlanEditor extends FloorPlanBase {
             el: this.getDOMFloorElement(this.floorPlanStore.selectedElementUuid),
             floorElement: this.floorPlanStore.getSelectedElement(),
             floorPlanStore: this.floorPlanStore,
-            canvasEl: this.canvasRef.el,
-            scrollContainerEl: this.containerRef.el,
+            canvasEl: this.canvasRef(),
+            scrollContainerEl: this.containerRef(),
             snapping: this.snapping,
             handles: this.handles,
             actionMenu: this.actionMenu,

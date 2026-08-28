@@ -15,10 +15,18 @@ from odoo.addons.website_sale_loyalty.controllers.main import WebsiteSale
 
 @tagged("post_install", "-at_install")
 class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.env.ref("base.user_admin").write({
+
+        if "payment_stripe" in cls.env["ir.module.module"]._installed():
+            cls.env["payment.provider"].search([
+                ("code", "=", "stripe")
+            ]).allow_express_checkout = False
+
+        cls.env.ref("base.user_admin").sudo().write({
             "company_id": cls.env.company.id,
             "company_ids": [(4, cls.env.company.id)],
             "name": "Mitchell Admin",
@@ -40,11 +48,10 @@ class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
 
         transfer_provider = self.env.ref("payment.payment_provider_transfer")
         transfer_provider.sudo().write({
-            "state": "enabled",
+            "is_live": True,
             "is_published": True,
             "company_id": self.env.company.id,
         })
-        transfer_provider._transfer_ensure_pending_msg_is_set()
 
         large_cabinet = self.env["product.product"].create({
             "name": "Small Cabinet",
@@ -83,36 +90,28 @@ class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
         self.env["loyalty.program"].create({
             "name": "Buy 4 Small Cabinets, get one for free",
             "trigger": "auto",
-            "rule_ids": [(0, 0, {"minimum_qty": 4, "product_ids": large_cabinet})],
+            "rule_ids": [Command.create({"minimum_qty": 4, "product_ids": large_cabinet})],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "product",
-                        "reward_product_id": large_cabinet.id,
-                        "discount_line_product_id": free_large_cabinet.id,
-                    },
-                )
+                Command.create({
+                    "reward_type": "product",
+                    "reward_product_id": large_cabinet.id,
+                    "discount_line_product_id": free_large_cabinet.id,
+                })
             ],
         })
 
         self.env["loyalty.program"].create({
             "name": "Code for 10% on orders",
             "trigger": "with_code",
-            "rule_ids": [(0, 0, {"mode": "with_code", "code": "testcode"})],
+            "rule_ids": [Command.create({"mode": "with_code", "code": "testcode"})],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount": 10,
-                        "discount_mode": "percent",
-                        "discount_applicability": "order",
-                        "discount_line_product_id": ten_percent.id,
-                    },
-                )
+                Command.create({
+                    "reward_type": "discount",
+                    "discount": 10,
+                    "discount_mode": "percent",
+                    "discount_applicability": "order",
+                    "discount_line_product_id": ten_percent.id,
+                })
             ],
         })
 
@@ -122,19 +121,15 @@ class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
             "program_type": "loyalty",
             "portal_visible": True,
             "applies_on": "both",
-            "rule_ids": [(0, 0, {"mode": "auto"})],
+            "rule_ids": [Command.create({"mode": "auto"})],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount": 21,
-                        "discount_mode": "percent",
-                        "discount_applicability": "order",
-                        "required_points": 50,
-                    },
-                )
+                Command.create({
+                    "reward_type": "discount",
+                    "discount": 21,
+                    "discount_mode": "percent",
+                    "discount_applicability": "order",
+                    "required_points": 50,
+                })
             ],
         })
 
@@ -176,30 +171,22 @@ class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
             "applies_on": "future",
             "trigger": "auto",
             "rule_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_point_amount": 1,
-                        "reward_point_mode": "money",
-                        "reward_point_split": True,
-                        "product_ids": gift_card,
-                    },
-                )
+                Command.create({
+                    "reward_point_amount": 1,
+                    "reward_point_mode": "money",
+                    "reward_point_split": True,
+                    "product_ids": gift_card,
+                })
             ],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount_mode": "per_point",
-                        "discount": 1,
-                        "discount_applicability": "order",
-                        "required_points": 1,
-                        "description": "PAY WITH GIFT CARD",
-                    },
-                )
+                Command.create({
+                    "reward_type": "discount",
+                    "discount_mode": "per_point",
+                    "discount": 1,
+                    "discount_applicability": "order",
+                    "required_points": 1,
+                    "description": "PAY WITH GIFT CARD",
+                })
             ],
         })
         # Another program for good measure
@@ -208,18 +195,14 @@ class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
             "applies_on": "current",
             "trigger": "with_code",
             "program_type": "promotion",
-            "rule_ids": [(0, 0, {"mode": "with_code", "code": "10PERCENT"})],
+            "rule_ids": [Command.create({"mode": "with_code", "code": "10PERCENT"})],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount": 10,
-                        "discount_mode": "percent",
-                        "discount_applicability": "order",
-                    },
-                )
+                Command.create({
+                    "reward_type": "discount",
+                    "discount": 10,
+                    "discount_mode": "percent",
+                    "discount_applicability": "order",
+                })
             ],
         })
         # Create a gift card to be used
@@ -285,6 +268,14 @@ class WebsiteSaleLoyaltyTestUi(TestSaleCommon, HttpCase):
 
 @tagged("post_install", "-at_install")
 class TestWebsiteSaleCoupon(HttpCase, WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -292,9 +283,13 @@ class TestWebsiteSaleCoupon(HttpCase, WebsiteSaleCommon):
             "name": "10% TEST Discount",
             "trigger": "with_code",
             "applies_on": "current",
-            "rule_ids": [(0, 0, {})],
+            "rule_ids": [Command.create({})],
             "reward_ids": [
-                (0, 0, {"reward_type": "discount", "discount": 10, "discount_mode": "percent"})
+                Command.create({
+                    "reward_type": "discount",
+                    "discount": 10,
+                    "discount_mode": "percent",
+                })
             ],
         })
 
@@ -350,7 +345,7 @@ class TestWebsiteSaleCoupon(HttpCase, WebsiteSaleCommon):
         )
 
         # 4. Test order not older than ICP validity -> Should not be removed
-        ICP = self.env["ir.config_parameter"]
+        ICP = self.env["ir.config_parameter"].sudo()
         ICP.set_int("website_sale_coupon.abandonned_coupon_validity", 5)
         self.env.flush_all()
         query = """UPDATE %s SET write_date = %%s WHERE id = %%s""" % (order._table,)
@@ -396,30 +391,26 @@ class TestWebsiteSaleCoupon(HttpCase, WebsiteSaleCommon):
             "applies_on": "current",
             "trigger": "with_code",
             "rule_ids": [
-                (0, 0, {"code": "12345", "reward_point_amount": 1, "reward_point_mode": "order"})
+                Command.create({
+                    "code": "12345",
+                    "reward_point_amount": 1,
+                    "reward_point_mode": "order",
+                })
             ],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount": 10,
-                        "discount_applicability": "specific",
-                        "required_points": 1,
-                        "discount_product_ids": chair,
-                    },
-                ),
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount": 50,
-                        "discount_applicability": "order",
-                        "required_points": 1,
-                    },
-                ),
+                Command.create({
+                    "reward_type": "discount",
+                    "discount": 10,
+                    "discount_applicability": "specific",
+                    "required_points": 1,
+                    "discount_product_ids": chair,
+                }),
+                Command.create({
+                    "reward_type": "discount",
+                    "discount": 50,
+                    "discount_applicability": "order",
+                    "required_points": 1,
+                }),
             ],
         })
         self.start_tour(
@@ -522,7 +513,7 @@ class TestWebsiteSaleCoupon(HttpCase, WebsiteSaleCommon):
                 that no coupons remain applied.
         """
         # Create 2 Taxes
-        tax_a = self.env["account.tax"].create({
+        tax_a = self.env["account.tax"].sudo().create({
             "name": "Tax A",
             "type_tax_use": "sale",
             "amount_type": "percent",

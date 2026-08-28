@@ -533,12 +533,12 @@ class TestBatchPicking(TransactionCase):
 
             * Result: 8 pickings and 4 batchs
         """
-        warehouse_1 = self.env['stock.warehouse'].create({
+        warehouse_1 = self.env['stock.warehouse'].sudo().create({
             'name': 'WH 1',
             'code': 'WH1',
             'company_id': self.env.company.id,
         })
-        warehouse_2 = self.env['stock.warehouse'].create({
+        warehouse_2 = self.env['stock.warehouse'].sudo().create({
             'name': 'WH 2',
             'code': 'WH2',
             'company_id': warehouse_1.company_id.id,
@@ -721,9 +721,8 @@ class TestBatchPicking(TransactionCase):
         Create a third picking with same partner
         - Should be added to the batch
         """
-        self.env.user.group_ids = [(4, self.ref('stock.group_reception_report'))]
         self.env['stock.picking.type'].browse(self.picking_type_in).write({
-            'auto_show_reception_report': True,
+            'auto_show_allocation_report': True,
             'auto_batch': True,
             'batch_group_by_partner': True,
         })
@@ -760,7 +759,7 @@ class TestBatchPicking(TransactionCase):
         res = Form.from_action(self.env, receipt01.button_validate()).save().process()
         self.assertEqual(receipt01.state, 'done')
         self.assertIsInstance(res, dict)
-        self.assertEqual(res.get('res_model'), 'report.stock.report_reception')
+        self.assertEqual(res.get('res_model'), 'stock.allocation.report')
 
         backorder = receipt01.backorder_ids
         self.assertTrue(backorder)
@@ -971,7 +970,7 @@ class TestBatchPicking02(TransactionCase):
         With autobatch receipts, check that you can create backorders for
         pickings related to the batch.
         """
-        warehouse = self.env['stock.warehouse'].create({
+        warehouse = self.env['stock.warehouse'].sudo().create({
             'name': 'Warehouse test',
             'code': 'WHTEST',
             'company_id': self.env.company.id,
@@ -1246,6 +1245,25 @@ class TestBatchPicking02(TransactionCase):
         self.assertEqual(batch.picking_ids, pickings[0])
         self.assertEqual(batch.state, 'done')
         self.assertFalse(pickings[1].batch_id)
+
+    def test_batch_name_with_wrong_separator_prefix(self):
+        """Check that no error is raised if a wrong separator is used in the prefix."""
+        # Fetch an existing sequence and update its prefix
+        sequence = self.env['ir.sequence'].search([('code', '=', 'picking.batch')], limit=1)
+        self.assertTrue(sequence, "Sequence with code 'picking.batch' should exist.")
+        sequence.prefix = 'BATCH-'
+        batch = self.env['stock.picking.batch'].create({
+            'company_id': self.env.company.id,
+        })
+        batch.write({
+            'picking_type_id': self.picking_type_internal.id,
+        })
+
+        self.assertTrue(batch.name.startswith('WH/INT/BATCH-'))
+        self.assertIn(
+            "The sequence 'picking.batch' is misconfigured. Its prefix should end with a '/' separator.",
+            batch.message_ids[0].body,
+        )
 
     def test_batch_name_with_complex_prefix(self):
         """Check that batch name is correctly generated with a complex prefix."""

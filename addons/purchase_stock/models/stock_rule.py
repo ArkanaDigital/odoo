@@ -177,11 +177,10 @@ class StockRule(models.Model):
     def _notify_responsible(self, procurement):
         pass  # Override in sale_purchase_stock and purchase_mrp to notify salesperson or MO responsible
 
-    def _get_lead_days(self, product, **values):
+    def _get_lead_days(self, product, bypass_delay_description=False, **values):
         """Add the supplier delay to the cumulative delay and cumulative description.
         """
-        delays, delay_description = super()._get_lead_days(product, **values)
-        bypass_delay_description = self.env.context.get('bypass_delay_description')
+        delays, delay_description = super()._get_lead_days(product, bypass_delay_description=bypass_delay_description, **values)
         buy_rule = self.filtered(lambda r: r.action == 'buy')
         seller = 'supplierinfo' in values and values['supplierinfo'] or product.with_company(buy_rule.company_id)._select_seller(quantity=None)
         if not buy_rule:
@@ -190,7 +189,7 @@ class StockRule(models.Model):
             delays['total_delay'] += 365
             delays['no_vendor_found_delay'] += 365
             if not bypass_delay_description:
-                delay_description.append((_('No Vendor Found'), _('+ %s day(s)', 365)))
+                delay_description.append((_('No Vendor Found'), _('+ %s days', 365)))
             return delays, delay_description
         buy_rule.ensure_one()
         if not self.env.context.get('ignore_vendor_lead_time'):
@@ -199,12 +198,12 @@ class StockRule(models.Model):
             delays['purchase_delay'] += supplier_delay
             if not bypass_delay_description:
                 delay_description.append((_('Receipt Date'), supplier_delay))
-                delay_description.append((_('Vendor Lead Time'), _('+ %d day(s)', supplier_delay)))
+                delay_description.append((_('Vendor Lead Time'), _('+ %d days', supplier_delay)))
         days_to_order = buy_rule.company_id.days_to_purchase
         delays['total_delay'] += days_to_order
         if not bypass_delay_description:
             delay_description.append((_('Order Deadline'), days_to_order))
-            delay_description.append((_('Days to Purchase'), _('+ %d day(s)', days_to_order)))
+            delay_description.append((_('Days to Purchase'), _('+ %d days', days_to_order)))
         return delays, delay_description
 
     @api.model
@@ -273,7 +272,7 @@ class StockRule(models.Model):
             uom_id=line.uom_id,
             params={'force_uom': values.get('force_uom')})
 
-        price_unit = self.env['account.tax']._fix_tax_included_price_company(seller.price, line.product_id.supplier_taxes_id, line.sudo().tax_ids, company_id) if seller else 0.0
+        price_unit = self.env['account.tax']._fix_tax_included_price_company(seller.price, line.product_id.supplier_taxes_id, line.sudo().tax_ids, company_id) if seller else line.price_unit
         if price_unit and seller and line.order_id.currency_id and seller.currency_id != line.order_id.currency_id:
             price_unit = seller.currency_id._convert(
                 price_unit, line.order_id.currency_id, line.order_id.company_id)
@@ -338,6 +337,8 @@ class StockRule(models.Model):
         if partner.group_rfq == 'default' or self.picking_type_id.code == 'dropship':
             if values.get('reference_ids'):
                 domain += (('reference_ids', 'in', tuple(values['reference_ids'].ids)),)
+            elif partner.group_rfq == 'default':
+                domain += (('reference_ids', '=', False),)
         date_planned = fields.Datetime.from_string(values['date_planned'])
         if partner.group_rfq == 'day':
             start_dt = datetime.combine(date_planned, datetime.min.time())

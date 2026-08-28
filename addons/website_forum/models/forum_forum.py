@@ -1,12 +1,12 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from collections import defaultdict
-from operator import itemgetter
 
 from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.fields import Domain
+from odoo.tools import SQL
 from odoo.tools.translate import html_translate
 
 MOST_USED_TAGS_COUNT = 5  # Number of tags to track as "most used" to display on frontend
@@ -22,6 +22,7 @@ class ForumForum(models.Model):
         'website.multi.mixin',
         'website.located.mixin',
         'website.searchable.mixin',
+        'website.structured_data.mixin',
     ]
     _order = "sequence, id"
 
@@ -138,14 +139,36 @@ class ForumForum(models.Model):
 
     # tags
     tag_ids = fields.One2many('forum.tag', 'forum_id', string='Tags')
-    tag_most_used_ids = fields.One2many('forum.tag', string="Most used tags", compute='_compute_tag_ids_usage')
-    tag_unused_ids = fields.One2many('forum.tag', string="Unused tags", compute='_compute_tag_ids_usage')
+    tag_most_used_ids = fields.One2many('forum.tag', string="Most used tags", compute='_compute_tag_most_used_ids')
+    tag_unused_ids = fields.One2many('forum.tag', string="Unused tags", compute='_compute_tag_unused_ids')
 
     def _compute_website_url(self):
         super()._compute_website_url()
         for record in self:
             if record.id:
                 record.website_url = '/forum/%s' % self.env['ir.http']._slug(record)
+
+    def _get_breadcrumb_items(self, is_detail_page=False):
+        items = super()._get_breadcrumb_items(is_detail_page)
+        items.append((self.env._("Forums"), '/forum'))
+        if is_detail_page:
+            items.append((self.name, self.website_url))
+        return items
+
+    def _get_jsonld_dict(self, is_detail_page=False):
+        schemas = super()._get_jsonld_dict(is_detail_page)
+        if is_detail_page:
+            if questions := self.post_ids.filtered(
+                lambda post: not post.parent_id and post.state == 'active',
+            ):
+                schemas.append(self._build_collectionpage_jsonld_vals(
+                    self.name, self.website_url, questions,
+                ))
+        elif self:
+            schemas.append(self._build_collectionpage_jsonld_vals(
+                self.env._("Forum"), '/forum', self,
+            ))
+        return schemas
 
     @api.depends_context('uid')
     @api.depends('privacy', 'authorized_group_id')
@@ -207,33 +230,36 @@ class ForumForum(models.Model):
             forum.can_moderate = self.env.user.karma >= forum.karma_moderate
 
     @api.depends('post_ids', 'post_ids.tag_ids', 'post_ids.tag_ids.posts_count', 'tag_ids')
-    def _compute_tag_ids_usage(self):
-        forums_without_tags = self.filtered(lambda f: not f.tag_ids)
-        forums_without_tags.tag_most_used_ids = forums_without_tags.tag_unused_ids = False
-        forums_with_tags = self - forums_without_tags
-        if not forums_with_tags:
-            return
+    def _compute_tag_most_used_ids(self):
+        access_query = self.env['forum.tag']._search([])
+        query = SQL("""
+            SELECT top_tags.id
+              FROM unnest(%(forum_ids)s) AS f(id)
+              JOIN LATERAL (
+                    SELECT id
+                      FROM forum_tag
+                     WHERE forum_id = f.id
+                       AND posts_count > 0
+                       AND id IN %(allowed_ids)s
+                  ORDER BY posts_count DESC, name, id
+                     LIMIT %(most_used_count)s
+                   ) AS top_tags ON TRUE
+        """, forum_ids=self.ids, most_used_count=MOST_USED_TAGS_COUNT, allowed_ids=access_query.subselect())
+        tag_ids = [row[0] for row in self.env.execute_query(query)]
+        tags = self.env['forum.tag'].browse(tag_ids)
+        tags_by_forum = tags.grouped('forum_id')
+        for forum in self:
+            forum.tag_most_used_ids = tags_by_forum.get(forum, self.env['forum.tag'])
 
-        tags_data = self.env['forum.tag'].search_read(
-            [('forum_id', 'in', forums_with_tags.ids)],
-            fields=['id', 'forum_id', 'posts_count'],
-            order='forum_id, posts_count DESC, name, id',
-        )
-        current_forum_id = tags_data[0]['forum_id'][0]
-        forum_tags = defaultdict(lambda: {'most_used_ids': [], 'unused_ids': []})
-
-        for tag_data in tags_data:
-            tag_id, tag_forum_id, posts_count = itemgetter('id', 'forum_id', 'posts_count')(tag_data)
-            if tag_forum_id[0] != current_forum_id:
-                current_forum_id = tag_forum_id[0]
-            if not posts_count:  # Could be 0 or None
-                forum_tags[current_forum_id]['unused_ids'].append(tag_id)
-            elif len(forum_tags[current_forum_id]['most_used_ids']) < MOST_USED_TAGS_COUNT:
-                forum_tags[current_forum_id]['most_used_ids'].append(tag_id)
-
-        for forum in forums_with_tags:
-            forum.tag_most_used_ids = self.env['forum.tag'].browse(forum_tags[forum.id]['most_used_ids'])
-            forum.tag_unused_ids = self.env['forum.tag'].browse(forum_tags[forum.id]['unused_ids'])
+    @api.depends('post_ids', 'post_ids.tag_ids', 'post_ids.tag_ids.posts_count', 'tag_ids')
+    def _compute_tag_unused_ids(self):
+        unused_tags = self.env['forum.tag'].search([
+            ('forum_id', 'in', self.ids),
+            ('posts_count', '=', 0),
+        ])
+        tags_by_forum = unused_tags.grouped('forum_id')
+        for forum in self:
+            forum.tag_unused_ids = tags_by_forum.get(forum, self.env['forum.tag'])
 
     @api.depends('post_ids')
     def _compute_last_post_id(self):
@@ -311,7 +337,7 @@ class ForumForum(models.Model):
         return res
 
     def _set_default_faq(self):
-        website = self.env["website"].get_current_website()
+        website = self.env.website or self.env.website.browse(self.env.context.get('host_id')) or self.env.ref('base.default_website')
         for forum in self:
             forum.faq = website._render_template('website_forum.faq_accordion', {"forum": forum})
 
@@ -376,7 +402,7 @@ class ForumForum(models.Model):
             'search_fields': search_fields,
             'fetch_fields': fetch_fields,
             'mapping': mapping,
-            'icon': 'fa-comments-o',
+            'icon': 'forum',
             'order': 'name desc, id desc' if 'name desc' in order else 'name asc, id desc',
             'group_name': self.env._("Forum"),
             'sequence': 120,

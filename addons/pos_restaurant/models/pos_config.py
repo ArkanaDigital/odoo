@@ -7,10 +7,10 @@ from odoo.tools import convert
 class PosConfig(models.Model):
     _inherit = 'pos.config'
 
-    iface_splitbill = fields.Boolean(string='Bill Splitting', help='Enables Bill Splitting in the Point of Sale.')
     floor_ids = fields.Many2many('restaurant.floor', string='Restaurant Floors', help='The restaurant floors served by this point of sale.', copy=False)
     default_screen = fields.Selection([('tables', 'Tables'), ('register', 'Register')], string='Default Screen', default='tables')
     use_course_allocation = fields.Boolean(string="Enable Course Allocation")
+    use_show_items_on_course_ticket = fields.Boolean(string="Show Items on Fired Course Ticket", help="Show items again on the fired course ticket in preparation printer")
     floor_plan_settings = fields.Json(string='Floor Plan Settings')
     floor_plan = fields.Json(string='Floor Plan', compute="_compute_floor_plan")
 
@@ -26,10 +26,6 @@ class PosConfig(models.Model):
             if is_restaurant:
                 if 'iface_printbill' not in vals:
                     vals['iface_printbill'] = True
-                if 'show_product_images' not in vals:
-                    vals['show_product_images'] = False
-                if 'show_category_images' not in vals:
-                    vals['show_category_images'] = False
         pos_configs = super().create(vals_list)
         for config in pos_configs:
             if config.module_pos_restaurant:
@@ -66,7 +62,6 @@ class PosConfig(models.Model):
             'company_id': self.env.company.id,
             'journal_id': journal.id,
             'payment_method_ids': payment_methods_ids,
-            'iface_splitbill': True,
             'module_pos_restaurant': True,
             'default_screen': 'register'
         })
@@ -112,7 +107,6 @@ class PosConfig(models.Model):
             'company_id': self.env.company.id,
             'journal_id': journal.id,
             'payment_method_ids': payment_methods_ids,
-            'iface_splitbill': True,
             'module_pos_restaurant': True,
             'use_presets': bool(presets),
             'default_preset_id': presets[0] if presets else False,
@@ -148,7 +142,15 @@ class PosConfig(models.Model):
         self.ensure_one()
         convert.convert_file(self._env_with_clean_context(), 'pos_restaurant', 'data/scenarios/restaurant_category_data.xml', idref=None, mode='init', noupdate=True)
         if with_demo_data:
+            self._load_product_demo_data([
+                ("data/product_attribute_data.xml", "product.pa_sides"),
+                ("data/product_attribute_demo.xml", "product.pav_brand_adidas"),
+            ])
             convert.convert_file(self._env_with_clean_context(), 'pos_restaurant', 'data/scenarios/restaurant_demo_data.xml', idref=None, mode='init', noupdate=True)
+            self.write({
+                'show_product_images': False,
+                'show_category_images': False,
+            })
         restaurant_categories = self.get_record_by_ref([
             'pos_restaurant.food',
             'pos_restaurant.drinks',

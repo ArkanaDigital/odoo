@@ -1,8 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from odoo import models, fields, api
+from odoo import api, fields, models
 from odoo.exceptions import AccessDenied
-
 
 MILKY_WAY_REGIONS = ['P3X', 'P4X', 'P2X', 'P5C']
 PEGASUS_REGIONS = ['M4R', 'P3Y', 'M6R']
@@ -86,5 +85,5 @@ class IrHttp(models.AbstractModel):
     _inherit = 'ir.http'
 
     @classmethod
-    def _auth_method_thing(cls):
+    def _auth_method_thing(cls, routing: dict):
         raise AccessDenied()

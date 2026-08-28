@@ -24,7 +24,8 @@
                 </div>
                 <div
                     name="category_overlay"
-                    t-attf-class="p-3 bg-black-25 position-relative w-100 h-100 d-flex flex-column justify-content-between {{alignmentClass}}"
+                    t-attf-class="p-3 position-relative w-100 h-100 d-flex flex-column justify-content-between {{alignmentClass}}"
+                    style="background: var(--category-overlay-color, rgba(0, 0, 0, 0.25))"
                 >
                     <h3 class="h4" t-out="category['name']"/>
                     <a
@@ -71,7 +72,7 @@
         </a>
         <a name="category_button" position="after">
             <p class="s_dynamic_category_arrow position-absolute end-0 bottom-0 mb-3 me-3">
-                <i class="oi oi-arrow-right fa-lg"/>
+                <i class="oi oi-lg" data-icon="east"/>
             </p>
         </a>
     </template>

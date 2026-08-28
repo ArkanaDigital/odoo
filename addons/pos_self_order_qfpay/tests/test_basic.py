@@ -9,6 +9,8 @@ from odoo.tests.common import tagged
 @tagged("post_install", "-at_install")
 class TestSelfOrderKioskQFPay(TestPointOfSaleHttpCommon, AccountTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -24,6 +26,7 @@ class TestSelfOrderKioskQFPay(TestPointOfSaleHttpCommon, AccountTestInvoicingCom
             'self_ordering_service_mode': 'counter',
             'payment_method_ids': [Command.create({
                 'name': 'Qfpay',
+                'type': 'bank',
                 "qfpay_pos_key": "my_qfpay_pos_key",
                 "qfpay_notification_key": "my_qfpay_notification_key",
                 "payment_provider": "qfpay",
@@ -37,11 +40,12 @@ class TestSelfOrderKioskQFPay(TestPointOfSaleHttpCommon, AccountTestInvoicingCom
         cls.env['pos.payment.method'].create({
             'name': 'Qfpay 2',
             'payment_provider': 'qfpay',
+            'type': 'bank',
         })
 
     def test_kiosk_qfpay(self):
         res = self.pos_config.load_self_data()
-        pm = res.get('pos.payment.method', [])
+        pm = res.get('pos.payment.method', {}).get('records', [])
         self.assertEqual(len(pm), 1, 'Only one payment method should be loaded')
         self.assertEqual(pm[0]['name'], 'Qfpay', 'The loaded payment method should be Qfpay')
 

@@ -9,6 +9,7 @@ from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestL10nTHWTHPayment(AccountTestInvoicingCommon):
     """ Test the payment flows """
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     @AccountTestInvoicingCommon.setup_country('th')
@@ -34,7 +35,7 @@ class TestL10nTHWTHPayment(AccountTestInvoicingCommon):
         })
 
     def test_withholding_condition_is_propagated(self):
-        withholding_tax = self.percent_tax(-1, is_withholding_tax_on_payment=True, withholding_sequence_id=self.withholding_sequence.id)
+        withholding_tax = self.percent_tax(-1, is_withholding_tax=True, withholding_sequence_id=self.withholding_sequence.id)
 
         invoice = self.env['account.move'].create({
             'move_type': 'in_invoice',

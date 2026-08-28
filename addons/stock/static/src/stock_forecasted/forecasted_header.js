@@ -9,7 +9,6 @@ export class ForecastedHeader extends Component {
     setup(){
         this.orm = useService("orm");
         this.action = useService("action");
-        this.tooltip = useService("tooltip");
 
         this._formatFloat = (num) => formatFloat(num, { digits: [0, this.props.docs.precision] });
     }
@@ -48,7 +47,7 @@ export class ForecastedHeader extends Component {
     }
 
     get leadTimeShort() {
-        let short = " " + (this.leadTime.total_delay) + " day(s)";
+        let short = " " + (this.leadTime.total_delay) + " days";
         if (this.leadTime.total_delay != 0) {
             short += " (" + this.leadTime.earliestPossibleArrival + ")";
         }

@@ -6,7 +6,7 @@
         <div class="s_website_form_end_message d-none">
             <div class="oe_structure">
                 <section class="s_text_block o_colored_level rounded px-5 text-center" data-snippet="s_text_block">
-                    <i class="fa fa-paper-plane fa-2x mb-3 rounded-circle text-bg-success" role="img" aria-hidden="true" title="Success"/>
+                    <i class="oi oi-2x oi-filled mb-3 rounded-circle text-bg-success" data-icon="send" role="img" aria-hidden="true" title="Success"/>
                     <h1 class="fw-bolder">Thank you for your feedback!</h1>
                     <p class="lead mb-0">Our team will message you back as soon as possible.</p>
                     <p class="lead">In the meantime we invite you to visit our <a class="o_translate_inline" href="/">website</a>.</p>
@@ -26,8 +26,7 @@
     <t t-name="website.form_field">
         <div t-attf-class="s_website_form_field mb-3 #{this.field.formatInfo.col or 'col-12'} #{this.field.formatInfo.offset} #{this.field.custom and 's_website_form_custom' or ''} #{(this.field.required and 's_website_form_required' or '') or (this.field.modelRequired and 's_website_form_model_required' or '')} #{this.field.hidden and 's_website_form_field_hidden' or ''} #{this.field.dnone and 's_website_form_dnone' or ''} #{fieldTypeClasses or ''}"
             t-att-data-type="this.field.type"
-            data-name="Field"
-            t-att-data-translated-name="this.defaultName">
+            data-name="Field">
             <div t-if="this.field.formatInfo.labelPosition !== 'none' and this.field.formatInfo.labelPosition !== 'top'" class="row s_col_no_resize s_col_no_bgcolor">
                 <label t-attf-class="#{!this.field.isCheck and 'col-form-label' or ''} col-sm-auto s_website_form_label #{this.field.formatInfo.labelPosition === 'right' and 'text-end' or ''} #{this.field.formatInfo.labelInvisible and 'invisible' or ''}" t-attf-style="width: #{this.field.formatInfo.labelWidth or '200px'}" t-att-for="this.field.id">
                      <t t-call="website.form_label_content"/>
@@ -192,7 +191,7 @@
                         t-att-placeholder="field.placeholder"
                         t-att-id="field.id"
                 />
-                <div class="input-group-text o_input_group_date_icon"><i class="fa fa-calendar"></i></div>
+                <div class="input-group-text o_input_group_date_icon"><i class="oi oi-filled" data-icon="calendar_today"></i></div>
             </div>
         </t>
     </t>
@@ -210,7 +209,7 @@
                         t-att-placeholder="field.placeholder"
                         t-att-id="field.id"
                 />
-                <div class="input-group-text o_input_group_date_icon"><i class="fa fa-calendar"></i></div>
+                <div class="input-group-text o_input_group_date_icon"><i class="oi oi-filled" data-icon="calendar_today"></i></div>
             </div>
         </t>
     </t>
@@ -297,6 +296,7 @@
                 </t>
                 <select t-else="" class="form-select s_website_form_input" t-att-name="field.name"
                     t-att-required="field.required || field.modelRequired || None" t-att-id="field.id"
+                    t-att-data-fill-with="field.fillWith"
                     t-attf-data-link-state-to-country="{{ field.name == 'state_id' and (field.linkStateToCountry ? 'true' : 'false') }}">
                     <option t-if="field.allowEmpty" t-out="field.placeholder" class="s_website_form_empty_option" value="" selected="selected"/>
                     <t t-foreach="field.records" t-as="record" t-key="record_index">

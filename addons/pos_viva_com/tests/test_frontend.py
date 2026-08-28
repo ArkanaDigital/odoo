@@ -10,6 +10,8 @@ import odoo.tests
 @odoo.tests.tagged('post_install', '-at_install')
 class TestVivaComHttpCommon(TestPointOfSaleHttpCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -17,6 +19,7 @@ class TestVivaComHttpCommon(TestPointOfSaleHttpCommon):
         # Create Viva.com payment method
         viva_payment_method = cls.env['pos.payment.method'].create({
             'name': 'Viva',
+            'type': 'bank',
             'journal_id': cls.bank_journal.id,
             'payment_provider': 'viva_com',
             'viva_com_merchant_id': 'test-merchant-id',

@@ -22,7 +22,7 @@ class StockQuant(models.Model):
     _description = 'Quant'
     _explanation = "The actual, current inventory on hand. A quant tracks how much of a specific product is currently sitting in a specific location (down to the lot/serial number or package)."
     _rec_name = 'product_id'
-    _rec_names_search = ['location_id', 'lot_id', 'package_id', 'owner_id']
+    _rec_names_search = ('location_id', 'lot_id', 'package_id', 'owner_id')
 
     def _domain_location_id(self):
         if self.env.user.has_group('stock.group_stock_user'):
@@ -102,7 +102,7 @@ class StockQuant(models.Model):
     inventory_quantity_auto_apply = fields.Float(
         'Inventoried Quantity', digits='Product Unit',
         compute='_compute_inventory_quantity_auto_apply',
-        inverse='_set_inventory_quantity', groups='stock.group_stock_manager'
+        inverse='_set_inventory_quantity', groups='stock.group_stock_user'
     )
     inventory_diff_quantity = fields.Float(
         'Difference', compute='_compute_inventory_diff_quantity', store=True,
@@ -439,7 +439,6 @@ class StockQuant(models.Model):
             self._quant_tasks()
 
         ctx = dict(self.env.context or {})
-        ctx['no_at_date'] = True
         if self.env.user.has_group('stock.group_stock_user') and not self.env.user.has_group('stock.group_stock_manager'):
             ctx['search_default_my_count'] = True
         view_id = self.env.ref('stock.view_stock_quant_tree_inventory_editable').id
@@ -456,7 +455,7 @@ class StockQuant(models.Model):
                     {}
                 </p>
                 <p>
-                    {} <span class="fa fa-cog"/>
+                    {} <span class="oi oi-filled" data-icon="settings"/>
                 </p>
                 """.format(escape(_('Your stock is currently empty')),
                            escape(_('Press the "New" button to define the quantity for a product in your stock or import quantities from a spreadsheet via the Actions menu'))),
@@ -668,7 +667,7 @@ class StockQuant(models.Model):
         query.having = SQL("SUM(quantity - reserved_quantity) > 0")
         query.order = SQL("available_qty DESC")
         qty_by_package = self.env.execute_query(
-            query.select('package_id', 'SUM(quantity - reserved_quantity) AS available_qty'))
+            query.select(SQL('package_id'), SQL('SUM(quantity - reserved_quantity) AS available_qty')))
 
         # Items that do not belong to a package are added individually to the list, any empty packages get removed.
         pkg_found = False
@@ -1352,9 +1351,13 @@ class StockQuant(models.Model):
         ctx.pop('group_by', None)
 
         action = self.env['ir.actions.act_window']._for_xml_id('stock.stock_quant_action')
-        action["domain"] = [('product_id.company_id', 'in', ctx.get('allowed_company_ids', []) + [False])]
+        action["domain"] = [
+            '|',
+            ('product_id.company_id', 'parent_of', ctx.get('allowed_company_ids', [])),
+            ('product_id.company_id', '=', False)
+        ]
         form_view = self.env.ref('stock.view_stock_quant_form_editable').id
-        if self.env.context.get('inventory_mode') and self.env.user.has_group('stock.group_stock_manager'):
+        if self.env.context.get('inventory_mode') and self.env.user.has_group('stock.group_stock_user'):
             action['view_id'] = self.env.ref('stock.view_stock_quant_tree_editable').id
         else:
             action['view_id'] = self.env.ref('stock.view_stock_quant_tree').id

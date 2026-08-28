@@ -313,12 +313,10 @@ class TestCalendar(SavepointCaseWithUserDemo):
         self.assertTrue(self.partner_demo in event.attendee_ids.mapped('partner_id'))
         self.assertTrue(self.env.user.partner_id in event.attendee_ids.mapped('partner_id'))
 
+    @freezegun.freeze_time('2011-04-29 10:00:00')
     def test_discuss_videocall(self):
         self.event_tech_presentation._set_discuss_videocall_location()
-        self.assertFalse(self.event_tech_presentation.videocall_channel_id.id, 'No channel should be set before the route is accessed')
-        # create the first channel
-        self.event_tech_presentation._create_videocall_channel()
-        self.assertNotEqual(self.event_tech_presentation.videocall_channel_id.id, False)
+        self.assertTrue(self.event_tech_presentation.videocall_channel_id)
 
         partner1 = self.env['res.partner'].create({'name': 'Bob', 'email': u'bob@gm.co'})
         partner2 = self.env['res.partner'].create({'name': 'Jack', 'email': u'jack@gm.co'})
@@ -537,3 +535,36 @@ class TestCalendar(SavepointCaseWithUserDemo):
             'res_id': 0,
         })
         self.assertTrue(event.res_id)
+
+    def test_contact_details_single_vs_multiple_attendees(self):
+        """Contact Details section should only appear for 1-on-1 meetings
+        (single non-organizer attendee)."""
+        organizer = new_test_user(self.env, login='org_user', groups='base.group_user')
+        attendees = self.env['res.partner'].create([
+            {'name': 'Attendee A', 'email': 'a@test.com', 'phone': '+1000000001'},
+            {'name': 'Attendee B', 'email': 'b@test.com', 'phone': '+1000000002'},
+            {'name': 'Attendee C', 'email': 'c@test.com', 'phone': '+1000000003'},
+        ])
+        # Multiple attendees: only organizer info is shown
+        event_multi = self.env['calendar.event'].with_user(organizer).create({
+            'name': 'Group Meeting',
+            'start': '2026-04-01 10:00:00',
+            'stop': '2026-04-01 11:00:00',
+            'user_id': organizer.id,
+            'partner_ids': [Command.link(pid) for pid in attendees.ids],
+        })
+        self.assertIn('Organized by', event_multi.description)
+        self.assertNotIn('Contact Details', event_multi.description)
+        for attendee in attendees:
+            self.assertNotIn(attendee.name, event_multi.description)
+        # Single attendee: Contact Details should appear
+        event_single = self.env['calendar.event'].with_user(organizer).create({
+            'name': '1-on-1 Meeting',
+            'start': '2026-04-01 12:00:00',
+            'stop': '2026-04-01 13:00:00',
+            'user_id': organizer.id,
+            'partner_ids': [Command.link(attendees[0].id)],
+        })
+        self.assertIn('Organized by', event_single.description)
+        self.assertIn('Contact Details', event_single.description)
+        self.assertIn('Attendee A', event_single.description)

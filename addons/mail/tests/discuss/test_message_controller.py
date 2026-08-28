@@ -8,12 +8,12 @@ from odoo.http.stream import STATIC_CACHE_LONG
 from odoo.tests import tagged, users
 from odoo.tools import mute_logger
 
-from odoo.addons.base.tests.common import HttpCase, HttpCaseWithUserDemo
+from odoo.addons.base.tests.common import HttpCase
 from odoo.addons.mail.tests.common import MailCommon, mail_new_test_user
 
 
 @odoo.tests.tagged("mail_controller")
-class TestMessageController(HttpCaseWithUserDemo, MailCommon):
+class TestMessageController(HttpCase, MailCommon):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -137,8 +137,8 @@ class TestMessageController(HttpCaseWithUserDemo, MailCommon):
                         "message_id": data1["message_id"],
                         "update_data": {
                             "body": "test",
-                            "attachment_ids": [self.attachments[1].id],
-                            "attachment_tokens": ["wrong token"],
+                            "attachment_ids": [self.attachments[0].id, self.attachments[1].id],
+                            "attachment_tokens": [self.attachments[0]._get_ownership_token(), "wrong token"],
                         },
                     },
                 },
@@ -160,8 +160,11 @@ class TestMessageController(HttpCaseWithUserDemo, MailCommon):
                         "message_id": data1["message_id"],
                         "update_data": {
                             "body": "test",
-                            "attachment_ids": [self.attachments[1].id],
-                            "attachment_tokens": [self.attachments[1]._get_ownership_token()],
+                            "attachment_ids": [self.attachments[0].id, self.attachments[1].id],
+                            "attachment_tokens": [
+                                self.attachments[0]._get_ownership_token(),
+                                self.attachments[1]._get_ownership_token(),
+                            ],
                         },
                     },
                 },
@@ -349,7 +352,7 @@ class TestMessageLinks(MailCommon, HttpCase):
 
         cls.user_employee_1 = mail_new_test_user(cls.env, login='tao1', groups='base.group_user', name='Tao Lee')
         cls.public_channel = cls.env['discuss.channel']._create_channel(name='Public Channel1', group_id=None)
-        cls.private_group = cls.env['discuss.channel']._create_group(partners_to=cls.user_employee_1.partner_id.ids, name="Group")
+        cls.private_group = cls.env['discuss.channel']._create_group(users_to=cls.user_employee_1, name="Group")
 
     @users('employee')
     def test_message_link_by_employee(self):

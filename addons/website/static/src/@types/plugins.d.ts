@@ -1,7 +1,8 @@
 declare module "plugins" {
     import { CarouselOptionShared } from "@website/builder/plugins/carousel_option_plugin";
-    import { CustomizeWebsiteShared } from "@website/builder/plugins/customize_website_plugin";
+    import { CustomizeWebsiteShared, on_website_color_updated_handlers } from "@website/builder/plugins/customize_website_plugin";
     import { on_content_manually_updated_handlers, EditInteractionShared } from "@website/builder/plugins/edit_interaction_plugin";
+    import { floating_snippet_scope_providers, floating_snippets_selectors } from "@website/builder/plugins/floating_snippets_plugin";
     import { WebsiteFontShared } from "@website/builder/plugins/font/font_plugin";
     import { FormOptionShared } from "@website/builder/plugins/form/form_option_plugin";
     import { ImageHoverShared } from "@website/builder/plugins/image/image_hover_plugin";
@@ -30,8 +31,9 @@ declare module "plugins" {
     import { PopupVisibilityShared } from "@website/builder/plugins/popup_visibility_plugin";
     import { SwitchableViewsShared } from "@website/builder/plugins/switchable_views_plugin";
     import { theme_options, ThemeTabShared } from "@website/builder/plugins/theme/theme_tab_plugin";
+    import { MediaTranslationShared } from "@website/builder/plugins/translation/options/media_translation_plugin";
     import { TranslateWebpageOptionShared } from "@website/builder/plugins/translation/options/translate_webpage_option_plugin";
-    import { on_nodes_marked_translatable_handlers, TranslationShared } from "@website/builder/plugins/translation/translation_plugin";
+    import { on_get_dirty_translations_handlers, on_nodes_marked_translatable_handlers, TranslationShared } from "@website/builder/plugins/translation/translation_plugin";
     import { WebsiteSaveShared } from "@website/builder/plugins/website_save_plugin";
     import { force_background_translation_state_selectors } from "@website/builder/plugins/translation/repeat_translation_state_plugin";
     import { WebsiteBridgeShared } from "@website/builder/plugins/website_bridge_plugin";
@@ -52,6 +54,7 @@ declare module "plugins" {
         imageGalleryOption: ImageGalleryOptionShared;
         imageHover: ImageHoverShared;
         instagramOption: InstagramOptionShared;
+        mediaTranslation: MediaTranslationShared;
         megaMenuOptionPlugin: MegaMenuOptionShared;
         menuDataPlugin: MenuDataShared;
         navTabsOptionStyle: NavTabsStyleOptionShared;
@@ -77,10 +80,12 @@ declare module "plugins" {
         // Handlers
         on_content_manually_updated_handlers: on_content_manually_updated_handlers;
         on_dynamic_snippet_template_updated_handlers: on_dynamic_snippet_template_updated_handlers;
+        on_get_dirty_translations_handlers: on_get_dirty_translations_handlers;
         on_hover_animation_mode_cleaned_handlers: on_hover_animation_mode_cleaned_handlers;
         on_hover_animation_mode_applied_handlers: on_hover_animation_mode_applied_handlers;
         on_nodes_marked_translatable_handlers: on_nodes_marked_translatable_handlers;
         on_visibility_toggled_handlers: on_visibility_toggled_handlers;
+        on_website_color_updated_handlers: on_website_color_updated_handlers;
 
         // Predicates
         can_have_hover_effect_predicates: can_have_hover_effect_predicates;
@@ -89,12 +94,14 @@ declare module "plugins" {
         reorder_items_processors: reorder_items_processors;
 
         // Providers
+        floating_snippet_scope_providers: floating_snippet_scope_providers;
         footer_templates_providers: footer_templates_providers;
         gallery_items_providers: gallery_items_providers;
         header_templates_providers: header_templates_providers;
 
         // Data
         searchbar_option_order_by_items: searchbar_option_order_by_items;
+        floating_snippets_selectors: floating_snippets_selectors;
         force_background_translation_state_selectors: force_background_translation_state_selectors;
         theme_options: theme_options;
         visibility_selector_parameters: visibility_selector_parameters;

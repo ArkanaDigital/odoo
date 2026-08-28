@@ -2,21 +2,6 @@
 /// This file regroups the website design rules.
 ///
 
-$-seen-urls: ();
-@each $alias, $key in $o-font-aliases-to-keys {
-    $-url: o-get-font-info($alias, 'url');
-    @if $-url and index($-seen-urls, $-url) == null {
-        $-seen-urls: append($-seen-urls, $-url);
-        @import url("https://fonts.googleapis.com/css?family=#{unquote($-url)}&display=swap");
-    } @else {
-        $-name: o-get-font-info($alias, 'name');
-        $-attachment: o-get-font-info($alias, 'attachment');
-        @if $-attachment {
-            @import url("/web/content/#{$-attachment}/google-font-#{unquote($-name)}");
-        }
-    }
-}
-
 :root {
     // Border color
     // Let borders color adapt according to body and CCs. Also, set a fallback
@@ -585,8 +570,8 @@ $-navbar-mobile-bg-color: o-color('menu-custom') or o-color('menu');
             &:after {
                 height: 100%;
                 background: none;
-                font-family: 'odoo_ui_icons';
-                content: '\e839';
+                font-family: var(--icon-font-family, "Material Symbols Outlined");
+                content: 'keyboard_arrow_down';
             }
         }
     }
@@ -790,10 +775,7 @@ font[class*='bg-'] {
     object-fit: cover;
 }
 // Icons
-.fa {
-    font-family: "FontAwesome" !important;
-}
-.fa, .social_media_img {
+.oi, .oi, .social_media_img {
     $-size: map-get($spacers, 5);
 
     &.rounded-circle,
@@ -805,12 +787,12 @@ font[class*='bg-'] {
         display: inline-block;
         vertical-align: middle;
         text-align: center;
-        // fa-1x is not ouput
+        // oi-1x is not ouput
         width: $-size;
         height: $-size;
         line-height: $-size;
         @for $i from 2 through 5 {
-            &.fa-#{$i}x {
+            &.oi-#{$i}x {
                 width: $-size + $i;
                 height: $-size + $i;
                 line-height: $-size + $i;
@@ -955,13 +937,25 @@ font[class*='bg-'] {
 }
 
 // Background blur option
-.o_bg_blur_option {
-    backdrop-filter: contrast(MIN(calc(1 + var(--o-bg-blur) * .05), var(--o-bg-blur-enhance, 1.25)))
-                     brightness(MIN(calc(1 + var(--o-bg-blur) * .05), var(--o-bg-blur-enhance, 1.25)))
-                     blur(calc(var(--o-bg-blur, 0) * 1px));
+.o_bg_blur_option, header nav, header nav .o_navbar_mobile {
+    --o-blur-factor: MIN(calc(1 + var(--o-bg-blur) * .05), var(--o-bg-blur-enhance, 1.25));
+    backdrop-filter: contrast(var(--o-blur-factor)) brightness(var(--o-blur-factor)) blur(calc(var(--o-bg-blur, 0) * 1px));
+}
 
-    &.o_bg_blur_no_enhance {
-        --o-bg-blur-enhance: 1;
+.o_bg_blur_option.o_bg_blur_no_enhance {
+    --o-bg-blur-enhance: 1;
+}
+
+header {
+    // We want to share the header nav's blur with the mobile navbar.
+    nav, .o_navbar_mobile {
+        --o-bg-blur: #{o-website-value('header-bg-blur')};
+    }
+
+    // Avoid nested backdrop-filter conflict: nav blur hides the mobile
+    // offcanvas blur when it's open.
+    &.o_top_menu_collapse_shown nav:has(.o_navbar_mobile) {
+        backdrop-filter: none;
     }
 }
 
@@ -1097,15 +1091,23 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
             min-width: 0;
             margin: 0;
         }
-        .carousel-control-prev, .carousel-control-next {
+        .carousel-control-prev, .carousel-control-next, .o_carousel_pause {
             position: relative;
             width: auto;
+        }
+
+        .o_carousel_pause {
+            padding-block: 0;
+
+            .o_carousel_pause_icon {
+                height: auto;
+            }
         }
     }
 
     // Allow clicks to pass through the carousel control's wrapper, while
     // keeping the control buttons/indicators clickable.
-    .carousel-indicators > *, .carousel-control-prev, .carousel-control-next {
+    .carousel-indicators > *, .carousel-control-prev, .carousel-control-next, .o_carousel_pause {
         pointer-events: auto;
     }
 
@@ -1141,7 +1143,7 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
         background-image: none;
         color: $body-color;
         &:before {
-            font-family: "FontAwesome";
+            font-family: var(--icon-font-family, "Material Symbols Outlined");
             display: inline-block;
             background-color: #fff;
         }
@@ -1169,8 +1171,8 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
     // Default
     &.s_carousel_default {
         // Controls - chevron
-        .carousel-control-prev-icon:before { content: "\f053" #{"/*rtl:'\f054'*/"}; margin-left: 1.5rem; }
-        .carousel-control-next-icon:before { content: "\f054" #{"/*rtl:'\f053'*/"}; margin-right: 1.5rem; }
+        .carousel-control-prev-icon:before { content: "chevron_left" #{"/*rtl:'chevron_right'*/"}; margin-left: 1.5rem; }
+        .carousel-control-next-icon:before { content: "chevron_right" #{"/*rtl:'chevron_left'*/"}; margin-right: 1.5rem; }
         .carousel-control-prev-icon:before,
         .carousel-control-next-icon:before {
             background-color: rgba(0,0,0,0);
@@ -1195,8 +1197,8 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
             border: 0.5rem solid rgba(0,0,0,0);
         }
         // Controls - caret
-        .carousel-control-prev-icon:before { content: "\f0d9"; }
-        .carousel-control-next-icon:before { content: "\f0da"; }
+        .carousel-control-prev-icon:before { content: "arrow_left"; }
+        .carousel-control-next-icon:before { content: "arrow_right"; }
         .carousel-control-prev-icon:before,
         .carousel-control-next-icon:before {
             width: 2rem;
@@ -1221,8 +1223,8 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
         // Controls - arrow
         .carousel-control-prev { margin-left: 1.5rem; }
         .carousel-control-next { margin-right: 1.5rem; }
-        .carousel-control-prev-icon:before { content: "\f060"; }
-        .carousel-control-next-icon:before { content: "\f061"; }
+        .carousel-control-prev-icon:before { content: "arrow_back"; }
+        .carousel-control-next-icon:before { content: "arrow_forward"; }
         .carousel-control-prev-icon:before,
         .carousel-control-next-icon:before {
             width: 4rem;
@@ -1254,8 +1256,8 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
         }
         .carousel-control-prev { margin-left: 3rem; }
         .carousel-control-next { margin-right: 3rem; }
-        .carousel-control-prev-icon:before { content: "\f104"; }
-        .carousel-control-next-icon:before { content: "\f105"; }
+        .carousel-control-prev-icon:before { content: "keyboard_arrow_left"; }
+        .carousel-control-next-icon:before { content: "keyboard_arrow_right"; }
         .carousel-control-prev-icon:before,
         .carousel-control-next-icon:before {
             width: 2rem;
@@ -1277,10 +1279,17 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
 // This style is shared by the new versions of carousels
 // 001 for s_carousel & 002 for s_quotes_carousel
 %s_carousel_variants {
+    // Before media-breakpoint-down so that it's overridden.
+    .o_carousel_pause {
+        width: $carousel-control-width;
+        padding-block: map-get($spacers, 3);
+    }
+
     // Controllers in Mobile
     @include media-breakpoint-down(md) {
         .carousel-control-prev,
-        .carousel-control-next {
+        .carousel-control-next,
+        .o_carousel_pause {
             top: auto;
             bottom: map-get($spacers, 3);
             height: $-o-carousel-controllers-size;
@@ -1288,17 +1297,43 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
             margin: 0 map-get($spacers, 3);
         }
 
-        &:not(.s_carousel_arrows_hidden) .carousel-indicators {
-            $-margin-x: calc(#{map-get($spacers, 3)} * 2 + #{$-o-carousel-controllers-size});
+        .o_carousel_pause {
+            left: 0;
+            padding: 0;
 
-            min-height: $-o-carousel-controllers-size;
+            .o_carousel_pause_icon {
+                height: auto;
+            }
+        }
+        &:not(.o_carousel_pause_btn_hidden, .s_carousel_controllers_indicators_outside),
+        &.s_carousel_controllers_indicators_outside:has(.s_carousel_indicators_hidden) {
+            .carousel-control-prev {
+                left: calc(#{$-o-carousel-controllers-size} + 1rem);
+            }
+        }
+
+        $-margin-x: calc(#{map-get($spacers, 3)} * 2 + #{$-o-carousel-controllers-size});
+
+        &:not(.s_carousel_arrows_hidden), &:not(.o_carousel_pause_btn_hidden) {
+            .carousel-indicators {
+                min-height: $-o-carousel-controllers-size;
+            }
+        }
+        &.o_carousel_pause_btn_hidden:not(.s_carousel_arrows_hidden) .carousel-indicators {
             margin: 0 $-margin-x map-get($spacers, 3);
+        }
+        &.s_carousel_arrows_hidden:not(.o_carousel_pause_btn_hidden) .carousel-indicators {
+            margin: 0 0 map-get($spacers, 3) $-margin-x;
+        }
+        &:not(.s_carousel_arrows_hidden, .o_carousel_pause_btn_hidden) .carousel-indicators {
+            margin: 0 $-margin-x map-get($spacers, 3) calc(#{$-margin-x} + #{map-get($spacers, 5)});
         }
     }
 
     .carousel-control-prev,
     .carousel-control-next,
-    .carousel-indicators {
+    .carousel-indicators,
+    .o_carousel_pause {
         position: absolute;
     }
 
@@ -1307,6 +1342,28 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
             .carousel-control-prev-icon, .carousel-control-next-icon {
                 box-shadow: inset 0 0 0 2px white, inset 0 0 0 4px black;
             }
+        }
+    }
+
+    .o_carousel_pause {
+        display: grid;
+        justify-content: center;
+        color: $carousel-control-color;
+        opacity: $carousel-control-opacity;
+        transition: $carousel-control-transition;
+
+        &:hover, &:focus-visible {
+            opacity: $carousel-control-hover-opacity;
+        }
+        &:focus-visible {
+            box-shadow: inset 0 0 0 2px black, inset 0 0 0 4px white;
+        }
+        &:active {
+            border-color: transparent;
+        }
+
+        .o_carousel_pause_icon {
+            align-content: center;
         }
     }
 
@@ -1319,21 +1376,35 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
         }
     }
 
-    .carousel-control-prev-icon, .carousel-control-next-icon {
+    .carousel-control-prev-icon, .carousel-control-next-icon, .o_carousel_pause_icon {
         width: $-o-carousel-controllers-size;
         height: $-o-carousel-controllers-size;
+    }
+
+    .carousel-control-prev-icon, .carousel-control-next-icon {
         background-size: 50%;
     }
 
+    &.carousel-dark:not(.s_carousel_controllers_indicators_outside),
+    &.carousel-dark.s_carousel_controllers_indicators_outside:has(.s_carousel_indicators_hidden) {
+        .o_carousel_pause_icon {
+            filter: $carousel-dark-control-icon-filter;
+        }
+    }
+
     &.s_carousel_default {
-        .carousel-control-prev, .carousel-control-next {
+        .o_carousel_pause {
+            border-radius: 0;
+        }
+
+        .carousel-control-prev, .carousel-control-next, .o_carousel_pause {
             &:hover {
                 background: rgba($carousel-dark-indicator-active-bg, .2);
             }
         }
 
         &.carousel-dark {
-            .carousel-control-prev, .carousel-control-next {
+            .carousel-control-prev, .carousel-control-next, .o_carousel_pause {
                 &:hover {
                     background: rgba($carousel-indicator-active-bg, .2);
                 }
@@ -1357,13 +1428,19 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
     }
 
     &.s_carousel_rounded {
-        .carousel-control-prev-icon, .carousel-control-next-icon {
+        .carousel-control-prev-icon, .carousel-control-next-icon, .o_carousel_pause_icon {
             border-radius: $border-radius-pill;
         }
     }
 
     &.s_carousel_arrows_hidden {
         .carousel-control-prev, .carousel-control-next {
+            display: none;
+        }
+    }
+
+    &.o_carousel_pause_btn_hidden {
+        .o_carousel_pause {
             display: none;
         }
     }
@@ -1523,9 +1600,24 @@ $-o-carousel-controllers-size: var(--CarouselControllers-size, #{map-get($spacer
             }
         }
 
+        .o_carousel_pause {
+            margin-bottom: 0;
+            border: 0;
+
+            &:not(:has(~ .s_carousel_indicators_hidden)) {
+                bottom: 0;
+                padding: 0;
+                color: inherit;
+            }
+
+            &:hover {
+                background-color: transparent;
+            }
+        }
+
         .carousel-indicators {
             position: relative;
-            margin-bottom: 0;
+            margin-bottom: 0 !important;
 
             &:not(.s_carousel_indicators_numbers) button {
                 background-color: currentColor;
@@ -1791,9 +1883,6 @@ $-transition-duration: 200ms;
             width: 100%;
             flex: auto;
         }
-        > .o_mega_menu_container_size {
-            transform: unset;
-        }
     }
 }
 
@@ -1865,7 +1954,12 @@ header {
             // first value of the variable 'menu-border-width' to behave as if
             // the input only accepted one number.
             $-menu-border-bottom-width: nth($-menu-border-width, 1);
-            border: o-website-value('menu-border-style') o-color('menu-border-color') !important;
+            // When no 'menu-border-color' is set, `o-color` returns null and the
+            // border color falls back to a full-opacity `currentColor`. Default
+            // it instead to a faded `currentColor` (like the generic
+            // `--o-border-color`), so the border stays subtle out of the box.
+            $-menu-border-color: o-color('menu-border-color') or $border-color;
+            border: o-website-value('menu-border-style') $-menu-border-color !important;
             border-width: 0 0 $-menu-border-bottom-width 0 !important;
 
             &.o_border_right_only {
@@ -2069,13 +2163,6 @@ header {
     @if o-website-value('header-template') == 'boxed' {
         margin-top: $navbar-padding-y !important;
     }
-
-    .container, .container-fluid {
-        // Need to reforce those because they are removed since its a container
-        // inside another container (the one in the navbar)
-        padding-left: $grid-gutter-width / 2;
-        padding-right: $grid-gutter-width / 2;
-    }
 }
 
 // Offcanvas mega menu on mobile or in sidebar/hamburger header
@@ -2129,9 +2216,9 @@ header {
     }
 
     .o_mega_menu_toggle::after {
-        content: '\e83b';
+        content: 'chevron_forward';
         border: none;
-        font-family: 'odoo_ui_icons';
+        font-family: var(--icon-font-family, "Material Symbols Outlined");
     }
 
     .o_mega_menu_left .o_mega_menu {
@@ -2139,23 +2226,20 @@ header {
     }
 }
 
-.dropdown-menu.o_mega_menu_container_size {
-    $-header-template: o-website-value('header-template');
-    @if not index(('sidebar', 'hamburger'), $-header-template) {
-        $bp: if($-header-template == 'minimalist', md, lg);
-        @include media-breakpoint-up($bp) {
-            left: 50%;
-            transform: translateX(-50%);
+@if not index(('hamburger', 'sidebar'), o-website-value('header-template')) {
+    body:not(.editor_enable) {
+        header.o_hoverable_dropdown .navbar:not(.o_header_mobile) {
+            .o_mega_menu_toggle.show {
+                &::before {
+                    content: "";
+                    @include o-position-absolute($right: 0, $bottom: 0, $left: 0);
+                    z-index: 1000; // Same as --bs-dropdown-zindex.
+                    height: var(--o-mega-menu-bridge-height);
+                    cursor: auto;
+                }
+            }
         }
     }
-
-    $-mm-max-widths: ();
-    @each $k, $v in $container-max-widths {
-        $-mm-max-widths: map-merge($-mm-max-widths, (
-            #{$k}: $v - $grid-gutter-width,
-        ));
-    }
-    @include make-container-max-widths($-mm-max-widths);
 }
 
 // The design of some of the new mega menu templates required a column with
@@ -2439,10 +2523,13 @@ span.list-inline-item.o_add_language:last-child {
     display: flex;
     // Need to update button size based on icon size.
     @for $i from 1 through 5 {
-        &:has(i.fa-#{$i}x) {
+        &:has(i.oi-#{$i}x) {
             width: #{$i}em;
             height: #{$i}em;
         }
+    }
+    & > .oi::before {
+        vertical-align: middle;
     }
 
     &, &:hover {
@@ -2514,6 +2601,12 @@ $ribbon-padding: 100px;
 #website_cookies_bar {
     min-height: 0px;
     height: 0px;
+
+    .modal-sm {
+        .row {
+            @include row-cols(1);
+        }
+    }
 }
 
 .modal[id^='o_search_modal'] {
@@ -3564,7 +3657,7 @@ input[value*="data-oe-translation-source-sha"] {
         font-size: 0.875em;
     }
     a {
-        .fa-stack{
+        .oi-stack {
             /*
             Ensures consistent size and padding around icons when the
             layout is set to "none" and the size is "huge" or "large".
@@ -3573,7 +3666,7 @@ input[value*="data-oe-translation-source-sha"] {
             s_social_media/000.scss and s_share/000.scss).
             */
             @for $i from 2 through 3 {
-                &.fa-#{$i}x {
+                &.oi-#{$i}x {
                     width: $-size + $i;
                     height: $-size + $i;
                     line-height: $-size + $i;
@@ -3622,4 +3715,15 @@ in a huge font size since it isn’t redefined for the frontend.
     outline: auto;
     outline-color: black;
     outline-offset: 2px;
+}
+
+// Specific styles for the BottomSheet component when it is used in the frontend
+body.bottom-sheet-open {
+    --BottomSheetStatusBar__entry-background--active: #{$primary-bg-subtle};
+    --BottomSheetStatusBar__entry-color--active: #{$primary-text-emphasis};
+    --BottomSheetStatusBar__entry-caret--active: var(--BottomSheetStatusBar__entry-color--active);
+
+    // Prevent the page from being scrollable when a bottom sheet is open.
+    // (mimics the overflow: hidden applied to o_action_manager in the backend)
+    overflow: hidden;
 }

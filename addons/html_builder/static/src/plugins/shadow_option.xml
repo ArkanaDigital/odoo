@@ -5,13 +5,13 @@
     <BuilderRow label.translate="Shadow">
         <BuilderSelect action="this.props.setShadowClassAction">
             <BuilderSelectItem actionParam="''">None</BuilderSelectItem>
-            <BuilderSelectItem actionParam="'shadow'">
-                <t t-set="onClick" t-value="this.getOnClick('shadow')"/>
-                <t t-call="html_builder.ShadowOptionItem">Normal</t>
-            </BuilderSelectItem>
             <BuilderSelectItem actionParam="'shadow-sm'">
                 <t t-set="onClick" t-value="this.getOnClick('shadow-sm')"/>
                 <t t-call="html_builder.ShadowOptionItem">Small</t>
+            </BuilderSelectItem>
+            <BuilderSelectItem actionParam="'shadow'">
+                <t t-set="onClick" t-value="this.getOnClick('shadow')"/>
+                <t t-call="html_builder.ShadowOptionItem">Normal</t>
             </BuilderSelectItem>
             <BuilderSelectItem actionParam="'shadow-lg'">
                 <t t-set="onClick" t-value="this.getOnClick('shadow-lg')"/>
@@ -33,8 +33,8 @@
             </BuilderRow>
 
             <BuilderRow label.translate="Offset" tooltip.translate="Horizontal and Vertical offset" level="1">
-                <BuilderNumberInput actionParam="'offsetX'" unit="'px'" prefixIcon="'oi oi-arrows-h'"/>
-                <BuilderNumberInput actionParam="'offsetY'" unit="'px'" prefixIcon="'oi oi-arrows-v'"/>
+                <BuilderNumberInput actionParam="'offsetX'" unit="'px'" prefixIcon="'arrow_range'"/>
+                <BuilderNumberInput actionParam="'offsetY'" unit="'px'" prefixIcon="'height'"/>
             </BuilderRow>
 
             <BuilderRow label.translate="Blur" level="1">
@@ -50,11 +50,12 @@
 
 <t t-name="html_builder.ShadowOptionItem">
     <div class="d-flex">
-        <div class="o-hb-shadow-text">
+        <div class="flex-grow-1">
             <t t-out="0"/>
         </div>
-        <a class="fa fa-pencil btn o-hb-shadow-button"
-                title="Edit"
+        <a class="oi oi-filled btn o-hb-theme-tab-link"
+                data-icon="edit"
+                title="Edit in Theme Tab"
                 t-on-click="onClick"/>
     </div>
 </t>

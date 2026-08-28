@@ -8,6 +8,13 @@ from odoo.addons.sale.tests.common import SaleCommon
 
 @tagged("post_install", "-at_install")
 class TestProductCatalog(HttpCase, SaleCommon):
+    _test_user_groups = (
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -17,7 +24,7 @@ class TestProductCatalog(HttpCase, SaleCommon):
 
         cls.res_model = cls.empty_order._name
         cls.res_id = cls.empty_order.id
-        cls.base_url = cls.base_url()
+        cls._base_url = cls.base_url()
         cls.products = cls.product + cls.service_product
 
     def setUp(self):
@@ -27,12 +34,13 @@ class TestProductCatalog(HttpCase, SaleCommon):
 
     def request_get_order_lines_info(self, products, **kwargs):
         response = self.opener.post(
-            url=self.base_url + "/product/catalog/order_lines_info",
+            url=self._base_url + "/product/catalog/order_lines_info",
             json={
                 "params": {
                     "res_model": self.res_model,
                     "order_id": self.res_id,
                     "product_ids": products.ids,
+                    "child_field": "order_line",
                     **kwargs,
                 }
             },
@@ -41,7 +49,7 @@ class TestProductCatalog(HttpCase, SaleCommon):
 
     def request_update_order_line_info(self, product, quantity=1.0, **kwargs):
         response = self.opener.post(
-            url=self.base_url + "/product/catalog/update_order_line_info",
+            url=self._base_url + "/product/catalog/update_order_line_info",
             json={
                 "params": {
                     "res_model": self.res_model,
@@ -49,6 +57,7 @@ class TestProductCatalog(HttpCase, SaleCommon):
                     "product_id": product.id,
                     "quantity": quantity,
                     "uom_id": product.uom_id.id,
+                    "child_field": "order_line",
                     **kwargs,
                 }
             },
@@ -74,7 +83,7 @@ class TestProductCatalog(HttpCase, SaleCommon):
             }
             product_data = catalog_data[str(product.id)]
             for key, value in product_expected_data.items():
-                self.assertEqual(product_data[key], value)
+                self.assertEqual(product_data[key], value, f"{key} doesn't match")
 
     def _create_pricelist_discount_rules(self):
         self.pricelist.item_ids = [
@@ -93,7 +102,9 @@ class TestProductCatalog(HttpCase, SaleCommon):
         ]
 
     def test_catalog_context(self):
-        action_data = self.empty_order.action_add_from_catalog()
+        action_data = self.empty_order.with_context(
+            child_field="order_line"
+        ).action_add_from_catalog()
         catalog_context = action_data["context"]
         self.assertEqual(catalog_context["product_catalog_order_id"], self.empty_order.id)
         self.assertEqual(catalog_context["product_catalog_order_model"], self.res_model)
@@ -106,7 +117,6 @@ class TestProductCatalog(HttpCase, SaleCommon):
     def test_empty_order_data(self):
         self.check_catalog_data(self.products)
 
-    # TODO VFE in master, forbid updates when order is readonly
     def test_readonly_order_data(self):
         self.empty_order._action_cancel()
 
@@ -129,7 +139,7 @@ class TestProductCatalog(HttpCase, SaleCommon):
 
     def test_data_with_discounted_lines(self):
         self._create_pricelist_discount_rules()
-        self.env["res.config.settings"].create({
+        self.env["res.config.settings"].sudo().create({
             # Discounts included in price
             "group_product_pricelist": True,
             "group_discount_per_so_line": True,
@@ -153,8 +163,8 @@ class TestProductCatalog(HttpCase, SaleCommon):
         sol = order.order_line
         self.assertEqual(sol.product_id, product)
         self.assertEqual(sol.product_uom_qty, 1.0)
-        self.assertEqual(update_data, sol.price_unit)
-        self.assertEqual(update_data, product.lst_price)
+        self.assertEqual(update_data["price"], sol.price_unit)
+        self.assertEqual(update_data["price"], product.lst_price)
 
     def test_update_with_sections(self):
         """Tests that updating a sale order with sections keeps the lines in the correct
@@ -205,11 +215,11 @@ class TestProductCatalog(HttpCase, SaleCommon):
                 }
             ],
         )
-        self.assertEqual(update_data, product.lst_price)
+        self.assertEqual(update_data["price"], product.lst_price)
 
         # Add a second item --> should trigger the pricelist discount
         update_data = self.request_update_order_line_info(product=product, quantity=2.0)
-        self.assertEqual(update_data, product.lst_price / 2)
+        self.assertEqual(update_data["price"], product.lst_price / 2)
         self.assertRecordValues(
             sol,
             [
@@ -223,13 +233,13 @@ class TestProductCatalog(HttpCase, SaleCommon):
         )
 
         # Enable discounts, add item --> discount should be on discount field
-        self.env["res.config.settings"].create({
+        self.env["res.config.settings"].sudo().create({
             # Discounts included in price
             "group_product_pricelist": True,
             "group_discount_per_so_line": True,
         }).execute()
         update_data = self.request_update_order_line_info(product=product, quantity=3.0)
-        self.assertEqual(update_data, product.lst_price / 2)
+        self.assertEqual(update_data["price"], product.lst_price / 2)
         self.assertRecordValues(
             sol,
             [
@@ -247,4 +257,4 @@ class TestProductCatalog(HttpCase, SaleCommon):
         product = self.service_product
         update_data = self.request_update_order_line_info(product=product, quantity=0.0)
 
-        self.assertEqual(update_data, product.lst_price)
+        self.assertEqual(update_data["price"], product.lst_price)

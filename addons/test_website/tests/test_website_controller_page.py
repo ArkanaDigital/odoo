@@ -14,11 +14,11 @@ class TestWebsiteControllerPage(HttpCase):
         super().setUpClass()
         cls.model = cls.env["ir.model"]._get("test.model.exposed")
 
-        cls.model_acl = cls.env["ir.model.access"].create({
+        cls.model_acl = cls.env["ir.access"].create({
             "name": "test acl expose",
             "model_id": cls.model.id,
             "group_id": cls.env.ref("website.website_page_controller_expose").id,
-            "perm_read": True,
+            "operation": "r",
         })
 
         cls.listing_view = cls.env["ir.ui.view"].create({
@@ -29,11 +29,11 @@ class TestWebsiteControllerPage(HttpCase):
                 <div t-attf-class="listing_layout_switcher btn-group ms-3" t-att-data-active-classes="_activeClasses" t-att-data-view-id="view_id">
                     <input type="radio" class="btn-check" name="wstudio_layout" id="o_wstudio_apply_grid" value="grid" t-att-checked="'checked' if layout_mode != 'list' else None"/>
                     <label t-attf-class="btn btn-light #{_activeClasses if layout_mode != 'list' else None} o_wstudio_apply_grid" title="Grid" for="o_wstudio_apply_grid">
-                        <i class="fa fa-th-large"/>
+                        <i class="oi" data-icon="view_module"/>
                     </label>
                     <input type="radio" class="btn-check" name="wstudio_layout" id="o_wstudio_apply_list" t-att-checked="'checked' if layout_mode == 'list' else None" value="list"/>
                     <label t-attf-class="btn btn-light #{_activeClasses if layout_mode == 'list' else None} o_wstudio_apply_list" title="List" for="o_wstudio_apply_list">
-                        <i class="oi oi-view-list"/>
+                        <i class="oi" data-icon="view_list"view_list/>
                     </label>
                 </div>
 
@@ -69,7 +69,8 @@ class TestWebsiteControllerPage(HttpCase):
         cls.exposed_records = cls.env[cls.model.model].create(records_to_create)
 
     def test_cannot_bypass_read_rights(self):
-        self.env["ir.model.access"].search([("model_id", "=", self.model.id)]).perm_read = False
+        accesses = self.env['ir.access'].search([('model_id', '=', self.model.id)])
+        accesses.operation = 'u'
 
         with self.assertRaises(AccessError) as cm:
             self.env["website.controller.page"].with_user(self.ref('base.user_admin')).create({
@@ -95,12 +96,7 @@ class TestWebsiteControllerPage(HttpCase):
         rec_nodes = tree.xpath("//a[@class='test_record_listing']")
         self.assertEqual(len(rec_nodes), 2)
 
-        self.env["ir.rule"].create({
-            "name": "dummy",
-            "model_id": self.model.id,
-            "domain_force": "[('name', '=', 'test_partner_1')]",
-            "groups": self.env.ref("base.group_public"),
-        })
+        self.model_acl.domain = "[('name', '=', 'test_partner_1')]"
         response = self.url_open(f"/model/{self.listing_controller_page.name_slugified}")
         tree = html.fromstring(response.content.decode())
         rec_nodes = tree.xpath("//a[@class='test_record_listing']")

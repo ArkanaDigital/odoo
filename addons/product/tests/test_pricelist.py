@@ -13,6 +13,19 @@ from odoo.addons.product.tests.common import ProductVariantsCommon
 @tagged('post_install', '-at_install')
 class TestPricelist(ProductVariantsCommon):
 
+    # FIXME cross-module regression (group ignored when its module is absent):
+    # 'point_of_sale.group_pos_user' is only required because product.template.copy()
+    # carries over the urbanpiper_pos_config_ids field (pos.config m2m), whose write
+    # triggers a pos.config read check (enterprise pos_urban_piper) -> test_copy_product_variant_pricings.
+    # To be fixed by the pos_urban_piper team.
+    _test_user_groups = (
+        'base.group_partner_manager',  # FIXME: use base.group_user
+        'product.group_product_manager',
+        'point_of_sale.group_pos_user',
+    )
+
+    _test_user_name = 'Test Product & Contact Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -202,7 +215,8 @@ class TestPricelist(ProductVariantsCommon):
 
     def test_pricelists_multi_comp_checks(self):
         first_company = self.env.company
-        second_company = self.env['res.company'].create({'name': 'Test Company'})
+        second_company = self.env['res.company'].sudo().create({'name': 'Test Company'})
+        self.env.user.company_ids += second_company
 
         shared_pricelist = self.env['product.pricelist'].create({
             'name': 'Test Multi-comp pricelist',
@@ -289,7 +303,8 @@ class TestPricelist(ProductVariantsCommon):
         })
         self.assertEqual(self.partner.property_product_pricelist, self.sale_pricelist_id)
 
-        company_2 = self.env.company.create({'name': "Company Two"})
+        company_2 = self.env.company.sudo().create({'name': "Company Two"})
+        self.env.user.company_ids += company_2
         company_1_b2b_pl, company_2_b2b_pl = self.sale_pricelist_id.create([{
             'name': f"B2B ({company.name})",
             'company_id': company.id,
@@ -459,12 +474,7 @@ class TestPricelist(ProductVariantsCommon):
             4,
         )
 
-        with patch.object(
-            self.env.registry['product.template'],
-            '_duplicate_pricelist_rules_on_copy',
-            return_value=True,
-        ):
-            sofa_copy = self.product_template_sofa.copy()
+        sofa_copy = self.product_template_sofa.copy()
 
         product_sofa_red_copy = sofa_copy.product_variant_ids.filtered(
             lambda pp:
@@ -508,6 +518,113 @@ class TestPricelist(ProductVariantsCommon):
                     'product_id': product_sofa_green_copy.id,
                     'fixed_price': 55,
                 }
+            ],
+        )
+
+    def test_copy_product_variant_pricings_with_archived_variant(self):
+        """Ensure variant pricelist rules are copied to the correct variants even if
+        an archived variant changes the variant ordering, while archived variants'
+        rules are not copied.
+        """
+        self.product_sofa_green.action_archive()
+        self.env['product.pricelist.item'].create([
+            {
+                'product_id': self.product_sofa_blue.id,
+                'fixed_price': 33,
+            },
+            {
+                'product_id': self.product_sofa_red.id,
+                'fixed_price': 44,
+            },
+            {
+                'product_id': self.product_sofa_green.id,
+                'fixed_price': 55,
+            },
+        ])
+
+        sofa_copy = self.product_template_sofa.copy()
+        product_sofa_red_copy = sofa_copy.product_variant_ids.filtered(
+            lambda p:
+                p.product_template_attribute_value_ids.product_attribute_value_id
+                == self.color_attribute_red
+        )
+        product_sofa_blue_copy = sofa_copy.product_variant_ids.filtered(
+            lambda p:
+                p.product_template_attribute_value_ids.product_attribute_value_id
+                == self.color_attribute_blue
+        )
+
+        self.assertEqual(len(sofa_copy.pricelist_rule_ids), 2)
+        self.assertEqual(
+            sofa_copy.pricelist_rule_ids.product_id.ids,
+            [product_sofa_red_copy.id, product_sofa_blue_copy.id]
+        )
+
+    def test_copy_variant_pricings_with_multiple_lines_of_same_attribute(self):
+        template = self.env['product.template'].create({
+            'name': 'Template with multiple same-attribute choice',
+            'uom_id': self.uom_unit.id,
+            'categ_id': self.product_category.id,
+            'attribute_line_ids': [
+                Command.create({
+                    'attribute_id': self.color_attribute.id,
+                    'value_ids': [Command.set([
+                        self.color_attribute_red.id,
+                        self.color_attribute_blue.id,
+                        self.color_attribute_green.id,
+                    ])],
+                }),
+                Command.create({
+                    'attribute_id': self.color_attribute.id,
+                    'value_ids': [Command.set([
+                        self.color_attribute_red.id,
+                        self.color_attribute_blue.id,
+                        self.color_attribute_green.id,
+                    ])],
+                }),
+            ],
+        })
+        ptal1, ptal2 = template.attribute_line_ids
+        ptav1_red, ptav1_blue, _ptav1_green = ptal1.product_template_value_ids
+        ptav2_red, ptav2_blue, _ptav2_green = ptal2.product_template_value_ids
+
+        product_red_blue = template._get_variant_for_combination(ptav1_red | ptav2_blue)
+        product_blue_red = template._get_variant_for_combination(ptav1_blue | ptav2_red)
+
+        self.env['product.pricelist.item'].create([
+            {
+                'product_id': product_red_blue.id,
+                'fixed_price': 33,
+            },
+            {
+                'product_id': product_blue_red.id,
+                'fixed_price': 44,
+            },
+        ])
+
+        template_copy = template.copy()
+        ptal1_copy, ptal2_copy = template_copy.attribute_line_ids
+        ptav1_red_copy, ptav1_blue_copy, _ptav1_green_copy = ptal1_copy.product_template_value_ids
+        ptav2_red_copy, ptav2_blue_copy, _ptav2_green_copy = ptal2_copy.product_template_value_ids
+
+        product_red_blue_copy = template_copy._get_variant_for_combination(
+            ptav1_red_copy | ptav2_blue_copy
+        )
+        product_blue_red_copy = template_copy._get_variant_for_combination(
+            ptav1_blue_copy | ptav2_red_copy
+        )
+
+        self.assertRecordValues(
+            template_copy.pricelist_rule_ids.sorted('product_id'),
+            [
+                {
+                    'product_id': product_red_blue_copy.id,
+                    'fixed_price': 33,
+                },
+                {
+                    'product_id': product_blue_red_copy.id,
+                    'fixed_price': 44,
+                },
             ],
         )
 
@@ -591,3 +708,16 @@ class TestPricelist(ProductVariantsCommon):
             packaging_rule_2.id,
             "Packaging rule with uom_dozen should be applied",
         )
+
+    def test_pricelist_item_creation_from_product_variant_form(self):
+        """Creating a pricelist rule from a product variant's own form should
+        keep the variant it was created from, instead of dropping it because
+        `applied_on` was wrongly left on `1_product`."""
+        sofa_1 = self.product_template_sofa.product_variant_ids[0]
+        with Form(sofa_1) as product_form:
+            with product_form.fixed_pricelist_rule_ids.new() as item_form:
+                item_form.fixed_price = 50
+        item = sofa_1.pricelist_rule_ids
+        self.assertEqual(item.applied_on, "0_product_variant")
+        self.assertEqual(item.product_id, sofa_1)
+        self.assertEqual(item.product_tmpl_id, self.product_template_sofa)

@@ -11,6 +11,7 @@
         'static/src/img/default_image.png',
     ],
     'depends': [
+        'auth_signup',
         'base_setup',
         'digest',
         'phone_validation',
@@ -19,12 +20,12 @@
     ],
     'data': [
         'security/hr_security.xml',
-        'security/ir.model.access.csv',
         'data/digest_data.xml',
         'data/report_paperformat.xml',
         'wizard/mail_activity_schedule_views.xml',
         'wizard/hr_bank_account_allocation_wizard.xml',
         'wizard/hr_bank_account_allocation_wizard_line.xml',
+        'wizard/hr_employee_create_version_wizard.xml',
         'views/mail_activity_plan_views.xml',
         'views/hr_version_views.xml',
         'views/hr_contract_template_views.xml',
@@ -46,12 +47,17 @@
         'views/res_users.xml',
         'views/hr_templates.xml',
         'views/resource_resource_views.xml',
+        'views/resource_calendar_views.xml',
         'data/hr_data.xml',
         'data/ir_cron_data.xml',
         'data/hr_employee_type_data.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'data/hr_demo.xml',
+    ],
+    'other_files': [
+        'data/scenarios/hr_scenario.xml',
     ],
     'application': True,
     'assets': {
@@ -91,4 +97,5 @@
     },
     'author': 'Odoo S.A.',
     'license': 'LGPL-3',
+    'uninstall_hook': 'uninstall_hook',
 }

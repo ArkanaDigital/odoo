@@ -79,27 +79,6 @@ class ProductPublicCategory(models.Model):
         translate=html_translate,
     )
 
-    show_category_title = fields.Boolean(
-        string="Show Category Title",
-        default=False,
-        help="Display the category title on the shop page. Corresponds to the 'Show Title' editor"
-        " option.",
-    )
-
-    show_category_description = fields.Boolean(
-        string="Show Category Description",
-        default=True,
-        help="Display the category description on the shop page. Corresponds to the"
-        " 'Show Description' editor option.",
-    )
-
-    align_category_content = fields.Boolean(
-        string="Align Category Content",
-        default=False,
-        help="Align the category content on the shop page. Corresponds to the 'Center Content'"
-        " editor option.",
-    )
-
     # === COMPUTE METHODS === #
 
     @api.depends("has_published_products")
@@ -210,7 +189,7 @@ class ProductPublicCategory(models.Model):
             "search_fields": search_fields,
             "fetch_fields": fetch_fields,
             "mapping": mapping,
-            "icon": "fa-folder-o",
+            "icon": "folder",
             "order": "name desc, id desc" if "name desc" in order else "name asc, id desc",
             "group_name": self.env._("Categories"),
             "sequence": 30,

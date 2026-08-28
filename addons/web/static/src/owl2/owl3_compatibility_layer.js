@@ -11,7 +11,6 @@
  *
  * 1. Update template directives:
  *    - replace `t-portal` → `t-custom-portal`
- *    - replace `t-ref`    → `t-custom-ref`
  *    - replace `t-model`  → `t-custom-model`
  *
  * 2. Load this file immediately after Owl 3.
@@ -27,7 +26,6 @@
  * Gradually remove the compatibility layer by migrating to native Owl 3:
  *
  * - replace `t-custom-portal` with proper Owl 3 portal usage
- * - replace `t-custom-ref` with `t-ref` + signals
  * - replace `t-custom-model` with `t-model` + signals
  * - convert `useLayoutEffect` back to `useEffect` where appropriate
  *
@@ -38,24 +36,24 @@
 const owl = globalThis.owl;
 
 class Component extends owl.Component {
-    static template = "";
-    static props = {};
-    static defaultProps = {};
-
     /**
      * @param {any} node
      */
     constructor(node) {
         super(node);
-        this.props = owl.props(null, this.constructor.defaultProps);
-        this.env = useChildEnv();
-        this.__owl__ = node;
+        if (this.constructor.defaultProps) {
+            throw new Error(
+                `Component "${this.constructor.name}" defines a static "defaultProps", ` +
+                    `which Owl 3 ignores. Declare the defaults through the props schema instead, ` +
+                    `e.g. "props = useProps({ someProp: t.string().optional(defaultValue) })".`
+            );
+        }
+        this.props = owl.useProps();
+        this.env = useEnv();
     }
 
-    setup() {}
-
     /**
-     * @param {boolean} deep
+     * @param {boolean} [deep]
      */
     render(deep = false) {
         this.__owl__.render(deep === true);
@@ -75,43 +73,6 @@ owl.onWillRender = function onWillRender(cb) {
     };
 };
 
-/**
- * @param {() => void} cb
- */
-owl.onRendered = function onRendered(cb) {
-    const node = owl.useScope();
-    const renderFn = node.renderFn;
-    node.renderFn = () => {
-        const result = renderFn();
-        cb.call(node.component);
-        return result;
-    };
-};
-
-/**
- * @param {string} name
- */
-owl.useRef = function useRef(name) {
-    const node = owl.useScope();
-    if (!node.__refs__) {
-        node.__refs__ = {};
-    }
-    if (!node.__refs__[name]) {
-        node.__refs__[name] = owl.signal(null);
-    }
-    return {
-        get el() {
-            const signal = node.__refs__[name];
-            // untrack all the time to do what owl2 did
-            // while having an actual signal under the hood
-            // fully recognizable by owl3
-            return owl.untrack(signal);
-        },
-    };
-};
-
-/**
- */
 owl.useComponent = function useComponent() {
     return owl.useScope().component;
 };
@@ -122,26 +83,13 @@ owl.useComponent = function useComponent() {
  * @param {Function} handler
  * @param {any} eventParams
  */
-owl.useExternalListener = function useExternalListener(target, eventName, handler, eventParams) {
+function useExternalListener(target, eventName, handler, eventParams) {
     const node = owl.useScope();
     const boundHandler = handler.bind(node.component);
     owl.onMounted(() => target.addEventListener(eventName, boundHandler, eventParams));
     owl.onWillUnmount(() => target.removeEventListener(eventName, boundHandler, eventParams));
-};
-
-/**
- * @template T
- * @param {T} data
- * @param {() => void} [callback]
- */
-owl.reactive = function reactive(data, callback) {
-    if (callback) {
-        throw new Error(
-            "owl.reactive is used with callback, replace callback by an effect and make sure to dispose the effect!"
-        );
-    }
-    return owl.proxy(data);
-};
+}
+owl.useExternalListener = useExternalListener; // kept for spreadsheet
 
 /**
  * @param {Function} effect
@@ -179,51 +127,29 @@ owl.useLayoutEffect = function useLayoutEffect(effect, computeDependencies = () 
 
 class EnvPlugin extends owl.Plugin {
     static id = "__ENV__";
-    env = owl.config("env") ?? {};
+    static sequence = 0;
+    env = owl.config("env");
 }
 
-owl.useEnv = function useEnv() {
-    return owl.useScope().component.env;
-};
-
-function useChildEnv() {
-    return owl.plugin(EnvPlugin).env;
+function useEnv() {
+    return owl.usePlugin(EnvPlugin).env;
 }
-owl.useChildEnv = useChildEnv;
-
-/**
- * @param {object} env
- */
-function provideEnv(env) {
-    owl.providePlugins([EnvPlugin], { env });
-    return env;
-}
-owl.provideEnv = provideEnv;
+owl.useEnv = useEnv;
 
 /**
  * @param {object} extension
  */
-function extendEnv(extension) {
-    const env = Object.create(useChildEnv());
+function useSubEnv(extension) {
+    const env = Object.create(useEnv());
     const descrs = Object.getOwnPropertyDescriptors(extension);
     const subEnv = Object.freeze(Object.defineProperties(env, descrs));
-    return provideEnv(subEnv);
-}
+    owl.providePlugins([EnvPlugin], { env: subEnv });
 
-/**
- * @param {object} extension
- */
-owl.useSubEnv = function useSubEnv(extension) {
     const component = owl.useScope().component;
-    component.env = extendEnv(extension);
-};
-
-/**
- * @param {object} extension
- */
-owl.useChildSubEnv = function useChildSubEnv(extension) {
-    extendEnv(extension);
-};
+    component.env = subEnv;
+}
+owl.useSubEnv = useSubEnv;
+owl.useChildSubEnv = useSubEnv; // kept for spreadsheet
 
 class VPortal extends owl.blockDom.text("").constructor {
     /**
@@ -290,7 +216,7 @@ class Portal extends owl.Component {
         owl.onMounted(() => {
             const portal = node.bdom;
             if (!portal.target) {
-                const target = document.querySelector(node.props.selector);
+                const target = portal.el.ownerDocument.querySelector(node.props.selector);
                 if (target) {
                     portal.content.moveBeforeDOMNode(target.firstChild, target);
                 } else {
@@ -306,29 +232,14 @@ class Portal extends owl.Component {
     }
 }
 
-let refId = 0;
 const customDirectives = {
     /**
      * @param {HTMLElement} node
      * @param {string} value
      */
-    ref: (node, value) => {
-        const refName = `"` + value.replaceAll(/\{\{(.+?)\}\}/g, `" + $1 + "`) + `"`;
-        node.setAttribute("t-ref", `__globals__.createRefSignal(this, ${refName}, ${++refId})`);
-    },
-    /**
-     * @param {HTMLElement} node
-     * @param {string} value
-     * @param {string[]} modifiers
-     */
-    model: (node, value, modifiers) => {
-        let attribute = "t-model";
-        for (const modifier of modifiers) {
-            attribute += `.${modifier}`;
-        }
-        const getter = `() => ${value}`;
-        const setter = `(nv) => {${value} = nv;}`;
-        node.setAttribute(attribute, `__globals__.createModelSignal(${getter}, ${setter})`);
+    model: (node, value) => {
+        // kept for spreadsheet
+        node.setAttribute("t-model.proxy", value);
     },
     /**
      * @param {HTMLElement} node
@@ -344,25 +255,6 @@ const customDirectives = {
 };
 
 const globalValues = {
-    /**
-     * @param {any} component
-     * @param {string} refName
-     */
-    createRefSignal: (component, refName, refId) => {
-        const node = component.__owl__;
-        if (!node.__refs__) {
-            node.__refs__ = {};
-        }
-        if (!node.__refs__[refName]) {
-            node.__refs__[refName] = owl.signal(null);
-        }
-        return node.__refs__[refName];
-    },
-    /**
-     * @param {Function} getter
-     * @param {Function} setter
-     */
-    createModelSignal: (getter, setter) => Object.assign(getter, { set: setter }),
     Portal,
 };
 
@@ -371,6 +263,16 @@ class App extends owl.App {
      * @param {any} config
      */
     constructor(config) {
+        const env = config.env ?? {};
+        if (config.plugins) {
+            if (config.plugins instanceof owl.Resource) {
+                config.plugins.add(EnvPlugin);
+            } else {
+                config.plugins.push(EnvPlugin);
+            }
+        } else {
+            config.plugins = [EnvPlugin];
+        }
         super({
             ...config,
             customDirectives: {
@@ -381,14 +283,9 @@ class App extends owl.App {
                 ...globalValues,
                 ...config.globalValues,
             },
-            config: config.config
-                ? Object.assign(Object.create(config.config), {
-                      env: config.env,
-                  })
-                : { env: config.env },
+            config: config.config ? Object.assign(Object.create(config.config), { env }) : { env },
         });
-        this.pluginManager.startPlugins([EnvPlugin]);
-        this.env = config.env ?? {};
+        this.env = env;
     }
 
     createRoot(component, config = {}) {
@@ -396,7 +293,7 @@ class App extends owl.App {
             component = {
                 [component.name]: class extends component {
                     constructor(node) {
-                        provideEnv(config.env);
+                        owl.providePlugins([EnvPlugin], { env: config.env });
                         super(node);
                     }
                 },

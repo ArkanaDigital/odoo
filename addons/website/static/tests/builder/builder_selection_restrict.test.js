@@ -49,6 +49,40 @@ test("the selection should be restricted in the closest div when pressing ctrl+a
     );
 });
 
+test("the selection should be restricted in the closest contenteditable when pressing ctrl+a if the closes div is not content editable", async () => {
+    const { getEditableContent, getEditor } = await setupWebsiteBuilder(
+        unformat(`
+            <section contenteditable="false" class="o_colored_level">
+                <div>
+                    <p>first <span class="test-content" contenteditable="true">grand</span> child</p>
+                </div>
+            </section>
+        `)
+    );
+    const editableContent = getEditableContent();
+    const editor = getEditor();
+    const contentEl = editor.editable.querySelector("span.test-content");
+
+    // Set the selection to be inside the editable content.
+    setSelection({ anchorNode: contentEl.firstChild, anchorOffset: 0 });
+
+    // Press ctrl+a to select all the editable content
+    await manuallyDispatchProgrammaticEvent(editor.editable, "keydown", {
+        key: "a",
+        ctrlKey: true,
+    });
+
+    expect(getContent(editableContent)).toBe(
+        unformat(`
+            <section contenteditable="false" class="o_colored_level">
+                <div>
+                    <p>first <span class="test-content" contenteditable="true">[grand]</span> child</p>
+                </div>
+            </section>
+        `)
+    );
+});
+
 test("the selection should be restricted when it crosses different div from left to right", async () => {
     const { getEditableContent, getEditor } = await setupWebsiteBuilder(sectionSnippet);
     const editableContent = getEditableContent();
@@ -211,4 +245,36 @@ test("the selection should be restricted to the innermost uncrossable element wh
             </div>`
         )
     );
+});
+
+test("the selection is restricted when the uncrossable element has no previous element sibling", async () => {
+    const { getEditableContent } = await setupWebsiteBuilder(
+        `<div>Salut<div><p>text</p></div></div>`
+    );
+    const editableContent = getEditableContent();
+    const parentEl = editableContent.firstElementChild;
+    setSelection({
+        anchorNode: parentEl.firstChild,
+        anchorOffset: 0,
+        focusNode: parentEl.lastChild,
+        focusOffset: 1,
+        isMouseEventSimulated: true,
+    });
+    await animationFrame();
+    expect(getContent(editableContent)).toBe(`<div>[Salut]<div><p>text</p></div></div>`);
+});
+
+test("the selection is restricted when the uncrossable element has no previous sibling", async () => {
+    const { getEditableContent } = await setupWebsiteBuilder(`<div><div>salut</div>bug</div>`);
+    const editableContent = getEditableContent();
+    const parentEl = editableContent.firstElementChild;
+    setSelection({
+        anchorNode: parentEl,
+        anchorOffset: 0,
+        focusNode: parentEl.lastChild,
+        focusOffset: 3,
+        isMouseEventSimulated: true,
+    });
+    await animationFrame();
+    expect(getContent(editableContent)).toBe(`<div>[]<div>salut</div>bug</div>`);
 });

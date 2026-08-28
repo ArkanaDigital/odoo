@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import {
     Counter,
     embedding,
@@ -15,7 +14,6 @@ import {
     getEditableDescendants,
     StateChangeManager,
 } from "@html_editor/others/embedded_component_utils";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 import { parseHTML } from "@html_editor/utils/html";
 import { beforeEach, describe, expect, getFixture, test } from "@odoo/hoot";
 import { click, queryFirst, waitFor } from "@odoo/hoot-dom";
@@ -28,6 +26,7 @@ import {
     onWillDestroy,
     onWillStart,
     onWillUnmount,
+    signal,
     xml,
     proxy,
 } from "@odoo/owl";
@@ -36,8 +35,7 @@ import { setupEditor } from "./_helpers/editor";
 import { unformat } from "./_helpers/format";
 import { getContent, setSelection } from "./_helpers/selection";
 import { commit, deleteBackward, deleteForward, redo, undo } from "./_helpers/user_actions";
-import { makeMockEnv, patchWithCleanup } from "@web/../tests/web_test_helpers";
-import { Deferred } from "@web/core/utils/concurrency";
+import { assignTestEnv, patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { Plugin } from "@html_editor/plugin";
 import { cleanHints, processThroughCleanForSave } from "./_helpers/dispatch";
 import { expectElementCount } from "./_helpers/ui_expectations";
@@ -46,7 +44,7 @@ import { nodeToTree } from "@html_editor/core/dom_reference_map_plugin";
 
 function getConfig(components) {
     return {
-        Plugins: [...MAIN_PLUGINS, EmbeddedComponentPlugin],
+        includePlugins: [EmbeddedComponentPlugin],
         resources: {
             embedded_components: components,
         },
@@ -97,11 +95,11 @@ describe("Mount and Destroy embedded components", () => {
             setup() {
                 onMounted(() => {
                     steps.push("mounted");
-                    expect(this.ref.el.isConnected).toBe(true);
+                    expect(this.ref().isConnected).toBe(true);
                 });
                 onWillUnmount(() => {
                     steps.push("willunmount");
-                    expect(this.ref.el.isConnected).toBe(true);
+                    expect(this.ref().isConnected).toBe(true);
                 });
                 onWillDestroy(() => steps.push("willdestroy"));
             }
@@ -124,11 +122,11 @@ describe("Mount and Destroy embedded components", () => {
             setup() {
                 onMounted(() => {
                     steps.push("mounted");
-                    expect(this.ref.el.isConnected).toBe(true);
+                    expect(this.ref().isConnected).toBe(true);
                 });
                 onWillUnmount(() => {
                     steps.push("willunmount");
-                    expect(this.ref.el?.isConnected).toBe(true);
+                    expect(this.ref()?.isConnected).toBe(true);
                 });
             }
         }
@@ -154,11 +152,11 @@ describe("Mount and Destroy embedded components", () => {
             setup() {
                 onMounted(() => {
                     expect.step("mounted");
-                    expect(this.ref.el.isConnected).toBe(true);
+                    expect(this.ref().isConnected).toBe(true);
                 });
                 onWillUnmount(() => {
                     expect.step("willunmount");
-                    expect(this.ref.el?.isConnected).toBe(true);
+                    expect(this.ref()?.isConnected).toBe(true);
                 });
             }
         }
@@ -192,11 +190,11 @@ describe("Mount and Destroy embedded components", () => {
             setup() {
                 onMounted(() => {
                     expect.step("mounted");
-                    expect(this.ref.el.isConnected).toBe(true);
+                    expect(this.ref().isConnected).toBe(true);
                 });
                 onWillUnmount(() => {
                     expect.step("willunmount");
-                    expect(this.ref.el?.isConnected).toBe(true);
+                    expect(this.ref()?.isConnected).toBe(true);
                 });
             }
         }
@@ -312,22 +310,22 @@ describe("Mount and Destroy embedded components", () => {
             static template = xml`
                 <div>
                     <div t-on-click="this.increment" t-att-class="'click count-' + this.props.index">Count:<t t-out="this.state.value"/></div>
-                    <div t-custom-ref="innerEditable" t-att-class="'innerEditable-' + this.props.index"/>
+                    <div t-ref="this.innerEditableRef" t-att-class="'innerEditable-' + this.props.index"/>
                 </div>
             `;
             static props = {
                 innerValue: HTMLElement,
                 index: Number,
             };
+            innerEditableRef = signal.ref();
             setup() {
-                this.innerEditableRef = useRef("innerEditable");
                 this.state = proxy({
                     value: this.props.index,
                 });
                 onMounted(() => {
                     this.props.innerValue.dataset.oeProtected = "false";
                     this.props.innerValue.setAttribute("contenteditable", "true");
-                    this.innerEditableRef.el.append(this.props.innerValue);
+                    this.innerEditableRef().append(this.props.innerValue);
                     expect.step(`mount ${this.props.index}`);
                 });
                 onWillDestroy(() => {
@@ -728,10 +726,9 @@ describe("Mount processing", () => {
             }
         }
 
-        const rootEnv = await makeMockEnv();
+        assignTestEnv({ somevalue: 1 });
         await setupEditor(`<p><span data-embedded="counter"></span></p>`, {
             config: getConfig([embedding("counter", Test)]),
-            env: Object.assign(rootEnv, { somevalue: 1 }),
         });
         expect(env.somevalue).toBe(1);
     });
@@ -746,53 +743,50 @@ describe("Mount processing", () => {
     });
 
     test("Host child nodes are removed synchronously with the insertion of owl rendered nodes during mount", async () => {
-        const asyncControl = new Deferred();
-        asyncControl.then(() => {
+        const asyncControl = Promise.withResolvers();
+        asyncControl.promise.then(() => {
             expect.step("minimal asynchronous time");
         });
         patchWithCleanup(App.prototype, {
             createRoot(Root, config) {
-                if (Root.name !== "LabeledCounter") {
-                    return super.createRoot(...arguments);
-                }
                 const root = super.createRoot(...arguments);
+                if (Root.name !== "LabeledCounter") {
+                    return root;
+                }
                 const mount = root.mount;
                 root.mount = (target, options) => {
-                    const result = mount(target, options);
                     if (target.dataset.embedded === "labeledCounter") {
-                        const fiber = root.node.fiber;
-                        const fiberComplete = fiber.complete;
-                        fiber.complete = function () {
-                            expect.step("html prop suppression");
-                            asyncControl.resolve();
-                            fiberComplete.call(this);
-                        };
+                        // `mount` is called synchronously after the host child
+                        // nodes suppression, and it inserts the owl rendered
+                        // nodes and runs `mounted` callbacks synchronously.
+                        expect.step("html prop suppression");
+                        asyncControl.resolve();
                     }
-                    return result;
+                    return mount(target, options);
                 };
                 return root;
             },
         });
-        const delayedWillStart = new Deferred();
+        const delayedWillStart = Promise.withResolvers();
         class LabeledCounter extends Counter {
             static template = xml`
-                <span t-custom-ref="root" class="counter" t-on-click="this.increment">
-                    <span t-custom-ref="label"/>:<t t-out="this.state.value"/>
+                <span t-ref="this.ref" class="counter" t-on-click="this.increment">
+                    <span t-ref="this.labelRef"/>:<t t-out="this.state.value"/>
                 </span>
             `;
             static props = {
                 label: HTMLElement,
             };
-            labelRef = useRef("label");
+            labelRef = signal.ref();
             setup() {
                 onWillStart(async () => {
                     expect.step("willstart");
-                    await delayedWillStart;
+                    await delayedWillStart.promise;
                 });
                 onMounted(() => {
                     this.props.label.dataset.oeProtected = "false";
                     this.props.label.setAttribute("contenteditable", "true");
-                    this.labelRef.el.append(this.props.label);
+                    this.labelRef().append(this.props.label);
                     expect.step("html prop insertion");
                 });
             }
@@ -896,7 +890,7 @@ describe("Mount processing", () => {
             }
         }
         const config = getConfig([embedding("embeddedCounter", EmbeddedCounter)]);
-        config.Plugins.push(SimplePlugin);
+        config.includePlugins.push(SimplePlugin);
         const { plugins } = await setupEditor(`<p>[]a</p>`, { config });
         const simplePlugin = plugins.get("simple");
         simplePlugin.insertElement("<div data-embedded='embeddedCounter'/>");

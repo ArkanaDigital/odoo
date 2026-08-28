@@ -1,26 +1,45 @@
-import { Component } from "@odoo/owl";
+import { Component, signal, t, useProps } from "@odoo/owl";
 import { standardFieldProps } from "../standard_field_props";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { hasTouch } from "@web/core/browser/feature_detection";
+import { useNavigation } from "@web/core/navigation/navigation";
 
 const DROPDOWN_ITEM_LIMIT = 8;
+export const baseBadgesFieldProps = {
+    ...standardFieldProps,
+    badgeLimit: t.number().optional(),
+    options: t.array(),
+    string: t.string(),
+    value: t.or([t.string(), t.number(), t.boolean(), t.literal(null)]),
+    onChange: t.function(),
+    canDeselect: t.boolean().optional(),
+    onSearchMore: t.function().optional(),
+};
+
 export class BaseBadgesField extends Component {
     static template = "web.BaseBadgesField";
-    static props = {
-        ...standardFieldProps,
-        badgeLimit: { type: Number, optional: true },
-        options: { type: Array },
-        string: { type: String },
-        value: [String, Number, Boolean, { value: null }],
-        onChange: { type: Function },
-        canDeselect: { type: Boolean, optional: true },
-        onSearchMore: { type: Function, optional: true },
-    };
+    props = useProps(baseBadgesFieldProps);
     static components = {
         Dropdown,
         DropdownItem,
     };
+
+    badgesContainerRef = signal.ref();
+
+    setup() {
+        useNavigation(this.badgesContainerRef, {
+            hotkeys: {
+                arrowright: (navigator) => navigator.next(),
+                arrowleft: (navigator) => navigator.previous(),
+                space: (navigator) => navigator.activeItem?.select(),
+                backspace: () => this.clearSelection(),
+                delete: () => this.clearSelection(),
+                arrowup: null,
+                arrowdown: null,
+            },
+        });
+    }
 
     /**
      * Computes the ordered list of options. If the selected value is
@@ -95,6 +114,22 @@ export class BaseBadgesField extends Component {
 
     getBadgeClassNames(option = false) {
         return this.props.readonly ? "" : { active: this.value === option[0] };
+    }
+
+    getNavigationTabIndex(navigationId) {
+        if (this.value) {
+            return this.value === navigationId ? 0 : -1;
+        }
+        return this.badgesOptions[0]?.[0] === navigationId ? 0 : -1;
+    }
+
+    clearSelection() {
+        if (!this.props.canDeselect || this.props.readonly) {
+            return;
+        }
+        if (this.value) {
+            this.onChange(false);
+        }
     }
 }
 

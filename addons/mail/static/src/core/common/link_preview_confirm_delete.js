@@ -1,5 +1,5 @@
 import { useSubEnv } from "@web/owl2/utils";
-import { Component, props, types } from "@odoo/owl";
+import { Component, types, useProps } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
 import { useService } from "@web/core/utils/hooks";
@@ -11,10 +11,10 @@ export class LinkPreviewConfirmDelete extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props({
+        this.props = useProps({
             close: types.function([]),
             LinkPreview: types.component(), // cannot import LinkPreview due to circular dependency
-            messageLinkPreview: types.instanceOf(this.store["mail.message.link.preview"].Class),
+            messageLinkPreview: types.instanceOf(this.store["mail.message.link.preview"]),
         });
         useSubEnv({ inLinkPreviewConfirmDelete: true });
     }

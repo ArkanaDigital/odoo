@@ -12,8 +12,6 @@ This module provides the core of the Odoo Web Client.
     'depends': ['base'],
     'auto_install': True,
     'data': [
-        'security/ir.model.access.csv',
-        'security/web_security.xml',
         'views/webclient_templates.xml',
         'views/report_templates.xml',
         'views/base_document_layout_views.xml',
@@ -25,6 +23,7 @@ This module provides the core of the Odoo Web Client.
         'views/ir_ui_view_views.xml',
         'data/ir_attachment.xml',
         'data/report_layout.xml',
+        'security/ir.access.csv',
     ],
     'assets': {
         # ---------------------------------------------------------------------
@@ -60,7 +59,6 @@ This module provides the core of the Odoo Web Client.
             'web/static/src/scss/animation.scss',
             'web/static/src/scss/mimetypes.scss',
             'web/static/src/scss/ui.scss',
-            'web/static/src/views/fields/translation_dialog.scss',
 
             'web/static/src/polyfills/clipboard.js',
 
@@ -183,7 +181,6 @@ This module provides the core of the Odoo Web Client.
             'web/static/src/scss/base_frontend.scss',
             'web/static/src/scss/mimetypes.scss',
             'web/static/src/scss/ui.scss',
-            'web/static/src/views/fields/translation_dialog.scss',
             'web/static/src/views/fields/signature/signature_field.scss',
 
             ('include', 'web.assets_frontend_minimal'),
@@ -295,6 +292,7 @@ This module provides the core of the Odoo Web Client.
 
             'base/static/src/css/description.css',
             ('include', 'web.icons_fonts'),
+            'web/static/src/webclient/actions/reports/icons_report.scss',
             'web/static/fonts/fonts.scss',
 
             'web/static/src/webclient/actions/reports/bootstrap_review_report.scss',
@@ -384,9 +382,6 @@ This module provides the core of the Odoo Web Client.
             ('include', 'web._assets_primary_variables'),
             ('include', 'web._assets_secondary_variables'),
         ],
-        'web._assets_jquery': [
-            'web/static/lib/jquery/jquery.js',
-        ],
         'web._assets_bootstrap': [
             'web/static/src/scss/import_bootstrap.scss',
             'web/static/src/scss/utilities_custom.scss',
@@ -447,7 +442,6 @@ This module provides the core of the Odoo Web Client.
 
             'web/static/src/polyfills/set.js',
             'web/static/src/public/**/*.js',
-            ("remove", 'web/static/src/public/lazyloader.js'),
             ("remove", 'web/static/src/public/public_root.js'),
             ("remove", 'web/static/src/public/public_root_instance.js'),
             'web/static/src/public/**/*.xml',
@@ -516,6 +510,8 @@ This module provides the core of the Odoo Web Client.
         ],
         'web.assets_clickbot': [
             'web/static/src/webclient/clickbot/clickbot.js',
+            'web/static/src/webclient/clickbot/clickbot_overlay.js',
+            'web/static/src/webclient/clickbot/clickbot_overlay.xml',
         ],
         "web.chartjs_lib" : [
             '/web/static/lib/Chart/Chart.js',
@@ -530,23 +526,27 @@ This module provides the core of the Odoo Web Client.
             '/web/static/lib/fullcalendar/timegrid/index.global.js',
             '/web/static/lib/fullcalendar/list/index.global.js',
         ],
-        # Icons bundles: font-awesome, odoo_ui_icons and both combined. Only the
-        # combination should probably be used. But it is split to allow FA
+        # Icons bundles: material_symbols, odoo_ui_icons and both combined. Only the
+        # combination should probably be used. But it is split to allow MS
         # preload on the frontend.
-        'web.fontawesome': [
-            '/web/static/src/libs/fontawesome/fonts/fontawesome-webfont.woff2',
-            '/web/static/src/libs/fontawesome/fonts/fontawesome-webfont.woff',
-            '/web/static/src/libs/fontawesome/css/font-awesome.css',
+        'web.material_symbols_outlined': [
+            '/web/static/src/libs/materialsymbols/material_symbols_outlined_subset.woff2',
+            '/web/static/src/libs/materialsymbols/material_symbols_outlined.css',
+        ],
+        'web.material_symbols_sharp': [
+            '/web/static/src/libs/materialsymbols/material_symbols_sharp_subset.woff2',
+            '/web/static/src/libs/materialsymbols/material_symbols_sharp.css',
         ],
         'web.odoo_ui_icons': [
             '/web/static/lib/odoo_ui_icons/fonts/odoo_ui_icons.woff2',
-            '/web/static/lib/odoo_ui_icons/fonts/odoo_ui_icons.woff',
-            '/web/static/lib/odoo_ui_icons/style.css',
+            '/web/static/lib/odoo_ui_icons/odoo_ui_icons.css',
         ],
         'web.icons_fonts': [
-            ('include', 'web.fontawesome'),
+            ('include', 'web.material_symbols_outlined'),
+            ('include', 'web.material_symbols_sharp'),
             ('include', 'web.odoo_ui_icons'),
-            'web/static/src/scss/fontawesome_overridden.scss',  # some are fa classes... but using odoo_ui_icons font
+            'web/static/src/webclient/icons_mappings/**',
+            'web/static/src/webclient/icons.scss',
         ],
     },
     'bootstrap': True,  # load translations for login screen,

@@ -79,15 +79,23 @@ export class PosOrder extends PosOrderAccounting {
     }
 
     get config() {
-        return this.models["pos.config"].getFirst();
+        return this.models["pos.config"].get(odoo.pos_config_id);
     }
 
     get currency() {
         return this.config.currency_id;
     }
 
+    get orderCurrency() {
+        if (this.payment_ids.length === 0) {
+            return this.currency;
+        }
+
+        return this.payment_ids[0].currency;
+    }
+
     get session() {
-        return this.models["pos.session"].getFirst();
+        return this.models["pos.session"].get(odoo.pos_session_id);
     }
 
     get finalized() {
@@ -98,8 +106,20 @@ export class PosOrder extends PosOrderAccounting {
         return (this.finalized && this.isSynced) || this.state === "cancel";
     }
 
-    get totalQuantity() {
-        return this.lines.reduce((sum, line) => sum + line.getQuantity(), 0);
+    get totalItemQuantity() {
+        return this.lines.reduce((sum, line) => {
+            if (this._isItemCountExcludedLine(line)) {
+                return sum;
+            } else if (line.getUnit()?.is_pos_groupable) {
+                return sum + line.getQuantity();
+            } else {
+                return sum + 1;
+            }
+        }, 0);
+    }
+
+    _isItemCountExcludedLine(line) {
+        return line.combo_line_ids?.length;
     }
 
     get isUnsyncedPaid() {
@@ -119,7 +139,7 @@ export class PosOrder extends PosOrderAccounting {
     }
 
     get presetTime() {
-        return this.preset_time && this.preset_time.isValid
+        return this.preset_id && this.preset_time && this.preset_time.isValid
             ? this.formatDateOrTime("preset_time", "time")
             : false;
     }
@@ -140,13 +160,13 @@ export class PosOrder extends PosOrderAccounting {
         if (this.partner_id) {
             return false;
         }
-        const splitPayment = this.payment_ids.some(
-            (payment) => payment.payment_method_id.split_transactions
+        const payLater = this.payment_ids.some(
+            (payment) => payment.payment_method_id.type == "pay_later"
         );
         const invalidPartnerPreset =
             (this.preset_id?.needsName && !this.floating_order_name) ||
             this.preset_id?.needsPartner;
-        return invalidPartnerPreset || this.isToInvoice() || Boolean(splitPayment);
+        return invalidPartnerPreset || this.isToInvoice() || Boolean(payLater);
     }
 
     get presetRequirementsFilled() {
@@ -208,6 +228,10 @@ export class PosOrder extends PosOrderAccounting {
 
     isEmpty() {
         return this.lines.length === 0;
+    }
+
+    isEmptyOrder() {
+        return this.getOrderlines().length === 0 && this.payment_ids.length === 0;
     }
 
     updateSavedQuantity() {
@@ -412,12 +436,13 @@ export class PosOrder extends PosOrderAccounting {
 
         const { status: canSend, message } = payment_method.getPaymentInterfaceStates();
         if (!canSend) {
-            return { status: false, data: message };
+            return { status: false, data: message, size: "sm" };
         }
         const totalAmountDue = this.getDefaultAmountDueToPayIn(payment_method);
         const newPaymentLine = this.models["pos.payment"].create({
             pos_order_id: this,
             payment_method_id: payment_method,
+            foreign_currency_id: args.currency,
         });
         this.selectPaymentline(newPaymentLine);
         newPaymentLine.setAmount(totalAmountDue);
@@ -493,7 +518,7 @@ export class PosOrder extends PosOrderAccounting {
 
     isPaidWithCash() {
         return !!this.payment_ids.find(function (pl) {
-            return pl.payment_method_id.is_cash_count;
+            return pl.payment_method_id.type === "cash";
         });
     }
 
@@ -589,8 +614,11 @@ export class PosOrder extends PosOrderAccounting {
         );
 
         if (newPartner) {
-            newPartnerFiscalPosition =
-                this.findFiscalPosition(newPartner.fiscal_position_id) || defaultFiscalPosition;
+            const partnerFiscalPosition = this.findFiscalPosition(newPartner.fiscal_position_id);
+            const isFpAllowed =
+                partnerFiscalPosition &&
+                this.config.fiscal_position_ids.some((fp) => fp.id === partnerFiscalPosition.id);
+            newPartnerFiscalPosition = isFpAllowed ? partnerFiscalPosition : defaultFiscalPosition;
             newPartnerPricelist =
                 this.config.available_pricelist_ids.find(
                     (pricelist) => pricelist.id === newPartner.property_product_pricelist?.id
@@ -636,7 +664,12 @@ export class PosOrder extends PosOrderAccounting {
 
     // NOTE: Overrided in pos_loyalty to put loyalty rewards at this end of array.
     getOrderlines() {
-        return this.lines;
+        const regularLines = [];
+        const serviceFeeLines = [];
+        for (const line of this.lines) {
+            (line.isServiceFeeLine() ? serviceFeeLines : regularLines).push(line);
+        }
+        return [...regularLines, ...serviceFeeLines];
     }
 
     get floatingOrderName() {
@@ -694,6 +727,8 @@ export class PosOrder extends PosOrderAccounting {
             noteChange: data.noteChange,
             noteUpdate: data.noteUpdate,
             removedQuantity: data.removedQuantity,
+            internal_note: data.internal_note,
+            general_customer_note: data.general_customer_note,
         });
     }
 
@@ -716,13 +751,14 @@ export class PosOrder extends PosOrderAccounting {
         return this.config.preparationCategories;
     }
 
-    dataMaker(prepOrPosLine, quantity) {
+    dataMaker(prepOrPosLine, quantity, opts = {}) {
         const line = prepOrPosLine.pos_order_line_id || prepOrPosLine;
         const product = line.product_id;
         const attributes = line.attribute_value_ids || [];
         return {
             line: line,
             data: {
+                uuid: line.uuid,
                 basic_name: line.order_id?.config_id.module_pos_restaurant
                     ? line.product_id.name
                     : line.product_id.display_name,
@@ -733,9 +769,10 @@ export class PosOrder extends PosOrderAccounting {
                 customer_note: getStrNotes(line?.getCustomerNote?.() || false),
                 pos_categ_id: product.pos_categ_ids[0]?.id || 0,
                 pos_categ_sequence: product.pos_categ_ids[0]?.sequence || 0,
-                group: line?.getCourse?.() || false,
+                group: (!opts.hideCourse && line?.getCourse?.()) || false,
                 combo_line_ids: line?.combo_line_ids,
                 combo_parent_uuid: line?.combo_parent_id?.uuid,
+                uom_is_base_unit: line?.product_id?.uom_id?.id == line?.config?._unit_uom_id,
             },
         };
     }
@@ -949,6 +986,151 @@ export class PosOrder extends PosOrderAccounting {
             removedQuantity: removedQuantity,
             noteUpdate: noteUpdate,
         };
+    }
+
+    get hasRemainingDue() {
+        return this.totalDue < 0 ? this.remainingDue < 0 : this.remainingDue > 0;
+    }
+
+    get remainingDueAmount() {
+        return this.orderCurrency.convert(this.hasRemainingDue ? this.remainingDue : this.change);
+    }
+
+    get remainingDueLabel() {
+        return this.hasRemainingDue ? _t("Remaining") : _t("Change");
+    }
+
+    get serviceFeeLines() {
+        return this.lines?.filter((line) => line.isServiceFeeLine());
+    }
+    removeAllServiceFeeLines() {
+        for (const line of this.serviceFeeLines) {
+            line.delete();
+        }
+    }
+    recomputeServiceFees() {
+        const taxKey = (taxIds) =>
+            taxIds
+                .map((tax) => tax.id)
+                .sort((a, b) => a - b)
+                .join("_");
+
+        if (this.state !== "draft") {
+            return;
+        }
+
+        // A refund order has no preset: its fee lines are the cashier's to refund.
+        if (this.isRefund) {
+            return;
+        }
+
+        if (!this.preset_id?.service_fee) {
+            this.removeAllServiceFeeLines();
+            return;
+        }
+
+        const preset = this.preset_id;
+        const serviceFeeProduct = preset?.service_fee_product_id;
+
+        const lines = this.getOrderlines();
+        const serviceFeeApplicableLines = lines.filter((line) => line.isServiceFeeApplicable());
+
+        if (serviceFeeApplicableLines.length === 0) {
+            this.removeAllServiceFeeLines();
+            return;
+        }
+
+        const feeLines = this.serviceFeeLines || [];
+        const serviceFeeLinesMap = {};
+        feeLines.forEach((line) => {
+            const key = taxKey(line.tax_ids);
+            serviceFeeLinesMap[key] = line;
+        });
+
+        // The cashier can scale and price a fixed fee. Both are stamped into
+        // extra_tax_data because the fee splits into one line per tax group, where
+        // neither `qty` nor `price_unit` holds the whole fee: the edited line is the
+        // one whose qty no longer matches the stamp, a priced one is still "manual".
+        // A price is read as the preset's amount: a target total, taxes included.
+        let feeQty = 1;
+        let feeAmount = preset.service_fee_amount;
+        if (preset.service_fee_type === "fixed" && feeLines.length) {
+            const editedLine = feeLines.find(
+                (line) =>
+                    line.extra_tax_data?.service_fee_qty != null &&
+                    (line.qty || 1) !== line.extra_tax_data.service_fee_qty
+            );
+            feeQty = (editedLine || feeLines[0]).qty || 1;
+            const pricedLine = feeLines.find((line) => line.price_type === "manual");
+            // A stored amount only holds for the preset it was set on.
+            const stampedLine = feeLines.find(
+                (line) =>
+                    line.extra_tax_data?.service_fee_amount != null &&
+                    line.extra_tax_data.service_fee_preset_id === preset.id
+            );
+            if (pricedLine) {
+                feeAmount = pricedLine.price_unit;
+            } else if (stampedLine) {
+                feeAmount = stampedLine.extra_tax_data.service_fee_amount;
+            }
+        }
+        const amount =
+            preset.service_fee_type === "percent"
+                ? preset.service_fee_amount * 100
+                : feeAmount * feeQty;
+
+        const serviceFeeBaseLines = this.getBaseLinesReducedToAmount(serviceFeeApplicableLines, {
+            product: serviceFeeProduct,
+            type: preset.service_fee_type,
+            amount,
+            qty: feeQty,
+            ignoreDiscount: preset.service_fee_based_on === "pre_discount",
+        });
+
+        for (const { baseLine, extraTaxData } of serviceFeeBaseLines) {
+            const key = taxKey(baseLine.tax_ids);
+            // Persist the cashier's quantity and amount for the next recompute.
+            extraTaxData.service_fee_qty = feeQty;
+            if (preset.service_fee_type === "fixed") {
+                extraTaxData.service_fee_amount = feeAmount;
+                extraTaxData.service_fee_preset_id = preset.id;
+            }
+            const existingLine = serviceFeeLinesMap[key];
+
+            if (existingLine) {
+                existingLine.extra_tax_data = extraTaxData;
+                // Reset `price_type` first: a manual price schedules this recompute
+                // (see pos_store), so the write-back would loop.
+                existingLine.price_type = "automatic";
+                existingLine.price_unit = baseLine.price_unit;
+                // Switching from a fixed preset to a percentage one drops the qty.
+                if (existingLine.qty !== feeQty) {
+                    existingLine.qty = feeQty;
+                }
+                // Keep the fee at the bottom of the order as courses come and go.
+                if (this.hasCourses?.()) {
+                    existingLine.course_id = this.getLastCourse();
+                }
+                delete serviceFeeLinesMap[key];
+            } else {
+                this.models["pos.order.line"].create({
+                    order_id: this,
+                    product_id: serviceFeeProduct,
+                    price_unit: baseLine.price_unit,
+                    tax_ids: [["link", ...baseLine.tax_ids]],
+                    product_tmpl_id: serviceFeeProduct.product_tmpl_id,
+                    qty: feeQty,
+                    price_type: "automatic",
+                    // course_id is only available when pos_restaurant is installed
+                    course_id: this.hasCourses?.() ? this.getLastCourse() : undefined,
+                    extra_tax_data: extraTaxData,
+                });
+            }
+        }
+
+        Object.values(serviceFeeLinesMap).forEach((line) => {
+            line.delete();
+        });
     }
 }
 

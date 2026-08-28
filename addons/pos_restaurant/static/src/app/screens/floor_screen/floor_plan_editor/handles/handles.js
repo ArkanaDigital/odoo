@@ -1,29 +1,30 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, onMounted, onWillPatch, proxy } from "@odoo/owl";
+import { Component, onMounted, onWillPatch, proxy, useProps, signal, t } from "@odoo/owl";
 import { setElementTransform } from "@pos_restaurant/app/services/floor_plan/utils/utils";
 import { computeRotationHandlePosition } from "@pos_restaurant/app/screens/floor_screen/floor_plan_editor/handles/utils";
+import { FloorElement } from "@pos_restaurant/app/services/floor_plan/elements";
 const HANDLE_OFFSET = 5;
 
 export class Handles extends Component {
     static template = "pos_restaurant.floor_editor.handle_overlay";
 
-    static props = {
-        onStartResize: { type: Function, optional: true },
-        onStartMove: { type: Function, optional: true },
-        onStartRotate: { type: Function, optional: true },
-        onEdit: { type: Function, optional: true },
-        floorElement: { optional: true },
-        canvasRef: { type: Object },
-        actions: { type: Function, optional: true },
-        actionMenuPosition: { type: String, optional: true },
-    };
+    props = useProps({
+        onStartResize: t.function().optional(),
+        onStartMove: t.function().optional(),
+        onStartRotate: t.function().optional(),
+        onEdit: t.function().optional(),
+        floorElement: t.or([t.instanceOf(FloorElement), t.literal(null)]).optional(),
+        canvasRef: t.function(),
+        actions: t.function().optional(),
+        actionMenuPosition: t.string().optional(),
+    });
+
+    rootRef = signal.ref();
 
     get el() {
-        return this.root.el;
+        return this.rootRef();
     }
 
     setup() {
-        this.root = useRef("handles");
         this.startResize = this.startResize.bind(this);
 
         this.state = proxy({
@@ -76,7 +77,7 @@ export class Handles extends Component {
         this.setStyle(floorElement);
         this.state.rotationHandlePosition = computeRotationHandlePosition(
             floorElement,
-            canvasRef.el,
+            canvasRef(),
             this.props.actionMenuPosition
         );
     }

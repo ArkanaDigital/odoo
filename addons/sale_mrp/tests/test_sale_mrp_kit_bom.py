@@ -11,6 +11,8 @@ from odoo.addons.base.tests.common import BaseCommon
 @tagged('post_install', '-at_install')
 class TestSaleMrpKitBom(BaseCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -152,76 +154,6 @@ class TestSaleMrpKitBom(BaseCommon):
         purchase_price = line.product_id.with_company(line.company_id)._compute_average_price(0, line.product_uom_qty, line.move_ids)
         self.assertEqual(line.move_ids.mapped('description_picking'), ['Kit Product - 1/2', 'Kit Product - 2/2'])
         self.assertEqual(purchase_price, 92, "The purchase price must be the total cost of the components multiplied by their unit of measure")
-
-    def test_sale_mrp_kit_sale_price(self):
-        """Check the total sale price of a KIT:
-            # BoM of Kit A:
-                # - BoM Type: Kit
-                # - Quantity: 1
-                # - Components:
-                # * 1 x Component A (Price: $ 8, QTY: 10, UOM: Meter)
-                # * 1 x Component B (Price: $ 5, QTY: 2, UOM: Dozen)
-            # sale price of Kit A = (8 * 10) + (5 * 2 * 12) = $ 200
-        """
-        if "sale_price" not in self.env["stock.move.line"]._fields:
-            self.skipTest("This test only runs with both sale_mrp and stock_delivery installed")
-
-        self.customer = self.env['res.partner'].create({
-            'name': 'customer',
-        })
-        self.warehouse = self.env["stock.warehouse"].create({
-            'name': 'Warehouse #2',
-            'code': 'WH02',
-        })
-
-        self.kit_product = self._create_product('Kit Product', 'product', 1.00)
-        # Creating components
-        self.component_a = self._create_product('Component A', 'product', 1.00)
-        self.component_a.uom_id = self.env.ref('uom.product_uom_meter').id
-        self.component_a.product_tmpl_id.list_price = 8
-        self.component_b = self._create_product('Component B', 'product', 1.00)
-        self.component_b.product_tmpl_id.list_price = 5
-
-        location_id = self.warehouse.lot_stock_id.id
-        self.env["stock.quant"].with_context(inventory_mode=True).create([
-            {"product_id": self.component_a.id, "inventory_quantity": 10, "location_id": location_id},
-            {"product_id": self.component_b.id, "inventory_quantity": 24, "location_id": location_id},
-        ]).action_apply_inventory()
-
-        self.bom = self.env['mrp.bom'].create({
-            'product_tmpl_id': self.kit_product.product_tmpl_id.id,
-            'product_qty': 1.0,
-            'type': 'phantom',
-            'bom_line_ids': [
-                Command.create({
-                    'product_id': self.component_a.id,
-                    'product_qty': 10.0,
-                    'uom_id': self.env.ref('uom.product_uom_meter').id,
-                }),
-                Command.create({
-                    'product_id': self.component_b.id,
-                    'product_qty': 2.0,
-                    'uom_id': self.env.ref('uom.product_uom_dozen').id,
-                }),
-            ]
-        })
-
-        # Create a SO with one unit of the kit product
-        so = self.env['sale.order'].create({
-            'partner_id': self.customer.id,
-            'order_line': [
-                (0, 0, {
-                    'name': self.kit_product.name,
-                    'product_id': self.kit_product.id,
-                    'product_uom_qty': 1.0,
-                    'product_uom_id': self.kit_product.uom_id.id,
-                })],
-            'warehouse_id': self.warehouse.id,
-        })
-        so.action_confirm()
-        so.picking_ids._action_done()
-        move_lines = so.picking_ids.move_ids.move_line_ids
-        self.assertEqual(move_lines.mapped("sale_price"), [80, 120], 'wrong shipping value')
 
     def test_qty_delivered_with_bom(self):
         """Check the quantity delivered, when a bom line has a non integer quantity"""
@@ -675,13 +607,14 @@ class TestSaleMrpKitBom(BaseCommon):
 
     def test_sale_kit_qty_change(self):
 
-        # Create record rule (remove access from all)
+        # Create access rule preventing access to all records (but not to the model)
         mrp_bom_model = self.env['ir.model']._get('mrp.bom')
-        self.env['ir.rule'].search([('model_id', '=', mrp_bom_model.id)]).unlink()
-        self.env['ir.rule'].create({
+        self.env['ir.access'].search([('model_id', '=', mrp_bom_model.id)]).unlink()
+        self.env['ir.access'].create({
             'name': "No one allowed to access BoMs",
             'model_id': mrp_bom_model.id,
-            'domain_force': [(0, '=', 1)],
+            'operation': 'crud',
+            'domain': "[('id', '=', 0)]",
         })
 
         # Create BoM
@@ -721,7 +654,8 @@ class TestSaleMrpKitBom(BaseCommon):
         warehouse = self.env.ref('stock.warehouse0')
         mto_route = self.env.ref('stock.route_warehouse0_mto')
         mto_route.action_unarchive()
-        manufacturing_route_id = self.ref('mrp.route_warehouse0_manufacture')
+        routes = mto_route | self.env.ref('mrp.route_warehouse0_manufacture')
+        routes.product_selectable = True
         kit_product, comp, mto_comp, subcomp = self.env['product.product'].create([
             {
                 'name': 'kit_product',
@@ -736,7 +670,7 @@ class TestSaleMrpKitBom(BaseCommon):
             {
                 'name': 'mto_component',
                 'is_storable': True,
-                'route_ids': [Command.set([mto_route.id, manufacturing_route_id])],
+                'route_ids': routes,
             },
             {
                 'name': 'subcomponent',
@@ -832,3 +766,26 @@ class TestSaleMrpKitBom(BaseCommon):
         picking.button_validate()
 
         self.assertEqual(so.order_line.qty_delivered, 1)
+
+    def test_kit_component_packaging_uom_not_converted_so(self):
+        """ The delivery move of a kit component must keep the component's own
+        UoM as packaging UoM."""
+        uom_unit = self.env.ref('uom.product_uom_unit')
+        uom_kg = self.env.ref('uom.product_uom_kgm')
+        kit, component = self.env['product.product'].create([
+            {'name': 'Kit UoM', 'uom_id': uom_unit.id},
+            {'name': 'Comp Kg', 'is_storable': True, 'uom_id': uom_kg.id},
+        ])
+        self.env['mrp.bom'].create({
+            'product_tmpl_id': kit.product_tmpl_id.id,
+            'type': 'phantom',
+            'bom_line_ids': [Command.create({'product_id': component.id, 'product_qty': 1.0})],
+        })
+        so = self.env['sale.order'].create({
+            'partner_id': self.partner.id,
+            'order_line': [Command.create({'product_id': kit.id, 'product_uom_qty': 1.0})],
+        })
+        so.action_confirm()
+        component_move = so.picking_ids.move_ids
+        self.assertEqual(component_move.uom_id, uom_kg)
+        self.assertEqual(component_move.packaging_uom_id, uom_kg)

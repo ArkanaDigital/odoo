@@ -29,12 +29,12 @@ class AuthorizeAPI:
 
         :param recordset provider: payment.provider account that will be contacted
         """
-        if provider.state == "enabled":
+        if provider.is_live:
             self.url = "https://api.authorize.net/xml/v1/request.api"
         else:
             self.url = "https://apitest.authorize.net/xml/v1/request.api"
 
-        self.state = provider.state
+        self.is_live = provider.is_live
         self.name = provider.authorize_login
         self.transaction_key = provider.authorize_transaction_key
 
@@ -175,9 +175,9 @@ class AuthorizeAPI:
                     "lastName": split_name[1][:50],  # lastName is always required
                     "company": tx.partner_name[:50] if tx.partner_id.is_company else "",
                     "address": tx.partner_address[:60],
-                    "city": tx.partner_city[:40],
+                    "city": (tx.partner_city or "")[:40],
                     "state": (tx.partner_state_id.name or "")[:40],
-                    "zip": tx.partner_zip[:20],
+                    "zip": (tx.partner_zip or "")[:20],
                     "country": (tx.partner_country_id.name or "")[:60],
                 }
             }
@@ -321,20 +321,29 @@ class AuthorizeAPI:
         :return: a dict containing the response code, transaction id and transaction type
         :rtype: dict
         """
-        card = (
-            tx_details
-            .get("transaction", {})
-            .get("payment", {})
-            .get("creditCard", {})
-            .get("cardNumber")
-        )
+        tx_payment = tx_details.get("transaction", {}).get("payment", {})
+        if "bankAccount" in tx_payment:
+            payment_data = {
+                "bankAccount": {
+                    "routingNumber": tx_payment["bankAccount"].get("routingNumber"),
+                    "accountNumber": tx_payment["bankAccount"].get("accountNumber"),
+                    "nameOnAccount": tx_payment["bankAccount"].get("nameOnAccount"),
+                }
+            }
+        else:
+            payment_data = {
+                "creditCard": {
+                    "cardNumber": tx_payment.get("creditCard", {}).get("cardNumber"),
+                    "expirationDate": "XXXX",
+                }
+            }
         response = self._make_request(
             "createTransactionRequest",
             {
                 "transactionRequest": {
                     "transactionType": "refundTransaction",
                     "amount": str(amount),
-                    "payment": {"creditCard": {"cardNumber": card, "expirationDate": "XXXX"}},
+                    "payment": payment_data,
                     "refTransId": transaction_id,
                 }
             },

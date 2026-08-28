@@ -5,6 +5,12 @@ import { getOrigin } from "@web/core/utils/urls";
 // The tour is ran twice, ensure the correct message is always targetted.
 const messageSelector = ".o-mail-Message:has(.o-mail-Message-body:contains('cheese'))";
 const editedMessageSelector = ".o-mail-Message:has(.o-mail-Message-body:contains('vegetables'))";
+// Conversation displayed when the tour starts, to check the message is sent in it.
+let openedConversation;
+
+function getConversationName() {
+    return document.querySelector(".o-mail-DiscussContent-threadName")?.value;
+}
 
 registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
     steps: () => [
@@ -14,6 +20,7 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
         {
             trigger: ".o-mail-Thread",
             run() {
+                openedConversation = getConversationName();
                 if (!window.location.pathname.startsWith("/discuss/channel")) {
                     console.error("Channel secret token is still present in URL.");
                 }
@@ -22,17 +29,9 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
                     console.error("Couldn't load all JS modules.", errors);
                 }
                 document.body.classList.add("o_discuss_channel_public_modules_loaded");
-                if (
-                    !document.title.includes(
-                        document.querySelector(".o-mail-DiscussContent-threadName")?.value
-                    )
-                ) {
+                if (!document.title.includes(openedConversation)) {
                     console.error(
-                        `Tab title should match conversation name. Got "${
-                            document.title
-                        }" instead of "${
-                            document.querySelector(".o-mail-DiscussContent-threadName")?.value
-                        }".`
+                        `Tab title should match conversation name. Got "${document.title}" instead of "${openedConversation}".`
                     );
                 }
             },
@@ -48,6 +47,7 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
             trigger: ".o-mail-Composer button[title='More Actions']",
             run: "click",
         },
+        { trigger: ".o-discuss-dropdownMenu" },
         {
             trigger: ".dropdown-item:contains('Attach Files')",
             async run({ inputFiles }) {
@@ -56,7 +56,11 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
             },
         },
         {
-            trigger: ".o-mail-AttachmentContainer:not(.o-isUploading):contains(text.txt)",
+            // Scoped to the composer: on the second run of the tour, the message posted
+            // by the first run displays identical attachment cards, which would match an
+            // unscoped selector before the current upload is done (runbot 941300).
+            trigger:
+                ".o-mail-Composer .o-mail-AttachmentContainer:not(.o-isUploading):contains(text.txt)",
         },
         {
             content: "You must click on 'More Action' each time you want to upload a file",
@@ -81,7 +85,9 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
             },
         },
         {
-            trigger: '.o-mail-AttachmentContainer:not(.o-isUploading)[title="image.png"]',
+            // Scoped to the composer: see the text.txt step above (runbot 941300).
+            trigger:
+                '.o-mail-Composer .o-mail-AttachmentContainer:not(.o-isUploading)[title="image.png"]',
             async run({ waitFor }) {
                 /** @type {import("models").Store} */
                 const store = odoo.__WOWL_DEBUG__.root.env.services["mail.store"];
@@ -109,11 +115,28 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
                         disposeEffect();
                     }
                     await waitFor(
-                        `.o-mail-AttachmentContainer[title="image.png"] img[src="${getOrigin()}/web/image/${
+                        `.o-mail-Composer .o-mail-AttachmentContainer[title="image.png"] img[src="${getOrigin()}/web/image/${
                             attachment.id
                         }?access_token=${attachment.raw_access_token}&filename=image.png&unique=${
                             attachment.checksum
                         }"]`
+                    );
+                }
+            },
+        },
+        // The upload steps target the "Attach Files" item but feed the hidden input directly,
+        // so the "More Actions" menu is left open. Close it before sending to avoid clicking
+        // Send while the menu is still dismissing.
+        { trigger: ".o-mail-Composer-input", run: "click" },
+        { trigger: "body:not(:has(.o-discuss-dropdownMenu))" },
+        {
+            // Check the conversation is unchanged, as the text and the attachments
+            // stay on the composer of the conversation they were added to.
+            trigger: ".o-mail-Composer",
+            run() {
+                if (getConversationName() !== openedConversation) {
+                    console.error(
+                        `Conversation changed during the tour, from "${openedConversation}" to "${getConversationName()}".`
                     );
                 }
             },

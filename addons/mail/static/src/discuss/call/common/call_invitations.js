@@ -6,7 +6,6 @@ import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 
 export class CallInvitations extends Component {
-    static props = [];
     static components = { CallInvitation };
     static template = "discuss.CallInvitations";
 
@@ -22,19 +21,14 @@ export const callInvitationsService = {
     start(env, services) {
         /** @type {import("models").Store} */
         const store = services["mail.store"];
-        let removeOverlay;
-        const onChangeRingingThreadsLength = () => {
-            if (store.ringingChannels.length > 0) {
-                if (!removeOverlay) {
-                    removeOverlay = services.overlay.add(CallInvitations, {});
+        store.onChange(
+            () => [store.ringingChannels.length > 0],
+            (hasRingingChannels) => {
+                if (hasRingingChannels) {
+                    return services.overlay.add(CallInvitations, {});
                 }
-            } else {
-                removeOverlay?.();
-                removeOverlay = undefined;
             }
-        };
-        onChangeRingingThreadsLength();
-        store.registerOnChange(store.ringingChannels, "length", onChangeRingingThreadsLength);
+        );
     },
 };
 registry.category("services").add("discuss.call_invitations", callInvitationsService);

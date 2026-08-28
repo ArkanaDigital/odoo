@@ -8,22 +8,58 @@ import { animationFrame } from "@odoo/hoot-mock";
 import { contains, defineModels, fields, models } from "@web/../tests/web_test_helpers";
 
 import { DYNAMIC_FIELD_PLUGINS } from "@html_editor/backend/dynamic_field/dynamic_field_plugin";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 
 describe.current.tags("desktop");
+
+class OneModel extends models.Model {
+    name = fields.Char({ string: "The many2one model name" });
+}
 
 class SomeModel extends models.Model {
     _name = "some.model";
 
     field = fields.Char({ string: "My little field" });
+    many2one_model_id = fields.Many2one({ relation: "one.model" });
+    product_id = fields.Many2one({ relation: "product" });
+    properties = fields.Properties({
+        string: "Properties",
+        definition_record: "product_id",
+        definition_record_field: "properties_definitions",
+    });
 }
 
-defineModels([SomeModel]);
+class Product extends models.Model {
+    name = fields.Char({ string: "Product Name" });
+    properties_definitions = fields.PropertiesDefinition();
+
+    _records = [
+        {
+            id: 1,
+            name: "xphone",
+            properties_definitions: [
+                {
+                    name: "property_partner",
+                    type: "many2one",
+                    string: "Partner Property",
+                    comodel: "res.partner",
+                },
+            ],
+        },
+    ];
+}
+
+class Partner extends models.Model {
+    _name = "res.partner";
+
+    name = fields.Char({ string: "Partner Name" });
+}
+
+defineModels([OneModel, SomeModel, Product, Partner]);
 
 function getEditorOptions() {
     return {
         config: {
-            Plugins: [...MAIN_PLUGINS, ...DYNAMIC_FIELD_PLUGINS],
+            includePlugins: DYNAMIC_FIELD_PLUGINS,
             classList: ["odoo-editor-qweb"],
             dynamicResModel: "some.model",
         },
@@ -50,6 +86,58 @@ test("add dynamic field", async () => {
         <p data-selection-placeholder=""><br></p>
             <div class="o-paragraph">
                 <t data-oe-expression-readable="My little field" t-out="object.field" data-oe-demo="My little field" data-oe-t-inline="true" data-oe-protected="true" contenteditable="false">My little field</t>[]
+            </div>
+        <p data-selection-placeholder=""><br></p>
+    `)
+    );
+});
+
+test("add dynamic field with relational property", async () => {
+    const { editor, el } = await setupEditor(`<div>[hop hop]</div>`, getEditorOptions());
+    await insertText(editor, "/");
+    await contains(".o-we-powerbox .o-we-command-name:contains(/^Field$/)").click();
+
+    await contains(".o-dynamic-field-popover .o_model_field_selector_value").click();
+    await contains(
+        "li[data-name='properties'] .o_model_field_selector_popover_item_relation"
+    ).click();
+    expect(".o-dynamic-field-popover button.btn-primary").not.toBeEnabled();
+    await contains(
+        "li[data-name='property_partner'] .o_model_field_selector_popover_item_relation"
+    ).click();
+    expect(".o-dynamic-field-popover .o_model_field_selector_chain_part").toHaveCount(1);
+    expect(".o-dynamic-field-popover .o_model_field_selector_chain_part").toHaveText(
+        "properties.get('property_partner', env['res.partner'])"
+    );
+    await contains("li[data-name='name'] button:contains('Partner Name')").click();
+    expect("input[name='label_value']").toHaveValue("Partner Name");
+
+    await contains(".o-dynamic-field-popover button.btn-primary").click();
+    await animationFrame();
+    expect(getContent(el)).toInclude("Partner Name");
+    expect(getContent(el)).toInclude(
+        `t-out="object.properties.get('property_partner', env['res.partner']).name"`
+    );
+});
+
+test("add many2one dynamic field should take the name by default", async () => {
+    const { editor, el } = await setupEditor(`<div>[hop hop]</div>`, getEditorOptions());
+    await insertText(editor, "/");
+    await contains(".o-we-powerbox .o-we-command-name:contains(/^Field$/)").click();
+
+    await contains(".o-dynamic-field-popover .o_model_field_selector_value").click();
+    await contains(
+        ".o_model_field_selector_popover_page li[data-name='many2one_model_id'] button"
+    ).click();
+    expect(".o-dynamic-field-popover input[name='label_value']").toHaveValue("Many2one model");
+
+    await contains(".o-dynamic-field-popover button.btn-primary").click();
+    await animationFrame();
+    expect(getContent(el)).toBe(
+        unformat(`
+        <p data-selection-placeholder=""><br></p>
+            <div class="o-paragraph">
+                <t data-oe-expression-readable="Display name" t-out="object.many2one_model_id.display_name" data-oe-demo="Many2one model" data-oe-t-inline="true" data-oe-protected="true" contenteditable="false">Many2one model</t>[]
             </div>
         <p data-selection-placeholder=""><br></p>
     `)
@@ -147,7 +235,7 @@ test("edit fields and back", async () => {
 test("inserted value from dynamic field should contain the data-oe-t-inline attribute", async () => {
     const { editor } = await setupEditor("<p>test[]</p>", {
         config: {
-            Plugins: [...MAIN_PLUGINS, ...DYNAMIC_FIELD_PLUGINS],
+            includePlugins: DYNAMIC_FIELD_PLUGINS,
             dynamicResModel: "some.model",
         },
     });
@@ -162,4 +250,32 @@ test("inserted value from dynamic field should contain the data-oe-t-inline attr
     await animationFrame();
 
     expect("t[data-oe-t-inline]").toHaveCount(1);
+});
+
+test("cannot insert or edit a dynamic field without a model", async () => {
+    const options = getEditorOptions();
+    options.config.dynamicResModel = "";
+    // Verify insert
+    const { editor } = await setupEditor("<p>[]</p>", options);
+    await insertText(editor, "/");
+    await contains(".o-we-powerbox .o-we-command-name:contains(/^Field$/)").click();
+
+    expect(".o_notification").toHaveText(
+        "Oops! Select a model for this template before inserting fields."
+    );
+    expect(".o-dynamic-field-popover").toHaveCount(0);
+    await contains(".o_notification .btn-close").click();
+
+    // Verify edit
+    await setupEditor(
+        `<div><t t-out="object.field" data-oe-expression-readable="My little field" data-oe-demo="My little field"></t></div>`,
+        options
+    );
+    await contains(":iframe t[t-out]").click();
+    await contains(".o-we-toolbar button[name='editDynamicField']").click();
+
+    expect(".o_notification").toHaveText(
+        "Oops! Select a model for this template before editing fields."
+    );
+    expect(".o-dynamic-field-popover").toHaveCount(0);
 });

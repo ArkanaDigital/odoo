@@ -25,13 +25,13 @@ import { withSequence } from "@html_editor/utils/resource";
 import { findInSelection } from "@html_editor/utils/selection";
 import { getColumnIndex, getRowIndex, getTableCells } from "@html_editor/utils/table";
 import { isBrowserFirefox } from "@web/core/browser/feature_detection";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
 import { BG_CLASSES_REGEX } from "@html_editor/utils/color";
-import { getElementHoveredEdge } from "@html_editor/utils/perspective_utils";
 import { rgbaToHex } from "@web/core/utils/colors";
 
 export const BORDER_SENSITIVITY = 5;
+const LONG_PRESS_DELAY = 200;
 
 const tableInnerComponents = new Set(["THEAD", "TBODY", "TFOOT", "TR", "TH", "TD"]);
 function isUnremovableTableComponent(node, root) {
@@ -55,9 +55,6 @@ function isUnremovableTableComponent(node, root) {
  * @property { TablePlugin['removeColumn'] } removeColumn
  * @property { TablePlugin['removeRow'] } removeRow
  * @property { TablePlugin['turnIntoRow'] } turnIntoRow
- * @property { TablePlugin['resetRowHeight'] } resetRowHeight
- * @property { TablePlugin['resetColumnWidth'] } resetColumnWidth
- * @property { TablePlugin['resetTableSize'] } resetTableSize
  * @property { TablePlugin['clearColumnContent'] } clearColumnContent
  * @property { TablePlugin['clearRowContent'] } clearRowContent
  * @property { TablePlugin['toggleAlternatingRows'] } toggleAlternatingRows
@@ -67,7 +64,7 @@ function isUnremovableTableComponent(node, root) {
  */
 
 /**
- * @typedef {((el: HTMLElement) => void)[]} deselect_custom_selected_nodes_processors
+ * @typedef {((el: HTMLElement) => HTMLElement)[]} deselect_custom_selected_nodes_processors
  */
 
 /**
@@ -95,9 +92,6 @@ export class TablePlugin extends Plugin {
         "turnIntoHeader",
         "turnIntoRow",
         "moveRow",
-        "resetRowHeight",
-        "resetColumnWidth",
-        "resetTableSize",
         "clearColumnContent",
         "clearRowContent",
         "toggleAlternatingRows",
@@ -116,6 +110,25 @@ export class TablePlugin extends Plugin {
                 isAvailable: isHtmlContentSupported,
             },
         ],
+        table_menu_commands: [
+            {
+                moveColumn: this.moveColumn.bind(this),
+                addColumn: this.addColumn.bind(this),
+                removeColumn: this.removeColumn.bind(this),
+                moveRow: this.moveRow.bind(this),
+                addRow: this.addRow.bind(this),
+                removeRow: this.removeRow.bind(this),
+                turnIntoHeader: this.turnIntoHeader.bind(this),
+                turnIntoRow: this.turnIntoRow.bind(this),
+                clearColumnContent: this.clearColumnContent.bind(this),
+                clearRowContent: this.clearRowContent.bind(this),
+                toggleAlternatingRows: this.toggleAlternatingRows.bind(this),
+                mergeSelectedCells: this.mergeSelectedCells.bind(this),
+                unmergeSelectedCell: this.unmergeSelectedCell.bind(this),
+                buildTableGrid: this.buildTableGrid.bind(this),
+            },
+        ],
+        toolbar_groups: withSequence(25, { id: "table" }),
 
         /** Providers */
         toolbar_namespace_providers: [
@@ -135,10 +148,11 @@ export class TablePlugin extends Plugin {
         /** Resizing Parameters */
         resizing_parameters: [
             {
-                // Visually, users resize table cells, but in practice they
-                // actually resize the col element.
                 resizableElementsSelector: "td, th",
-                resizeTargetSelector: "col",
+                // Resize widths through proxy elements (e.g. <col>) instead of td/th.
+                // When all proxy widths are reset, their container (<colgroup>) is
+                // removed to restore the natural table layout.
+                proxyElementsSelector: "col",
                 parentContainerSelector: "table",
                 allowedEdges: ["left", "right"],
                 minSize: 33,
@@ -157,9 +171,10 @@ export class TablePlugin extends Plugin {
         on_will_split_block_handlers: this.resetTableSelection.bind(this),
 
         /** Processors */
-        before_insert_processors: this.handleTableInsert.bind(this),
+        before_insert_processors: this.normalizeTableStructure.bind(this),
         clean_for_save_processors: (root) => {
             this.deselectTable(root);
+            return root;
         },
         normalize_processors: this.normalizeTable.bind(this),
         clipboard_content_processors: this.processContentForClipboard.bind(this),
@@ -216,6 +231,10 @@ export class TablePlugin extends Plugin {
     setup() {
         this.addDomListener(this.editable, "dblclick", this.fitToContent);
         this.addDomListener(this.editable, "mousedown", this.onMousedown);
+        this.addDomListener(this.editable, "touchstart", this.onTouchStart);
+        this.addDomListener(this.editable, "touchmove", this.onTouchMove);
+        this.addDomListener(this.editable, "touchend", this.onTouchEnd);
+        this.addDomListener(this.editable, "touchcancel", this.onTouchEnd);
         this.addDomListener(this.editable, "mouseup", this.onMouseup);
         this.addDomListener(this.editable, "keydown", (ev) => {
             this._isKeyDown = true;
@@ -239,6 +258,8 @@ export class TablePlugin extends Plugin {
             }
         });
         this.onMousemove = this.onMousemove.bind(this);
+
+        this.normalizeTableStructure(this.editable);
     }
 
     processTableResizeTargets(item, neighbor, position) {
@@ -428,13 +449,15 @@ export class TablePlugin extends Plugin {
 
             if (tableColor || tableBgColor) {
                 for (const td of table.querySelectorAll("td")) {
-                    td.style.color = td.style.color || tableColor;
-                    td.style.backgroundColor = td.style.backgroundColor || tableBgColor;
+                    if (closestElement(td, "table") === table) {
+                        td.style.color = td.style.color || tableColor;
+                        td.style.backgroundColor = td.style.backgroundColor || tableBgColor;
+                    }
                 }
-                table.style.color = "";
-                table.style.backgroundColor = "";
+                removeStyle(table, "color", "background-color");
             }
         }
+        return root;
     }
 
     createTable({ rows = 2, cols = 2 } = {}) {
@@ -533,7 +556,7 @@ export class TablePlugin extends Plugin {
                 }
             }
             if (colgroup) {
-                const newcol = document.createElement("col");
+                const newcol = this.document.createElement("col");
                 const children = colgroup.children;
                 const currentCol = children[gridCellIndex];
                 newcol.style.width = currentCol.style.width;
@@ -595,7 +618,7 @@ export class TablePlugin extends Plugin {
                 let columnIndex = 0;
                 for (const column of newRow.children) {
                     column.style.width = referenceRowWidths[columnIndex];
-                    gridCells[columnIndex].style.width = "";
+                    removeStyle(gridCells[columnIndex], "width");
                     columnIndex++;
                 }
             }
@@ -791,187 +814,6 @@ export class TablePlugin extends Plugin {
         this.tableGridMap?.delete(closestElement(row, "table"));
     }
 
-    /**
-     * @param {HTMLTableElement} table
-     */
-    normalizeRowHeight(table) {
-        const rows = [...table.rows];
-        const referenceRow = rows.find((row) => !row.style.height);
-        const referenceRowHeight = parseFloat(getComputedStyle(referenceRow).height);
-        rows.forEach((row) => {
-            if (
-                row.style.height &&
-                Math.abs(parseFloat(row.style.height) - referenceRowHeight) <= 1
-            ) {
-                row.style.height = "";
-            }
-        });
-    }
-
-    /**
-     * @param {HTMLTableRowElement} row
-     */
-    resetRowHeight(row) {
-        const table = closestElement(row, "table");
-        row.style.height = "";
-        this.normalizeRowHeight(table);
-    }
-
-    /**
-     * @param {HTMLTableElement} table
-     */
-    normalizeColumnWidth(table) {
-        const colgroup = table.querySelector("colgroup");
-        if (colgroup) {
-            const columns = Array.from(colgroup.children);
-            const tableWidth = parseFloat(table.style.width);
-            if (tableWidth) {
-                const expectedColWidth = tableWidth / columns.length;
-                const columnsToReset = columns.filter((col) => {
-                    const colWidth = parseFloat(col.style.width) || col.clientWidth;
-                    return colWidth && Math.abs(colWidth - expectedColWidth) <= 1;
-                });
-                // If all columns are default, remove the <colgroup> entirely
-                if (columnsToReset.length === columns.length) {
-                    colgroup.remove();
-                } else {
-                    // Otherwise, reset only the columns that need it
-                    columnsToReset.forEach((col) => {
-                        col.style.width = "";
-                    });
-                }
-            }
-        }
-    }
-
-    /**
-     * @param {HTMLTableCellElement} cell
-     */
-    resetColumnWidth(cell) {
-        const table = closestElement(cell, "table");
-        const colgroup = table.querySelector("colgroup");
-        if (!colgroup) {
-            return;
-        }
-        const tableWidth = parseFloat(table.style.width) || table.clientWidth;
-        const colElements = Array.from(colgroup.children);
-        const totalCols = colElements.length;
-        const expectedColWidth = tableWidth / totalCols;
-
-        const tableGrid = this.buildTableGrid(table);
-        const cellColIndex = tableGrid[0].indexOf(cell);
-        const cellColSpan = cell.colSpan;
-
-        const getColWidth = (col) => parseFloat(col.style.width) || col.clientWidth;
-
-        const targetCols = colElements.slice(cellColIndex, cellColIndex + cellColSpan);
-        const leftCols = colElements.slice(0, cellColIndex);
-        const rightCols = colElements.slice(cellColIndex + cellColSpan);
-
-        const currentTargetWidth = targetCols.reduce((sum, col) => sum + getColWidth(col), 0);
-        let remainingLeftWidth = leftCols.reduce((sum, col) => sum + getColWidth(col), 0);
-        let remainingRightWidth = rightCols.reduce((sum, col) => sum + getColWidth(col), 0);
-        let expectedLeftColWidth = leftCols.length * expectedColWidth;
-        let expectedRightColWidth = rightCols.length * expectedColWidth;
-        const widthDifference = currentTargetWidth - expectedColWidth * cellColSpan;
-
-        let colsToAdjust = [];
-        for (const col of [...leftCols].reverse()) {
-            if (Math.abs(expectedLeftColWidth - remainingLeftWidth) <= 1) {
-                break;
-            }
-            colsToAdjust.push(col);
-            expectedLeftColWidth -= expectedColWidth;
-            remainingLeftWidth -= getColWidth(col);
-        }
-        for (const col of rightCols) {
-            if (Math.abs(expectedRightColWidth - remainingRightWidth) <= 1) {
-                break;
-            }
-            colsToAdjust.push(col);
-            expectedRightColWidth -= expectedColWidth;
-            remainingRightWidth -= getColWidth(col);
-        }
-
-        colsToAdjust = colsToAdjust.filter((adjCol) => {
-            const cellWidth = getColWidth(adjCol);
-            return widthDifference > 0
-                ? cellWidth < expectedColWidth
-                : cellWidth > expectedColWidth;
-        });
-
-        const totalWidthForAdjustment = colsToAdjust.reduce((width, adjCol) => {
-            const cellWidth = getColWidth(adjCol);
-            return width + Math.abs(expectedColWidth - cellWidth);
-        }, 0);
-
-        targetCols.forEach((col) => {
-            col.style.width = `${expectedColWidth}px`;
-        });
-        colsToAdjust.forEach((adjCol) => {
-            const adjColWidth = parseFloat(adjCol.style.width) || adjCol.clientWidth;
-            const adjustmentWidth =
-                (Math.abs(expectedColWidth - adjColWidth) / totalWidthForAdjustment) *
-                Math.abs(widthDifference);
-            adjCol.style.width = `${
-                adjColWidth + (widthDifference > 0 ? adjustmentWidth : -adjustmentWidth)
-            }px`;
-        });
-        this.normalizeColumnWidth(table);
-    }
-
-    /**
-     * Resizes rows and columns based on the mouse's double-click on the borders.
-     * Adjusts width of columns or height of rows depending on the cursor position.
-     * Adjacent rows/columns are resized as well.
-     *
-     * @param {MouseEvent} ev - The double-click mouse event.
-     */
-    fitToContent(ev) {
-        const target = ev.target;
-        const isHoveringTdBorder =
-            isTableCell(target) && getElementHoveredEdge({ x: ev.clientX, y: ev.clientY }, target);
-        if (!isHoveringTdBorder) {
-            return;
-        }
-        if (["left", "right"].includes(isHoveringTdBorder)) {
-            const table = closestElement(target, "table");
-            const currentColumnIndex = getColumnIndex(target);
-            const firstRow = table.rows[0];
-            this.resetColumnWidth(firstRow.cells[currentColumnIndex]);
-            const isLeftSideClick = isHoveringTdBorder === "left";
-            if (
-                (isLeftSideClick && currentColumnIndex > 0) ||
-                (!isLeftSideClick && currentColumnIndex < table.rows[0].cells.length - 1)
-            ) {
-                const siblingColumnIndex = isLeftSideClick
-                    ? currentColumnIndex - 1
-                    : currentColumnIndex + 1;
-                this.resetColumnWidth(firstRow.cells[siblingColumnIndex]);
-            }
-        } else if (["top", "bottom"].includes(isHoveringTdBorder)) {
-            const currentRow = target.parentElement;
-            this.resetRowHeight(currentRow);
-            const siblingRow =
-                isHoveringTdBorder === "top"
-                    ? currentRow.previousElementSibling
-                    : currentRow.nextElementSibling;
-            if (siblingRow) {
-                this.resetRowHeight(siblingRow);
-            }
-        }
-    }
-
-    /**
-     * @param {HTMLTableElement} table
-     */
-    resetTableSize(table) {
-        table.removeAttribute("style");
-        table.querySelectorAll("tr").forEach((row) => {
-            row.style.height = "";
-        });
-        table.querySelector("colgroup")?.remove();
-    }
     /**
      * @param {HTMLTableCellElement} cell
      */
@@ -1571,6 +1413,63 @@ export class TablePlugin extends Plugin {
         }
     }
 
+    onTouchStart(ev) {
+        clearTimeout(this.tableSelectionLongPress);
+        const cell = closestElement(ev.target, isTableCell);
+        if (!cell) {
+            return;
+        }
+        this.tableSelectionLongPress = setTimeout(() => {
+            this.touchStartCell = cell;
+            this.lastFocusCell = cell;
+            const [anchorNode, anchorOffset] = getDeepestPosition(cell, 0);
+            const [focusNode, focusOffset] = getDeepestPosition(cell, nodeSize(cell));
+            this.dependencies.selection.setSelection({
+                anchorNode,
+                anchorOffset,
+                focusNode,
+                focusOffset,
+            });
+            this.selectTableCells(this.dependencies.selection.getEditableSelection());
+        }, LONG_PRESS_DELAY);
+    }
+
+    onTouchMove(ev) {
+        if (!this.touchStartCell) {
+            clearTimeout(this.tableSelectionLongPress);
+            return;
+        }
+        ev.preventDefault();
+        const touch = ev.touches[0];
+        const element = this.document.elementFromPoint(touch.clientX, touch.clientY);
+        if (!element) {
+            return;
+        }
+        const focusCell = closestElement(element, isTableCell);
+        if (!focusCell || focusCell === this.lastFocusCell) {
+            return;
+        }
+
+        this.lastFocusCell = focusCell;
+        const [anchorNode, anchorOffset] = getDeepestPosition(this.touchStartCell, 0);
+        const [focusNode, focusOffset] = getDeepestPosition(focusCell, nodeSize(focusCell));
+
+        this.dependencies.selection.setSelection({
+            anchorNode,
+            anchorOffset,
+            focusNode,
+            focusOffset,
+        });
+
+        this.selectTableCells(this.dependencies.selection.getEditableSelection());
+    }
+
+    onTouchEnd() {
+        clearTimeout(this.tableSelectionLongPress);
+        delete this.touchStartCell;
+        delete this.lastFocusCell;
+    }
+
     onMousedown(ev) {
         this._currentMouseState = ev.type;
         this._lastMousedownPosition = [ev.x, ev.y];
@@ -1907,25 +1806,43 @@ export class TablePlugin extends Plugin {
         });
     }
 
-    handleTableInsert(insertContainer) {
-        const theads = insertContainer.querySelectorAll("THEAD");
-        for (const thead of theads) {
-            const tbody = thead.nextElementSibling;
-            if (tbody) {
-                const thChildren = thead.querySelectorAll("TH");
-                thChildren.forEach((element) => {
-                    element.classList.add("o_table_header");
-                });
-                // If a <tbody> already exists, move all rows from
-                // <thead> into the start of <tbody>.
-                tbody.prepend(...thead.children);
-                thead.remove();
-            } else {
-                // Otherwise, replace the <thead> with <tbody>
-                this.dependencies.dom.setTagName(thead, "TBODY");
+    /**
+     * Normalize the structure of all tables contained in `container`.
+     *
+     * Ensures every table has a `<tbody>` and merges or converts `<thead>`
+     * elements when necessary. Table operations rely on the presence of a
+     * `<tbody>`, so every table must contain one.
+     *
+     * @param {HTMLElement | DocumentFragment} container
+     * @returns {HTMLElement | DocumentFragment}
+     */
+    normalizeTableStructure(container) {
+        container.querySelectorAll("table").forEach((table) => {
+            let tbody = table.tBodies[0];
+            const thead = table.tHead;
+
+            if (thead) {
+                const thChildren = thead.querySelectorAll("th");
+                thChildren.forEach((th) => th.classList.add("o_table_header"));
+
+                if (tbody) {
+                    // If a <tbody> already exists, move all rows from
+                    // <thead> into the start of <tbody>.
+                    tbody.prepend(...thead.rows);
+                    thead.remove();
+                } else {
+                    // Otherwise, replace the <thead> with <tbody>
+                    tbody = this.dependencies.dom.setTagName(thead, "TBODY");
+                }
             }
-        }
-        return insertContainer;
+
+            if (!tbody) {
+                tbody = table.ownerDocument.createElement("tbody");
+                tbody.innerHTML = `<tr><td><div class="o-paragraph"><br></div></td></tr>`;
+                table.append(tbody);
+            }
+        });
+        return container;
     }
 
     /**

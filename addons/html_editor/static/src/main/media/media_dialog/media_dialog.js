@@ -1,37 +1,46 @@
 import { _t } from "@web/core/l10n/translation";
-import { useService, useChildRef } from "@web/core/utils/hooks";
+import { useService } from "@web/core/utils/hooks";
 import { Dialog } from "@web/core/dialog/dialog";
 import { Notebook } from "@web/core/notebook/notebook";
 
-import { Component, proxy, signal } from "@odoo/owl";
-import { iconClasses } from "@html_editor/utils/dom_info";
+import { Component, useProps, proxy, signal, t } from "@odoo/owl";
 import { TABS, renderMedia } from "./media_dialog_utils";
 
 const DEFAULT_SEQUENCE = 50;
 const sequence = (tab) => tab.sequence ?? DEFAULT_SEQUENCE;
 
+export const mediaDialogProps = {
+    extraTabs: t.array(t.object()).optional([]),
+    visibleTabs: t.array(t.string()).optional(),
+    activeTab: t.string().optional(),
+    media: t.any().optional(),
+    onlyImages: t.boolean().optional(),
+    noImages: t.boolean().optional(),
+    multiImages: t.boolean().optional(),
+    addFieldImage: t.boolean().optional(),
+    useMediaLibrary: t.boolean().optional(true),
+    resModel: t.any().optional(),
+    resId: t.any().optional(),
+    onAttachmentChange: t.function().optional(),
+    pendingAttachments: t.array().optional([]),
+    save: t.function(),
+    close: t.function(),
+    document: t.customValidator(t.any(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+};
+
 export class MediaDialog extends Component {
     static template = "html_editor.MediaDialog";
-    static defaultProps = {
-        useMediaLibrary: true,
-        extraTabs: [],
-    };
     static components = {
         Dialog,
         Notebook,
     };
-    static props = {
-        extraTabs: { type: Array, optional: true, element: Object },
-        visibleTabs: { type: Array, optional: true, element: String },
-        activeTab: { type: String, optional: true },
-        "*": true,
-    };
+    props = useProps(mediaDialogProps);
 
     setup() {
         this.size = "xl";
         this.contentClass = "o_select_media_dialog h-100";
         this.title = _t("Select a media");
-        this.modalRef = useChildRef();
+        this.modalRef = signal.ref();
 
         this.orm = useService("orm");
         this.notificationService = useService("notification");
@@ -128,30 +137,30 @@ export class MediaDialog extends Component {
         }
         const addIcons = !this.props.visibleTabs || this.props.visibleTabs.includes(TABS.ICONS.id);
         if (addIcons) {
-            const fonts = TABS.ICONS.Component.initFonts();
-            this.addTab(TABS.ICONS, {
-                fonts,
-            });
+            this.addTab(TABS.ICONS);
 
             if (
                 this.props.media &&
                 TABS.ICONS.Component.tagNames.includes(this.props.media.tagName)
             ) {
-                const classes = this.props.media.className.split(/\s+/);
-                const predefinedMediaFont = fonts.find((font) => classes.includes(font.base));
-                if (predefinedMediaFont) {
-                    const selectedIcon = predefinedMediaFont.icons.find((icon) =>
-                        icon.names.some((name) => classes.includes(name))
+                // Material Symbols or Odoo UI icon: identified by the data-icon
+                // attribute. The icon list is fetched lazily by the IconSelector,
+                // so the pre-selection is rebuilt directly from the media element.
+                const dataIcon = this.props.media.dataset.icon;
+                if (dataIcon) {
+                    this.selectMedia(
+                        {
+                            id: dataIcon,
+                            name: dataIcon,
+                            dataIcon,
+                            source: dataIcon.startsWith("oi_") ? "oi" : "ms",
+                            filled: this.props.media.classList.contains("oi-filled"),
+                        },
+                        TABS.ICONS.id
                     );
-                    if (selectedIcon) {
-                        this.initialIconClasses.push(...selectedIcon.names);
-                        this.selectMedia(selectedIcon, TABS.ICONS.id);
-                    }
-                } else {
-                    const iconRegex = new RegExp(`\\b(?:${iconClasses.join("|")})(?:-\\S+)?\\b`);
-                    const fallbackIconClasses = classes.filter((cls) => iconRegex.test(cls));
-                    this.initialIconClasses.push(...fallbackIconClasses);
                 }
+                // No initialIconClasses needed: data-icon is overwritten by createElements,
+                // and "oi" is the shared base class preserved across icon changes.
             }
         }
         this.props.extraTabs.forEach((tab) => this.addTab(tab));
@@ -210,6 +219,7 @@ export class MediaDialog extends Component {
                 selectedMedia: selectedMedia,
                 extraClassesToAdd: this.extraClassesToAdd(),
                 extraClassesToRemove: this.initialIconClasses,
+                document: this.props.document,
             });
             elements = this.props.multiImages ? elements : elements[0];
             await this.props.save(elements, selectedMedia, this.activeTab(), this.props.media);

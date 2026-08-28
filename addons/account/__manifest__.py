@@ -1,7 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'Invoicing',
-    'version': '1.4',
+    'version': '1.5',
     'summary': 'Invoices & Payments',
     'sequence': 10,
     'description': """
@@ -16,7 +16,6 @@ You could use this simplified accounting in case you work with an (external) acc
     'depends': ['base_setup', 'onboarding', 'product', 'analytic', 'portal', 'digest'],
     'data': [
         'security/account_security.xml',
-        'security/ir.model.access.csv',
         'data/account_data.xml',
         'data/digest_data.xml',
         'views/account_report.xml',
@@ -87,6 +86,7 @@ You could use this simplified accounting in case you work with an (external) acc
         'views/report_templates.xml',
         'wizard/account_merge_wizard_views.xml',
         'data/ir_config_parameter_data.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'demo/account_demo.xml',
@@ -109,6 +109,7 @@ You could use this simplified accounting in case you work with an (external) acc
             'account/static/src/scss/account_reconcile_model.scss',
             'account/static/src/scss/account_multi_ledger.scss',
             'account/static/src/scss/account_move_send_wizard.scss',
+            'account/static/src/scss/account_type_selection.scss',
             'account/static/src/components/**/*',
             'account/static/src/services/*.js',
             'account/static/src/views/**/*',

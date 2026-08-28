@@ -8,6 +8,8 @@ from odoo.addons.sale_loyalty.tests.common import TestSaleCouponCommon
 
 @tagged("-at_install", "post_install")
 class TestPayWithGiftCard(TestSaleCouponCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_paying_with_single_gift_card_over(self):
         self.env["loyalty.generate.wizard"].with_context(
             active_id=self.program_gift_card.id
@@ -73,19 +75,15 @@ class TestPayWithGiftCard(TestSaleCouponCommon):
             "trigger": "with_code",
             "program_type": "promotion",
             "applies_on": "current",
-            "rule_ids": [(0, 0, {"mode": "with_code", "code": "test_10pc"})],
+            "rule_ids": [Command.create({"mode": "with_code", "code": "test_10pc"})],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount_mode": "percent",
-                        "discount": 10,
-                        "discount_applicability": "order",
-                        "required_points": 1,
-                    },
-                )
+                Command.create({
+                    "reward_type": "discount",
+                    "discount_mode": "percent",
+                    "discount": 10,
+                    "discount_applicability": "order",
+                    "required_points": 1,
+                })
             ],
         })
         self.assertEqual(order.amount_total, 100)
@@ -118,19 +116,15 @@ class TestPayWithGiftCard(TestSaleCouponCommon):
             "trigger": "with_code",
             "program_type": "promotion",
             "applies_on": "current",
-            "rule_ids": [(0, 0, {"mode": "with_code", "code": "test_10pc"})],
+            "rule_ids": [Command.create({"mode": "with_code", "code": "test_10pc"})],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "discount",
-                        "discount_mode": "percent",
-                        "discount": 10,
-                        "discount_applicability": "order",
-                        "required_points": 1,
-                    },
-                )
+                Command.create({
+                    "reward_type": "discount",
+                    "discount_mode": "percent",
+                    "discount": 10,
+                    "discount_applicability": "order",
+                    "required_points": 1,
+                })
             ],
         })
         self.assertEqual(order.amount_total, 100)

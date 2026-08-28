@@ -1,17 +1,15 @@
-# Part of Odoo. See LICENSE file for full copyright and licensing details.
-
-import contextlib
 import email
 import email.policy
+from itertools import chain, repeat
 import json
 import re
 import logging
 import time
+import werkzeug
 
 from ast import literal_eval
 from contextlib import contextmanager
 from datetime import timedelta
-from freezegun import freeze_time
 from functools import partial
 from lxml import html
 from markupsafe import Markup
@@ -19,8 +17,9 @@ from random import randint
 from unittest.mock import patch
 from urllib.parse import urlparse, urlencode, parse_qsl
 
-from odoo import tools, fields
+from odoo import tools
 from odoo.addons.base.models.ir_mail_server import IrMail_Server
+from odoo.addons.base.models.ir_mail_server import MailDeliveryException
 from odoo.addons.base.tests.common import MockSmtplibCase
 from odoo.addons.bus.models.bus import BusBus
 from odoo.addons.bus.tests.common import BusCase, BusResult
@@ -31,9 +30,9 @@ from odoo.addons.mail.models.mail_notification import MailNotification
 from odoo.addons.mail.models.res_users import ResUsers
 from odoo.addons.mail.tools.discuss import Store
 from odoo.tests import common, RecordCapturer, new_test_user
-from odoo.tools import LazyTranslate, mute_logger
+from odoo.tools import LazyTranslate, mute_logger, mail as mail_lib
 from odoo.tools.mail import email_normalize, email_split_and_format_normalize, formataddr
-from odoo.tools.misc import formatLang, format_date, format_datetime, format_amount
+from odoo.tools.misc import formatLang, format_amount
 from odoo.tools.translate import code_translations
 
 _logger = logging.getLogger(__name__)
@@ -62,19 +61,6 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
     def setUp(self):
         super().setUp()
         self.is_mail_track_installed = 'mail_tracking' in self.env['ir.module.module']._installed()
-
-    # ------------------------------------------------------------
-    # UTILITY MOCKS
-    # ------------------------------------------------------------
-
-    @contextmanager
-    def mock_datetime_and_now(self, mock_dt):
-        """ Used when synchronization date (using env.cr.now()) is important
-        in addition to standard datetime mocks. Used mainly to detect sync
-        issues. """
-        with freeze_time(mock_dt), \
-             patch.object(self.env.cr, 'now', lambda: mock_dt):
-            yield
 
     # ------------------------------------------------------------
     # GATEWAY MOCK
@@ -141,6 +127,21 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
             self.mail_mail_private_send_mocked = mail_mail_private_send_mocked
             self.push_to_end_point_mocked = patched_push
             yield
+
+    @contextmanager
+    def mock_send_email_delivery_exception(self, fail_emails, error="OutboundSpamException"):
+        """ Small tooling to simulate a crash at sending (smtp management level)
+        for some specific emails. """
+        send_current = self.send_email_mocked.side_effect
+        self.addCleanup(setattr, self.send_email_mocked, 'side_effect', send_current)
+
+        def _send_email(model, message, **kwargs):
+            if message['To'] in fail_emails:
+                raise MailDeliveryException(error)
+            return send_current(model, message, **kwargs)
+
+        self.send_email_mocked.side_effect = _send_email
+        yield
 
     def _init_mail_mock(self):
         self._mails = []
@@ -315,9 +316,14 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
         # compute reply "To": either "reply-to" of email, either all recipients + reply_to - replier itself
         if not reply_all:
             replying_to = email['reply_to']
+            replying_cc = []
         else:
             replying_to = ','.join([email['reply_to']] + [
                 email for email in email_split_and_format_normalize(smtp_email['msg_to'])
+                if email_normalize(email) not in source_smtp_to_list]
+            )
+            replying_cc = ','.join(([cc] if cc else []) + [
+                email for email in email_split_and_format_normalize(smtp_email['msg_cc'])
                 if email_normalize(email) not in source_smtp_to_list]
             )
         if add_to_lst:
@@ -327,7 +333,7 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
             self._gateway_mail_reply(
                 template, email=email,
                 force_email_from=force_email_from, force_email_to=replying_to,
-                force_return_path=force_return_path, cc=cc,
+                force_return_path=force_return_path, cc=replying_cc,
                 extra=extra, use_references=use_references, extra_references=extra_references, use_in_reply_to=use_in_reply_to,
                 debug_log=debug_log,
                 target_model=target_model,
@@ -346,6 +352,16 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
                 debug_log=debug_log,
             )
         return capture_messages
+
+    def gateway_mail_reply_wmail(self, template, record, mail_mail, debug_log=False):
+        """ Simulate a reply through the mail gateway. Usage: giving an existing
+        mail_mail sent to record, use its message-ID to simulate a reply. """
+        return self._gateway_mail_reply(
+            template, mail=mail_mail,
+            target_field=record._rec_name,
+            target_model=record._name,
+            debug_log=debug_log,
+        )
 
     def gateway_mail_reply_wrecord(self, template, record, use_in_reply_to=True, debug_log=False):
         """ Simulate a reply through the mail gateway. Usage: giving a record,
@@ -443,18 +459,37 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
 
         return sent_email
 
-    def _find_sent_email_wemail(self, email_to):
+    def _find_linked_trace_id_in_email(self, email):
+        """Search for a link in the given email and identify the linked trace id from that link
+
+        :param email: the email in which to look for the link and the corresponding trace id
+
+        :return the trace id.
+        """
+        res = re.findall(mail_lib.HTML_TAG_URL_REGEX, email['body'])
+        if (res):
+            _, link_url, _, _ = res[0]
+            if '/r/' in link_url:  # shortened link, like 'http://localhost:8069/r/LBG/m/53'
+                parsed_url = werkzeug.urls.url_parse(link_url)
+                path_items = parsed_url.path.split('/')
+                _, trace_id = path_items[2], int(path_items[4])
+                return trace_id
+
+    def _find_sent_email_wemail(self, email_to, trace_id=None):
         """ Find a sent email with a given list of recipients. Email should match
         exactly the recipients.
 
         :param email-to: a list of emails that will be compared to email_to
           of sent emails (also a list of emails);
+        :param trace_id: (optional) filter emails in which the links are linked
+          to that trace;
 
         :return email: an email which is a dictionary mapping values given to
           ``build_email``;
         """
         for sent_email in self._mails:
-            if set(sent_email['email_to']) == set([email_to]):
+            if set(sent_email['email_to']) == {email_to} and \
+                 (trace_id is None or self._find_linked_trace_id_in_email(sent_email) == trace_id):
                 break
         else:
             debug_info = '\n'.join(
@@ -515,7 +550,7 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
             )
         return mail
 
-    def _find_mail_mail_wpartners(self, recipients, status, mail_message=None, author=None, content=None, email_from=None):
+    def _find_mail_mail_wpartners(self, recipients, status, recipients_cc=None, mail_message=None, author=None, content=None, email_from=None):
         """ Find a mail.mail record based on various parameters, notably a list
         of recipients (partners).
 
@@ -527,7 +562,7 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
         """
         filtered = self._filter_mail(status=status, mail_message=mail_message, author=author, content=content, email_from=email_from)
         for mail in filtered:
-            if all(p in mail.recipient_ids for p in recipients):
+            if all(p in mail.recipient_ids for p in recipients) and all(p in mail.recipient_cc_ids for p in recipients_cc or []):
                 break
         else:
             debug_info = '\n'.join(
@@ -591,7 +626,8 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
     # ------------------------------------------------------------
 
     def _assertMailMail(self, mail, recipients_list, status,
-                        email_to_all=None, email_to_recipients=None,
+                        recipients_cc_list=None,
+                        email_to_all=None, email_to_recipients=None, email_cc_recipients=None,
                         author=None, content=None,
                         fields_values=None, email_values=None):
         """ Assert mail.mail record values and maybe related emails. Allow
@@ -604,14 +640,19 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
             ``_find_mail_mail_wemail``);
         :param status: mail.mail state used to filter mails. If ``sent`` this method
           also check that emails have been sent trough gateway;
-        :param email_to_recipients: used for assertSentEmail to find email based
-          on 'email_to' when doing the match directly based on recipients_list
-          being partners it nos easy (e.g. multi emails, ...);
-        :param author: see ``_find_mail_mail_wpartners``;
-        :param content: if given, check it is contained within mail html body;
+        :param recipients_cc_list: an ``res.partner`` recordset or a list of
+            emails;
         :param email_to_all: list of email addresses used in email_to, checking
           all of them are in the same email. This is in addition to checking recipients
           individually.;
+        :param email_to_recipients: used for assertSentEmail to find email based
+          on 'email_to' when doing the match directly based on recipients_list
+          being partners it nos easy (e.g. multi emails, ...);
+        :param email_cc_recipients: used for assertSentEmail to find email based
+          on 'email_to' when doing the match directly based on recipients_cc_list
+          being partners it nos easy (e.g. multi emails, ...);
+        :param author: see ``_find_mail_mail_wpartners``;
+        :param content: if given, check it is contained within mail html body;
         :param fields_values: if given, should be a dictionary of field names /
           values allowing to check ``mail.mail`` additional values (subject,
           reply_to, ...);
@@ -674,11 +715,17 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
                 recipients = email_to_recipients  # already formatted
             else:
                 recipients = [[r] for r in recipients_list]  # one partner -> list of a single email
-            for recipient in recipients:
+            if email_cc_recipients:
+                recipients_cc = email_cc_recipients
+            else:
+                recipients_cc = [[r] for r in recipients_cc_list or []]
+
+            for recipient, is_cc in chain(zip(recipients, repeat(False)), zip(recipients_cc, repeat(True))):
                 with self.subTest(recipient=recipient):
                     self.assertSentEmail(
                         email_values['email_from'] if email_values and email_values.get('email_from') else author,
-                        recipient,
+                        recipient if not is_cc else [],
+                        recipients_cc=recipient if is_cc else [],
                         **(email_values or {})
                     )
             if email_to_all:
@@ -688,7 +735,8 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
                     **(email_values or {}))
 
     def assertMailMail(self, recipients, status,
-                       email_to_recipients=None, email_to_all=None,
+                       recipients_cc=None,
+                       email_to_recipients=None, email_cc_recipients=None, email_to_all=None,
                        mail_message=None, author=None,
                        content=None, fields_values=None, email_values=None):
         """ Assert mail.mail records are created and maybe sent as emails. This
@@ -703,8 +751,8 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
         See '_assertMailMail' for more details about other parameters.
         """
         email_from = (fields_values or {}).get('email_from')
-        if recipients:
-            found_mail = self._find_mail_mail_wpartners(recipients, status, mail_message=mail_message, author=author, content=content, email_from=email_from)
+        if recipients or recipients_cc:
+            found_mail = self._find_mail_mail_wpartners(recipients, status, recipients_cc=recipients_cc, mail_message=mail_message, author=author, content=content, email_from=email_from)
         else:
             mail_email_to = ','.join(email_to_all)
             found_mail = self._find_mail_mail_wemail(mail_email_to, status, mail_message=mail_message, author=author, content=content, email_from=email_from)
@@ -712,7 +760,9 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
         self.assertTrue(bool(found_mail))
         self._assertMailMail(
             found_mail, recipients, status,
+            recipients_cc_list=recipients_cc,
             email_to_recipients=email_to_recipients,
+            email_cc_recipients=email_cc_recipients,
             author=author, content=content,
             email_to_all=email_to_all, fields_values=fields_values, email_values=email_values,
         )
@@ -806,7 +856,7 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
         a dict for fields. Allows to hide a lot of assertEqual under a simple
         call with a dictionary of expected values. """
         for fname, fvalue in fields_values.items():
-            with self.subTest(fname=fname, fvalue=fvalue):
+            with self.subTest(fname=fname, fvalue=str(fvalue)):
                 # email_{cc, to} are lists, hence order is not important
                 if fname in {'incoming_email_cc', 'incoming_email_to'}:
                     self.assertEqual(
@@ -873,7 +923,7 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
 
         self.assertEqual(len(mails), 0)
 
-    def assertSentEmail(self, author, recipients, **values):
+    def assertSentEmail(self, author, recipients, recipients_cc=None, **values):
         """ Tool method to ease the check of sent emails (going through the
         outgoing mail gateway, not actual <mail.mail> records).
 
@@ -916,6 +966,7 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
         attachments = [attachment['name']
                        for attachment in values.get('attachments_info', [])
                        if 'name' in attachment]
+
         sent_mail = self._find_sent_email(
             expected['email_from'],
             expected['email_to'],
@@ -1055,7 +1106,8 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
         # previous without div / beginning string
         # track_re = re.compile(r'(?:^|<br>)(?P<pre>.*?)<b>(?P<post>.*?)</b><i>(?P<key>.*?)</i>')
         track_re = re.compile(
-            r'(?:<em>(?P<company>[^>]+)</em>)?(?P<pre>[^<>]+)<b>(?P<post>.*?)</b><i>(?P<key>.*?)</i><br>'
+            r'(?:<em>(?P<company>[^>]+)</em>)?(?P<pre>[^<>]+?) → '
+            r'<b>(?P<post>.*?)</b> <i>\((?P<key>.*?)\)</i>'
         )
         for match in track_re.finditer(body_html):
             _company, pre, post, key = match.group('company'), match.group('pre'), match.group('post'), match.group('key')
@@ -1121,6 +1173,7 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
                 tracking, prop_type or value_type,
                 old_value, new_value,
                 additional_info=additional_info,
+                message_context=message.env.context,
             )
 
             if not self.is_mail_track_installed:
@@ -1200,9 +1253,13 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
                 self.assertIn(key, tracking_field_info, f'Expected {key} not found in {tracking_field_info} of {tracking}')
                 self.assertEqual(tracking_field_info[key], val)
 
-    def assertTrackingValueInBody(self, tracking, value_type, old_value, new_value, additional_info=None):
+    def assertTrackingValueInBody(self, tracking, value_type, old_value, new_value, additional_info=None, message_context=None):
         input_old_value, input_new_value = tracking[1], tracking[2]
         msg_base = f'Tracking: {tracking[0]} ({value_type})'
+        TrackingMixin = self.env['mail.track.mixin']
+        # useful when message is sent in a different language
+        if message_context:
+            TrackingMixin = TrackingMixin.with_context(message_context)
         if value_type == 'many2one':
             old_value = (old_value and old_value.display_name) or 'None'
             new_value = (new_value and new_value.display_name) or 'None'
@@ -1216,21 +1273,21 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
             old_value = old_value or 'None'
             new_value = new_value or 'None'
         elif value_type == 'date':
-            old_value = format_date(self.env, old_value) if old_value is not False else 'None'
-            new_value = format_date(self.env, new_value) if new_value is not False else 'None'
+            old_value = TrackingMixin._format_tracking_date(old_value) if old_value else 'None'
+            new_value = TrackingMixin._format_tracking_date(new_value) if new_value is not False else 'None'
         elif value_type == 'datetime':
-            old_value = format_datetime(self.env, old_value) if old_value is not False else 'None'
-            new_value = format_datetime(self.env, new_value) if new_value is not False else 'None'
+            old_value = TrackingMixin._format_tracking_datetime(old_value) if old_value else 'None'
+            new_value = TrackingMixin._format_tracking_datetime(new_value) if new_value is not False else 'None'
         elif value_type == 'float':
-            old_value = formatLang(self.env, old_value) if old_value is not False else '0.00'
-            new_value = formatLang(self.env, new_value) if new_value is not False else '0.00'
+            old_value = formatLang(TrackingMixin.env, old_value) if old_value is not False else '0.00'
+            new_value = formatLang(TrackingMixin.env, new_value) if new_value is not False else '0.00'
         elif value_type == 'integer':
-            old_value = formatLang(self.env, old_value, rounding_unit='units') if old_value is not False else '0'
-            new_value = formatLang(self.env, new_value, rounding_unit='units') if new_value is not False else '0'
+            old_value = formatLang(TrackingMixin.env, old_value, rounding_unit='units') if old_value is not False else '0'
+            new_value = formatLang(TrackingMixin.env, new_value, rounding_unit='units') if new_value is not False else '0'
         elif value_type == 'monetary':
             currency = (additional_info or {})['currency']
-            old_value = format_amount(self.env, float(old_value or 0.0), currency, trailing_zeroes=True)
-            new_value = format_amount(self.env, float(new_value or 0.0), currency, trailing_zeroes=True)
+            old_value = format_amount(TrackingMixin.env, float(old_value or 0.0), currency, trailing_zeroes=True)
+            new_value = format_amount(TrackingMixin.env, float(new_value or 0.0), currency, trailing_zeroes=True)
             # TDE to check: &nbsp; versus \xa0
             old_value = old_value.replace('\xa0', ' ')
             new_value = new_value.replace('\xa0', ' ')
@@ -1325,8 +1382,9 @@ class MailCase(common.TransactionCase, MockEmail, BusCase):
             self._new_notifs += res.sudo()
             return res
 
-        with patch.object(MailMessage, 'create', autospec=True, wraps=MailMessage, side_effect=_mail_message_create) as _mail_message_create_mock, \
+        with patch.object(MailMessage, 'create', autospec=True, wraps=MailMessage, side_effect=_mail_message_create) as mail_message_create_mock, \
                 patch.object(MailNotification, 'create', autospec=True, wraps=MailNotification, side_effect=_mail_notification_create) as _mail_notification_create_mock:
+            self._mock_mail_message_create = mail_message_create_mock
             yield
 
     def _init_mock_mail(self):
@@ -1436,6 +1494,7 @@ class MailCase(common.TransactionCase, MockEmail, BusCase):
             {'id': partner.id,
              'active': partner.active,
              'email_normalized': partner.email_normalized,
+             'is_cc': False,
              'is_follower': partner in record.message_partner_ids if record else False,
              'groups': partner.user_ids.group_ids.ids,
              'lang': partner.lang,
@@ -1789,8 +1848,11 @@ class MailCase(common.TransactionCase, MockEmail, BusCase):
                     mail_status = 'outgoing'
                 if not self.mail_unlink_sent and (partners or email_to_lst):
                     self.assertMailMail(
-                        partners,
+                        # We rely on message to determine whether recipients are in Cc or not
+                        # as notifications doesn't have that information.
+                        partners.filtered(lambda p: p not in message.partner_cc_ids),
                         mail_status,
+                        recipients_cc=partners.filtered(lambda p: p in message.partner_cc_ids),
                         author=message_info.get('mail_mail_values', {}).get('author_id', message.author_id),
                         content=mbody,
                         email_to_all=email_to_lst,
@@ -2186,18 +2248,3 @@ class MailCommon(MailCase):
                 'partner_id': partner.id,
             } for partner in partners
         ])
-
-
-@contextlib.contextmanager
-def freeze_all_time(dt=None):
-    """Freeze both `cr.now` and `Datetime.now`. ORM `create_date` and `write_date`
-    are based on `cursor.now()`. Domains often use `Datetime.now()` which can
-    lead to inconsistencies when using `freeze_time`.
-
-    :param dt: Datetime to freeze the time to. Defaults to `Datetime.now()`.
-    :type dt: datetime.datetime
-    """
-    if not dt:
-        dt = fields.Datetime.now()
-    with patch('odoo.sql_db.BaseCursor.now', return_value=dt), freeze_time(dt):
-        yield

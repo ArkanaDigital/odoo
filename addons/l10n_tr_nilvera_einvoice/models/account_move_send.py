@@ -14,7 +14,7 @@ class AccountMoveSend(models.AbstractModel):
 
     @api.model
     def _is_tr_nilvera_applicable(self, move):
-        return move.l10n_tr_nilvera_send_status == 'not_sent' and move.is_invoice(include_receipts=True) and move.country_code == 'TR'
+        return move.l10n_tr_nilvera_send_status in {'not_sent', 'draft_sent'} and move.is_invoice(include_receipts=True) and move.country_code == 'TR'
 
     def _get_all_extra_edis(self) -> dict:
         # EXTENDS 'account'
@@ -57,11 +57,15 @@ class AccountMoveSend(models.AbstractModel):
         if not tr_nilvera_moves:
             return alerts
 
-        if tr_companies_missing_required_codes := tr_nilvera_moves.company_id.filtered(lambda c: c.country_code == 'TR' and not (c.partner_id.category_id.parent_id and self.env["res.partner.category"]._get_l10n_tr_official_mandatory_categories())):
+        if tr_companies_missing_required_codes := tr_nilvera_moves.company_id.filtered(
+            lambda c: c.country_code == 'TR'
+            and not c.partner_id._get_additional_identifier('TR_MERSIS')
+            and not c.partner_id._get_additional_identifier('TR_TICARET_SICIL')
+        ):
             alerts["tr_companies_missing_required_codes"] = {
-                "message": _("Please ensure that your company contact has either the 'MERSISNO' or 'TICARETSICILNO' tag with a value assigned."),
+                "message": _("Please ensure that your company contact has either the 'Mersis Number' or 'Trade Registry Number' has a value."),
                 "action_text": _("View Company(s)"),
-                "action": tr_companies_missing_required_codes.partner_id._get_records_action(name=_("Check tags on company(s)")),
+                "action": tr_companies_missing_required_codes.partner_id._get_records_action(name=_("Check company(s)")),
                 "level": "danger",
             }
 
@@ -355,7 +359,10 @@ class AccountMoveSend(models.AbstractModel):
                     # just in case.
                     invoice.partner_id._check_nilvera_customer()
                 customer_alias = invoice._get_partner_l10n_tr_nilvera_customer_alias_name()
-                if customer_alias:  # E-Invoice
+                if invoice.l10n_tr_nilvera_send_status == 'draft_sent':
+                    # Already uploaded as a draft: approve it and transmit to GİB.
+                    invoice._l10n_tr_nilvera_approve_and_send_draft(xml_file, customer_alias)
+                elif customer_alias:  # E-Invoice
                     invoice._l10n_tr_nilvera_submit_einvoice(xml_file, customer_alias)
                 else:   # E-Archive
                     invoice._l10n_tr_nilvera_submit_earchive(xml_file)

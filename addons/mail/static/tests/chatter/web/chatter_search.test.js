@@ -95,12 +95,15 @@ test("opening search in chatter hides files and pinned messages panels", async (
     await start();
     await openFormView("res.partner", partnerId);
     await click("button[aria-label='Attach files']:text('1')");
-    await click("button[title='Pinned Messages']");
     await contains(".o-mail-AttachmentBox");
-    await contains(".o-mail-pinnedMessages");
     await click("[title='Search Messages']");
     await contains(".o-mail-SearchMessageInput");
     await contains(".o-mail-AttachmentBox", { count: 0 });
+    await contains("button[title='Attach files']:enabled:text('1')");
+    await click("button[title='Pinned Messages']:enabled");
+    await contains(".o-mail-pinnedMessages");
+    await click("[title='Search Messages']");
+    await contains(".o-mail-SearchMessageInput");
     await contains(".o-mail-pinnedMessages", { count: 0 });
 });
 
@@ -141,4 +144,22 @@ test("Scrolling bottom in non-aside chatter should load more searched message", 
     await contains(".o-mail-SearchMessageResult .o-mail-Message", { count: 30 });
     await scroll(".o_content", "bottom");
     await contains(".o-mail-SearchMessageResult .o-mail-Message", { count: 60 });
+});
+
+test("Switching chatter filters after empty result should show messages", async () => {
+    const pyEnv = await startServer();
+    pyEnv["mail.message"].create({
+        body: "not empty",
+        model: "res.partner",
+        res_id: serverState.partnerId,
+    });
+    await start();
+    await openFormView("res.partner", serverState.partnerId);
+    await click("[title='Search Messages']");
+    await click("[title='Filter Messages']");
+    await click(".o-dropdown-item:text('Tracked Changes')");
+    await contains(".o-mail-MessageCardList:text('No messages found')");
+    await click("[title='Filter Messages']");
+    await click(".o-dropdown-item:text('Conversations')");
+    await contains(".o-mail-SearchMessageResult .o-mail-Message-content:text('not empty')");
 });

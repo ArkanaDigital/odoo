@@ -1,21 +1,19 @@
-import { render, useLayoutEffect, useExternalListener } from "@web/owl2/utils";
+import { Registry } from "@odoo/o-spreadsheet";
+import { Component, computed, onWillStart, proxy, useEffect, useListener } from "@odoo/owl";
+import { SpreadsheetComponent } from "@spreadsheet/actions/spreadsheet_component";
+import { SpreadsheetShareButton } from "@spreadsheet/components/share_button/share_button";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
-import { ControlPanel } from "@web/search/control_panel/control_panel";
-import { Status } from "./dashboard_loader_service";
-import { SpreadsheetComponent } from "@spreadsheet/actions/spreadsheet_component";
-import { useSetupAction } from "@web/search/action_hook";
-import { DashboardMobileSearchPanel } from "./mobile_search_panel/mobile_search_panel";
-import { MobileFigureContainer } from "./mobile_figure_container/mobile_figure_container";
 import { useService } from "@web/core/utils/hooks";
-import { standardActionServiceProps } from "@web/webclient/actions/action_service";
-import { SpreadsheetShareButton } from "@spreadsheet/components/share_button/share_button";
-import { Registry } from "@odoo/o-spreadsheet";
-import { router } from "@web/core/browser/router";
+import { render } from "@web/owl2/utils";
+import { useSetupAction } from "@web/search/action_hook";
+import { ControlPanel } from "@web/search/control_panel/control_panel";
 import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
-
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { standardActionServiceProps } from "@web/webclient/actions/action_service";
+import { Status } from "./dashboard_loader_service";
 import { DashboardSearchBar } from "./dashboard_search_bar/dashboard_search_bar";
+import { MobileFigureContainer } from "./mobile_figure_container/mobile_figure_container";
+import { DashboardMobileSearchPanel } from "./mobile_search_panel/mobile_search_panel";
 
 export const dashboardActionRegistry = new Registry();
 
@@ -33,10 +31,17 @@ export class SpreadsheetDashboardAction extends Component {
     static props = { ...standardActionServiceProps };
     static displayName = _t("Dashboards");
 
+    activeDashboardId = computed(() => this.loader.activeDashboardId);
+    dashboard = computed(() => {
+        const id = this.activeDashboardId();
+        return id ? this.loader.getDashboard(id) : undefined;
+    });
+
     setup() {
         this.Status = Status;
         this.controlPanelDisplay = {};
         this.orm = useService("orm");
+        this.uiService = useService("ui");
         this.actionService = useService("action");
         this.loader = useService("spreadsheet_dashboard_loader");
         onWillStart(async () => {
@@ -51,25 +56,15 @@ export class SpreadsheetDashboardAction extends Component {
                 this.openDashboard(activeDashboardId);
             }
         });
-        useLayoutEffect(
-            () => router.pushState({ dashboard_id: this.activeDashboardId }),
-            () => [this.activeDashboardId]
-        );
-        useLayoutEffect(
-            () => {
-                const dashboard = this.loader.getActiveDashboard();
-                if (dashboard && dashboard.status === Status.Loaded) {
-                    const onUpdate = () => render(this, true);
-                    dashboard.model.on("update", this, onUpdate);
-                    return () => dashboard.model.off("update", this, onUpdate);
-                }
-            },
-            () => {
-                const dashboard = this.loader.getActiveDashboard();
-                return [dashboard?.model, dashboard?.status];
+        useEffect(() => {
+            const dashboard = this.dashboard();
+            if (dashboard && dashboard.status === Status.Loaded) {
+                const onUpdate = () => render(this, true);
+                dashboard.model.on("update", this, onUpdate);
+                return () => dashboard.model.off("update", this, onUpdate);
             }
-        );
-        useExternalListener(window, "afterprint", this.logExport.bind(this));
+        });
+        useListener(window, "afterprint", this.logExport.bind(this));
 
         useSetupAction({
             getLocalState: () => ({
@@ -83,34 +78,6 @@ export class SpreadsheetDashboardAction extends Component {
 
     get dashboardButton() {
         return dashboardActionRegistry.getAll()[0];
-    }
-
-    /**
-     * @returns {number | undefined}
-     */
-    get activeDashboardId() {
-        return this.loader.getActiveDashboard()
-            ? this.loader.getActiveDashboard().data.id
-            : undefined;
-    }
-
-    /**
-     * @returns {object[]}
-     */
-    get filters() {
-        const dashboard = this.loader.getActiveDashboard();
-        if (!dashboard || dashboard.status !== Status.Loaded) {
-            return [];
-        }
-        return dashboard.model.getters.getGlobalFilters();
-    }
-
-    setGlobalFilterValue(id, value, displayNames) {
-        this.loader.getActiveDashboard().model.dispatch("SET_GLOBAL_FILTER_VALUE", {
-            id,
-            value,
-            displayNames,
-        });
     }
 
     /**
@@ -141,6 +108,7 @@ export class SpreadsheetDashboardAction extends Component {
      */
     openDashboard(dashboardId) {
         this.loader.activateDashboard(dashboardId);
+        this.props.updateActionState({ dashboard_id: dashboardId });
     }
 
     /**
@@ -159,7 +127,7 @@ export class SpreadsheetDashboardAction extends Component {
     async shareSpreadsheet(data, excelExport) {
         const url = await this.orm.call("spreadsheet.dashboard.share", "action_get_share_url", [
             {
-                dashboard_id: this.activeDashboardId,
+                dashboard_id: this.activeDashboardId(),
                 spreadsheet_data: JSON.stringify(data),
                 excel_files: excelExport.files,
             },
@@ -168,12 +136,13 @@ export class SpreadsheetDashboardAction extends Component {
     }
 
     async toggleFavorite() {
-        if (!this.loader.getActiveDashboard()) {
+        const dashboard = this.dashboard();
+        if (!dashboard) {
             return;
         }
-        const { id, is_favorite } = this.loader.getActiveDashboard().data;
+        const { id, is_favorite } = dashboard.data;
         await this.orm.call("spreadsheet.dashboard", "action_toggle_favorite", [id]);
-        this.loader.getActiveDashboard().data.is_favorite = !is_favorite;
+        dashboard.data.is_favorite = !is_favorite;
     }
 
     toggleSidebar() {
@@ -184,7 +153,7 @@ export class SpreadsheetDashboardAction extends Component {
         return this.getDashboardGroups().find(
             (group) =>
                 group.id !== "favorites" && // Skip the FAVORITES group
-                group.dashboards.some(({ data }) => data.id === this.activeDashboardId)
+                group.dashboards.some(({ data }) => data.id === this.activeDashboardId())
         )?.name;
     }
 

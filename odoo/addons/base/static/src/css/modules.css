@@ -1,7 +1,7 @@
 .oe_module_flag {
     position: absolute;
-    left: calc(var(--KanbanRecord-padding-h) * -0.5);
-    top: calc(var(--KanbanRecord-padding-v) * -1);
+    left: calc(var(--Card-padding-h) * -0.5);
+    top: calc(var(--Card-padding-v) * -1);
     font: 27px icon;
     text-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5);
 }
@@ -13,12 +13,6 @@
 .o_kanban_view.o_modules_kanban .o_kanban_renderer .o_kanban_record .o_dropdown_kanban,
 .o_modules_field .o_modules_kanban .o_kanban_renderer .o_kanban_record .o_dropdown_kanban {
     visibility: visible;
-    opacity: 0.5;
-}
-
-.o_kanban_view.o_modules_kanban .o_kanban_renderer .o_kanban_record:hover .o_dropdown_kanban,
-.o_kanban_view.o_modules_kanban .o_kanban_renderer .o_kanban_record .o_dropdown_kanban.show {
-    opacity: 1;
 }
 
 .o_modules_field .o_modules_kanban .o_kanban_renderer {

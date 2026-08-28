@@ -1,6 +1,7 @@
-import { Component, props, types } from "@odoo/owl";
+import { Component, t } from "@odoo/owl";
 import { Typing } from "@mail/discuss/typing/common/typing";
 import { attClassObjectToString } from "@mail/utils/common/format";
+import { propComputed } from "@mail/utils/common/hooks";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
@@ -12,11 +13,18 @@ imStatusDataRegistry.add(
     {
         condition: () => true,
         icon: {
-            online: "fa fa-circle",
-            away: "fa fa-adjust",
-            busy: "fa fa-minus-circle",
-            offline: "fa fa-circle-o",
-            default: "fa fa-question-circle",
+            online: "circle",
+            away: "contrast",
+            busy: "remove_circle",
+            offline: "circle",
+            default: "help",
+        },
+        iconClass: {
+            online: "oi-filled",
+            away: "",
+            busy: "",
+            offline: "",
+            default: "",
         },
         title: {
             online: _t("User is online"),
@@ -33,7 +41,8 @@ imStatusDataRegistry.add(
     "bot",
     {
         condition: ({ persona }) => persona?.isBot,
-        icon: "fa fa-heart o-xsmaller o-pt-0_5",
+        icon: "favorite",
+        iconClass: "oi-filled o-pt-0_5",
         title: _t("User is a bot"),
     },
     { sequence: 90 }
@@ -46,37 +55,39 @@ export class ImStatus extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props(
-            {
-                "className?": types.string(),
-                "member?": types.instanceOf(this.store["discuss.channel.member"].Class),
-                "persona?": types.or([
-                    types.instanceOf(this.store["res.partner"].Class),
-                    types.instanceOf(this.store["mail.guest"].Class),
-                ]),
-                "size?": types.string(),
-                "style?": types.string(),
-                "typing?": types.boolean(),
-                "user?": types.instanceOf(this.store["res.users"].Class),
-            },
-            { className: "", size: "lg", style: "", typing: true }
+        this.className = propComputed("className", t.string().optional(""));
+        this.member = propComputed(
+            "member",
+            t.instanceOf(this.store["discuss.channel.member"]).optional()
         );
+        this.personaProp = propComputed(
+            "persona",
+            t
+                .or([
+                    t.instanceOf(this.store["res.partner"]),
+                    t.instanceOf(this.store["mail.guest"]),
+                ])
+                .optional()
+        );
+        this.size = propComputed("size", t.string().optional("lg"));
+        this.style = propComputed("style", t.string().optional(""));
+        this.typing = propComputed("typing", t.boolean().optional(true));
+        this.userProp = propComputed("user", t.instanceOf(this.store["res.users"]).optional());
         this.attClassObjectToString = attClassObjectToString;
     }
 
     get persona() {
-        return this.props.user?.partner_id || this.props.persona || this.props.member?.persona;
+        return this.userProp()?.partner_id || this.personaProp() || this.member()?.persona;
     }
 
     get showTypingIndicator() {
-        return this.props.typing && this.props.member?.isTypingUi;
+        return this.typing() && this.member()?.isTypingUi;
     }
 
     get class() {
         return attClassObjectToString({
-            [`o-mail-ImStatus d-flex ${this.colorClass} ${this.props.className}`]: true,
-            "o-fs-small": !this.persona?.isBot,
-            [`rounded-circle bg-transparent ${this.icon}`]: !this.showTypingIndicator,
+            [`o-mail-ImStatus d-flex ${this.colorClass} ${this.className()}`]: true,
+            [`rounded-circle bg-transparent ${this.iconClass}`]: !this.showTypingIndicator,
             "rounded-pill": this.showTypingIndicator,
         });
     }
@@ -85,13 +96,18 @@ export class ImStatus extends Component {
         return imStatusDataRegistry
             .getAll()
             .find((r) =>
-                r.condition({ member: this.props.member, persona: this.persona, user: this.user })
+                r.condition({ member: this.member(), persona: this.persona, user: this.user })
             );
     }
 
     get icon() {
         const data = this.activeImStatusData;
         return data.icon[this.persona.imStatusUI] || data.icon.default || data.icon;
+    }
+
+    get iconClass() {
+        const data = this.activeImStatusData;
+        return data.iconClass[this.persona.imStatusUI] || data.iconClass.default || data.iconClass;
     }
 
     get title() {
@@ -116,6 +132,6 @@ export class ImStatus extends Component {
     }
 
     get user() {
-        return this.props.user || this.persona?.main_user_id;
+        return this.userProp() || this.persona?.main_user_id;
     }
 }

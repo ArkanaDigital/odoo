@@ -388,7 +388,7 @@ class EventTrack(models.Model):
             ('visitor_id', operator, operand),
             ('is_wishlisted', '=', True)
         ])
-        return [('id', 'in', subquery.subselect('track_id'))]
+        return [('id', 'in', subquery.subselect(subquery.table.track_id))]
 
     # TIME
 
@@ -518,7 +518,7 @@ class EventTrack(models.Model):
             'search_fields': ['name', 'partner_name'],
             'fetch_fields': ['name', 'website_url', 'partner_name', 'description'],
             'mapping': mapping,
-            'icon': 'fa-microphone',
+            'icon': 'mic',
             'order': order,
             'group_name': self.env._("Talks"),
         }
@@ -645,13 +645,13 @@ class EventTrack(models.Model):
 
             date_tz = track.event_id.date_tz
             reminder_dates = track._get_track_calendar_reminder_dates()
-            cal_track.add('created').value = fields.Datetime.now().replace(tzinfo=UTC)
+            cal_track.add('created').value = fields.Datetime.now().replace(tzinfo=ZoneInfo('UTC'))
             cal_track.add('dtstart').value = reminder_dates['date_begin'].astimezone(ZoneInfo(date_tz))
             cal_track.add('dtend').value = reminder_dates['date_end'].astimezone(ZoneInfo(date_tz))
             cal_track.add('summary').value = track.name
             cal_track.add('description').value = track._get_track_calendar_description()
             if track.event_id.contact_address_inline or track.location_id:
-                cal_track.add('location').value = ', '.join([track.event_id.contact_address_inline, track.location_id.sudo().name or ''])
+                cal_track.add('location').value = ', '.join([track.event_id.contact_address_inline or '', track.location_id.sudo().name or ''])
 
             result[track.id] = cal.serialize().encode('utf-8')
         return result
@@ -744,7 +744,7 @@ class EventTrack(models.Model):
         url_date_end = reminder_dates['date_end'].astimezone(ZoneInfo(date_tz)).strftime('%Y%m%dT%H%M%S')
 
         if self.event_id.contact_address_inline or self.location_id:
-            location = ', '.join([self.event_id.sudo().contact_address_inline, self.location_id.sudo().name or ''])
+            location = ', '.join([self.event_id.sudo().contact_address_inline or '', self.location_id.sudo().name or ''])
         else:
             location = ''
 

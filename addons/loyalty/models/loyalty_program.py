@@ -5,7 +5,8 @@ from uuid import uuid4
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
-from odoo.tools.translate import LazyTranslate
+from odoo.fields import Command
+from odoo.tools.translate import LazyTranslate, mark_as_copy
 
 _lt = LazyTranslate(__name__)
 
@@ -26,8 +27,7 @@ class LoyaltyProgram(models.Model):
                 default_values = program_default_values[program_type]
                 defaults.update({k: v for k, v in default_values.items() if k in fields})
         return defaults
-
-    name = fields.Char(string="Program Name", translate=True, required=True)
+    name = fields.Char(string="Program Name", translate=True, required=True, copy=mark_as_copy('name'))
     active = fields.Boolean(default=True)
     sequence = fields.Integer(copy=False)
     company_id = fields.Many2one(
@@ -119,6 +119,8 @@ class LoyaltyProgram(models.Model):
     )
     limit_usage = fields.Boolean(string="Limit Usage")
     max_usage = fields.Integer()
+    once_per_user = fields.Boolean(string="Once per user")
+    partner_ids = fields.Many2many(string="Used by", comodel_name="res.partner")
     # Dictates when the points can be used:
     # current: if the order gives enough points on that order, the reward may directly be claimed,
     #     points lost otherwise.
@@ -236,7 +238,7 @@ class LoyaltyProgram(models.Model):
             if program.program_type not in ("gift_card", "ewallet"):
                 continue
             if not program.mail_template_id:
-                program.communication_plan_ids = [(5, 0, 0)]
+                program.communication_plan_ids = [Command.clear()]
             elif not program.communication_plan_ids:
                 program.communication_plan_ids = self.env["loyalty.mail"].create({
                     "program_id": program.id,
@@ -306,29 +308,27 @@ class LoyaltyProgram(models.Model):
         first_sale_product = self.env["product.product"].search(
             [("company_id", "in", [False, self.env.company.id]), ("sale_ok", "=", True)], limit=1
         )
+        loyalty_card_mail_template = (
+            self.env.ref("loyalty.mail_template_loyalty_card", raise_if_not_found=False)
+            or self.env["mail.template"]
+        )
         return {
             "coupons": {
                 "applies_on": "current",
                 "trigger": "with_code",
                 "portal_visible": False,
                 "portal_point_name": self.env._("Coupon point(s)"),
-                "rule_ids": [(5, 0, 0)],
-                "reward_ids": [(5, 0, 0), (0, 0, {"required_points": 1, "discount": 10})],
+                "rule_ids": [Command.clear()],
+                "reward_ids": [
+                    Command.clear(),
+                    Command.create({"required_points": 1, "discount": 10}),
+                ],
                 "communication_plan_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "trigger": "create",
-                            "mail_template_id": (
-                                self.env.ref(
-                                    "loyalty.mail_template_loyalty_card", raise_if_not_found=False
-                                )
-                                or self.env["mail.template"]
-                            ).id,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "trigger": "create",
+                        "mail_template_id": loyalty_card_mail_template.id,
+                    }),
                 ],
             },
             "promotion": {
@@ -337,20 +337,19 @@ class LoyaltyProgram(models.Model):
                 "portal_visible": False,
                 "portal_point_name": self.env._("Promo point(s)"),
                 "rule_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_point_amount": 1,
-                            "reward_point_mode": "order",
-                            "minimum_amount": 50,
-                            "minimum_qty": 0,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_point_amount": 1,
+                        "reward_point_mode": "order",
+                        "minimum_amount": 50,
+                        "minimum_qty": 0,
+                    }),
                 ],
-                "reward_ids": [(5, 0, 0), (0, 0, {"required_points": 1, "discount": 10})],
-                "communication_plan_ids": [(5, 0, 0)],
+                "reward_ids": [
+                    Command.clear(),
+                    Command.create({"required_points": 1, "discount": 10}),
+                ],
+                "communication_plan_ids": [Command.clear()],
             },
             "gift_card": {
                 "applies_on": "future",
@@ -358,51 +357,39 @@ class LoyaltyProgram(models.Model):
                 "portal_visible": True,
                 "portal_point_name": self.env.company.currency_id.symbol,
                 "rule_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_point_amount": 1,
-                            "reward_point_mode": "money",
-                            "reward_point_split": True,
-                            "product_ids": self.env.ref(
-                                "loyalty.gift_card_product_50", raise_if_not_found=False
-                            ),
-                            "minimum_qty": 0,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_point_amount": 1,
+                        "reward_point_mode": "money",
+                        "reward_point_split": True,
+                        "product_ids": self.env.ref(
+                            "loyalty.gift_card_product_50", raise_if_not_found=False
+                        ),
+                        "minimum_qty": 0,
+                    }),
                 ],
                 "reward_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_type": "discount",
-                            "discount_mode": "per_point",
-                            "discount": 1,
-                            "discount_applicability": "order",
-                            "required_points": 1,
-                            "description": self.env._("Gift Card"),
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_type": "discount",
+                        "discount_mode": "per_point",
+                        "discount": 1,
+                        "discount_applicability": "order",
+                        "required_points": 1,
+                        "description": self.env._("Gift Card"),
+                    }),
                 ],
                 "communication_plan_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "trigger": "create",
-                            "mail_template_id": (
-                                self.env.ref(
-                                    "loyalty.mail_template_gift_card", raise_if_not_found=False
-                                )
-                                or self.env["mail.template"]
-                            ).id,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "trigger": "create",
+                        "mail_template_id": (
+                            self.env.ref(
+                                "loyalty.mail_template_gift_card", raise_if_not_found=False
+                            )
+                            or self.env["mail.template"]
+                        ).id,
+                    }),
                 ],
             },
             "loyalty": {
@@ -410,9 +397,12 @@ class LoyaltyProgram(models.Model):
                 "trigger": "auto",
                 "portal_visible": True,
                 "portal_point_name": self.env._("Loyalty point(s)"),
-                "rule_ids": [(5, 0, 0), (0, 0, {"reward_point_mode": "money"})],
-                "reward_ids": [(5, 0, 0), (0, 0, {"discount": 5, "required_points": 200})],
-                "communication_plan_ids": [(5, 0, 0)],
+                "rule_ids": [Command.clear(), Command.create({"reward_point_mode": "money"})],
+                "reward_ids": [
+                    Command.clear(),
+                    Command.create({"discount": 5, "required_points": 200}),
+                ],
+                "communication_plan_ids": [Command.clear()],
             },
             "ewallet": {
                 "trigger": "auto",
@@ -420,36 +410,28 @@ class LoyaltyProgram(models.Model):
                 "portal_visible": True,
                 "portal_point_name": self.env.company.currency_id.symbol,
                 "rule_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_point_amount": "1",
-                            "reward_point_mode": "money",
-                            "reward_point_split": False,
-                            "product_ids": self.env.ref(
-                                "loyalty.ewallet_product_50", raise_if_not_found=False
-                            ),
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_point_amount": "1",
+                        "reward_point_mode": "money",
+                        "reward_point_split": False,
+                        "product_ids": self.env.ref(
+                            "loyalty.ewallet_product_50", raise_if_not_found=False
+                        ),
+                    }),
                 ],
                 "reward_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_type": "discount",
-                            "discount_mode": "per_point",
-                            "discount": 1,
-                            "discount_applicability": "order",
-                            "required_points": 1,
-                            "description": self.env._("eWallet"),
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_type": "discount",
+                        "discount_mode": "per_point",
+                        "discount": 1,
+                        "discount_applicability": "order",
+                        "required_points": 1,
+                        "description": self.env._("eWallet"),
+                    }),
                 ],
-                "communication_plan_ids": [(5, 0, 0)],
+                "communication_plan_ids": [Command.clear()],
             },
             "promo_code": {
                 "applies_on": "current",
@@ -457,34 +439,23 @@ class LoyaltyProgram(models.Model):
                 "portal_visible": False,
                 "portal_point_name": self.env._("Discount point(s)"),
                 "rule_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "mode": "with_code",
-                            "code": "PROMO_CODE_"
-                            + str(uuid4())[
-                                :4
-                            ],  # We should try not to trigger any unicity constraint
-                            "minimum_qty": 0,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "mode": "with_code",
+                        "code": "PROMO_CODE_"
+                        + str(uuid4())[:4],  # We should try not to trigger any unicity constraint
+                        "minimum_qty": 0,
+                    }),
                 ],
                 "reward_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "discount_applicability": "specific",
-                            "discount_product_ids": first_sale_product,
-                            "discount_mode": "percent",
-                            "discount": 10,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "discount_applicability": "order",
+                        "discount_mode": "percent",
+                        "discount": 10,
+                    }),
                 ],
-                "communication_plan_ids": [(5, 0, 0)],
+                "communication_plan_ids": [Command.clear()],
             },
             "buy_x_get_y": {
                 "applies_on": "current",
@@ -492,65 +463,47 @@ class LoyaltyProgram(models.Model):
                 "portal_visible": False,
                 "portal_point_name": self.env._("Credit(s)"),
                 "rule_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_point_mode": "unit",
-                            "product_ids": first_sale_product,
-                            "minimum_qty": 2,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_point_mode": "unit",
+                        "product_ids": first_sale_product,
+                        "minimum_qty": 2,
+                    }),
                 ],
                 "reward_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_type": "product",
-                            "reward_product_id": first_sale_product.id,
-                            "required_points": 2,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_type": "product",
+                        "reward_product_id": first_sale_product.id,
+                        "required_points": 2,
+                    }),
                 ],
-                "communication_plan_ids": [(5, 0, 0)],
+                "communication_plan_ids": [Command.clear()],
             },
             "next_order_coupons": {
                 "applies_on": "future",
                 "trigger": "auto",
                 "portal_visible": True,
                 "portal_point_name": self.env._("Coupon point(s)"),
-                "rule_ids": [(5, 0, 0), (0, 0, {"minimum_amount": 100, "minimum_qty": 0})],
+                "rule_ids": [
+                    Command.clear(),
+                    Command.create({"minimum_amount": 100, "minimum_qty": 0}),
+                ],
                 "reward_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "reward_type": "discount",
-                            "discount_mode": "percent",
-                            "discount": 15,
-                            "discount_applicability": "order",
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "reward_type": "discount",
+                        "discount_mode": "percent",
+                        "discount": 15,
+                        "discount_applicability": "order",
+                    }),
                 ],
                 "communication_plan_ids": [
-                    (5, 0, 0),
-                    (
-                        0,
-                        0,
-                        {
-                            "trigger": "create",
-                            "mail_template_id": (
-                                self.env.ref(
-                                    "loyalty.mail_template_loyalty_card", raise_if_not_found=False
-                                )
-                                or self.env["mail.template"]
-                            ).id,
-                        },
-                    ),
+                    Command.clear(),
+                    Command.create({
+                        "trigger": "create",
+                        "mail_template_id": loyalty_card_mail_template.id,
+                    }),
                 ],
             },
         }
@@ -610,7 +563,7 @@ class LoyaltyProgram(models.Model):
         # before creating the new rewards. However, we can check that the result of reward_ids would
         # actually be empty or not, and if not, skip the constraint.
         if "reward_ids" in vals and self._fields["reward_ids"].convert_to_cache(
-            vals["reward_ids"], self
+            vals["reward_ids"], self.browse()
         ):
             self = self.with_context(loyalty_skip_reward_check=True)
             # We need add the program type to the context to avoid getting the default value
@@ -776,19 +729,15 @@ class LoyaltyProgram(models.Model):
                 "program_type": "loyalty",
                 "applies_on": "both",
                 "trigger": "auto",
-                "rule_ids": [(0, 0, {"reward_point_mode": "unit", "product_ids": product})],
+                "rule_ids": [Command.create({"reward_point_mode": "unit", "product_ids": product})],
                 "reward_ids": [
-                    (
-                        0,
-                        0,
-                        {
-                            "discount_mode": "per_order",
-                            "required_points": 11,
-                            "discount_applicability": "specific",
-                            "discount_product_ids": product,
-                            "discount": 10,
-                        },
-                    )
+                    Command.create({
+                        "discount_mode": "per_order",
+                        "required_points": 11,
+                        "discount_applicability": "specific",
+                        "discount_product_ids": product,
+                        "discount": 10,
+                    })
                 ],
             },
         }
@@ -807,11 +756,3 @@ class LoyaltyProgram(models.Model):
                 del vals["trigger_product_ids"]
 
         return super().create(vals_list)
-
-    def copy_data(self, default=None):
-        default = dict(default or {})
-        vals_list = super().copy_data(default=default)
-        if "name" not in default:
-            for program, vals in zip(self, vals_list):
-                vals["name"] = self.env._("%s (copy)", program.name)
-        return vals_list

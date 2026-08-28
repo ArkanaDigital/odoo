@@ -74,7 +74,7 @@ class StockRule(models.Model):
 
     def _filter_warehouse_routes(self, product, warehouses, route):
         if any(rule.action == 'manufacture' for rule in route.rule_ids):
-            if any(bom.type == 'normal' for bom in product.bom_ids):
+            if any(bom.type == 'normal' for bom in product.sudo().bom_ids):
                 return super()._filter_warehouse_routes(product, warehouses, route)
             return False
         return super()._filter_warehouse_routes(product, warehouses, route)
@@ -94,13 +94,16 @@ class StockRule(models.Model):
                 mo = self.env['mrp.production'].sudo().search(domain, limit=1)
             is_batch_size = bom and bom.enable_batch_size
             if not mo or is_batch_size:
+                if not bom:
+                    # No BOM: skip MO creation, only replenishment rules should handle this
+                    continue
                 procurement_qty = procurement.product_qty
                 batch_size = bom.uom_id._compute_quantity(bom.batch_size, procurement.uom_id) if is_batch_size else procurement_qty
                 vals = rule._prepare_mo_vals(*procurement, bom)
                 while procurement.uom_id.compare(procurement_qty, 0) > 0:
                     new_productions_values_by_company[procurement.company_id.id]['values'].append({
                         **vals,
-                        'product_qty': procurement.uom_id._compute_quantity(batch_size, bom.uom_id) if bom else procurement_qty,
+                        'product_qty': procurement.uom_id._compute_quantity(batch_size, bom.uom_id),
                     })
                     new_productions_values_by_company[procurement.company_id.id]['procurements'].append(procurement)
                     procurement_qty -= batch_size
@@ -110,6 +113,10 @@ class StockRule(models.Model):
                     'mo_id': mo.id,
                     'product_qty': mo.product_id.uom_id._compute_quantity((mo.product_uom_qty + procurement_product_uom_qty), mo.uom_id),
                 }).change_prod_qty()
+                if procurement.values.get('move_dest_ids'):
+                    mo.move_finished_ids.filtered(
+                        lambda m: m.product_id == procurement.product_id and m.state not in ('done', 'cancel')
+                    ).move_dest_ids = [Command.link(m.id) for m in procurement.values['move_dest_ids']]
 
         for company_id in new_productions_values_by_company:
             productions_vals_list = new_productions_values_by_company[company_id]['values']
@@ -117,9 +124,7 @@ class StockRule(models.Model):
             # Otherwise, fallback to SUPERUSER_ID (e.g., MO generated from sales orders).
             user_id = (self.env.context.get('manual_replenishment') and self.env.uid) or SUPERUSER_ID
             productions = self.env['mrp.production'].with_user(user_id).sudo().with_company(company_id).create(productions_vals_list)
-            for mo in productions:
-                if self._should_auto_confirm_procurement_mo(mo):
-                    mo.action_confirm()
+            productions.filtered(self._should_auto_confirm_procurement_mo).action_confirm()
             productions._post_run_manufacture(new_productions_values_by_company[company_id]['procurements'])
         return True
 
@@ -206,12 +211,11 @@ class StockRule(models.Model):
             date_planned = date_planned - relativedelta(hours=1)
         return date_planned
 
-    def _get_lead_days(self, product, **values):
+    def _get_lead_days(self, product, bypass_delay_description=False, **values):
         """Add the product and company manufacture delay to the cumulative delay
         and cumulative description.
         """
-        delays, delay_description = super()._get_lead_days(product, **values)
-        bypass_delay_description = self.env.context.get('bypass_delay_description')
+        delays, delay_description = super()._get_lead_days(product, bypass_delay_description=bypass_delay_description, **values)
         manufacture_rule = self.filtered(lambda r: r.action == 'manufacture')
         if not manufacture_rule:
             return delays, delay_description
@@ -221,20 +225,20 @@ class StockRule(models.Model):
             delays['total_delay'] += 365
             delays['no_bom_found_delay'] += 365
             if not bypass_delay_description:
-                delay_description.append((_('No BoM Found'), _('+ %s day(s)', 365)))
+                delay_description.append((_('No BoM Found'), _('+ %s days', 365)))
         manufacture_delay = bom.produce_delay
         delays['total_delay'] += manufacture_delay
         delays['manufacture_delay'] += manufacture_delay
         if not bypass_delay_description:
             delay_description.append((_('Production End Date'), manufacture_delay))
-            delay_description.append((_('Manufacturing Lead Time'), _('+ %d day(s)', manufacture_delay)))
+            delay_description.append((_('Manufacturing Lead Time'), _('+ %d days', manufacture_delay)))
         if bom.type == 'normal':
             # pre-production rules
             warehouse = self.location_dest_id.warehouse_id
             for wh in warehouse:
                 if wh.manufacture_steps != 'mrp_one_step':
                     wh_manufacture_rules = product._get_rules_from_location(product.property_stock_production, route_ids=wh.pbm_route_id)
-                    extra_delays, extra_delay_description = (wh_manufacture_rules - self).with_context(global_horizon_days=0)._get_lead_days(product, **values)
+                    extra_delays, extra_delay_description = (wh_manufacture_rules - self).with_context(global_horizon_days=0)._get_lead_days(product, bypass_delay_description=bypass_delay_description, **values)
                     for key, value in extra_delays.items():
                         delays[key] += value
                     delay_description += extra_delay_description
@@ -242,7 +246,7 @@ class StockRule(models.Model):
         delays['total_delay'] += days_to_order
         if not bypass_delay_description:
             delay_description.append((_('Production Start Date'), days_to_order))
-            delay_description.append((_('Days to Supply Components'), _('+ %d day(s)', days_to_order)))
+            delay_description.append((_('Days to Supply Components'), _('+ %d days', days_to_order)))
         return delays, delay_description
 
     def _push_prepare_move_copy_values(self, move_to_copy):

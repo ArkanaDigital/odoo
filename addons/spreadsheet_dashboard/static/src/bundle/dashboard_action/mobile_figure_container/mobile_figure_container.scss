@@ -1,7 +1,17 @@
-.o-mobile-figure.o-figure {
-    padding: 4px;
+.o_figure_row {
+    height: auto;
+    margin: 8px 0px;
+    aspect-ratio: 4 / 3;
 
-    .o-dashboard-chart-select {
+    &.scorecard_row {
+        aspect-ratio: 4 / 1; /* 2 scorecards in a row, each with an aspect ratio of 2 / 1 */
+    }
+}
+
+.o-mobile-figure.o-figure {
+    margin: 0px 8px;
+
+    .o-chart-menu {
         visibility: visible !important;
         /* Compensate for the padding of the figure */
         top: 4px !important;
@@ -10,7 +20,6 @@
 
     .o-carousel-full-screen-button,
     .o-carousel-tabs-dropdown,
-    .o-carousel-tab[data-type="carouselDataView"],
     .o-chart-dashboard-item:not([name="chart-granularity"]) {
         display: none !important;
     }

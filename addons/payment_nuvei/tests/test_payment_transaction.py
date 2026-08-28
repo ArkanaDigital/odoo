@@ -41,13 +41,13 @@ class TestPaymentTransaction(NuveiCommon):
                 "item_amount_1": tx.amount,
                 "item_name_1": tx.reference,
                 "item_quantity_1": 1,
-                "invoice_id": tx.reference,
+                "productId": tx.reference,
                 "last_name": last_name,
                 "merchantLocale": tx.partner_lang,
                 "merchant_id": self.provider.nuvei_merchant_identifier,
                 "merchant_site_id": self.provider.nuvei_site_identifier,
                 "payment_method_mode": "filter",
-                "payment_method": "unknown",
+                "payment_method": "dummy",
                 "phone1": "+3212345678",
                 "state": tx.partner_state_id.code or "",
                 "user_token_id": make_uuid(),
@@ -94,7 +94,7 @@ class TestPaymentTransaction(NuveiCommon):
             "item_amount_1",
             "item_name_1",
             "item_quantity_1",
-            "invoice_id",
+            "productId",
             "last_name",
             "merchantLocale",
             "merchant_id",
@@ -162,7 +162,7 @@ class TestPaymentTransaction(NuveiCommon):
         """Ensure that for USD currency with Webpay payment method, processing_values should
         contain a value which is the amount rounded down to the nearest 0."""
         currency_usd = self.env.ref("base.USD")
-        webpay_id = self.env.ref("payment.payment_method_webpay")
+        webpay_id = self.provider._get_pm_from_code("webpay")
         tx = self._create_transaction(
             "redirect", amount=1000.50, currency_id=currency_usd.id, payment_method_id=webpay_id.id
         )

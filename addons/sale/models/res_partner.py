@@ -60,7 +60,7 @@ class ResPartner(models.Model):
             return data_list
         for partner in self.filtered("sale_order_count"):
             data_list[partner.id].append({
-                "iconClass": "fa-usd",
+                "icon": "attach_money",
                 "value": partner.sale_order_count,
                 "label": self.env._("Sale Orders"),
             })
@@ -84,9 +84,9 @@ class ResPartner(models.Model):
             ("partner_id", "=", self.id),
         ])
 
-    def can_edit_vat(self):
-        """Can't edit `vat` if there is (non draft) issued SO."""
-        return super().can_edit_vat() and not self._has_order([
+    def _has_confirmed_documents(self):
+        """Return `True` if there is (non draft) issued SO."""
+        return super()._has_confirmed_documents() or self._has_order([
             ("partner_id", "child_of", self.commercial_partner_id.id)
         ])
 

@@ -4,9 +4,12 @@ import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { statusBarField, StatusBarField } from "@web/views/fields/statusbar/statusbar_field";
 import { _t } from "@web/core/l10n/translation";
+import { signal } from "@odoo/owl";
 
 export class VersionsTimeline extends StatusBarField {
     static template = "hr.VersionsTimeline";
+
+    datetimePickerTargetRef = signal.ref();
 
     /** @override **/
     setup() {
@@ -15,7 +18,7 @@ export class VersionsTimeline extends StatusBarField {
         this.orm = useService("orm");
 
         this.dateTimePicker = useDateTimePicker({
-            target: `datetime-picker-target-version`,
+            target: this.datetimePickerTargetRef,
             onApply: (date) => {
                 if (date) {
                     this.createVersion(date);
@@ -28,26 +31,34 @@ export class VersionsTimeline extends StatusBarField {
     }
 
     /** @override **/
-    getDomain() {
-        return Domain.and([super.getDomain(),
-            [["employee_id", "=", this.props.record.evalContext.id]]]
-        ).toList()
+    getDomain(props) {
+        return Domain.and([
+            super.getDomain(props),
+            [["employee_id", "=", props.record.evalContext.id]],
+        ]).toList();
     }
 
     /** @override **/
-    getFieldNames() {
-        const fieldNames = super.getFieldNames();
-        fieldNames.push([
-            "employee_type_id",
-            "contract_date_start",
-            "contract_date_end",
-        ]);
-        return fieldNames.filter((fName) => fName in this.props.record.fields);
+    getFieldNames(props) {
+        const fieldNames = super.getFieldNames(props);
+        fieldNames.push("employee_type_id", "contract_date_start", "contract_date_end");
+        return fieldNames.filter((fName) => fName in props.record.fields);
     }
 
     displayContractLines() {
         return ["employee_type_id", "contract_date_start", "contract_date_end"].every(
             (fieldName) => fieldName in this.props.record.fields
+        );
+    }
+
+    isContractLineContinued(index) {
+        const item = this.items.inline[index];
+        const nextItem = this.items.inline[index + 1];
+        return Boolean(
+            item?.isInContract &&
+                item.isCurrentContract &&
+                nextItem?.isInContract &&
+                nextItem.isCurrentContract
         );
     }
 
@@ -57,10 +68,6 @@ export class VersionsTimeline extends StatusBarField {
             this.props.record.evalContext.id,
             { date_version: date },
         ]);
-
-        const { specialDataCaches } = this.props.record.model;
-        // Invalidate cache after creating new version.
-        Object.keys(specialDataCaches).forEach(key => delete specialDataCaches[key]);
 
         await this.props.record.model.load({
             context: {
@@ -92,7 +99,7 @@ export class VersionsTimeline extends StatusBarField {
             return luxon.DateTime.fromISO(dateString).toFormat("MMM dd, yyyy");
         }
         const items = super.getAllItems();
-        if (!this.displayContractLines) {
+        if (!this.displayContractLines()) {
             return items;
         }
         const dataById = new Map(this.specialData.data.map((d) => [d.id, d]));
@@ -123,7 +130,7 @@ export class VersionsTimeline extends StatusBarField {
 export const versionsTimeline = {
     ...statusBarField,
     component: VersionsTimeline,
-    additionalClasses: ["o_field_statusbar", "d-flex", "gap-1"],
+    additionalClasses: ["o_field_statusbar", "o_records_timeline", "d-flex", "gap-1"],
 };
 
 registry.category("fields").add("versions_timeline", versionsTimeline);

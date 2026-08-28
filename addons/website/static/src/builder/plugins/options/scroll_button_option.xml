@@ -29,11 +29,11 @@
         </BuilderRow>
         <BuilderRow label.translate="Size" level="1" applyTo="':scope > .o_scroll_button > i'">
             <BuilderButtonGroup>
-                <BuilderButton classAction="'fa-1x'" title.translate="Size 1x">1x</BuilderButton>
-                <BuilderButton classAction="'fa-2x'" title.translate="Size 2x">2x</BuilderButton>
-                <BuilderButton classAction="'fa-3x'" title.translate="Size 3x">3x</BuilderButton>
-                <BuilderButton classAction="'fa-4x'" title.translate="Size 4x">4x</BuilderButton>
-                <BuilderButton classAction="'fa-5x'" title.translate="Size 5x">5x</BuilderButton>
+                <BuilderButton classAction="'oi-1x'" title.translate="Size 1x">1x</BuilderButton>
+                <BuilderButton classAction="'oi-2x'" title.translate="Size 2x">2x</BuilderButton>
+                <BuilderButton classAction="'oi-3x'" title.translate="Size 3x">3x</BuilderButton>
+                <BuilderButton classAction="'oi-4x'" title.translate="Size 4x">4x</BuilderButton>
+                <BuilderButton classAction="'oi-5x'" title.translate="Size 5x">5x</BuilderButton>
             </BuilderButtonGroup>
         </BuilderRow>
         <BuilderRow label.translate="Colors" level="1" applyTo="':scope > .o_scroll_button'">
@@ -50,7 +50,7 @@
     <xpath expr="//t[@id='snippet_specific_options']" position="after">
         <scroll_button_option
             selector="section"
-            exclude="[data-snippet] :not(.oe_structure) > [data-snippet], .s_instagram_page, .o_facebook_page, .o_mega_menu > section, .s_appointments .s_dynamic_snippet_content, .s_bento_banner section[data-name='Card'], .s_floating_blocks, .s_floating_blocks .s_floating_blocks_block, .s_bento_block_card, .s_dynamic_category, .s_dynamic_category .s_dynamic_snippet_title, .s_announcement_scroll, .o_no_scroll_button, .s_whatsapp"/>
+            exclude="[data-snippet] :not(.oe_structure) > [data-snippet], .s_instagram_page, .o_facebook_page, .o_mega_menu > section, .s_appointments .s_dynamic_snippet_content, .s_bento_banner section[data-name='Card'], .s_floating_blocks, .s_floating_blocks .s_floating_blocks_block, .s_bento_block_card, .s_dynamic_category, .s_dynamic_category .s_dynamic_snippet_title, .s_announcement_scroll, .o_no_scroll_button, .s_google_map, .s_map, .s_whatsapp"/>
     </xpath>
 </t>
 

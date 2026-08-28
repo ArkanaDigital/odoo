@@ -131,7 +131,7 @@ class TestProjectSharingPortalAccess(TestProjectSharingCommon):
 
         for field_name in self.write_protected_fields_task:
             field = task._fields[field_name]
-            if field.comodel_name == 'project.task':
+            if field.relational and field.comodel_name == 'project.task':
                 other_task = self.env['project.task'].create({'name': 'Parent task', 'project_id': task.project_id.id})
                 value = other_task.id if field.type == 'many2one' else other_task.ids
                 task.write({field_name: value})
@@ -178,3 +178,12 @@ class TestProjectSharingPortalAccess(TestProjectSharingCommon):
         self.assertTrue(mail_partner, 'A mail should have been sent to the non portal user')
         self.assertIn('href="gopher://example.org/web/signup', str(mail_partner.body), 'The message link should contain the url to register to the portal')
         self.assertIn('token=', str(mail_partner.body), 'The message link should contain a personalized token to register to the portal')
+
+    def test_followers_task_created_by_portal_user(self):
+        """Tests that the auto-subscription system properly add the followers of
+        the parent project when a portal user creates a task
+        """
+        self.project_portal.message_subscribe(self.user_projectmanager.partner_id.ids)
+        task = self.env["project.task"].with_user(self.user_portal).with_context(default_project_id=self.project_portal.id).create({'name': 'Task created by portal_user'})
+        self.assertIn(self.user_portal.partner_id, task.sudo().message_partner_ids)
+        self.assertIn(self.user_projectmanager.partner_id, task.sudo().message_partner_ids)

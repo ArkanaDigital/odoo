@@ -33,6 +33,8 @@ import { BuilderAction } from "@html_builder/core/builder_action";
 import { Plugin } from "@html_editor/plugin";
 import { registry } from "@web/core/registry";
 import { WebsiteBuilder } from "@website/builder/website_builder";
+import { selectElements } from "@html_editor/utils/dom_traversal";
+import { withSequence } from "@html_editor/utils/resource";
 
 defineWebsiteModels();
 
@@ -57,7 +59,7 @@ test("nothing to save", async () => {
     const { getEditor, getEditableContent } = await setupWebsiteBuilder(exampleContent);
     await modifyText(getEditor(), getEditableContent());
     await animationFrame();
-    await contains(".o-snippets-menu button.fa-undo").click();
+    await contains(".o-snippets-menu button[data-icon='undo']").click();
     await contains(".o-snippets-top-actions button:contains(Save)").click();
     expect(resultSave.length).toBe(0);
     expect(":iframe #wrap").not.toHaveClass("o_dirty");
@@ -105,7 +107,7 @@ test("discard modified elements", async () => {
 test("discard without any modifications", async () => {
     patchWithCleanup(WebsiteBuilderClientAction.prototype, {
         async closeEditor() {
-            this.websiteContent.el.contentDocument.body.innerHTML = wrapExample;
+            this.websiteContent().contentDocument.body.innerHTML = wrapExample;
         },
     });
     await setupWebsiteBuilder(exampleContent);
@@ -248,13 +250,13 @@ test("reload should reopen the builder with the reloadable target, and the same 
         delayReload: async () => await deferred.promise,
     });
     await contains(":iframe .test-option").click();
-    expect(".options-container-header:has(i.fa-caret-right)").toHaveCount(1);
-    expect(".options-container-header:has(i.fa-caret-down)").toHaveCount(1);
+    expect(".options-container-header:has(i[data-icon='arrow_right'])").toHaveCount(1);
+    expect(".options-container-header:has(i[data-icon='arrow_drop_down'])").toHaveCount(1);
     await unfoldAllOptionsGroups();
     await contains("[data-action-id=testAction]").click();
     expect(":iframe .test-option").toHaveAttribute("data-applied");
-    expect(".options-container-header:has(i.fa-caret-right)").toHaveCount(0);
-    expect(".options-container-header:has(i.fa-caret-down)").toHaveCount(2);
+    expect(".options-container-header:has(i[data-icon='arrow_right'])").toHaveCount(0);
+    expect(".options-container-header:has(i[data-icon='arrow_drop_down'])").toHaveCount(2);
     deferred.resolve();
     expect.verifySteps(["save"]);
     await animationFrame();
@@ -264,8 +266,8 @@ test("reload should reopen the builder with the reloadable target, and the same 
     // resets to initial content
     expect(":iframe .test-option").not.toHaveAttribute("data-applied");
 
-    expect(".options-container-header:has(i.fa-caret-right)").toHaveCount(0);
-    expect(".options-container-header:has(i.fa-caret-down)").toHaveCount(2);
+    expect(".options-container-header:has(i[data-icon='arrow_right'])").toHaveCount(0);
+    expect(".options-container-header:has(i[data-icon='arrow_drop_down'])").toHaveCount(2);
 });
 
 test("preview shouldn't let o_dirty", async () => {
@@ -287,6 +289,7 @@ test("preview shouldn't let o_dirty", async () => {
                     // apply a mutation when we remove the preview
                     el.classList.add("test");
                 }
+                return root;
             },
         };
     }
@@ -334,7 +337,7 @@ test("Drag and drop from sidebar should only mark the concerned elements as dirt
     expect(":iframe #wrap").not.toHaveClass("o_dirty");
     expect(":iframe .o_dirty").toHaveCount(1);
     // Undo
-    await contains(".o-website-builder_sidebar .fa-undo").click();
+    await contains(".o-website-builder_sidebar [data-icon='undo']").click();
     expect(":iframe .o_dirty").toHaveCount(0);
 
     // Dragging in inner view then in outer view should only apply dirty on the
@@ -350,7 +353,7 @@ test("Drag and drop from sidebar should only mark the concerned elements as dirt
     expect(":iframe #wrap").toHaveClass("o_dirty");
     expect(":iframe .o_dirty").toHaveCount(1);
     // Undo
-    await contains(".o-website-builder_sidebar .fa-undo").click();
+    await contains(".o-website-builder_sidebar [data-icon='undo']").click();
     expect(":iframe .o_dirty").toHaveCount(0);
 
     // Dragging over the views then dropping in the sidebar to cancel should not
@@ -398,7 +401,7 @@ test("Drag and drop from the page should only mark the concerned elements as dir
     await dragUtils.moveTo(":iframe .s_dummy_snippet_1 .oe_drop_zone:nth-child(3)");
     await dragUtils.drop(getDragMoveHelper());
     await waitForEndOfOperation();
-    expect(".o-website-builder_sidebar .fa-undo").toHaveAttribute("disabled");
+    expect(".o-website-builder_sidebar [data-icon='undo']").toHaveAttribute("disabled");
     expect(":iframe .o_dirty").toHaveCount(0);
 
     // Dragging across views and dropping in the original one should only apply
@@ -416,7 +419,7 @@ test("Drag and drop from the page should only mark the concerned elements as dir
     expect(":iframe .view_2.o_savable").not.toHaveClass("o_dirty");
     expect(":iframe .o_dirty").toHaveCount(1);
     // Undo
-    await contains(".o-website-builder_sidebar .fa-undo").click();
+    await contains(".o-website-builder_sidebar [data-icon='undo']").click();
     expect(":iframe .o_dirty").toHaveCount(0);
 
     // Dragging across views and dropping in another one should only apply dirty
@@ -433,7 +436,7 @@ test("Drag and drop from the page should only mark the concerned elements as dir
     expect(":iframe .view_2.o_savable").toHaveClass("o_dirty");
     expect(":iframe .o_dirty").toHaveCount(2);
     // Undo
-    await contains(".o-website-builder_sidebar .fa-undo").click();
+    await contains(".o-website-builder_sidebar [data-icon='undo']").click();
     expect(":iframe .o_dirty").toHaveCount(0);
 });
 
@@ -459,8 +462,7 @@ function setupSaveAndReloadIframe() {
     });
     patchWithCleanup(WebsiteBuilderClientAction.prototype, {
         async closeEditor() {
-            this.websiteContent.el.contentDocument.body.innerHTML =
-                resultSave.at(-1) || wrapExample;
+            this.websiteContent().contentDocument.body.innerHTML = resultSave.at(-1) || wrapExample;
         },
     });
     return resultSave;
@@ -689,4 +691,61 @@ test("Errors different than validation errors are not caught on save", async () 
     await insertText(getEditor(), "x");
     await contains(".o-snippets-top-actions button:contains(Save)").click();
     expect.verifyErrors(["RPC_ERROR: Not A Validation Error"]);
+});
+
+test("should not add o_dirty for mutations done by normalize called by commit", async () => {
+    addPlugin(
+        class extends Plugin {
+            static id = "test_plugin_mutation";
+            static dependencies = ["domObserver"];
+            // static dependencies = ["history"];
+            /** @type {import("plugins").WebsiteResources} */
+            resources = {
+                normalize_processors: [
+                    withSequence(1, (root) => {
+                        for (const el of selectElements(root, ".test-content")) {
+                            el.dataset.counter = parseInt(el.dataset.counter) + 1;
+                        }
+                        return root;
+                    }),
+                    withSequence(2, (root) => {
+                        this.dependencies.domObserver.ignore(() => {
+                            // this.dependencies.history.ignoreDOMMutations(() => {
+                            for (const el of selectElements(root, ".test-sibling")) {
+                                el.dataset.counter = parseInt(el.dataset.counter) + 1;
+                            }
+                        });
+                        return root;
+                    }),
+                ],
+            };
+        }
+    );
+    const { getEditor } = await setupWebsiteBuilder("", {
+        headerContent: `
+            <div class="test-parent">
+                <div class="test-target" data-oe-model="stuff">
+                    <div class="test-content" data-counter="0">Hello</div>
+                <div>
+                <div class="test-sibling" data-oe-model="stuff" data-counter="0">
+                    Hello
+                <div>
+            </div>
+        `,
+    });
+    const editor = getEditor();
+
+    expect(":iframe .test-target").toHaveClass("o_savable");
+    expect(":iframe .test-target").not.toHaveClass("o_dirty");
+    expect(":iframe .test-content").toHaveAttribute("data-counter", "1");
+    expect(":iframe .test-sibling").toHaveAttribute("data-counter", "1");
+
+    queryOne(":iframe .test-parent").dataset.changed = true;
+    setSelection({ anchorNode: queryOne(":iframe .test-sibling") });
+    await insertText(editor, "X");
+
+    expect(":iframe .test-sibling").toHaveClass("o_dirty");
+    expect(":iframe .test-target").not.toHaveClass("o_dirty");
+    expect(":iframe .test-content").toHaveAttribute("data-counter", "2");
+    expect(":iframe .test-sibling").toHaveAttribute("data-counter", "2");
 });

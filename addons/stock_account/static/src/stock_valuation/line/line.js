@@ -1,21 +1,19 @@
-import { Component, proxy } from "@odoo/owl";
+import { Component, useProps, proxy, t } from "@odoo/owl";
+import { _t } from "@web/core/l10n/translation";
 
 
 export class StockValuationReportLine extends Component {
     static template = "stock_account.StockValuationReport.InventoryValuationLine";
-    static props = {
-        class: { type: String, optional: true },
-        displayDebitCredit: { type: Boolean, optional: true },
-        label: { type: String, optional: true },
-        level: { type: Number, optional: true },
-        line: { type: Object, optional: true },
-        sublines: { type: Array, optional: true },
-        onClickMethod: { type: Function, optional: true },
-        value: { type: Number, optional: true },
-    };
-    static defaultProps = {
-        level: 0,
-    };
+    props = useProps({
+        class: t.string().optional(),
+        displayDebitCredit: t.boolean().optional(),
+        label: t.string().optional(),
+        level: t.number().optional(0),
+        line: t.object().optional(),
+        sublines: t.array().optional(),
+        onClickMethod: t.function().optional(),
+        value: t.number().optional(),
+    });
 
     setup() {
         this.hasSublines = Boolean(this.props.sublines?.length);
@@ -66,7 +64,7 @@ export class StockValuationReportLine extends Component {
     get totalProps() {
         const props = {
             class: "total",
-            label: this.env._t("Total"),
+            label: _t("Total"),
             level: this.props.level,
             value: this.props.value,
         };

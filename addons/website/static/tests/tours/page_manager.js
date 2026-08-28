@@ -143,15 +143,15 @@ const deleteSelectedPage = [
         run: "click",
     },
     {
-        content: "Click on OK",
-        trigger: ".modal-content footer button.btn-danger:not([disabled])",
+        content: "Click on Delete",
+        trigger: ".modal-content footer button.btn-danger:contains('Delete'):not([disabled])",
         run: "click",
     },
     {
         trigger: "body:not(:has(.modal))",
     },
 ];
-const homePage = "tr:has(td:contains(Home):has(.fa-home))";
+const homePage = "tr:has(td:contains(Home):has([data-icon='home']))";
 
 const duplicateSinglePage = [
     {
@@ -171,13 +171,21 @@ const duplicateSinglePage = [
         run: "click",
     },
     {
+        content: "Create is disabled while the name is empty",
+        trigger: ".modal-footer button.btn-primary:contains('Create'):disabled",
+    },
+    {
         content: "Put your website name as 'Test Duplicate' here",
         trigger: 'main.modal-body input[type="text"]',
         run: "edit Test Duplicate",
     },
     {
-        content: "Click on OK",
-        trigger: ".modal-footer button.btn-primary",
+        content: "Create is enabled once a name is entered",
+        trigger: ".modal-footer button.btn-primary:contains('Create'):not(:disabled)",
+    },
+    {
+        content: "Click on Create",
+        trigger: ".modal-footer button.btn-primary:contains('Create')",
         run: "click",
     },
     {
@@ -215,8 +223,8 @@ const duplicateMultiplePage = [
         run: "edit Test Duplicate",
     },
     {
-        content: "Click on OK",
-        trigger: ".modal-footer button.btn-primary",
+        content: "Click on Create",
+        trigger: ".modal-footer button.btn-primary:contains('Create')",
         run: "click",
     },
 ];
@@ -253,6 +261,10 @@ registry.category("web_tour.tours").add("website_page_manager", {
             content: "Click on Home Page",
             trigger: `.o_list_renderer ${homePage} td.o_list_record_selector input[type="checkbox"]`,
             run: "check",
+        },
+        {
+            content: "Make sure the record has been selected",
+            trigger: `.o_list_renderer ${homePage} td.o_list_record_selector input[type="checkbox"]:checked`,
         },
         ...deleteSelectedPage,
         {

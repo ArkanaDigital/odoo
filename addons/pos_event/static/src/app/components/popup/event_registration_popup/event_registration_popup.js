@@ -1,16 +1,22 @@
 // Part of Odoo. See LICENSE file for full copyright and licensing details.
 import { Dialog } from "@web/core/dialog/dialog";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, useProps, t } from "@odoo/owl";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { ProductCard } from "@point_of_sale/app/components/product_card/product_card";
 import { NumericInput } from "@point_of_sale/app/components/inputs/numeric_input/numeric_input";
 import { useService } from "@web/core/utils/hooks";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
-import { isValidEmail, isValidPhone } from "@point_of_sale/utils";
+import { _t } from "@web/core/l10n/translation";
+import { isValidEmail } from "@point_of_sale/utils";
 
 export class EventRegistrationPopup extends Component {
     static template = "pos_event.EventRegistrationPopup";
-    static props = ["data", "getPayload", "close", "event"];
+    props = useProps({
+        data: t.array(t.object()),
+        getPayload: t.function(),
+        close: t.function(),
+        event: t.object(),
+    });
     static components = {
         Dialog,
         ProductCard,
@@ -37,14 +43,18 @@ export class EventRegistrationPopup extends Component {
                 product_id: data.product_id,
                 questions: {},
             };
-
+            const existingRegData = data?.registration_ids?.[idx];
             for (const question of this.questionsByRegistration) {
-                this.state.byRegistration[idx].questions[question.id] = "";
+                this.state.byRegistration[idx].questions[question.id] =
+                    existingRegData?.[question.id] || "";
             }
         }
-
-        for (const question of this.questionsOncePerOrder) {
-            this.state.byOrder[question.id] = "";
+        // always have one data per order
+        if (this.questionsOncePerOrder.length) {
+            const existingRegData = this.props.data[0]?.registration_ids?.[0];
+            for (const question of this.questionsOncePerOrder) {
+                this.state.byOrder[question.id] = existingRegData?.[question.id] || "";
+            }
         }
 
         // Autofill first ticket with customer data if customer is selected
@@ -86,6 +96,12 @@ export class EventRegistrationPopup extends Component {
         this.state.touchedFields.add(this.getFieldKey(questionId, ticketIndex));
     }
 
+    isValidPhone(string) {
+        const phone = string.replace(/[\s.\-()]/g, "");
+        const pattern = /^\+?\d{8,18}$/;
+        return pattern.test(phone);
+    }
+
     validateQuestion(question, value) {
         if (question.is_mandatory_answer && !value?.trim()) {
             return false;
@@ -97,7 +113,7 @@ export class EventRegistrationPopup extends Component {
             return isValidEmail(value);
         }
         if (question.question_type === "phone") {
-            return isValidPhone(value);
+            return this.isValidPhone(value);
         }
         return true;
     }
@@ -144,8 +160,8 @@ export class EventRegistrationPopup extends Component {
 
         if (requiredByRegistration || requiredByOrder) {
             this.dialog.add(AlertDialog, {
-                title: "Oh snap !",
-                body: "Please fill in all required fields",
+                title: _t("Oh snap !"),
+                body: _t("Please fill in all required fields"),
             });
             return;
         }

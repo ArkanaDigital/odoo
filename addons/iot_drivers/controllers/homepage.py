@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import subprocess
 import threading
 import time
@@ -9,6 +10,7 @@ from itertools import groupby
 from pathlib import Path
 
 import netifaces
+import werkzeug
 
 from odoo.http import Controller
 from odoo.http.stream import Stream
@@ -16,7 +18,6 @@ from odoo.tools.misc import file_path
 
 from odoo.addons.iot_drivers.connection_manager import connection_manager
 from odoo.addons.iot_drivers.main import iot_devices, unsupported_devices
-from odoo.addons.iot_drivers.server_logger import server_logger
 from odoo.addons.iot_drivers.tools import (
     certificate,
     helpers,
@@ -51,6 +52,24 @@ CONTENT_SECURITY_POLICY = (
 )
 
 
+@system.rpi_only
+def get_network_interfaces():
+    network_interfaces = []
+    ssid = wifi.get_current() or wifi.get_access_point_ssid()
+    for iface_id in netifaces.interfaces():
+        if iface_id == 'lo' or 'tailscale' in iface_id:
+            continue  # Skip loopback interface (127.0.0.1) and Tailscale interfaces
+
+        is_wifi = 'wlan' in iface_id
+        network_interfaces.extend([{
+            'id': iface_id,
+            'is_wifi': is_wifi,
+            'ssid': ssid if is_wifi else None,
+            'ip': conf.get('addr', 'No Internet'),
+        } for conf in netifaces.ifaddresses(iface_id).get(netifaces.AF_INET, [])])
+    return network_interfaces
+
+
 class IotBoxOwlHomePage(Controller):
     def __init__(self):
         super().__init__()
@@ -83,10 +102,22 @@ class IotBoxOwlHomePage(Controller):
     @route.iot_route('/iot_drivers/iot_logs', type='http', cors='*')
     def get_iot_logs(self):
         logs_path = "/var/log/odoo/odoo-server.log" if IS_RPI else Path().absolute().parent.joinpath('odoo.log')
+        log_max_size_chars = 2000000
+        log_max_size_lines = 10000
+
         with open(logs_path, encoding="utf-8") as file:
+            file_length = file.seek(0, 2)
+            starting_offset = max(file_length - log_max_size_chars, 0)
+            file.seek(starting_offset)
+
+            file_contents = file.read()
+            file_contents_no_ansi_codes = re.sub(r"\x1b\[[\w;]+m", "", file_contents)
+            file_lines = file_contents_no_ansi_codes.splitlines()
+            filtered_lines = [line for line in file_lines if not "GET /iot_drivers/iot_logs" in line]
+            log_text = "\n".join(filtered_lines[-log_max_size_lines:])
             return json.dumps({
                 'status': 'success',
-                'logs': file.read(),
+                'logs': log_text,
             })
 
     @route.iot_route('/iot_drivers/six_payment_terminal_clear', type='http', cors='*')
@@ -121,8 +152,6 @@ class IotBoxOwlHomePage(Controller):
     @route.iot_route('/iot_drivers/server_clear', type='http', cors='*')
     def clear_server_configuration(self):
         helpers.disconnect_from_server()
-        if server_logger:
-            server_logger.close()
         return json.dumps({
             'status': 'success',
             'message': 'Successfully disconnected from server',
@@ -137,21 +166,6 @@ class IotBoxOwlHomePage(Controller):
 
     @route.iot_route('/iot_drivers/data', type="http", cors='*')
     def get_homepage_data(self):
-        network_interfaces = []
-        if IS_RPI:
-            ssid = wifi.get_current() or wifi.get_access_point_ssid()
-            for iface_id in netifaces.interfaces():
-                if iface_id == 'lo' or 'tailscale' in iface_id:
-                    continue  # Skip loopback interface (127.0.0.1) and Tailscale interfaces
-
-                is_wifi = 'wlan' in iface_id
-                network_interfaces.extend([{
-                    'id': iface_id,
-                    'is_wifi': is_wifi,
-                    'ssid': ssid if is_wifi else None,
-                    'ip': conf.get('addr', 'No Internet'),
-                } for conf in netifaces.ifaddresses(iface_id).get(netifaces.AF_INET, [])])
-
         devices = [{
             'name': device.device_name,
             'type': device.device_type,
@@ -169,7 +183,7 @@ class IotBoxOwlHomePage(Controller):
         }
 
         six_terminal = system.get_conf('six_payment_terminal') or 'Not Configured'
-        network_qr_codes = wifi.generate_network_qr_codes() if IS_RPI else {}
+        network_qr_codes = wifi.generate_network_qr_codes() or {}
         odoo_server_url = helpers.get_odoo_server_url() or ''
         odoo_uptime_seconds = time.monotonic() - ODOO_START_TIME
         system_uptime_seconds = time.monotonic() - SYSTEM_START_TIME
@@ -186,8 +200,8 @@ class IotBoxOwlHomePage(Controller):
             'new_database_url': connection_manager.new_database_url,
             'pairing_code_expired': connection_manager.pairing_code_expired and not odoo_server_url,
             'six_terminal': six_terminal,
-            'is_access_point_up': IS_RPI and wifi.is_access_point(),
-            'network_interfaces': network_interfaces,
+            'is_access_point_up': wifi.is_access_point(),
+            'network_interfaces': get_network_interfaces() or [],
             'version': system.get_version(),
             'system': IOT_SYSTEM,
             'odoo_uptime_seconds': odoo_uptime_seconds,
@@ -292,8 +306,12 @@ class IotBoxOwlHomePage(Controller):
         linux_only=True,
     )
     def generate_password(self):
+        if helpers.get_odoo_server_url():
+            raise werkzeug.exceptions.Forbidden(
+                "Password generation is disabled once linked to an Odoo server"
+            )
         return {
-            'password': system.generate_password(),
+            "password": system.generate_password(),
         }
 
     @route.iot_route('/iot_drivers/enable_remote_debug', type="jsonrpc", methods=['POST'], linux_only=True)

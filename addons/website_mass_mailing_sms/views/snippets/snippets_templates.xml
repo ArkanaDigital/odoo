@@ -4,7 +4,7 @@
 <template id="snippets" inherit_id="website.snippets">
     <xpath expr="//t[@id='mass_mailing_newsletter_sms_notifications_hook']" position="replace">
         <t t-snippet="website_mass_mailing_sms.s_newsletter_sms_notifications" string="Newsletter SMS Notifications" t-forbid-sanitize="form" group="contact_and_forms" label="Newsletter">
-            <keywords>updates, digest, bulletin, announcements, notifications, communication, promotional, sms, alert, dialog, prompt, subscription, subscribe, news</keywords>
+            <keywords>updates, digests, bulletins, announcements, notifications, communication, promotional, sms, alerts, dialogs, prompt, subscription, subscribe, news</keywords>
         </t>
     </xpath>
 </template>
@@ -42,7 +42,7 @@
                     <h2 class="h3-fs" style="text-align: center;">Stay in the Loop !<br/>Get the latest updates</h2>
                     <p style="text-align: center;">Be the first to find out all the latest new, products and trends.</p>
                     <t t-set="thank_you_message">
-                        <p class="h6-fs d-flex flex-column mt-4 text-center text-success"><i class="fa fa-check-circle-o fa-lg" role="img"/> Thanks for registering!</p>
+                        <p class="h6-fs d-flex flex-column mt-4 text-center text-success"><i class="oi oi-lg" data-icon="check_circle" role="img"/> Thanks for registering!</p>
                     </t>
                     <t t-snippet-call="website_mass_mailing_sms.s_newsletter_subscribe_form"
                         thank_you_message="thank_you_message"

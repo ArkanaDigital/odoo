@@ -6,7 +6,8 @@ from num2words import num2words
 
 from odoo import api, models
 from odoo.exceptions import UserError
-from odoo.tools import float_compare, frozendict, html2plaintext
+
+from odoo.tools import float_compare, float_round, frozendict, html2plaintext
 
 from odoo.addons.l10n_tr_nilvera_einvoice.tools.clean_node_dict import clean_node_dict
 from odoo.addons.l10n_tr_nilvera_einvoice.tools.ubl_tr_invoice import TrInvoice
@@ -36,7 +37,10 @@ class AccountEdiXmlUblTr(models.AbstractModel):
 
     def _export_invoice_filename(self, invoice):
         # EXTENDS account_edi_ubl_cii
-        return '%s_einvoice.xml' % invoice.name.replace("/", "_")
+        if not invoice.name or invoice.name == "/":
+            return "draft.xml"
+        suffix = "einvoice" if invoice.state == "posted" else "draft"
+        return "%s_%s.xml" % (invoice.name.replace("/", "_"), suffix)
 
     def _get_tax_category_code(self, customer, supplier, tax):
         # OVERRIDES account.edi.ubl_21
@@ -70,7 +74,7 @@ class AccountEdiXmlUblTr(models.AbstractModel):
 
         # Using _get_sequence_format_param to extract the invoice sequence components for various formats.
         # To send an invoice to Nilvera, the format needs to follow ABC2009123456789.
-        _, parts = invoice._get_sequence_format_param(invoice.name)
+        _, parts = invoice._get_sequence_format_param(invoice.name or "")
         prefix, year, number = parts['prefix1'][:3], parts['year'], str(parts['seq']).zfill(9)
         invoice_id = f"{prefix.upper()}{year}{number}"
 
@@ -92,6 +96,11 @@ class AccountEdiXmlUblTr(models.AbstractModel):
         })
 
         document_node['cac:OrderReference']['cbc:IssueDate'] = {'_text': invoice.invoice_date}
+
+        if invoice.state == 'draft' and (not invoice.name or invoice.name == '/'):
+            prefix = invoice._l10n_tr_nilvera_get_series_prefix()
+            document_node['cac:OrderReference']['cbc:ID'] = {'_text': prefix}
+            document_node['cbc:ID'] = {'_text': prefix}
 
         if invoice.partner_id.l10n_tr_nilvera_customer_status == 'earchive':
             document_node['cac:AdditionalDocumentReference'] = {
@@ -136,7 +145,7 @@ class AccountEdiXmlUblTr(models.AbstractModel):
     def _l10n_tr_get_amount_integer_partn_text_note(self, amount, currency):
         sign = math.copysign(1.0, amount)
         amount_integer_part, amount_decimal_part = divmod(abs(amount), 1)
-        amount_decimal_part = int(amount_decimal_part * 100)
+        amount_decimal_part = round(amount_decimal_part * 100)
 
         text_i = num2words(amount_integer_part * sign, lang="tr") or 'Sifir'
         text_d = num2words(amount_decimal_part * sign, lang="tr") or 'Sifir'
@@ -191,8 +200,15 @@ class AccountEdiXmlUblTr(models.AbstractModel):
             document_node['cac:Delivery'] = None
 
     def _l10n_tr_get_currency_conversion_rate(self, invoice):
-        """Return the exchange rate from invoice currency to company currency, rounded to 6 decimals."""
-        return round(1 / invoice.invoice_currency_rate, 6)
+        """Return the exchange rate: 1 [invoice currency] = X TRY, rounded to 6 decimals."""
+        company_currency_to_try_rate = self.env['res.currency']._get_conversion_rate(
+            invoice.company_id.currency_id,
+            self.env.ref('base.TRY'),
+            invoice.company_id,
+            invoice.invoice_date
+            )
+
+        return float_round(company_currency_to_try_rate / invoice.invoice_currency_rate, 6)
 
     def _add_invoice_payment_means_nodes(self, document_node, vals):
         # EXTENDS account.edi.xml.ubl_21
@@ -205,10 +221,11 @@ class AccountEdiXmlUblTr(models.AbstractModel):
 
     def _add_invoice_exchange_rate_nodes(self, document_node, vals):
         invoice = vals['invoice']
-        if vals['currency_id'] != vals['company_currency_id']:
+
+        if vals['currency_name'] != 'TRY':
             document_node['cac:PricingExchangeRate'] = {
                 'cbc:SourceCurrencyCode': {'_text': vals['currency_name']},
-                'cbc:TargetCurrencyCode': {'_text': vals['company_currency_id'].name},
+                'cbc:TargetCurrencyCode': {'_text': 'TRY'},
                 'cbc:CalculationRate': {'_text': self._l10n_tr_get_currency_conversion_rate(invoice)},
                 'cbc:Date': {'_text': invoice.invoice_date},
             }
@@ -703,25 +720,18 @@ class AccountEdiXmlUblTr(models.AbstractModel):
         return party_node
 
     def _get_party_identification_node_list(self, partner):
-        official_categories = partner.category_id._get_l10n_tr_official_categories()
-        return [
+        nodes = [
             {
                 'cbc:ID': {
                     '_text': partner.vat,
                     'schemeID': 'VKN' if partner.is_company else 'TCKN',
                 },
             },
-            *(
-                {
-                    'cbc:ID': {
-                        '_text': category.name,
-                        'schemeID': category.parent_id.name,
-                    },
-                }
-                for category in partner.category_id
-                if category.parent_id in official_categories
-            ),
         ]
+        for key, scheme_id in [('TR_MERSIS', 'MERSISNO'), ('TR_TICARET_SICIL', 'TICARETSICILNO'), ('TR_SUBE', 'SUBENO')]:
+            if value := partner._get_additional_identifier(key):
+                nodes.append({'cbc:ID': {'_text': value, 'schemeID': scheme_id}})
+        return nodes
 
     def _get_tax_category_node(self, vals):
         """Overrides UBL 21 to returns the tax category node for a line or invoice, including TR-specific fields.
@@ -922,6 +932,12 @@ class AccountEdiXmlUblTr(models.AbstractModel):
         if line_node.get('cac:Item', {}).get('cac:StandardItemIdentification'):
             line_node['cac:Item']['cac:StandardItemIdentification'] = None
 
+    def _export_invoice_constraints(self, invoice, vals):
+        constraints = super()._export_invoice_constraints(invoice, vals)
+        if invoice.state == 'draft' and invoice.l10n_tr_is_export_invoice:
+            constraints['ubl20_invoice_name_required'] = False
+        return constraints
+
     def _add_document_line_tax_category_nodes(self, line_node, vals):
         # No InvoiceLine/Item/ClassifiedTaxCategory in Turkey
         pass
@@ -981,9 +997,16 @@ class AccountEdiXmlUblTr(models.AbstractModel):
     def _import_retrieve_partner_vals(self, tree, role):
         # EXTENDS account.edi.xml.ubl_20
         partner_vals = super()._import_retrieve_partner_vals(tree, role)
-        partner_vals.update({
-            'vat': self._find_value(f'.//cac:Accounting{role}Party/cac:Party//cac:PartyIdentification//cbc:ID[string-length(text()) > 5]', tree),
-        })
+
+        # if parent class didn't find a name the customer is most likely an individual
+        first_name = self._find_value(f'.//cac:{role}Party/cac:Party/cac:Person/cbc:FirstName', tree) or ""
+        family_name = self._find_value(f'.//cac:{role}Party/cac:Party/cac:Person/cbc:FamilyName', tree) or ""
+        partner_vals['name'] = f"{first_name} {family_name}".strip()
+
+        vat = self._find_value(f'.//cac:{role}Party//cac:PartyIdentification//cbc:ID[string-length(text()) > 5]', tree)
+        if vat:
+            partner_vals['vat'] = vat
+
         return partner_vals
 
     def _import_document_allowance_charges(self, tree, record, tax_type, qty_factor=1):

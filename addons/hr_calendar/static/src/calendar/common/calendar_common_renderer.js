@@ -1,21 +1,25 @@
 import { AttendeeCalendarCommonRenderer } from "@calendar/views/attendee_calendar/common/attendee_calendar_common_renderer";
-import { AttendeeCalendarRenderer } from "@calendar/views/attendee_calendar/attendee_calendar_renderer";
 import { user } from "@web/core/user";
 import { patch } from "@web/core/utils/patch";
-import { onWillUpdateProps, onPatched } from "@odoo/owl";
+import { onPatched, t } from "@odoo/owl";
+import { calendarRendererProps } from "@web/views/calendar/calendar_renderer";
+import { calendarCommonRendererProps } from "@web/views/calendar/calendar_common/calendar_common_renderer";
 
 const { DateTime } = luxon;
 
 patch(AttendeeCalendarCommonRenderer.prototype, {
 	setup() {
 		super.setup(...arguments);
-		onWillUpdateProps(() => {
-			this.fc.api.setOption("businessHours", this.props.model.workingHours)
-		});
+        let previousBusinessHours;
 		onPatched(() => {
+            const businessHours = this.props.model.workingHours;
+            if (businessHours !== previousBusinessHours) {
+                previousBusinessHours = businessHours;
+                this.fc().setOption("businessHours", businessHours);
+            }
             // Force to rerender the FC.
             // As it doesn't redraw the header when the event's data changes
-            this.fc.api.render();
+            this.fc().render();
         });
 	},
 	get options() {
@@ -87,21 +91,15 @@ patch(AttendeeCalendarCommonRenderer.prototype, {
             showLine,
             userFilterActive: this.props.model.data.userFilterActive,
             iconMap: {
-                "office": "fa-building",
-                "home": "fa-home",
+                "office": "business",
+                "home": "home",
             },
         }
     }
 });
 
-AttendeeCalendarRenderer.props = {
-    ...AttendeeCalendarRenderer.props,
-    openWorkLocationWizard: { type: Function, optional: true },
-}
-AttendeeCalendarCommonRenderer.props = {
-    ...AttendeeCalendarCommonRenderer.props,
-    openWorkLocationWizard: { type: Function, optional: true }
-};
+calendarRendererProps.openWorkLocationWizard = t.function().optional();
+calendarCommonRendererProps.openWorkLocationWizard = t.function().optional();
 
 AttendeeCalendarCommonRenderer.WorklocationTemplate = "hr_calendar.CalendarCommonRenderer.worklocation";
 AttendeeCalendarCommonRenderer.ButtonWorklocationTemplate = "hr_calendar.CalendarCommonRenderer.buttonWorklocation";

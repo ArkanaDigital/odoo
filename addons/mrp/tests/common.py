@@ -8,6 +8,12 @@ from odoo.addons.stock.tests.common import TestStockCommon
 
 class TestMrpCommon(TestStockCommon):
 
+    _test_user_groups = (
+        'mrp.group_mrp_user',
+    )
+
+    _test_user_name = 'Test MRP/Stock User'
+
     @classmethod
     def generate_mo(cls, tracking_final='none', tracking_base_1='none', tracking_base_2='none', qty_final=5, qty_base_1=4, qty_base_2=1, picking_type_id=False):
         """ This function generate a manufacturing order with one final
@@ -194,6 +200,7 @@ class TestMrpCommon(TestStockCommon):
                 Command.create({'name': 'Weld Machine', 'workcenter_id': cls.workcenter_1.id, 'time_cycle': 18, 'sequence': 2}),
             ],
             'type': 'normal',
+            'continuous': True,
             'bom_line_ids': [
                 Command.create({'product_id': cls.product_5.id, 'product_qty': 2}),
                 Command.create({'product_id': cls.product_4.id, 'product_qty': 8}),
@@ -269,7 +276,8 @@ class TestMrpCommon(TestStockCommon):
 
     def full_availability(self):
         """set full availability for all calendars"""
-        calendar = self.env['resource.calendar'].search([])
+        # setup master-data: resource.calendar edits require HR/system rights
+        calendar = self.env['resource.calendar'].sudo().search([])
         calendar.write({'attendance_ids': [(5, 0, 0)]})
         calendar.write({'attendance_ids': [
             (0, 0, {'dayofweek': '0', 'hour_from': 0, 'hour_to': 24}),

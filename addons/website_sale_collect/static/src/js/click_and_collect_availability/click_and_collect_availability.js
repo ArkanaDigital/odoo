@@ -1,4 +1,4 @@
-import { Component, proxy } from '@odoo/owl';
+import { Component, useProps, proxy, t } from '@odoo/owl';
 import { rpc } from '@web/core/network/rpc';
 import { registry } from '@web/core/registry';
 import { useBus, useService } from '@web/core/utils/hooks';
@@ -9,22 +9,19 @@ import {
 
 export class ClickAndCollectAvailability extends Component {
     static template = 'website_sale_collect.ClickAndCollectAvailability';
-    static props = {
-        productId: Number,
-        active: { type: Boolean, optional: true },
-        zipCode: { type: String, optional: true },
-        selectedLocationData: { type: Object, optional: true },
-        inStoreStockData: { type: Object, optional: true },
-        deliveryStockData: { type: Object, optional: true },
-        showSelectStoreButton: { type: Boolean, optional: true },
-        countryCode: { type: String, optional: true },
-        deliveryMethodId: Number,
-        deliveryMethodType: String,
-        deliveryMethodName: String,
-    }
-    static defaultProps = {
-        active: true,
-    }
+    props = useProps({
+        productId: t.number(),
+        active: t.boolean().optional(true),
+        zipCode: t.string().optional(),
+        selectedLocationData: t.object().optional(),
+        inStoreStockData: t.object().optional(),
+        deliveryStockData: t.object().optional(),
+        showSelectStoreButton: t.boolean().optional(),
+        countryCode: t.string().optional(),
+        deliveryMethodId: t.number(),
+        deliveryMethodType: t.string(),
+        deliveryMethodName: t.string(),
+    });
     setup() {
         super.setup();
         this.dialog = useService('dialog');
@@ -55,6 +52,8 @@ export class ClickAndCollectAvailability extends Component {
         this.state.deliveryStockData = combinationInfo.delivery_stock_data;
         this.state.active = combinationInfo.is_combination_possible;
         this.state.uomId = combinationInfo.uom_id;
+        this.state.hasOutOfStockMessage = combinationInfo.has_out_of_stock_message;
+        this.state.outOfStockMessage = combinationInfo.out_of_stock_message;
     }
 
     /**
@@ -66,8 +65,17 @@ export class ClickAndCollectAvailability extends Component {
         if (!this.state.active) { // Combination is not possible.
             return; // Do not open the location selector.
         }
+        this.dialog.add(LocationSelectorDialog, this._getLocationSelectorDialogProps());
+    }
+
+    /**
+     * Build the props to pass to the LocationSelectorDialog.
+     *
+     * @return {Object} Props for LocationSelectorDialog.
+     */
+    _getLocationSelectorDialogProps() {
         const { zip_code, country_code, id } = this.state.selectedLocationData;
-        this.dialog.add(LocationSelectorDialog, {
+        return {
             isProductPage: true,
             isFrontend: true,
             productId: this.state.productId,
@@ -77,16 +85,23 @@ export class ClickAndCollectAvailability extends Component {
             countryCode: country_code || this.props.countryCode,
             deliveryMethodId: this.props.deliveryMethodId,
             deliveryMethodType: this.props.deliveryMethodType,
-            save: async location => {
-                this.state.selectedLocationData = location;
-                this.state.inStoreStockData = location.additional_data.in_store_stock_data;
-                const jsonLocation = JSON.stringify(location);
-                // Set the in-store delivery method and the selected pickup location on the order.
-                await rpc(
-                    '/shop/set_click_and_collect_location', { pickup_location_data: jsonLocation }
-                );
-            },
-        });
+            save: this._saveSelectedLocation.bind(this),
+        }
+    }
+
+    /**
+     * Saves the selected pickup location and updates the current order.
+     *
+     * @param {Object} location - The location selected by the user.
+     */
+    async _saveSelectedLocation(location) {
+        this.state.selectedLocationData = location;
+        this.state.inStoreStockData = location.additional_data.in_store_stock_data;
+        const jsonLocation = JSON.stringify(location);
+        // Set the in-store delivery method and the selected pickup location on the order.
+        await rpc(
+            '/shop/set_click_and_collect_location', { pickup_location_data: jsonLocation }
+        );
     }
 
 }

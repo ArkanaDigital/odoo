@@ -3,13 +3,12 @@
 from freezegun import freeze_time
 
 from odoo import fields, _
-from odoo.addons.base.tests.common import HttpCaseWithUserDemo
 from odoo.addons.mail.tools.discuss import Store
 from odoo.addons.website_livechat.tests.common import TestLivechatCommon
-from odoo.tests.common import new_test_user
+from odoo.tests.common import HttpCase, new_test_user
 
 
-class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
+class TestLivechatBasicFlowHttpCase(HttpCase, TestLivechatCommon):
     def test_channel_created_on_user_interaction(self):
         self.start_tour('/', 'im_livechat_request_chat', login=None)
         channel = self.env["discuss.channel"].search(
@@ -169,6 +168,8 @@ class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
                     {
                         "ai_agent_id": False,
                         'ai_session_ids': [],
+                        "avatar_128_access_token": channel._get_avatar_128_access_token(),
+                        "avatar_cache_key": channel.avatar_cache_key,
                         "channel_type": "livechat",
                         "chatbot": False,
                         "chatbot_current_step_id": False,
@@ -204,6 +205,7 @@ class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
                         "channel_role": False,
                         "create_date": fields.Datetime.to_string(operator_member.create_date),
                         "id": operator_member.id,
+                        "invitation_sent_dt": False,
                         "livechat_member_type": "agent",
                         "last_seen_dt": False,
                         "partner_id": self.operator.partner_id.id,
@@ -214,6 +216,7 @@ class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
                         "channel_role": False,
                         "create_date": fields.Datetime.to_string(guest_member.create_date),
                         "id": guest_member.id,
+                        "invitation_sent_dt": False,
                         "livechat_member_type": "visitor",
                         "last_seen_dt": False,
                         "guest_id": guest.id,
@@ -283,7 +286,6 @@ class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
                         "id": self.operator.id,
                         "im_status": "online",
                         "im_status_access_token": self.operator._get_im_status_access_token(),
-                        "employee_ids": [],
                         "partner_id": self.operator.partner_id.id,
                     },
                 ),
@@ -348,6 +350,8 @@ class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
                 {
                     "ai_agent_id": False,
                     "ai_session_ids": [],
+                    "avatar_128_access_token": channel._get_avatar_128_access_token(),
+                    "avatar_cache_key": channel.avatar_cache_key,
                     "channel_type": "livechat",
                     "chatbot": False,
                     "chatbot_current_step_id": False,
@@ -380,6 +384,7 @@ class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
                     "custom_notifications": False,
                     "guest_id": guest.id,
                     "id": guest_member.id,
+                    "invitation_sent_dt": False,
                     "last_interest_dt": fields.Datetime.to_string(guest_member.last_interest_dt),
                     "last_seen_dt": False,
                     "livechat_member_type": "visitor",
@@ -436,7 +441,7 @@ class TestLivechatBasicFlowHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
         self.assertEqual(channel_info["livechat_visitor_id"], False)
 
 
-class TestLivechatBasicFlowHttpCaseMobile(HttpCaseWithUserDemo, TestLivechatCommon):
+class TestLivechatBasicFlowHttpCaseMobile(HttpCase, TestLivechatCommon):
     browser_size = '375x667'
     touch_enabled = True
 

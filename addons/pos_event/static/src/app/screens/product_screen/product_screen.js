@@ -4,6 +4,7 @@ import { patch } from "@web/core/utils/patch";
 import { EventConfiguratorPopup } from "@pos_event/app/components/popup/event_configurator_popup/event_configurator_popup";
 import { EventRegistrationPopup } from "../../components/popup/event_registration_popup/event_registration_popup";
 import { EventSlotSelectionPopup } from "../../components/popup/event_slot_selection_popup/event_slot_selection_popup";
+import { _t } from "@web/core/l10n/translation";
 
 const { DateTime } = luxon;
 
@@ -16,8 +17,9 @@ patch(ProductScreen.prototype, {
         if (!product.event_id) {
             return super.getProductImage(product);
         }
-
-        return `/web/image?model=event.event&id=${product.event_id.id}&field=image_1024&unique=${product.event_id.write_date}`;
+        return product.event_id.image_1024
+            ? `/web/image?model=event.event&id=${product.event_id.id}&field=image_1024&unique=${product.event_id.write_date}`
+            : false;
     },
     async addProductToOrder(product) {
         if (!product.event_id) {
@@ -25,7 +27,7 @@ patch(ProductScreen.prototype, {
         }
 
         if (product.event_id.seats_available === 0 && product.event_id.seats_limited) {
-            this.notification.add("No more seats available for this event", {
+            this.notification.add(_t("No more seats available for this event"), {
                 type: "danger",
             });
             return;
@@ -90,7 +92,7 @@ patch(ProductScreen.prototype, {
                 Object.values(av).some((a) => (typeof a === "number" && a > 0) || a === "unlimited")
             );
             if (!isAvailable || eventSeats === 0) {
-                this.notification.add("All slots are booked out for this event.", {
+                this.notification.add(_t("All slots are booked out for this event."), {
                     type: "danger",
                 });
                 return;

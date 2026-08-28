@@ -26,6 +26,8 @@ const threadPatch = {
             },
             inverse: "threadAsFirstUnread",
         });
+        // Send the mark as read and the mark as unread one at a time: the server
+        // applies them in the order it receives them, not the order they are sent.
         this.markReadSequential = useSequential();
         this.markingAsRead = false;
         this.scrollUnread = true;
@@ -39,6 +41,27 @@ const threadPatch = {
         }
         return res;
     },
+    /**
+     * Executes a mark as read after it was requested, possibly queued behind
+     * an in-flight one: re-validates against the current state before the RPC.
+     *
+     * @param {import("models").Message} newestPersistentMessage message to mark
+     *  as read, captured when the mark as read was requested
+     */
+    async handleMarkAsRead(newestPersistentMessage) {
+        if (!this.channel?.self_member_id || this.isReadBySelf(newestPersistentMessage)) {
+            return;
+        }
+        this.markingAsRead = true;
+        return this.markAsReadRpc(newestPersistentMessage);
+    },
+    /** @param {import("models").Message} message */
+    isReadBySelf(message) {
+        return (
+            this.channel?.self_member_id?.seen_message_id?.id >= message.id &&
+            this.channel?.self_member_id?.new_message_separator > message.id
+        );
+    },
     get isUnread() {
         return this.channel?.self_member_id?.message_unread_counter > 0 || super.isUnread;
     },
@@ -48,31 +71,33 @@ const threadPatch = {
         if (!this.channel?.self_member_id) {
             return;
         }
+        // Captured at request time: newer messages have not been validated as
+        // read by the caller, their own triggers request another mark as read.
         const newestPersistentMessage = this.newestPersistentOfAllMessage;
         if (!newestPersistentMessage) {
             return;
         }
-        const alreadyReadBySelf =
-            this.channel?.self_member_id.seen_message_id?.id >= newestPersistentMessage.id &&
-            this.channel?.self_member_id.new_message_separator > newestPersistentMessage.id;
-        if (alreadyReadBySelf) {
+        if (this.isReadBySelf(newestPersistentMessage)) {
             return;
         }
-        this.markReadSequential(async () => {
-            this.markingAsRead = true;
-            return rpc(
-                "/discuss/channel/mark_as_read",
-                {
-                    channel_id: this.id,
-                    last_message_id: newestPersistentMessage.id,
-                },
-                { silent: true }
-            ).catch((e) => {
-                if (e.code !== 404) {
-                    throw e;
-                }
-            });
-        }).then(() => (this.markingAsRead = false));
+        this.markReadSequential(() => this.handleMarkAsRead(newestPersistentMessage)).then(
+            () => (this.markingAsRead = false)
+        );
+    },
+    /** @param {import("models").Message} newestPersistentMessage */
+    markAsReadRpc(newestPersistentMessage) {
+        return rpc(
+            "/discuss/channel/mark_as_read",
+            {
+                channel_id: this.id,
+                last_message_id: newestPersistentMessage.id,
+            },
+            { silent: true }
+        ).catch((e) => {
+            if (e.code !== 404) {
+                throw e;
+            }
+        });
     },
     /** @override */
     get needactionCounter() {

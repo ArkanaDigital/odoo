@@ -1,6 +1,7 @@
 import { expect, getFixture, test } from "@odoo/hoot";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { click, hover, press, queryAllTexts, queryOne } from "@odoo/hoot-dom";
-import { animationFrame, Deferred, runAllTimers } from "@odoo/hoot-mock";
+import { animationFrame, runAllTimers } from "@odoo/hoot-mock";
 
 import {
     clickFieldDropdown,
@@ -234,7 +235,7 @@ test("[Offline] Many2ManyTagsField", async () => {
     await clickSave();
 
     // The created record will be save the next time we are online
-    await contains(`.o_menu_systray .o_nav_entry .fa-chain-broken`).click();
+    await contains(`.o_menu_systray .o_nav_entry [data-icon="link_off"]`).click();
     expect(queryAllTexts`.o-dropdown--menu .o_offline_systray_content div`).toEqual([
         "PARTNER",
         "first record",
@@ -245,7 +246,7 @@ test("[Offline] Many2ManyTagsField", async () => {
     // go online and save the record.
     await setOffline(false);
 
-    expect(getService("offline").offline).toBe(false);
+    expect(getService(OfflinePlugin).isOffline()).toBe(false);
     await expect.waitForSteps(["web_save"]); // We sync when the connection returns
 });
 
@@ -594,75 +595,6 @@ test("Many2ManyTagsField view a domain on mobile", async () => {
 
     expect(".o_field_many2many_tags .badge").toHaveCount(2);
 
-    expect(queryAllTexts(".badge")).toEqual(["gold", "silver"]);
-});
-
-test.tags("desktop");
-test("use binary field as the domain on desktop", async () => {
-    Partner._fields.domain = fields.Binary();
-    Partner._records[0].domain = '[["id", "<", 50]]';
-    Partner._records[0].timmy = [12];
-    PartnerType._records.push({ id: 99, name: "red", color: 8 });
-
-    await mountView({
-        type: "form",
-        resModel: "partner",
-        arch: `
-            <form>
-                <field name="timmy" widget="many2many_tags" domain="domain"/>
-                <field name="domain" invisible="1"/>
-            </form>`,
-        resId: 1,
-    });
-
-    expect(".o_field_many2many_tags .badge").toHaveCount(1);
-    expect(queryAllTexts(".badge")).toEqual(["gold"]);
-
-    await clickFieldDropdown("timmy");
-
-    expect(".o-autocomplete--dropdown-menu li").toHaveCount(3);
-    expect(queryAllTexts(".o-autocomplete--dropdown-menu li")).toEqual([
-        "gold",
-        "silver",
-        "Search more...",
-    ]);
-    expect(".o-autocomplete--dropdown-menu li a:eq(0)").toHaveText("gold");
-
-    await clickFieldDropdownItem("timmy", "silver");
-
-    expect(".o_field_many2many_tags .badge").toHaveCount(2);
-    expect(queryAllTexts(".badge")).toEqual(["gold", "silver"]);
-});
-
-test.tags("mobile");
-test("use binary field as the domain on mobile", async () => {
-    Partner._fields.domain = fields.Binary();
-    Partner._records[0].domain = '[["id", "<", 50]]';
-    Partner._records[0].timmy = [12];
-    PartnerType._records.push({ id: 99, name: "red", color: 8 });
-
-    await mountView({
-        type: "form",
-        resModel: "partner",
-        arch: `
-            <form>
-                <field name="timmy" widget="many2many_tags" domain="domain"/>
-                <field name="domain" invisible="1"/>
-            </form>`,
-        resId: 1,
-    });
-    expect(".o_field_many2many_tags .badge").toHaveCount(1);
-    expect(queryAllTexts(".badge")).toEqual(["gold"]);
-
-    await clickFieldDropdown("timmy");
-
-    expect(".o_kanban_record span").toHaveCount(2);
-    expect(queryAllTexts(".o_kanban_record span")).toEqual(["gold", "silver"]);
-    expect(".o_kanban_record span:eq(0)").toHaveText("gold");
-
-    await clickFieldDropdownItem("timmy", "silver");
-
-    expect(".o_field_many2many_tags .badge").toHaveCount(2);
     expect(queryAllTexts(".badge")).toEqual(["gold", "silver"]);
 });
 
@@ -1661,7 +1593,7 @@ test("save a record with an empty many2many_tags required", async () => {
 test("set a required many2many_tags and save directly", async () => {
     let def;
     onRpc("web_read", async () => {
-        await def;
+        await def.promise;
     });
     await mountView({
         type: "form",
@@ -1671,7 +1603,7 @@ test("set a required many2many_tags and save directly", async () => {
 
     expect(".o_tag").toHaveCount(0);
 
-    def = new Deferred();
+    def = Promise.withResolvers();
     await clickFieldDropdown("timmy");
     await clickFieldDropdownItem("timmy", "gold");
     expect(".o_tag").toHaveCount(0);
@@ -2134,6 +2066,44 @@ test("Many2ManyTagsField with on_tag_click option overrides color edition", asyn
     expect(".o_form_status_indicator_buttons").not.toBeVisible();
 });
 
+test("Many2ManyTagsField: editing tags via dialog on dirty record", async () => {
+    PartnerType._views = {
+        form: `<form><field name="name"/></form>`,
+    };
+    Partner._records[0].timmy = [12];
+    Partner._fields.timmy.onChange = () => {};
+
+    onRpc("get_formview_id", () => false);
+    onRpc("web_save", () => expect.step("web_save"));
+    onRpc("web_read", () => expect.step("web_read"));
+
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        arch: `
+            <form>
+                <field name="name"/>
+                <field name="timmy" widget="many2many_tags" options="{'on_tag_click': 'open_form'}"/>
+            </form>`,
+        resId: 1,
+    });
+
+    expect.verifySteps(["web_read"]);
+
+    await contains(".o_field_widget[name=name] input").edit("new name");
+
+    await contains(".o_tag.badge").click();
+    expect(".o_dialog").toHaveCount(1);
+
+    expect.verifySteps(["web_save", "web_read"]); // save main record, read the dialog
+
+    await contains(".o_dialog .o_field_widget[name=name] input").edit("gold edited");
+    await clickSave();
+
+    expect(".o_dialog").toHaveCount(0);
+    expect.verifySteps(["web_save", "web_read"]); // save dialog, reload main record
+});
+
 test.tags("mobile");
 test("Many2ManyTagsField placeholder should be correct on mobile", async () => {
     await mountView({
@@ -2207,7 +2177,7 @@ test("Many2ManyTagsField: press backspace multiple times to remove tag", async (
     Partner._records[0].timmy = [12, 14];
     Partner._fields.timmy.onChange = () => {};
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("onchange", ({ args }) => {
         expect.step(`onchange ${JSON.stringify(args[1].timmy)}`);
     });
@@ -2346,7 +2316,7 @@ test("many2many_tags widget enforces limit in desktop form view", async () => {
     expect("article.o_kanban_record:contains('gold')").toHaveCount(1); // New screen with list of tags
 
     // When coming back we should see all tags
-    await click(".modal-header button.oi-arrow-left");
+    await click(".modal-header button[data-icon='west']");
     expect(".o_field_many2many_tags .o_tag").toHaveCount(4);
 });
 

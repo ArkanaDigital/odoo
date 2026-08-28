@@ -9,9 +9,18 @@ from odoo.addons.website_sale.tests.common import WebsiteSaleCommon
 
 @tagged("post_install", "-at_install")
 class TestSaleOrder(WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     def test_delivery_methods_match_order_company(self):
-        company_1 = self.env["res.company"].create({"name": "Test Company 1"})
-        company_2 = self.env["res.company"].create({"name": "Test Company 2"})
+        company_1 = self.env["res.company"].sudo().create({"name": "Test Company 1"})
+        company_2 = self.env["res.company"].sudo().create({"name": "Test Company 2"})
+        self.env.user.sudo().company_ids |= company_1 | company_2
         product_delivery_1, product_delivery_2 = self.env["product.product"].create([
             {"name": "Delivery Product 1", "type": "service", "company_id": company_1.id},
             {"name": "Delivery Product 2", "type": "service", "company_id": company_2.id},
@@ -46,60 +55,9 @@ class TestSaleOrder(WebsiteSaleCommon):
         self.assertTrue(self.cart.website_id)
         self.assertEqual(self.cart.website_id, invoice.website_id)
 
-    def test_unregistered_customer_archiving(self):
-        self.cart._archive_partner_if_no_user()
-        self.assertFalse(self.cart.partner_id.active)
-
-        # Customers with parent company record (if a parent_name is provided)
-        customer = self.env["res.partner"].create({"parent_name": "Company", "name": "Cuzco"})
-        billing = self.env["res.partner"].create({
-            "parent_id": customer.parent_id.id,
-            "type": "invoice",
-            "name": "Cuzco Billing",
-        })
-        cart = self._create_so(partner_id=customer.id)
-        self.assertEqual(cart.partner_invoice_id, billing)
-
-        cart._archive_partner_if_no_user()
-        self.assertFalse(customer.active)
-        self.assertFalse(billing.active)
-        self.assertFalse(customer.parent_id.active)
-
-        # Customers without a parent company.
-        customer = self.env["res.partner"].create({"name": "Simple"})
-        billing = self.env["res.partner"].create({
-            "parent_id": customer.id,
-            "type": "invoice",
-            "name": "Simple Billing",
-        })
-        cart = self._create_so(partner_id=customer.id)
-        self.assertEqual(cart.partner_invoice_id, billing)
-
-        cart._archive_partner_if_no_user()
-        self.assertFalse(customer.active)
-        self.assertFalse(billing.active)
-
-    def test_customer_archiving_if_has_user(self):
-        self._create_new_portal_user(login="whatever", partner_id=self.cart.partner_id.id)
-        self.cart._archive_partner_if_no_user()
-        self.assertTrue(
-            self.cart.partner_id.active, "Registered customers shouldn't be archived on payment"
-        )
-
-        # Case when SO is toward the parent company and one of its contact has a user
-        customer = self.env["res.partner"].create({"parent_name": "Company", "name": "Cuzco"})
-        self._create_new_portal_user(login=f"whatever-{customer.id}", partner_id=customer.id)
-        self.assertNotEqual(customer, customer.parent_id)
-
-        cart = self._create_so(partner_id=customer.parent_id.id)
-        cart._archive_partner_if_no_user()
-        self.assertTrue(
-            self.cart.partner_id.active,
-            "Registered company shouldn't be archived if any contact has a user",
-        )
-
     def test_change_company_on_sale_order(self):
-        company = self.env["res.company"].create({"name": "Test Company"})
+        company = self.env["res.company"].sudo().create({"name": "Test Company"})
+        self.env.user.sudo().company_ids |= company
         self.cart.action_confirm()
         with self.assertRaises(UserError):
             self.cart.write({"company_id": company.id})

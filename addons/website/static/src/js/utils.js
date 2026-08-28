@@ -1,10 +1,7 @@
-import { appTranslateFn } from "@web/core/l10n/translation";
-import { App, Component } from "@odoo/owl";
-import { getTemplate } from "@web/core/templates";
-import { UrlAutoComplete } from "@website/components/autocomplete_with_pages/url_autocomplete";
 import * as urlUtils from "@html_editor/utils/url";
-import { patch } from "@web/core/utils/patch";
 import { rpc } from "@web/core/network/rpc";
+import { patch } from "@web/core/utils/patch";
+import { UrlAutoComplete } from "@website/components/autocomplete_with_pages/url_autocomplete";
 
 /**
  * Allows to load anchors from a page.
@@ -58,35 +55,42 @@ function loadAnchors(url, body) {
 }
 
 /**
- * Allows the given input to propose existing website URLs.
+ * Creates an Owl root for the given component using the provided app, mounts it
+ * into a new container appended to the document body, and returns a cleanup
+ * function that destroys the root and removes the container.
  *
- * @param {HTMLInputElement} input
+ * @param {import("@odoo/owl").App} app
+ * @param {typeof import("@odoo/owl").Component} ComponentClass the OWL component to mount
+ * @param {Object} props
+ * @returns {Function} cleanup function
  */
-function autocompleteWithPages(input, options = {}, env = undefined) {
-    const owlApp = new App({
-        env: env || Component.env,
-        dev: env ? env.debug : Component.env.debug,
-        getTemplate,
-        translatableAttributes: ["data-tooltip"],
-        translateFn: appTranslateFn,
-    });
-
+export function mountAutocompleteComponent(app, ComponentClass, props) {
     const container = document.createElement("div");
     container.classList.add("ui-widget", "ui-autocomplete", "ui-widget-content", "border-0");
     document.body.appendChild(container);
-    owlApp
-        .createRoot(UrlAutoComplete, {
-            props: {
-                options,
-                loadAnchors,
-                targetDropdown: input,
-            },
-        })
-        .mount(container);
+
+    const root = app.createRoot(ComponentClass, { props });
+    root.mount(container);
+
     return () => {
-        owlApp.destroy();
+        root.destroy();
         container.remove();
     };
+}
+
+/**
+ * Allows the given input to propose existing website URLs.
+ *
+ * @param {import("@odoo/owl").App} app
+ * @param {HTMLInputElement} input
+ * @param {Object} [options]
+ */
+function autocompleteWithPages(app, input, options = {}) {
+    return mountAutocompleteComponent(app, UrlAutoComplete, {
+        options,
+        loadAnchors,
+        targetDropdown: input,
+    });
 }
 
 /**
@@ -138,6 +142,18 @@ async function loadOptionsSource(term, body, onSelect) {
     }
 
     return choices;
+}
+
+export async function isImageFile(file) {
+    const header = new Uint8Array(await file.slice(0, 512).arrayBuffer());
+    const start = String.fromCharCode(...header);
+    return (
+        start.startsWith("\x89PNG") ||
+        start.startsWith("\xff\xd8\xff") ||
+        start.startsWith("GIF8") ||
+        (start.startsWith("RIFF") && start.slice(8, 12) === "WEBP") ||
+        /<svg[\s>]/i.test(start)
+    );
 }
 
 /**
@@ -315,17 +331,16 @@ export function cloneContentEls(content, keepScripts = false) {
  * @returns {string} The slugified string.
  */
 export function slugify(value) {
-    // `NFKD` as in `http_routing` python `slugify()`
+    // `NFKC` as in `http_routing` python `slugify()`
     return !value
         ? ""
         : value
               .trim()
-              .normalize("NFKD")
+              .normalize("NFKC")
               .toLowerCase()
-              .replace(/['’]/g, "-") // Replace apostrophes with hyphens
-              .replace(/\s+/g, "-") // Replace spaces with -
-              .replace(/[^\w-]+/g, "") // Remove all non-word chars
-              .replace(/--+/g, "-"); // Replace multiple - with single -
+              .replace(/[\p{P}\s]+/gu, "-") // Replace punctuation and spaces with hyphens
+              .replace(/[^\p{L}\p{M}\p{N}\w-]+/gu, "") // Remove all non-unicode-word chars
+              .replace(/^-+|-+$/g, ""); // Remove leading and trailing hyphens
 }
 
 patch(urlUtils, {

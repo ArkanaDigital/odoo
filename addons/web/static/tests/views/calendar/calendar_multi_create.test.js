@@ -23,10 +23,10 @@ import {
 import { selectDateRange } from "./calendar_test_helpers";
 
 import { Domain } from "@web/core/domain";
-import { notificationService } from "@web/core/notifications/notification_service";
 import { range } from "@web/core/utils/numbers";
 import { CalendarModel } from "@web/views/calendar/calendar_model";
 import { WebClient } from "@web/webclient/webclient";
+import { NotificationPlugin } from "@web/core/notifications/notification_plugin";
 
 class Event extends models.Model {
     name = fields.Char();
@@ -445,9 +445,9 @@ test("multi_create: basic creation (datetime field)", async () => {
     await runAllTimers();
     await animationFrame();
     await expect(".o_popover").toHaveCount(1);
-    await expect(".o_popover .fa-clock-o").toHaveCount(1);
-    await expect(".o_popover .list-group-item:has(.fa-clock-o)").toHaveText(
-        "08:00 - 11:30 (3 hours, 30 minutes)"
+    await expect(".o_popover .o_popover_body div:eq(1) [data-icon='schedule']").toHaveCount(1);
+    await expect(".o_popover .o_popover_body div:eq(1)").toHaveText(
+        "08:00 - 11:30\n(3 hours, 30 minutes)"
     );
     await expect(".o_popover .o_field_widget[name='name']").toHaveText("Time off");
     await expect(".o_popover .o_field_widget[name='type']").toHaveText("Event Type 3");
@@ -457,9 +457,9 @@ test("multi_create: basic creation (datetime field)", async () => {
     await runAllTimers();
     await animationFrame();
     await expect(".o_popover").toHaveCount(1);
-    await expect(".o_popover .fa-clock-o").toHaveCount(1);
-    await expect(".o_popover .list-group-item:has(.fa-clock-o)").toHaveText(
-        "08:00 - 11:30 (3 hours, 30 minutes)"
+    await expect(".o_popover .o_popover_body div:eq(1) [data-icon='schedule']").toHaveCount(1);
+    await expect(".o_popover .o_popover_body div:eq(1)").toHaveText(
+        "08:00 - 11:30\n(3 hours, 30 minutes)"
     );
     await expect(".o_popover .o_field_widget[name='user_id']").toHaveText("user 3");
 
@@ -471,12 +471,10 @@ test("multi_create: basic creation (datetime field)", async () => {
 
 test.tags("desktop");
 test("multi_create: input validation (datetime field)", async () => {
-    patchWithCleanup(notificationService, {
-        start: () => ({
-            add: (message) => {
-                expect.step(message);
-            },
-        }),
+    patchWithCleanup(NotificationPlugin.prototype, {
+        add(message) {
+            expect.step(message);
+        },
     });
 
     onRpc("event", "create", ({ args: [records] }) => {
@@ -640,7 +638,7 @@ test("multi_create: delete", async () => {
     await drop(".fc-day[data-date='2019-04-03']");
     await animationFrame();
 
-    await contains(".o_multi_selection_buttons .btn .fa-trash").click();
+    await contains(".o_multi_selection_buttons .btn [data-icon='delete'].oi-filled").click();
     await animationFrame();
     expect(".o_dialog .modal-body").toHaveText(
         "Are you sure you want to delete the 3 selected records?"
@@ -684,12 +682,10 @@ test("multi_create: test onChange on form with no blur (input text)", async () =
 
 test.tags("desktop");
 test("multi_create: test onChange on TimePicker with no blur (input text)", async () => {
-    patchWithCleanup(notificationService, {
-        start: () => ({
-            add: (message) => {
-                expect.step(message);
-            },
-        }),
+    patchWithCleanup(NotificationPlugin.prototype, {
+        add(message) {
+            expect.step(message);
+        },
     });
 
     onRpc("event", "create", ({ args: [records] }) => {
@@ -804,13 +800,12 @@ test("multi_create: avoid trigger add/del event on specific element", async () =
 
 test.tags("desktop");
 test("multi_create: test required attribute in form", async () => {
-    patchWithCleanup(notificationService, {
-        start: () => ({
-            add: (message) => {
-                expect.step(message);
-            },
-        }),
-    });
+    patchWithCleanup(NotificationPlugin.prototype, {
+          add(message) {
+              expect.step(message);
+          },
+      });
+
 
     onRpc("event", "create", ({ args: [records] }) => {
         for (const record of records) {
@@ -854,7 +849,7 @@ test(`multi_create: no button "Delete" if no record selected`, async () => {
 
     await contains(".fc-day[data-date='2019-03-04']").click();
     expect(".o_multi_selection_buttons").toHaveCount(1);
-    expect(".o_multi_selection_buttons .btn .fa-trash").toHaveCount(0);
+    expect(".o_multi_selection_buttons .btn [data-icon='delete'].oi-filled").toHaveCount(0);
 });
 
 test.tags("desktop");

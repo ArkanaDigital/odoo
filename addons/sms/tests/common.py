@@ -1,7 +1,4 @@
-# -*- coding: utf-8 -*-
-
 from contextlib import contextmanager
-from freezegun import freeze_time
 from unittest.mock import patch
 
 from odoo import exceptions, tools
@@ -17,19 +14,6 @@ class MockSMS(common.HttpCase):
     def tearDown(self):
         super(MockSMS, self).tearDown()
         self._clear_sms_sent()
-
-    # ------------------------------------------------------------
-    # UTILITY MOCKS
-    # ------------------------------------------------------------
-
-    @contextmanager
-    def mock_datetime_and_now(self, mock_dt):
-        """ Used when synchronization date (using env.cr.now()) is important
-        in addition to standard datetime mocks. Used mainly to detect sync
-        issues. """
-        with freeze_time(mock_dt), \
-             patch.object(self.env.cr, 'now', lambda: mock_dt):
-            yield
 
     # ------------------------------------------------------------
     # GATEWAY MOCK
@@ -105,10 +89,10 @@ class MockSMS(common.HttpCase):
             self._new_sms += res.sudo()
             return res
 
-        def _sms_sms_send(records, unlink_failed=False, unlink_sent=True, raise_exception=False):
+        def _sms_sms_send(records, unlink_sent=True, raise_exception=False):
             if sms_allow_unlink:
-                return sms_send_origin(records, unlink_failed=unlink_failed, unlink_sent=unlink_sent, raise_exception=raise_exception)
-            return sms_send_origin(records, unlink_failed=False, unlink_sent=False, raise_exception=raise_exception)
+                return sms_send_origin(records, unlink_sent=unlink_sent, raise_exception=raise_exception)
+            return sms_send_origin(records, unlink_sent=False, raise_exception=raise_exception)
 
         with patch.object(SmsApi, '_contact_iap', side_effect=_contact_iap) as _sms_api_contact_iap_mock, \
                 patch.object(SmsSms, 'create', autospec=True, wraps=SmsSms, side_effect=_sms_sms_create) as sms_create, \

@@ -11,11 +11,16 @@ from odoo.fields import Domain
 from odoo.exceptions import UserError, ValidationError, RedirectWarning
 from odoo.models import Query, TableSQL
 from odoo.tools import SQL
+from odoo.tools.translate import mark_as_copy
 
 
 ACCOUNT_REGEX = re.compile(r'(?:(\S*\d+\S*))?(.*)')
 ACCOUNT_CODE_REGEX = re.compile(r'^[A-Za-z0-9.-]+$')
 ACCOUNT_CODE_NUMBER_REGEX = re.compile(r'(.*?)(\d*)(\D*?)$')
+ACCOUNT_TYPE_TO_JOURNAL_TYPE = {
+    'asset_cash': 'bank',
+    'liability_credit_card': 'credit',
+}
 
 
 class AccountAccount(models.Model):
@@ -33,7 +38,7 @@ class AccountAccount(models.Model):
             if account.account_type in ('asset_receivable', 'liability_payable') and not account.reconcile:
                 raise ValidationError(_('You cannot have a receivable/payable account that is not reconcilable. (account code: %s)', account.code))
 
-    name = fields.Char(string="Account Name", required=True, index='trigram', tracking=True, translate=True)
+    name = fields.Char(string="Account Name", required=True, index='trigram', tracking=True, translate=True, copy=mark_as_copy('name'))
     description = fields.Text(translate=True)
     currency_id = fields.Many2one('res.currency', string='Account Currency', tracking=True,
         help="Forces all journal items in this account to have a specific currency (i.e. bank journals). If no currency is set, entries can use any currency.")
@@ -116,9 +121,6 @@ class AccountAccount(models.Model):
     company_ids = fields.Many2many('res.company', string='Companies', required=True, readonly=False,
         default=lambda self: self.env.company)
     code_mapping_ids = fields.One2many(comodel_name='account.code.mapping', inverse_name='account_id')
-    # Ensure `code_mapping_ids` is written before `company_ids` so we don't trigger the `_ensure_code_is_unique`
-    # constraint when writing multiple code mappings and multiple companies in the same call to `write`.
-    code_mapping_ids.write_sequence = 19
     tag_ids = fields.Many2many(
         comodel_name='account.account.tag',
         relation='account_account_account_tag',
@@ -237,6 +239,7 @@ class AccountAccount(models.Model):
 
     @api.constrains('company_ids', 'account_type')
     def _check_company_consistency(self):
+        self.invalidate_recordset(['company_ids'])
         if accounts_without_company := self.filtered(lambda a: not a.sudo().company_ids):
             raise ValidationError(
                 self.env._(
@@ -244,12 +247,11 @@ class AccountAccount(models.Model):
                     accounts="\n".join(f"- {account.display_name}" for account in accounts_without_company),
                 ),
             )
-        if self.filtered(lambda a: a.account_type == 'asset_cash' and len(a.company_ids) > 1):
+
+        if self.filtered(lambda a: a.account_type == 'asset_cash' and len(a.sudo().company_ids) > 1):
             raise ValidationError(_("Bank & Cash accounts cannot be shared between companies."))
 
-        # Need to invalidate the sudo cache as we might have just written on `company_ids`
-        self.invalidate_recordset(fnames=['company_ids'])
-        for companies, accounts in self.grouped(lambda a: a.company_ids).items():
+        for companies, accounts in self.grouped(lambda a: a.sudo().company_ids).items():
             if self.env['account.move.line'].sudo().search_count([
                 ('account_id', 'in', accounts.ids),
                 '!', ('company_id', 'child_of', companies.ids)
@@ -280,8 +282,9 @@ class AccountAccount(models.Model):
     def _check_account_code(self):
         for account in self:
             if account.code and not re.match(ACCOUNT_CODE_REGEX, account.code):
-                raise ValidationError(_(
-                    "The account code can only contain alphanumeric characters, dots, and dashes."
+                raise ValidationError(self.env._(
+                    "The account code can only contain alphanumeric characters, dots, and dashes. (account code: %s)",
+                    account.code,
                 ))
 
     @api.constrains('account_type')
@@ -321,6 +324,7 @@ class AccountAccount(models.Model):
         # We re-compute it right away for the active company, as it is used by constraints while `code` is still protected.
         self.invalidate_recordset(fnames=['code'], flush=False)
         self._compute_code()
+        self._onchange_code()
 
     @api.depends_context('company')
     @api.depends('code')
@@ -487,7 +491,7 @@ class AccountAccount(models.Model):
     def _compute_sql_used(self, table):
         query = Query(table._model.sudo().env['account.move.line'])
         query.add_where(SQL("%s = %s", query.table.account_id, table.id))
-        return SQL("EXISTS %s", query.subselect(''))
+        return SQL("EXISTS %s", query.subselect(SQL()))
 
     @api.model
     def _search_new_account_code(self, start_code, cache=None):
@@ -630,7 +634,6 @@ class AccountAccount(models.Model):
             record.opening_credit = record.opening_credit or res['credit']
             record.opening_balance = record.opening_balance or res['balance']
 
-    @api.depends('code')
     def _compute_account_type(self):
         accounts_to_process = self.filtered(lambda account: account.code and not account.account_type)
         self._get_closest_parent_account(accounts_to_process, 'account_type', default_value='asset_current')
@@ -810,6 +813,13 @@ class AccountAccount(models.Model):
                 direction=SQL('ASC') if reverse else SQL('DESC'),
                 base_order=sql_order,
             )
+        if order == self._order and self.env.context.get('sort_by_non_trade'):
+            sql_order = SQL(
+                "%(field_sql)s %(direction)s, %(base_order)s",
+                field_sql=table.non_trade,
+                direction=SQL('ASC') if reverse else SQL('DESC'),
+                base_order=sql_order,
+            )
         return sql_order
 
     def _get_name_search_account_types(self, move_type):
@@ -887,6 +897,10 @@ class AccountAccount(models.Model):
         self.ensure_one()
         return False
 
+    @api.onchange('code')
+    def _onchange_code(self):
+        self.env.add_to_compute(self._fields['account_type'], self)
+
     @api.depends_context('company', 'formatted_display_name', 'from_bill')
     @api.depends('code')
     def _compute_display_name(self):
@@ -914,7 +928,6 @@ class AccountAccount(models.Model):
         vals_list = super().copy_data(default)
         default = default or {}
         cache = defaultdict(set)
-
         for account, vals in zip(self, vals_list):
             company_ids = self._fields['company_ids'].convert_to_cache(vals['company_ids'], self.browse())
             companies = self.env['res.company'].browse(company_ids)
@@ -929,20 +942,7 @@ class AccountAccount(models.Model):
                     vals['code_mapping_ids'].append(Command.create({'company_id': company.id, 'code': new_code}))
                     cache[company.id].add(new_code)
 
-            if 'name' not in default:
-                vals['name'] = self.env._("%s (copy)", account.name or '')
-
         return vals_list
-
-    def copy_translations(self, new, excluded=()):
-        super().copy_translations(new, excluded=tuple(excluded)+('name',))
-        if new.name == self.env._('%s (copy)', self.name):
-            name_field = self._fields['name']
-            assert name_field.translate
-            name_field._update_cache(new.with_context(prefetch_langs=True), {
-                lang: self.env._('%s (copy)', tr)
-                for lang, tr in name_field._get_stored_translations(self).items()
-            }, dirty=True)
 
     @api.model
     def _load_precommit_update_opening_move(self):
@@ -1043,9 +1043,16 @@ class AccountAccount(models.Model):
 
         records = self.env['account.account'].union(records_list)
         records._ensure_code_is_unique()
+        if not self.env.context.get('skip_auto_account_journal_creation'):  # Prevents infinite recursion when creating default accounts for journals
+            records._create_default_journals()
         return records
 
     def write(self, vals):
+        if 'code_mapping_ids' in vals and 'company_ids' in vals:
+            # Ensure `code_mapping_ids` is written before `company_ids` so we don't trigger the `_ensure_code_is_unique`
+            # constraint when writing multiple code mappings and multiple companies in the same call to `write`.
+            self.with_context(defer_account_code_checks=True).write({'code_mapping_ids': vals.pop('code_mapping_ids')})
+
         if vals.get('currency_id'):
             for account in self:
                 if self.env['account.move.line'].search_count([('account_id', '=', account.id), ('currency_id', 'not in', (False, vals['currency_id']))]):
@@ -1064,6 +1071,13 @@ class AccountAccount(models.Model):
             self._ensure_code_is_unique()
 
         return res
+
+    @api.model
+    def load(self, fields, data):
+        load_data = super(AccountAccount, self.with_context(defer_account_code_checks=True)).load(fields, data)
+        if {'company_ids', 'code', 'code_mapping_ids/code', 'code_mapping_ids/company_id'} & set(fields):
+            self.browse(load_data['ids'])._ensure_code_is_unique()
+        return load_data
 
     def _ensure_code_is_unique(self):
         """ Check that no child or parent companies have another account with the same code
@@ -1104,6 +1118,28 @@ class AccountAccount(models.Model):
                 raise ValidationError(
                     _("Account codes must be unique. You can't create accounts with these duplicate codes: %s", ", ".join(duplicate_codes))
                 )
+
+    def _create_default_journals(self):
+        """ Create the account journals for the accounts that are of type 'asset_cash' or 'liability_credit_card'."""
+        if self.env.context.get('chart_template_load'):
+            return
+
+        accounts = self.filtered(lambda account: account.account_type in {'asset_cash', 'liability_credit_card'})
+        if not accounts:
+            return
+
+        journals = self.env['account.journal'].search([('default_account_id', 'in', accounts.ids)])
+        accounts -= journals.default_account_id
+
+        self.env['account.journal'].create([
+        {
+            'name': account.name,
+            'type': ACCOUNT_TYPE_TO_JOURNAL_TYPE[account.account_type],
+            'default_account_id': account.id,
+            'company_id': (account.company_ids[:1] or self.env.company).id,
+        }
+            for account in accounts
+        ])
 
     def _load_records_write(self, values):
         if 'prefix' in values:
@@ -1160,7 +1196,9 @@ class AccountAccount(models.Model):
         }]
 
     def _merge_method(self, destination, source):
-        raise UserError(_("You cannot merge accounts."))
+        return {
+            'error': self.env._("You cannot merge accounts.")
+        }
 
     def action_unmerge(self):
         """ Split the account `self` into several accounts, one per company.
@@ -1364,8 +1402,6 @@ class AccountAccount(models.Model):
         many2one_reference_fields = self.env['ir.model.fields'].search([
             ('ttype', '=', 'many2one_reference'),
             ('store', '=', True),
-            '!', '&', ('model', '=', 'studio.approval.request'),  # A weird Many2oneReference which doesn't have its model field on the model.
-                      ('name', '=', 'res_id'),
         ])
         for field_to_update in many2one_reference_fields:
             model = field_to_update.model

@@ -1,10 +1,9 @@
-import { useExternalListener } from "@web/owl2/utils";
 import { useCashierSelector } from "@pos_hr/app/utils/select_cashier_mixin";
 import { _t } from "@web/core/l10n/translation";
 import { LoginScreen } from "@point_of_sale/app/screens/login_screen/login_screen";
 import { patch } from "@web/core/utils/patch";
 import { useAutofocus } from "@web/core/utils/hooks";
-import { onWillUnmount, proxy } from "@odoo/owl";
+import { onWillUnmount, proxy, signal, useListener } from "@odoo/owl";
 
 patch(LoginScreen.prototype, {
     setup() {
@@ -20,8 +19,9 @@ patch(LoginScreen.prototype, {
                 exclusive: true,
             });
 
-            useAutofocus();
-            useExternalListener(window, "keypress", async (ev) => {
+            this.autofocusRef = signal.ref();
+            useAutofocus({ ref: this.autofocusRef });
+            useListener(window, "keypress", async (ev) => {
                 if (this.pos.login && ev.key === "Enter" && this.state.pin) {
                     await this.selectCashier(this.state.pin, true);
                 }

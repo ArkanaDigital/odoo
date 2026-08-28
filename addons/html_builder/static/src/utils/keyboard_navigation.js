@@ -1,6 +1,6 @@
 import { onMounted, onPatched } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { localization } from "@web/core/l10n/localization";
 
 /**
@@ -112,7 +112,7 @@ function handleMatrixKeyNavigation(ev, { matrix, activeMatrixEl, focusableChildS
  * masonry layout). The selector will be queried both up
  * (`ev.currentTarget.closest`) and down (`containerEl.querySelectorAll`).
  * @param {string} [focusableChildSelector] - selector used if the actual
- * actual focusable element is a child of `matrixSiblingSelector`
+ * focusable element is a child of `matrixSiblingSelector`
  * @returns {(ev: KeyboardEvent) => void} keydown event handler
  */
 export function useMatrixKeyNavigation(
@@ -137,13 +137,14 @@ export function useMatrixKeyNavigation(
             if (!containerEl) {
                 continue;
             }
+            let matrix = matrices.get(containerEl);
             if (
-                !matrices.has(containerEl) ||
-                !matrices.get(containerEl).flat().length !==
+                !matrix ||
+                matrix.flat().length !==
                     containerEl.querySelectorAll(matrixSiblingSelector).length ||
-                !matrices.get(containerEl)[0][0].isConnected
+                matrix.flat().some((el) => !el.isConnected)
             ) {
-                const matrix = makeElementsPositionMatrix(containerEl, matrixSiblingSelector);
+                matrix = makeElementsPositionMatrix(containerEl, matrixSiblingSelector);
                 matrices.set(containerEl, matrix);
             }
         }

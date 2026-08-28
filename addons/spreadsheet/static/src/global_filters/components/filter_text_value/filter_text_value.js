@@ -1,11 +1,9 @@
 /** @ts-check */
 
-import { useLayoutEffect } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
-import { useChildRef } from "@web/core/utils/hooks";
-
-import { BadgeTag } from "@web/core/tags_list/badge_tag";
+import { Component, signal, t, untrack, useProps } from "@odoo/owl";
 import { AutoComplete } from "@web/core/autocomplete/autocomplete";
+import { BadgeTag } from "@web/core/tags_list/badge_tag";
+import { useLayoutEffect } from "@web/owl2/utils";
 
 export class TextFilterValue extends Component {
     static template = "spreadsheet.TextFilterValue";
@@ -13,35 +11,26 @@ export class TextFilterValue extends Component {
         BadgeTag,
         AutoComplete,
     };
-    static props = {
-        onValueChanged: Function,
-        value: { type: Array, optional: true },
-        options: {
-            type: Array,
-            element: {
-                type: Object,
-                shape: { value: String, formattedValue: String },
-                optional: true,
-            },
-        },
-    };
-    static defaultProps = {
-        value: [],
-    };
+    props = useProps({
+        onValueChanged: t.function(),
+        value: t.array().optional([]),
+        options: t.array(t.object({ value: t.string(), formattedValue: t.string() }).optional()),
+        placeholder: t.string().optional(),
+    });
 
     setup() {
-        this.inputRef = useChildRef();
+        this.inputRef = signal.ref();
         useLayoutEffect(
             () => {
-                if (this.props.options.length && this.inputRef.el) {
+                if (this.props.options.length && this.inputRef()) {
                     // if there are options restricting the possible values,
                     // we prevent the user from typing free-text by setting the maxlength to 0
-                    this.inputRef.el.setAttribute("maxlength", 0);
+                    this.inputRef().setAttribute("maxlength", 0);
                 } else {
-                    this.inputRef.el.removeAttribute("maxlength");
+                    this.inputRef().removeAttribute("maxlength");
                 }
             },
-            () => [this.props.options.length, this.inputRef.el]
+            () => [this.props.options.length, untrack(this.inputRef)]
         );
     }
 
@@ -55,6 +44,10 @@ export class TextFilterValue extends Component {
                 this.props.onValueChanged(this.props.value.filter((v) => v !== value));
             },
         }));
+    }
+
+    get placeholder() {
+        return this.tags.length ? "" : this.props.placeholder;
     }
 
     get sources() {
@@ -78,7 +71,7 @@ export class TextFilterValue extends Component {
             if (!this.props.value?.includes(value)) {
                 this.props.onValueChanged([...this.props.value, value]);
             }
-            this.inputRef.el.value = "";
+            this.inputRef().value = "";
         }
     }
 }

@@ -3,11 +3,12 @@ import { setupEditor } from "@html_editor/../tests/_helpers/editor";
 import { click, waitFor } from "@odoo/hoot-dom";
 import { contains } from "@web/../tests/web_test_helpers";
 import { defineMailModels } from "@mail/../tests/mail_test_helpers";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 import { MassMailingLinkPlugin } from "../src/editor/plugins/mass_mailing_link_plugin";
+import { LinkPlugin } from "@html_editor/main/link/link_plugin";
 
 const config = {
-    Plugins: [...MAIN_PLUGINS].filter((p) => p.id != "link").concat(MassMailingLinkPlugin),
+    includePlugins: [MassMailingLinkPlugin],
+    excludePlugins: [LinkPlugin],
 };
 
 defineMailModels();
@@ -26,7 +27,7 @@ test("disable link tracking option should be shown and diable/enable link tracki
         ".o_seo_option_row:has(span[title='Send the original url instead of wrapping it into a tracking url.']) input[type='checkbox']"
     ).click();
     // Go back to main popover view
-    await click("button.fa-angle-left");
+    await click("button[data-icon='keyboard_arrow_left']");
     // Apply
     await contains("button.o_we_apply_link").click();
 
@@ -42,7 +43,7 @@ test("disable link tracking option should be shown and diable/enable link tracki
         ".o_seo_option_row:has(span[title='Send the original url instead of wrapping it into a tracking url.']) input[type='checkbox']"
     ).click();
     // Go back to main popover view
-    await click("button.fa-angle-left");
+    await click("button[data-icon='keyboard_arrow_left']");
     // Apply
     await contains("button.o_we_apply_link").click();
 

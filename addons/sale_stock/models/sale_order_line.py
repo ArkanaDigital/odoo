@@ -192,7 +192,13 @@ class SaleOrderLine(models.Model):
                         continue
                     qty += move.uom_id._compute_quantity(move.quantity, line.product_uom_id, rounding_method='HALF-UP')
                 for move in incoming_moves:
-                    if move.state != 'done' or (not move.origin_returned_move_id and line.product_uom_qty > 0 and not move.picking_id.return_id):
+                    # An unlinked move coming from a customer is still a real return, only skip unlinked non-returns (dropship receipts).
+                    if move.state != 'done' or (
+                        not move.origin_returned_move_id
+                        and not move.location_id._is_outgoing()
+                        and line.product_uom_qty > 0
+                        and not move.picking_id.return_id
+                    ):
                         continue
                     qty -= move.uom_id._compute_quantity(move.quantity, line.product_uom_id, rounding_method='HALF-UP')
 
@@ -312,9 +318,12 @@ class SaleOrderLine(models.Model):
         outgoing_moves_ids = set()
         incoming_moves_ids = set()
 
-        moves = self.move_ids.filtered(lambda r: r.state != 'cancel' and r.location_dest_usage != 'inventory' and self.product_id == r.product_id)
+        moves = self.move_ids.filtered(lambda m: m.location_dest_usage != 'inventory' and self.product_id == m.product_id and m.company_id == self.company_id)
         if moves and not strict:
             # The first move created was the one created from the intial rule that started it all.
+            # Look at every move ever created for this line, including cancelled ones: if the
+            # triggering move gets cancelled later on (e.g. SO cancellation), the rule that started
+            # the chain must stay the same, otherwise remaining done moves get wrongly re-classified.
             sorted_moves = moves.sorted('id')
             triggering_rule_ids = []
             seen_wh_ids = set()
@@ -322,6 +331,7 @@ class SaleOrderLine(models.Model):
                 if move.warehouse_id.id not in seen_wh_ids and move.rule_id:
                     triggering_rule_ids.append(move.rule_id.id)
                     seen_wh_ids.add(move.warehouse_id.id)
+        moves = moves.filtered(lambda m: m.state != 'cancel')
         if self.env.context.get('accrual_entry_date'):
             accrual_date = fields.Date.from_string(self.env.context['accrual_entry_date'])
             moves = moves.filtered(lambda r: fields.Date.context_today(r, r.date) <= accrual_date)
@@ -405,34 +415,18 @@ class SaleOrderLine(models.Model):
 
     #=== HOOKS ===#
 
-    # FIXME VFE this hook is supported on the order, not the order line
-    def _get_action_add_from_catalog_extra_context(self, order):
-        extra_context = super()._get_action_add_from_catalog_extra_context(order)
-        extra_context.update(warehouse_id=order.warehouse_id.id)
-        return extra_context
-
-    def _get_product_catalog_lines_data(self, **kwargs):
-        """ Override of `sale` to add the delivered quantity.
-
-        :rtype: dict
-        :return: A dict with the following structure:
-            {
-                'deliveredQty': float,
-                'quantity': float,
-                'price': float,
-                'readOnly': bool,
-            }
-        """
-        res = super()._get_product_catalog_lines_data(**kwargs)
-        res['deliveredQty'] = sum(
-            self.mapped(
-                lambda line: line.product_uom_id._compute_quantity(
-                    qty=line.qty_delivered,
-                    to_unit=line.product_id.uom_id,
+    def _get_product_catalog_lines_data(self, *args, **kwargs) -> dict:
+        """Override of `sale` to add the delivered quantity."""
+        return {
+            **super()._get_product_catalog_lines_data(*args, **kwargs),
+            "deliveredQty": sum(
+                self.mapped(
+                    lambda line: line.product_uom_id._compute_quantity(
+                        qty=line.qty_delivered, to_unit=self._get_product_uom()
+                    )
                 )
-            )
-        )
-        return res
+            ),
+        }
 
     def _is_returnable(self):
         """Return whether this line contains a product eligible for return."""
@@ -441,6 +435,7 @@ class SaleOrderLine(models.Model):
             self.product_type == "consu"
             and self._is_product_line()
             and self.has_valued_move_ids()
+            and not self.combo_item_id
         )
 
     def has_valued_move_ids(self):

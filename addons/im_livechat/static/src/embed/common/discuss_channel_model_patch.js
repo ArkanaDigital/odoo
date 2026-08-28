@@ -16,13 +16,14 @@ const discussChannelPatch = {
                         id: -0.2 - this.id,
                         body: livechatService.options.default_message,
                         thread: this.thread,
-                        author_id: this.livechat_agent_history_ids.sort((a, b) => a.id - b.id)[0]
-                            ?.partner_id,
+                        author_id: [
+                            ...this.livechat_agent_history_ids,
+                            ...this.livechat_bot_history_ids,
+                        ].sort((a, b) => a.id - b.id)[0]?.partner_id,
                     };
                 }
             },
         });
-        this.requested_by_operator = false;
         this.storeAsActiveVisitorLivechats = fields.One("Store", {
             /** @this {import("models").DiscussChannel} */
             compute() {
@@ -82,7 +83,7 @@ const discussChannelPatch = {
         return this.channel_type !== "livechat" && super.hasAttachmentPanel;
     },
     get hasWelcomeMessage() {
-        return this.channel_type === "livechat" && !this.chatbot && !this.requested_by_operator;
+        return this.channel_type === "livechat" && !this.chatbot;
     },
     get isLastMessageFromCustomer() {
         return this.newestPersistentOfAllMessage?.isSelfAuthored;
@@ -98,6 +99,9 @@ const discussChannelPatch = {
             this.livechat_end_dt ||
             (this.channel?.chatbot?.completed && !this.channel.livechat_agent_history_ids.length)
         );
+    },
+    shouldNotifyMessageToUser() {
+        return this.channel_type === "livechat" || super.shouldNotifyMessageToUser(...arguments);
     },
 };
 patch(DiscussChannel.prototype, discussChannelPatch);

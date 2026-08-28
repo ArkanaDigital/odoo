@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from markupsafe import Markup
 
-from werkzeug.urls import url_parse
+from werkzeug.urls import url_encode, url_parse
 
 from odoo import api, fields, models
 from odoo.fields import Command, Domain
@@ -30,7 +30,7 @@ from odoo.addons.mail.tools.discuss import Store
 from odoo.tools.intervals import intervals_overlap
 from odoo.tools.translate import _
 from odoo.tools.misc import get_lang, babel_locale_parse
-from odoo.tools import html2plaintext, html_sanitize, is_html_empty, single_email_re
+from odoo.tools import SQL, html2plaintext, html_sanitize, is_html_empty, single_email_re
 from odoo.exceptions import UserError, ValidationError
 
 _logger = logging.getLogger(__name__)
@@ -174,7 +174,9 @@ class CalendarEvent(models.Model):
     location = fields.Char('Location', tracking=True)
     notes = fields.Html('Notes')  # Unlike description, internal use only
     videocall_location = fields.Char('Meeting URL', compute='_compute_videocall_location', store=True, copy=True)
-    access_token = fields.Char('Invitation Token', store=True, copy=False, index=True)
+    access_token = fields.Char('Invitation Token', default=lambda self: str(uuid.uuid4()), copy=False, readonly=True)
+    google_calendar_url = fields.Char('Google Calendar URL', compute="_compute_google_calendar_url",
+        help="Link to manually add the meeting to Google Calendar")
     videocall_source = fields.Selection([('discuss', 'Discuss'), ('custom', 'Custom')], compute='_compute_videocall_source')
     videocall_channel_id = fields.Many2one('discuss.channel', 'Discuss Channel', index="btree_not_null")
     # visibility
@@ -308,6 +310,11 @@ class CalendarEvent(models.Model):
     awaiting_count = fields.Integer(compute="_compute_attendees_count")
     user_can_edit = fields.Boolean(compute='_compute_user_can_edit')
 
+    _access_token_unique = models.Constraint(
+        'unique(access_token)',
+        'Access token should be unique',
+    )
+
     @api.onchange("allday")
     def _onchange_allday(self):
         for event in self:
@@ -364,8 +371,8 @@ class CalendarEvent(models.Model):
     @api.depends_context('uid')
     def _compute_user_can_edit(self):
         for event in self:
-            # By default, only current attendees and the organizer can edit the event.
-            editor_candidates = set(event.partner_ids.user_ids + event.user_id)
+            # By default, only current attendees, the organizer and the creator can edit the event.
+            editor_candidates = set(event.partner_ids.user_ids + event.user_id + (event.create_uid or self.env.user))
             # Right before saving the event, old partners must be able to save changes.
             if event._origin:
                 editor_candidates |= set(event._origin.partner_ids.user_ids)
@@ -591,6 +598,25 @@ class CalendarEvent(models.Model):
         for event in self:
             event.display_description = not is_html_empty(event.description)
 
+    @api.depends('allday', 'description', 'location', 'name', 'start', 'stop', 'start_date', 'stop_date')
+    def _compute_google_calendar_url(self):
+        for event in self:
+            if not event.allday:
+                url_date_start = fields.Datetime.from_string(event.start).strftime('%Y%m%dT%H%M%SZ')
+                url_date_stop = fields.Datetime.from_string(event.stop).strftime('%Y%m%dT%H%M%SZ')
+            else:
+                url_date_start = fields.Date.from_string(event.start_date).strftime('%Y%m%d')
+                url_date_stop = fields.Date.from_string(event.stop_date).strftime('%Y%m%d')
+            params = {
+                'action': 'TEMPLATE',
+                'text': event._get_customer_summary(),
+                'dates': f'{url_date_start}/{url_date_stop}',
+                'details': event._get_customer_description(),
+            }
+            if event.location:
+                params.update(location=event.location.replace(', ', ' '))
+            event.google_calendar_url = 'https://www.google.com/calendar/render?' + url_encode(params)
+
     @api.depends('partner_ids', 'start', 'stop')
     def _compute_unavailable_partner_ids(self):
         self.unavailable_partner_ids = False
@@ -607,6 +633,14 @@ class CalendarEvent(models.Model):
         for event in self:
             if event.videocall_source == 'discuss':
                 event._set_discuss_videocall_location()
+
+    def _calendar_event_ensure_token(self):
+        """ Get the calendar event access token. Creating one if there's none. """
+        self.ensure_one()
+        if not self.access_token:
+            # we use a `write` to force the cache clearing otherwise `return self.access_token` will return False
+            self.sudo().write({'access_token': str(uuid.uuid4())})
+        return self.access_token
 
     def _is_partner_unavailable(self, partner, partner_events):
         self.ensure_one()
@@ -643,9 +677,7 @@ class CalendarEvent(models.Model):
         Note that recurring events will have different access_tokens.
         This is done by design to prevent users not being able to join a discuss meeting because the base event of the recurrency was deleted.
         """
-        if not self.access_token:
-            self.access_token = uuid.uuid4().hex
-        self.videocall_location = f"{self.get_base_url()}/{self.DISCUSS_ROUTE}/{self.access_token}"
+        self.videocall_location = f"{self.get_base_url()}/{self.DISCUSS_ROUTE}/{self._calendar_event_ensure_token()}"
 
     @api.model
     def get_discuss_videocall_location(self):
@@ -839,7 +871,8 @@ class CalendarEvent(models.Model):
                 detached_events = event.with_context(skip_contact_description=True)._apply_recurrence_values(recurrence_values)
                 detached_events.active = False
 
-        events.filtered(lambda event: event.start > fields.Datetime.now()).attendee_ids._send_invitation_emails()
+        events.attendee_ids._send_invitation_emails()
+        events._ensure_videocall_channels()
 
         # update activities based on calendar event data, unless already prepared
         # above manually. Heuristic: a new command (0, 0, vals) is considered as
@@ -876,10 +909,10 @@ class CalendarEvent(models.Model):
         if not private_fields:
             return super()._fetch_query(query, fields)
 
-        fields_to_fetch = list(fields) + [self._fields[name] for name in ('privacy', 'user_id', 'partner_ids')]
+        fields_to_fetch = list(fields) + [self._fields[name] for name in ('privacy', 'user_id', 'partner_ids', 'create_uid')]
         events = super()._fetch_query(query, fields_to_fetch)
 
-        # determine private events to which the user does not participate
+        # determine private events to which the user does not participate or is not the creator
         others_private_events = events.filtered(lambda ev: ev._check_private_event_conditions())
         if not others_private_events:
             return events
@@ -906,19 +939,30 @@ class CalendarEvent(models.Model):
         # Check the privacy permissions of the events whose organizer is different from the current user.
         self.filtered(lambda ev: ev.user_id and self.env.user != ev.user_id)._check_calendar_privacy_write_permissions()
 
+        if set(values) == {'videocall_channel_id'}:
+            # Attaching the Discuss channel of a meeting is no business change: it must not go
+            # through the recurrence machinery below, which would recreate the occurrences from
+            # the base event and hence give them all the same videocall link.
+            return super().write(values)
+
         update_alarms = False
         update_time = False
         self._set_videocall_location([values])
         if 'partner_ids' in values:
+            if values['partner_ids'] and isinstance(values['partner_ids'][0], int):
+                # a plain list of ids stands for a `Command.set`, as `_attendees_values` assumes too
+                values['partner_ids'] = [Command.set(values['partner_ids'])]
             values['attendee_ids'] = self._attendees_values(values['partner_ids'])
             update_alarms = True
             if self.videocall_channel_id:
+                # only the partners joining the meeting: those already on it are already members
+                # of its channel, and adding them a second time breaks on the member unicity
                 new_partner_ids = []
                 for command in values['partner_ids']:
-                    if command[0] == Command.LINK:
+                    if command[0] == Command.LINK and command[1] not in self.partner_ids.ids:
                         new_partner_ids.append(command[1])
                     elif command[0] == Command.SET:
-                        new_partner_ids.extend(command[2])
+                        new_partner_ids.extend(set(command[2]) - set(self.partner_ids.ids))
                 self.videocall_channel_id._add_members(partners=self.env["res.partner"].browse(new_partner_ids))
 
         time_fields = self.env['calendar.event']._get_time_fields()
@@ -977,13 +1021,9 @@ class CalendarEvent(models.Model):
 
         current_attendees = self.filtered('active').attendee_ids
         skip_attendee_notification = self.env.context.get('skip_attendee_notification')
-        if not skip_attendee_notification and 'partner_ids' in values:
-            ignore_past_event_attendees = current_attendees.filtered(lambda attendee: attendee.event_id.start < fields.Datetime.now())
-            # we send to all partners and not only the new ones
-            (current_attendees - previous_attendees - ignore_past_event_attendees)._notify_attendees(
-                self.env.ref('calendar.calendar_template_meeting_invitation', raise_if_not_found=False),
-                force_send=True,
-            )
+        invited_attendees = self._get_new_invited_attendees(current_attendees, previous_attendees, vals)
+        if not skip_attendee_notification and invited_attendees:
+            invited_attendees._send_invitation_emails()
         if not skip_attendee_notification and not self.env.context.get('is_calendar_event_new') and 'start' in values:
             start_date = fields.Datetime.to_datetime(values.get('start'))
             # Only notify on future events
@@ -994,6 +1034,11 @@ class CalendarEvent(models.Model):
                     self.env.ref('calendar.calendar_template_meeting_changedate', raise_if_not_found=False),
                     force_send=True,
                 )
+
+        if 'videocall_location' in values or update_time:
+            self._ensure_videocall_channels()
+        if 'name' in values or update_time:
+            self._sync_videocall_channels()
 
         # Change base event when the main base event is archived. If it isn't done when trying to modify
         # all events of the recurrence an error can be thrown or all the recurrence can be deleted.
@@ -1015,7 +1060,7 @@ class CalendarEvent(models.Model):
         if not self.env.su:
             for event in self:
                 if event._check_private_event_conditions():
-                    raise self.env['ir.rule']._make_access_error("write", event)
+                    raise event._make_access_error_message('write', Domain.TRUE)  # noqa: EM101
 
     def _check_private_event_conditions(self):
         """ Checks if the event is private, returning True if the conditions match and False otherwise. """
@@ -1023,7 +1068,8 @@ class CalendarEvent(models.Model):
         event_is_private = self.privacy == 'private'
         calendar_is_private = not self.privacy and self.sudo().user_id.calendar_default_privacy == 'private'
         user_is_not_partner = self.user_id.id != self.env.uid and self.env.user.partner_id not in self.partner_ids
-        return (event_is_private or calendar_is_private) and user_is_not_partner
+        user_is_not_creator = self.env.user != (self.create_uid or self.env.user)  # check if user has created the event
+        return (event_is_private or calendar_is_private) and user_is_not_partner and user_is_not_creator
 
     @api.depends('privacy', 'user_id')
     def _compute_display_name(self):
@@ -1073,11 +1119,13 @@ class CalendarEvent(models.Model):
         recurrences = self.env["calendar.recurrence"].search([
             ('base_event_id', 'in', [e.id for e in self])
         ])
+        videocall_channels = self.videocall_channel_id
 
         result = super().unlink()
 
         if recurrences:
             recurrences._select_new_base_event()
+        videocall_channels._unlink_orphan_meeting_channels()
 
         # Notify the concerned attendees (must be done after removing the events)
         self.env['calendar.alarm_manager']._notify_next_alarm(partner_ids)
@@ -1188,6 +1236,62 @@ class CalendarEvent(models.Model):
         ]
         return attendee_commands
 
+    def _filtered_persistent(self):
+        """Meetings of self that made it to the database. A form being filled in writes on a
+        draft record (see `_onchange_date`), which has no Discuss channel to create or keep in
+        line yet: that happens once the meeting is really created, from values the user saved."""
+        return self.filtered("id")
+
+    def _ensure_videocall_channels(self):
+        """Create the Discuss channel of the meetings holding a Discuss video call link but no
+        channel yet, so that the meeting shows up in the Discuss "Meetings" tab and its
+        invitation link is usable right away rather than only once an attendee opens
+        `videocall_location`.
+
+        Meetings that are already over are skipped: their channel would only clutter Discuss.
+        """
+        events = self._filtered_persistent()
+        # A freshly created occurrence of a recurrence copies the link of its base event and
+        # only gets its own access token once `videocall_location` is recomputed: force that
+        # before reading it, otherwise the copied value would be frozen for good.
+        events.flush_recordset(['videocall_location'])
+        now = fields.Datetime.now()
+        for event in events:
+            if event.videocall_channel_id or event.videocall_source != 'discuss':
+                continue
+            if event.stop and event.stop < now:
+                continue
+            if event.recurrency and not event.recurrence_id:
+                continue
+            event._create_videocall_channel()
+
+    def _sync_videocall_channels(self):
+        """Keep the Discuss channel of a meeting in line with its name and schedule. The
+        channel exists from the moment the video call link is added, so it outlives any later
+        edit of the meeting.
+
+        Resolved from the channel rather than from `self`, because editing a whole recurrence
+        archives the edited occurrence and moves the new values to a freshly recreated one
+        (see `_rewrite_recurrence`): `self` would then hand back the values from before the
+        edit. A channel is shared by the whole recurrence and every occurrence carries the
+        same name, so any of its live meetings is a fit. Renaming a single occurrence hence
+        leaves the shared channel on the name of the series, on purpose.
+        """
+        # sudo: discuss.channel: whoever may edit the meeting keeps its channel, and the
+        # meetings it is read back from, in line even when not a member of it.
+        for channel in self._filtered_persistent().videocall_channel_id.sudo():
+            meeting = channel.calendar_event_ids[:1]
+            if not meeting:
+                continue
+            channel.name = meeting.name
+            channel.channel_change_description(meeting._get_videocall_channel_description())
+
+    def _get_videocall_channel_description(self):
+        """When the meeting takes place, as shown in the description of its Discuss channel:
+        the recurrence rule for a recurring meeting, the date and time otherwise."""
+        self.ensure_one()
+        return self.recurrence_id.name or self.display_time
+
     def _create_videocall_channel(self):
         if self.recurrency:
             # check if any of the events have videocall_channel_id, if not create one
@@ -1198,11 +1302,17 @@ class CalendarEvent(models.Model):
             if event_with_channel:
                 self.videocall_channel_id = event_with_channel.videocall_channel_id
                 return
-        self.videocall_channel_id = self._create_videocall_channel_id(self.name, self.partner_ids.ids)
-        self.videocall_channel_id.channel_change_description(self.recurrence_id.name if self.recurrency else self.display_time)
+        self.videocall_channel_id = self._create_videocall_channel_id(
+            self.name, self.partner_ids.user_ids,
+        )
+        self.videocall_channel_id.channel_change_description(self._get_videocall_channel_description())
 
-    def _create_videocall_channel_id(self, name, partner_ids):
-        videocall_channel = self.env['discuss.channel']._create_group(partner_ids, default_display_mode='video_full_screen', name=name)
+    def _create_videocall_channel_id(self, name, users):
+        videocall_channel = self.env["discuss.channel"]._create_group(
+            users,
+            default_display_mode="video_full_screen",
+            name=name,
+        )
         # if recurrent event, set channel to all other records of the same recurrency
         if self.recurrency:
             recurrent_events_without_channel = self.env['calendar.event'].search([
@@ -1211,9 +1321,15 @@ class CalendarEvent(models.Model):
             recurrent_events_without_channel.videocall_channel_id = videocall_channel
         return videocall_channel
 
+    def _get_today_domain(self):
+        """Meetings taking place on the current day of the user asking, in their timezone. A
+        meeting running over several days takes place today as well."""
+        start_of_day, end_of_day = self.env["discuss.channel"]._get_today_bounds()
+        return Domain("start", "<=", end_of_day) & Domain("stop", ">=", start_of_day)
+
     def _get_default_privacy_domain(self):
         # Sub query user settings from calendars that are not private ('public' and 'confidential').
-        public_calendars_settings = self.env['res.users.settings'].sudo()._search([('calendar_default_privacy', '!=', 'private')]).select('user_id')
+        public_calendars_settings = self.env['res.users.settings'].sudo()._search([('calendar_default_privacy', '!=', 'private')]).select(SQL('user_id'))
         # display public, confidential events and events with default privacy when owner's default privacy is not private
         return ['|', '|',
             ('privacy', 'in', ['public', 'confidential']),
@@ -1342,6 +1458,11 @@ class CalendarEvent(models.Model):
         """Overridable getter to identify whether to send invitation/cancelation emails."""
         return False
 
+    def _track_log_get_default_subtype(self, track_init_values):
+        if {'start', 'stop', 'location'} & track_init_values.keys():
+            return self.env.ref('calendar.mt_calendar_event_updated')
+        return super()._track_log_get_default_subtype(track_init_values)
+
     def _get_mail_tz(self):
         self.ensure_one()
         return self.event_tz or self.env.user.tz
@@ -1361,7 +1482,7 @@ class CalendarEvent(models.Model):
                 if 'user_id' in fields:
                     activity_values['user_id'] = event.user_id.id
                 if activity_values.keys():
-                    event.meeting_activity_ids.write(activity_values)
+                    event.meeting_activity_ids.with_context(calendar_event_meeting_update=True).write(activity_values)
 
     @api.model
     def _get_activity_deadline_from_start(self, start, allday):
@@ -1745,7 +1866,9 @@ class CalendarEvent(models.Model):
             if meeting.location:
                 event.add('location').value = meeting.location
             if meeting.rrule:
-                event.add('rrule').value = meeting.rrule
+                # meeting.rrule may be a full dateutil string: "DTSTART:...\nRRULE:FREQ=..."
+                # Take the last line and strip the "RRULE:" prefix if present.
+                event.add('rrule').value = meeting.rrule.splitlines()[-1].replace('RRULE:', '', 1)
 
             if meeting.alarm_ids:
                 for alarm in meeting.alarm_ids:
@@ -1760,7 +1883,7 @@ class CalendarEvent(models.Model):
                         delta = timedelta(hours=duration)
                     elif interval == 'minutes':
                         delta = timedelta(minutes=duration)
-                    trigger.value = delta
+                    trigger.value = -delta  # alarm duration is always towards the past, hence negative delta
                     valarm.add('DESCRIPTION').value = alarm.name or u'Odoo'
             for attendee in meeting.attendee_ids:
                 attendee_add = event.add('attendee')
@@ -1780,7 +1903,7 @@ class CalendarEvent(models.Model):
     @api.model
     def _get_contact_details_description(self, organizer, partners):
         """Build sanitized HTML with the organizer details and the details
-        of the contact partner (the first partner which is not the organizer).
+        of the contact partner (only when there is a single non-organizer attendee).
         """
         odoobot = self.env.ref('base.user_root')
         contact_description = []
@@ -1788,12 +1911,17 @@ class CalendarEvent(models.Model):
         if organizer and organizer != odoobot:
             contact_description.extend(self._prepare_partner_contact_details_html(_("Organized by"), organizer.partner_id))
         # First contact partner
-        first_partner = partners.filtered(lambda partner: partner not in (odoobot.partner_id + organizer.partner_id))[:1]
-        if first_partner:
+        contact_partners = partners.filtered(lambda partner: partner not in (odoobot.partner_id + organizer.partner_id))
+        if len(contact_partners) == 1:
             if contact_description:
                 contact_description.append("")  # To add a blank line between the organizer and partner details
-            contact_description.extend(self._prepare_partner_contact_details_html(_("Contact Details"), first_partner))
+            contact_description.extend(self._prepare_partner_contact_details_html(_("Contact Details"), contact_partners))
         return Markup("<br/>").join(contact_description)
+
+    def _get_new_invited_attendees(self, current_attendees, previous_attendees, update_vals):
+        """Get the attendees who must receive an invitation for a modified calendar event. This method is meant
+        to be overridden."""
+        return current_attendees - previous_attendees
 
     @api.model
     def _prepare_partner_contact_details_html(self, section_title, partner):
@@ -1900,7 +2028,7 @@ class CalendarEvent(models.Model):
         return self._get_recurrent_fields() | self._get_time_fields() | self._get_custom_fields() | {
             'id', 'active', 'allday',
             'duration', 'user_id', 'interval', 'partner_id',
-            'count', 'rrule', 'recurrence_id', 'show_as', 'privacy'}
+            'count', 'rrule', 'recurrence_id', 'show_as', 'privacy', 'create_uid'}
 
     @api.model
     def get_default_duration(self):
@@ -1916,5 +2044,5 @@ class CalendarEvent(models.Model):
     # ------------------------------------------------------------
 
     def _store_calendar_event_fields(self, res: Store.FieldList):
-        res.extend(["name", "start", "stop", "location"])
+        res.extend(["name", "start", "stop", "location", "videocall_location"])
         res.many("partner_ids", ["name"])

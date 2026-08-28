@@ -1,20 +1,21 @@
 import { MessagePinDialog } from "@mail/core/common/message_pin_dialog";
 import { fields, Record } from "@mail/model/export";
-
-import { _t } from "@web/core/l10n/translation";
-import { user } from "@web/core/user";
-import { rpc } from "@web/core/network/rpc";
 import {
     compareDatetime,
     effectWithCleanup,
     nearestGreaterThanOrEqual,
 } from "@mail/utils/common/misc";
+
+import { _t } from "@web/core/l10n/translation";
 import { formatList } from "@web/core/l10n/utils";
+import { rpc } from "@web/core/network/rpc";
+import { user } from "@web/core/user";
 import { imageUrl } from "@web/core/utils/urls";
 
 const { DateTime } = luxon;
 
 /** @import { AwaitChatHubInit } from "@mail/core/common/chat_hub_model" */
+/** @typedef {import("@mail/discuss/call/common/rtc_service").ContextOptions} ContextOptions */
 
 export class DiscussChannel extends Record {
     static _name = "discuss.channel";
@@ -104,12 +105,26 @@ export class DiscussChannel extends Record {
     get allowedToLeaveChannelTypes() {
         return ["channel", "group"];
     }
+    get isAllowedToLeave() {
+        return (
+            this.store.self_user &&
+            this.self_member_id &&
+            this.allowedToLeaveChannelTypes.includes(this.channel_type) &&
+            this.group_ids.length === 0
+        );
+    }
     get allowedToRenameChannelTypes() {
         return ["channel", "group"];
     }
     get isAllowedToRename() {
         return (
             this.allowedToRenameChannelTypes.includes(this.channel_type) && this.thread.is_editable
+        );
+    }
+
+    get isMeetingOrMeetingChild() {
+        return [this.default_display_mode, this.parent_channel_id?.default_display_mode].includes(
+            "video_full_screen"
         );
     }
     get areAllMembersLoaded() {
@@ -119,8 +134,15 @@ export class DiscussChannel extends Record {
     avatar_128_access_token;
     /** @type {string} */
     avatar_cache_key;
+    get hasCorrespondentAvatar() {
+        return (
+            !["channel", "group"].includes(this.channel_type) &&
+            (!this.avatar_cache_key || this.avatar_cache_key === "no-avatar") &&
+            Boolean(this.correspondent)
+        );
+    }
     get avatarUrl() {
-        if (["channel", "group"].includes(this.channel_type)) {
+        if (!this.hasCorrespondentAvatar) {
             const accessTokenParam = {};
             if (this.store.self_user?.share !== false) {
                 accessTokenParam.access_token = this.avatar_128_access_token;
@@ -145,15 +167,6 @@ export class DiscussChannel extends Record {
             !this.is_readonly
         );
     }
-    /**
-     * Whether the channel holds actual chat messages, i.e. excluding call/join/rename and
-     * other system notifications. Used to decide whether an ended meeting is worth keeping.
-     *
-     * @returns {boolean}
-     */
-    get hasChatMessages() {
-        return this.persistentMessages.some((message) => !message.isNotification);
-    }
     canHide = fields.Attr(false, {
         compute() {
             return this._computeCanHide();
@@ -165,7 +178,11 @@ export class DiscussChannel extends Record {
     channel_member_ids = fields.Many("discuss.channel.member", {
         inverse: "channel_id",
         onDelete: (r) => r?.delete(),
-        sort: (m1, m2) => m1.id - m2.id,
+    });
+    sortedChannelMembers = fields.Many("discuss.channel.member", {
+        compute() {
+            return [...this.channel_member_ids].sort((m1, m2) => m1.id - m2.id);
+        },
     });
     channel_name_member_ids = fields.Many("discuss.channel.member");
     /** @type {"chat"|"channel"|"group"|"livechat"|"whatsapp"|"ai_chat"|"ai_composer"} */
@@ -185,7 +202,8 @@ export class DiscussChannel extends Record {
     });
     get channelNotifications() {
         return (
-            this.self_member_id?.custom_notifications || this.store.settings.channel_notifications
+            this.self_member_id?.custom_notifications ||
+            this.store.self_user?.res_users_settings_id?.channelNotifications
         );
     }
     get chatChannelTypes() {
@@ -235,16 +253,6 @@ export class DiscussChannel extends Record {
         inverse: "channel_ids",
     });
     get displayName() {
-        if (this.default_display_mode === "video_full_screen" && this.create_date && !this.name) {
-            const localizedDatetime = this.store.self?.tz
-                ? this.create_date.setZone(this.store.self?.tz)
-                : this.create_date.toLocal();
-            const formatDate = localizedDatetime.toLocaleString(
-                { month: "short", day: "numeric" },
-                { locale: user.lang }
-            );
-            return _t("Meeting, %(date)s", { date: formatDate });
-        }
         if (this.channel_type === "chat" && this.correspondent) {
             return this.correspondent.name;
         }
@@ -275,6 +283,7 @@ export class DiscussChannel extends Record {
         return text;
     }
     group_ids = fields.Many("res.groups");
+    has_meeting_today = false;
     get memberListTypes() {
         return ["channel", "group"];
     }
@@ -283,10 +292,20 @@ export class DiscussChannel extends Record {
     }
     /** @type boolean */
     is_readonly;
+    /**
+     * Whether this can restore channel in chat hub on UI.
+     * Normally users can't fetch such channel conversations anyway, but there's an exception with the admin.
+     * We restrict open of chat to prevent several issues like the contraint of max 2 members in a "chat".
+     */
+    get canRestoreInChatHub() {
+        return this.channel_type !== "chat" || this.self_member_id;
+    }
     get isHideUntilNewMessageSupported() {
         return Boolean(this.self_member_id);
     }
     last_interest_dt = fields.Datetime();
+    meeting_start_dt = fields.Datetime();
+    meeting_stop_dt = fields.Datetime();
     lastInterestDt = fields.Datetime({
         /** @this {import("models").Thread} */
         compute() {
@@ -450,18 +469,35 @@ export class DiscussChannel extends Record {
      * @returns {import("models").ChannelMember[]}
      */
     get membersThatCanSeen() {
-        return this.channel_member_ids;
+        return this.sortedChannelMembers;
     }
     /** @type {Number|undefined} */
     member_count;
+    /** @type {number} number of messages in a sub-channel */
+    message_count;
     /** @type {string} */
     name;
+    threadCreationMessages = fields.Many("mail.message", {
+        inverse: "channelAsThreadCreationNotification",
+    });
+    hasThreadCreationNotification = fields.Attr(false, {
+        /** @this {import("models").DiscussChannel} */
+        compute() {
+            return this.threadCreationMessages.length;
+        },
+    });
     /** ⚠️ {@link AwaitChatHubInit} */
     get shouldSubscribeToBusChannel() {
-        return this.chatWindow?.isOpen;
+        return (
+            this.chatWindow?.isOpen ||
+            (this.hasThreadCreationNotification && this.parent_channel_id)
+        );
     }
     get isChatChannel() {
         return this.chatChannelTypes.includes(this.channel_type);
+    }
+    get isUnread() {
+        return Boolean(this.self_member_id?.message_unread_counter_ui || this.markedAsUnread);
     }
     otherTypingMembers = fields.Many("discuss.channel.member", {
         /** @this {import("models").DiscussChannel} */
@@ -501,6 +537,9 @@ export class DiscussChannel extends Record {
     get showImStatus() {
         return this.channel_type === "chat" && this.correspondent;
     }
+    get correspondentPartner() {
+        return this.correspondent?.partner_id;
+    }
     /**
      * @param {Object} [param0={}]
      * @param {boolean} [param0.ignoreTyping=false] Whether the "is typing" should be ignored.
@@ -518,9 +557,13 @@ export class DiscussChannel extends Record {
     get showUnreadBanner() {
         return this.self_member_id?.message_unread_counter_ui > 0;
     }
-    sub_channel_ids = fields.Many("discuss.channel", {
-        inverse: "parent_channel_id",
-        sort: (a, b) => compareDatetime(b.lastInterestDt, a.lastInterestDt) || b.id - a.id,
+    sub_channel_ids = fields.Many("discuss.channel", { inverse: "parent_channel_id" });
+    sortedSubChannels = fields.Many("discuss.channel", {
+        compute() {
+            return [...this.sub_channel_ids].sort(
+                (a, b) => compareDatetime(b.lastInterestDt, a.lastInterestDt) || b.id - a.id
+            );
+        },
     });
     self_member_id = fields.One("discuss.channel.member", {
         inverse: "channelAsSelf",
@@ -541,17 +584,25 @@ export class DiscussChannel extends Record {
         inverse: "channel",
         onDelete: (r) => r?.delete(),
     });
-    memberBusSubscription = fields.Attr(false, {
+    // Start with `not_member` not to trigger a subscription if the user is not a member
+    // initially, only when switching from `member_xxx` to `not_member` following a leave.
+    memberBusSubscription = fields.Attr("not_member", {
         /** @this {import("models").Thread} */
         compute() {
-            return (
-                this.self_member_id?.memberSince >= this.store.env.services.bus_service.startedAt
-            );
+            if (!this.self_member_id) {
+                return "not_member";
+            }
+            return this.self_member_id.memberSince >= this.store.env.services.bus_service.startedAt
+                ? "member_after_start"
+                : "member_before_start";
         },
         onUpdate() {
-            this.store.updateBusSubscription();
+            if (this.memberBusSubscription !== "member_before_start") {
+                this.store.updateBusSubscription();
+            }
         },
     });
+
     typingMembers = fields.Many("discuss.channel.member", { inverse: "channelAsTyping" });
     get unknownMembersCount() {
         return (this.member_count ?? 0) - (this.channel_member_ids.length ?? 0);
@@ -691,17 +742,45 @@ export class DiscussChannel extends Record {
         ]);
     }
 
-    messagePin(message) {
-        this.store.env.services.dialog.add(MessagePinDialog, { message });
+    /**
+     * @param {import("models").Message} message
+     * @param {ContextOptions} [options]
+     */
+    messagePin(message, options) {
+        this.store.env.services.dialog.add(
+            MessagePinDialog,
+            { message },
+            { rootRef: options?.rootRef }
+        );
     }
 
-    messageUnpin(message) {
-        this.store.env.services.dialog.add(MessagePinDialog, { message, isUnpin: true });
+    /**
+     * @param {import("models").Message} message
+     * @param {ContextOptions} [options]
+     */
+    messageUnpin(message, options) {
+        this.store.env.services.dialog.add(
+            MessagePinDialog,
+            { message, isUnpin: true },
+            { rootRef: options?.rootRef }
+        );
     }
 
     /** @param {string} data base64 representation of the binary */
     async notifyAvatarToServer(data) {
         await rpc("/discuss/channel/update_avatar", { channel_id: this.id, data });
+    }
+
+    /** @param {import("models").Message} message */
+    shouldNotifyMessageToUser(message) {
+        return false;
+    }
+
+    /** @param {import("models").Message} message */
+    async notifyMessageToUser(message) {
+        if (this.shouldNotifyMessageToUser(message)) {
+            this.store.env.services["mail.out_of_focus"].notify(message, this.thread);
+        }
     }
 
     onPinStateUpdated() {}
@@ -759,7 +838,7 @@ export class DiscussChannel extends Record {
      */
     async unpinChannel({ notify = true, undos = new Map() } = {}) {
         undos.set(this, []);
-        this.store.has_unpinned_channels = true;
+        this.store.has_hidden_channels = true;
         // Unpin sub-channels first to prevent onPinStateUpdated of parent from removing
         // isLocallyPinned from them before their values are saved for undo.
         for (const subThread of this.sub_channel_ids) {
@@ -775,6 +854,7 @@ export class DiscussChannel extends Record {
             this.store.env.services.notification.add(_t("The conversation was deleted."));
             return;
         }
+        this.isLocallyPinned = false;
         if (!notify) {
             return;
         }

@@ -1,6 +1,6 @@
 /** @odoo-module */
 
-import { signal, types as t, untrack, validateType } from "@odoo/owl";
+import { signal, t, untrack, validateType } from "@odoo/owl";
 import {
     formatXml,
     getActiveElement,
@@ -149,85 +149,85 @@ const $now = performance.now.bind(performance);
 const T_ASSERTION_MESSAGE = t.or([t.string(), t.function([t.boolean()], t.string())]);
 
 const T_DOM_RECT = t.object({
-    "width?": t.number(),
-    "height?": t.number(),
-    "top?": t.number(),
-    "left?": t.number(),
-    "x?": t.number(),
-    "y?": t.number(),
+    width: t.number().optional(),
+    height: t.number().optional(),
+    top: t.number().optional(),
+    left: t.number().optional(),
+    x: t.number().optional(),
+    y: t.number().optional(),
 });
 
 const T_RESOLVER_OPTIONS = t.and([
     T_DEEP_EQUAL_OPTIONS,
     t.object({
-        "message?": T_ASSERTION_MESSAGE,
+        message: T_ASSERTION_MESSAGE.optional(),
     }),
 ]);
 const T_ASYNC_VERIFIER_OPTIONS = t.and([
     T_RESOLVER_OPTIONS,
     t.object({
-        "timeout?": t.number(),
+        timeout: t.number().optional(),
     }),
 ]);
 
 const T_MATCHER_OPTIONS = t.object({
-    "message?": T_ASSERTION_MESSAGE,
-    "not?": t.boolean(),
-    "rejects?": t.boolean(),
-    "resolves?": t.boolean(),
-    "silent?": t.boolean(),
+    message: T_ASSERTION_MESSAGE.optional(),
+    not: t.boolean().optional(),
+    rejects: t.boolean().optional(),
+    resolves: t.boolean().optional(),
+    silent: t.boolean().optional(),
 });
 const T_MATCHER_DEEP_EQUAL_OPTIONS = t.and([T_MATCHER_OPTIONS, T_DEEP_EQUAL_OPTIONS]);
 const T_MATCHER_CHECKED_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "indeterminate?": t.boolean(),
+        indeterminate: t.boolean().optional(),
     }),
 ]);
 const T_MATCHER_CLOSE_TO_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "margin?": t.number(),
+        margin: t.number().optional(),
     }),
 ]);
 const T_MATCHER_CLASS_LIST_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "exact?": t.boolean(),
+        exact: t.boolean().optional(),
     }),
 ]);
 const T_MATCHER_DOM_STYLE_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "exact?": t.boolean(),
-        "inline?": t.boolean(),
+        exact: t.boolean().optional(),
+        inline: t.boolean().optional(),
     }),
 ]);
 const T_MATCHER_FORMAT_XML_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "keepInlineTextNodes?": t.boolean(),
-        "tabSize?": t.number(),
-        "type?": t.selection(["html", "xml"]),
+        keepInlineTextNodes: t.boolean().optional(),
+        tabSize: t.number().optional(),
+        type: t.selection(["html", "xml"]).optional(),
     }),
 ]);
 const T_MATCHER_QUERY_RECT_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "trimPadding?": t.boolean(),
+        trimPadding: t.boolean().optional(),
     }),
 ]);
 const T_MATCHER_QUERY_TEXT_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "inline?": t.boolean(),
-        "raw?": t.boolean(),
+        inline: t.boolean().optional(),
+        raw: t.boolean().optional(),
     }),
 ]);
 const T_MATCHER_QUERY_VALUE_OPTIONS = t.and([
     T_MATCHER_OPTIONS,
     t.object({
-        "raw?": t.boolean(),
+        raw: t.boolean().optional(),
     }),
 ]);
 
@@ -454,7 +454,7 @@ function valueMatches(value, matcher) {
 }
 
 const AMPERSAND = makeLabel("&", null);
-const ARROW_RIGHT = makeLabelIcon("fa fa-arrow-right text-sm");
+const ARROW_RIGHT = makeLabelIcon("arrow_forward");
 
 const R_LINE_RETURN = /\n+/g;
 const R_NOT = /\[([\w\s]*)!([\w\s]*)\]/g;
@@ -472,6 +472,8 @@ const LABEL_EXPECTED = "Expected:";
 const LABEL_RECEIVED = "Received:";
 /** @type {CaseEventType[]} */
 const CASE_EVENT_LOG_COLORS = ["assertion", "query", "step", "time"];
+// Time waitForSteps and waitForErrors give the steps and errors to arrive.
+const DEFAULT_WAIT_TIMEOUT = 10000;
 const MAX_STACK_LENGTH = 10;
 
 /** @type {WeakMap<any, any>} */
@@ -906,7 +908,7 @@ export function makeExpect(params) {
 
     /**
      * Same as {@link verifyErrors}, but will not immediatly fail if errors are
-     * not caught yet, and will instead wait for a certain timeout (default: 2000ms)
+     * not caught yet, and will instead wait for a certain timeout (default: 10000ms)
      * to allow errors to be caught later.
      *
      * Checks are performed initially, at the end of the timeout, and each time
@@ -946,7 +948,7 @@ export function makeExpect(params) {
             {
                 timeout: setTimeout(
                     () => checkErrors(currentResult.errorResolver, true),
-                    options?.timeout ?? 2000
+                    options?.timeout ?? DEFAULT_WAIT_TIMEOUT
                 ),
             },
             Promise.withResolvers()
@@ -957,7 +959,7 @@ export function makeExpect(params) {
     /**
      * Same as {@link verifySteps}, but will not immediatly fail if steps have not
      * been registered yet, and will instead wait for a certain timeout (default:
-     * 2000ms) to allow steps to be registered later.
+     * 10000ms) to allow steps to be registered later.
      *
      * Checks are performed initially, at the end of the timeout, and each time
      * a step is registered.
@@ -996,7 +998,7 @@ export function makeExpect(params) {
             {
                 timeout: setTimeout(
                     () => checkSteps(currentResult.stepResolver, true),
-                    options?.timeout ?? 2000
+                    options?.timeout ?? DEFAULT_WAIT_TIMEOUT
                 ),
             },
             Promise.withResolvers()
@@ -2290,7 +2292,7 @@ export class Matcher {
         assertArguments(args, types);
 
         // Assign flags
-        const options = args[types.length];
+        const options = args[t.length];
         if (options) {
             for (const flag in FLAGS) {
                 if (flag in options) {

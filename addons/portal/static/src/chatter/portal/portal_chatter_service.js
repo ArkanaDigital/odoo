@@ -1,55 +1,61 @@
+import { loadCssFromBundle } from "@mail/utils/common/misc";
+import { onWillDestroy, useApp } from "@odoo/owl";
 import { PortalChatter } from "@portal/chatter/portal/portal_chatter";
-import { App } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { session } from "@web/session";
-import { appTranslateFn } from "@web/core/l10n/translation";
-import { getTemplate } from "@web/core/templates";
-import { loadCssFromBundle } from "@mail/utils/common/misc";
 
 export class PortalChatterService {
     constructor(env, services) {
         this.setup(env, services);
     }
 
+    app = useApp();
+    /** @type {import("@odoo/owl").Root<PortalChatter> | null} */
+    root = null;
+
     setup(env, services) {
         this.store = services["mail.store"];
         this.busService = services.bus_service;
+
+        onWillDestroy(() => this.root?.destroy());
     }
 
-    async createShadow(root) {
-        const shadow = root.attachShadow({ mode: "open" });
+    async createShadow(rootEl) {
+        const shadow = rootEl.attachShadow({ mode: "open" });
         await loadCssFromBundle(shadow, "portal.assets_chatter_style");
         return shadow;
     }
 
-    async initialize(env) {
-        const chatterEl = document.querySelector(".o_portal_chatter");
-        const props = {
+    /** @param {HTMLElement} chatterEl */
+    getProps(chatterEl) {
+        return {
             resId: parseInt(chatterEl.getAttribute("data-res_id")),
             resModel: chatterEl.getAttribute("data-res_model"),
-            composer:
+            composer: Boolean(
                 parseInt(chatterEl.getAttribute("data-allow_composer")) &&
-                (chatterEl.getAttribute("data-token") || !session.is_public),
+                    (chatterEl.getAttribute("data-token") || !session.is_public)
+            ),
             twoColumns: chatterEl.getAttribute("data-two_columns") === "true" ? true : false,
             displayRating: chatterEl.getAttribute("data-display_rating") === "True" ? true : false,
         };
+    }
+
+    /** @param {import("@web/env").OdooEnv} env */
+    async initialize(env) {
+        const chatterEl = document.querySelector(".o_portal_chatter");
+        const props = this.getProps(chatterEl);
         const root = chatterEl.querySelector("#chatterRoot");
         if (props.twoColumns) {
             root.classList.add("p-0");
         }
         this.createShadow(root).then((shadow) => {
-            const app = new App({
-                getTemplate,
-                translatableAttributes: ["data-tooltip"],
-                translateFn: appTranslateFn,
-                dev: env.debug,
-            });
-            app.createRoot(PortalChatter, {
+            this.root = this.app.createRoot(PortalChatter, {
                 env: Object.assign(Object.create(env), {
                     rootId: root.getAttribute("id"),
                 }),
                 props,
-            }).mount(shadow);
+            });
+            return this.root.mount(shadow);
         });
         const thread = this.store["mail.thread"].insert({ model: props.resModel, id: props.resId });
         Object.assign(thread, {

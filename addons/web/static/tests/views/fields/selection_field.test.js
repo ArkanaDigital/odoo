@@ -1,4 +1,5 @@
 import { expect, press, test } from "@odoo/hoot";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { click, queryAllTexts, queryFirst, queryOne } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
 import {
@@ -185,7 +186,7 @@ test("[Offline] SelectionField on many2one field", async () => {
     await clickSave();
 
     // The created record will be save the next time we are online
-    await contains(`.o_menu_systray .o_nav_entry .fa-chain-broken`).click();
+    await contains(`.o_menu_systray .o_nav_entry [data-icon="link_off"]`).click();
     expect(queryAllTexts`.o-dropdown--menu .o_offline_systray_content div`).toEqual([
         "PARTNER",
         "first record",
@@ -196,7 +197,7 @@ test("[Offline] SelectionField on many2one field", async () => {
     // go online and save the record.
     await setOffline(false);
 
-    expect(getService("offline").offline).toBe(false);
+    expect(getService(OfflinePlugin).isOffline()).toBe(false);
     await expect.waitForSteps(["web_save"]); // We sync when the connection returns
 });
 
@@ -560,4 +561,21 @@ test("SelectionField hotkeys in form view", async () => {
     await animationFrame();
     expect(".o_field_widget[name='product_id'] input").toHaveValue("xphone");
     expect(".o_field_widget[name='product_id'] input").toBeFocused();
+});
+
+test.tags("desktop");
+test("required SelectionField value is not cleared when input is emptied and blurred", async () => {
+    Partner._records[0].color = "red";
+
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        resId: 1,
+        arch: /* xml */ `<form><field name="color" required="1" /></form>`,
+    });
+
+    await contains(".o_field_widget[name='color'] input").edit("", { confirm: "blur" });
+    await animationFrame();
+
+    expect(".o_field_widget[name='color'] input").toHaveValue("Red");
 });

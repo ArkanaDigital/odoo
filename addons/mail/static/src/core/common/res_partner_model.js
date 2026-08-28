@@ -7,10 +7,14 @@ const { DateTime } = luxon;
 export class ResPartner extends Record {
     static _name = "res.partner";
 
+    /** @type {boolean} */
+    active;
     /** @type {string} */
     avatar_128_access_token;
     /** @type {string} */
     commercial_company_name;
+    /** @type {string} */
+    complete_name;
     country_id = fields.One("res.country");
     /** @type {string} */
     email;
@@ -43,14 +47,20 @@ export class ResPartner extends Record {
     /** @type {boolean} */
     is_public;
     main_user_id = fields.One("res.users");
+    /** @type {string} token proving the mention right on this partner */
+    mention_token;
     /** @type {string} */
     name;
     /** @type {string} */
     display_name;
+    /** @type {string} */
+    parent_name;
     /** @type {boolean | undefined} */
     partner_share;
     /** @type {string} */
     phone;
+    /** @type {string} */
+    tz;
     /** @type {luxon.DateTime} */
     offline_since = fields.Datetime(undefined, {
         compute: () => DateTime.max(this.user_ids.map((u) => u.offline_since)),
@@ -72,11 +82,12 @@ export class ResPartner extends Record {
     /**
      * ⚠️ This is intentionally a getter and not a field!
      *
-     * `store.menuThreads` uses this field to filter threads based on search
-     * terms. For each computation, the `menuThread` field is marked as needing a
-     * recompute, which can lead to excessive recursion—sometimes even exceeding the
-     * call stack size. This computation is simple enough that it doesn’t need a
-     * compute and has been replaced by a getter.
+     * If this becomes a compute field, any other compute field that reads `displayName`
+     * while iterating several records (e.g. `visibleCards` on `discuss.channel`, which
+     * sorts call members by `member.persona?.displayName`) would be marked for recompute
+     * every time `displayName` is read, which in turn re triggers `displayName`'s compute
+     * for the next record. Recompute chain can exceed the call stack size. This
+     * computation is simple enough that it doesn't need a compute anyway.
      */
     get displayName() {
         return this.name || this.display_name;

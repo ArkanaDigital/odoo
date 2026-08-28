@@ -17,6 +17,8 @@ class TestExpenses(TestExpenseCommon):
     #############################################
     #  Test Expense flows
     #############################################
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_expense_main_flow(self):
         """
         Test the main flows of expense
@@ -826,7 +828,6 @@ class TestExpenses(TestExpenseCommon):
         })
 
         self.create_expenses({'tax_ids': [Command.set(tax_expense.ids)]})
-        tax_expense.invalidate_model(fnames=['is_used'])
         self.assertTrue(tax_expense.is_used)
 
     def test_expense_by_company_with_caba_tax(self):
@@ -890,10 +891,11 @@ class TestExpenses(TestExpenseCommon):
         })
 
         expense.action_submit()
+        expense.action_approve()
         with self.assertRaises(ValidationError, msg="One or more lines require a 100% analytic distribution."):
-            expense.with_context(validate_analytic=True).action_approve()
+            expense.action_post()
         expense.analytic_distribution = {self.analytic_account_1.id: 100.00}
-        expense.with_context(validate_analytic=True).action_approve()
+        expense.action_post()
 
     def test_expense_no_stealing_from_employees(self):
         """
@@ -1169,3 +1171,17 @@ class TestExpenses(TestExpenseCommon):
         payable_move_line = payment_entry.line_ids.filtered(lambda l: l.account_id == other_payable_account)
         self.assertTrue(bill.payment_state in ('in_payment', 'paid'), "The bill should be marked as paid/in_payment")
         self.assertTrue(payable_move_line.reconciled, "The payment entry should be reconciled with the bill")
+
+    def test_delete_expense_with_attachment(self):
+        """ Deleting an expense should also delete its attachments """
+        expense = self.create_expenses()
+        attachment = self.env['ir.attachment'].create({
+            'raw': b"R0lGODdhAQABAIAAAP///////ywAAAAAAQABAAACAkQBADs=",
+            'name': 'file.png',
+            'res_model': 'hr.expense',
+            'res_id': expense.id,
+        })
+
+        expense.unlink()
+        self.assertFalse(expense.exists())
+        self.assertFalse(attachment.exists())

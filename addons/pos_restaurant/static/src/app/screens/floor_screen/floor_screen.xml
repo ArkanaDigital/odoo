@@ -7,17 +7,17 @@
                     <button class="new-order btn btn-lg lh-lg" t-attf-class="{{ this.pos.getOrder()?.isDirectSale ? 'btn-secondary' : 'btn-primary'}}"
                             t-on-click="() => this.clickNewOrder()">
                         <t t-if="this.pos.getOrder()?.isDirectSale">
-                            <i class="fa fa-angle-double-left fa-fw" role="img" aria-label="Back" title="Back"/>
+                            <i class="oi oi-fw" data-icon="keyboard_double_arrow_left" role="img" aria-label="Back" title="Back"/>
                             <span t-if="!this.ui.isSmall" class="ms-1">Back</span>
                         </t>
                         <t t-else="">
-                            <i class="fa fa-plus fa-fw" role="img" aria-label="New Order" title="New Order"/>
+                            <i class="oi oi-fw" data-icon="add" role="img" aria-label="New Order" title="New Order"/>
                             <span t-if="!this.ui.isSmall" class="ms-1">New Order</span>
                         </t>
                     </button>
 
                     <!-- Center Side Div -->
-                    <div class="floor-selector d-flex gap-1 overflow-auto position-absolute start-50 translate-middle-x">
+                    <div class="floor-selector d-flex gap-1 overflow-auto mx-2">
                         <t t-if="this.floorPlanStore.floors.length > 1" t-foreach="this.floorPlanStore.floors" t-as="floor" t-key="floor.uuid">
                             <button class="button button-floor btn btn-outline-secondary btn-lg px-3 lh-lg text-nowrap text-body"
                                     t-att-class="{'active': floor === this.floorPlanStore.selectedFloor}"
@@ -30,10 +30,10 @@
                     <!-- Right Side Div -->
                     <div class="right-buttons d-flex gap-1 pe-0">
                          <button t-if="this.pos.showEditPlanButton and !this.ui.isSmall" class="btn btn-secondary btn-lg lh-lg edit-plan" title="Edit Floor Plan" t-on-click="()=>this.startFloorPlanEditing()">
-                             <i class="fa fa-fw fa-pencil-square-o"/>
+                             <i class="oi oi-fw" data-icon="edit_square"/>
                          </button>
                         <button class="button-table-selector btn btn-secondary btn-lg lh-lg" t-on-click="() => this.toggleTableSelector()">
-                            <i class="fa fa-fw fa-hashtag" aria-hidden="true"/>
+                            <i class="oi oi-fw" data-icon="tag" aria-hidden="true"/>
                         </button>
 
                     </div>

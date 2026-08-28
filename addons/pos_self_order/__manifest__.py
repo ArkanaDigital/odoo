@@ -5,7 +5,6 @@
     "depends": ["pos_restaurant", "http_routing", "link_tracker", "google_address_autocomplete", "base_geolocalize"],
     "auto_install": ["pos_restaurant"],
     "data": [
-        "security/ir.model.access.csv",
         "data/mail_template_data.xml",
         "data/preset_data.xml",
         "views/pos_self_order.index.xml",
@@ -21,6 +20,7 @@
         "views/point_of_sale_dashboard.xml",
         'receipt/pos_order_receipt.xml',
         'receipt/pos_order_change_receipt.xml',
+        'security/ir.access.csv',
     ],
     "demo": [
         "data/kiosk_demo_data.xml",
@@ -47,6 +47,7 @@
             'pos_self_order/static/tests/unit/**/*',
         ],
         'point_of_sale._assets_pos': [
+            'pos_self_order/static/src/app/models/utils/snooze_tracker.js',
             'pos_self_order/static/src/backend/qr_order_button/*',
             'pos_self_order/static/src/overrides/**/*',
         ],
@@ -65,8 +66,7 @@
             "google_address_autocomplete/static/src/address_autocomplete/google_address_autocomplete.scss",
             "web/static/src/core/autocomplete/*",
             "web/static/src/views/fields/char/*",
-            "web/static/src/views/fields/translation_button.*",
-            "web/static/src/views/fields/translation_dialog.*",
+            "web/static/src/views/fields/translation/*",
             "web/static/src/views/fields/dynamic_placeholder_hook.js",
             "web/static/src/views/fields/dynamic_placeholder_popover.*",
             "web/static/src/views/fields/formatters.js",
@@ -101,6 +101,7 @@
             "point_of_sale/static/src/app/components/order_display/*",
             "point_of_sale/static/src/app/components/orderline/*",
             "point_of_sale/static/src/app/components/centered_icon/*",
+            "point_of_sale/static/src/app/components/validation_animation/*",
             "point_of_sale/static/src/app/components/epos_templates.xml",
             "point_of_sale/static/src/css/pos_receipts.css",
             "pos_self_order/static/src/overrides/utils/printer/generate_printer_data.js",
@@ -108,6 +109,8 @@
             'point_of_sale/static/src/app/utils/html-to-image.js',
             'point_of_sale/static/src/app/utils/use_timed_press.js',
             'point_of_sale/static/src/app/components/popups/select_default_printer_popup/select_default_printer_popup.js',
+            'point_of_sale/static/src/app/plugins/pos_number_buffer_plugin.js',
+            'mail/static/src/core/common/sound_effects_plugin.js',  # Needed by pos_number_buffer_plugin
             'point_of_sale/static/src/app/services/pos_ticket_printer_service.js',
             'point_of_sale/static/src/app/components/popups/retry_print_popup/**',
             'point_of_sale/static/src/app/components/popups/text_input_popup/**',

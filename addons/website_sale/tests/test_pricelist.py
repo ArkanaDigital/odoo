@@ -33,6 +33,14 @@ Try to keep one call to `get_pricelist_available` by test method.
 
 @tagged("post_install", "-at_install")
 class TestWebsitePriceList(WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -217,7 +225,7 @@ class TestWebsitePriceList(WebsiteSaleCommon):
             "list_price": 100,
             "taxes_id": False,
         })
-        self.pricelist.write({
+        self.pricelist.sudo().write({
             "item_ids": [
                 Command.clear(),
                 Command.create({
@@ -271,7 +279,7 @@ class TestWebsitePriceList(WebsiteSaleCommon):
             "list_price": 0,
             "taxes_id": False,
         })
-        self.pricelist.write({
+        self.pricelist.sudo().write({
             "item_ids": [
                 Command.clear(),
                 Command.create({
@@ -372,21 +380,21 @@ class TestWebsitePriceList(WebsiteSaleCommon):
         ex: A product with a price of $61.98 ($75 tax incl. of 21%) and a discount of 20%
         should display the base price of $75
         """
-        self.env["res.config.settings"].create({  # Set Settings:
+        self.env["res.config.settings"].sudo().create({  # Set Settings:
             # Set "Tax Included" on the "Display Product Prices"
             "show_line_subtotals_tax_selection": "tax_included",
             "group_product_price_comparison": True,  # price comparison
         }).execute()
         self.pricelist = self._enable_pricelists()
 
-        product_tmpl = self.env["product.template"].create({
+        product_tmpl = self.env["product.template"].sudo().create({
             "name": "Test Product",
             "type": "consu",
             "list_price": 61.98,  # 75 tax incl.
             "taxes_id": [Command.create({"name": "21%", "type_tax_use": "sale", "amount": 21})],
             "is_published": True,
         })
-        self.pricelist.write({
+        self.pricelist.sudo().write({
             "item_ids": [
                 Command.create({
                     "percent_price": 20,
@@ -487,22 +495,16 @@ class TestWebsitePriceList(WebsiteSaleCommon):
         self.assertEqual(order_sudo.pricelist_id, list_benelux_2)
 
 
-def simulate_frontend_context(self, website_id=None):
-    if website_id is None:
-        website_id = self.env.ref("base.default_website").id
-
-    # Mock this method will be enough to simulate frontend context in most methods
-    def get_current_website(fallback=None):  # noqa: ARG001
-        return self.env["website"].browse(website_id)
-
-    patcher = patch(
-        "odoo.addons.website.models.website.Website.get_current_website", wraps=get_current_website
-    )
-    self.startPatcher(patcher)
-
-
 @tagged("post_install", "-at_install")
 class TestWebsitePriceListAvailable(WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -551,10 +553,6 @@ class TestWebsitePriceListAvailable(WebsiteSaleCommon):
         })
         cls.w2_pl = Pricelist.create({"name": "Website 2 Pricelist", "website_id": cls.website2.id})
         existing_pricelists.action_archive()
-
-    def setUp(self):
-        super().setUp()
-        simulate_frontend_context(self)
 
     def test_get_pricelist_available(self):
         """Test get all available pricelists."""
@@ -608,6 +606,14 @@ class TestWebsitePriceListAvailable(WebsiteSaleCommon):
 
 @tagged("post_install", "-at_install")
 class TestWebsitePriceListAvailableGeoIP(TestWebsitePriceListAvailable):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     def setUp(self):
         super().setUp()
         # clean `property_product_pricelist` for partner for this test (clean setup)
@@ -705,7 +711,8 @@ class TestWebsitePriceListAvailableGeoIP(TestWebsitePriceListAvailable):
         # Test get all available pricelists with geoip and no partner pricelist
 
         # property_product_pricelist will also be returned in the available pricelists
-        self.website1_be_pl += self.env.user.partner_id.property_product_pricelist
+        website_id = self.ref('base.default_website')
+        self.website1_be_pl += self.env.user.with_context(website_id=website_id).partner_id.property_product_pricelist
 
         with patch(
             "odoo.addons.website_sale.models.website.Website._get_geoip_country_code",
@@ -754,7 +761,8 @@ class TestWebsitePriceListAvailableGeoIP(TestWebsitePriceListAvailable):
         # Test get all available with geoip and visible pricelists + promo pl
         pls_to_return = self.generic_pl_select + self.w1_pl_select + self.generic_pl_code_select
         # property_product_pricelist will also be returned in the available pricelists
-        pls_to_return += self.env.user.partner_id.property_product_pricelist
+        website_id = self.ref('base.default_website')
+        pls_to_return += self.env.user.with_context(website_id=website_id).partner_id.property_product_pricelist
 
         current_pl = self.w1_pl_code
         with (
@@ -914,8 +922,6 @@ class TestWebsitePriceListMultiCompany(TransactionCaseWithUserDemo):
         for the company1 as we should get the website's company pricelist
         and not the demo user's current company pricelist.
         """
-        simulate_frontend_context(self, self.website.id)
-
         # First check: It should return c2_pl as company_id is
         # website.company_id and not env.user.company_id
         company_id = self.website.company_id.id

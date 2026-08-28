@@ -1,6 +1,5 @@
-import { effect, immediateEffect, proxy, untrack } from "@odoo/owl";
+import { effect, untrack } from "@odoo/owl";
 
-import { useLayoutEffect } from "@web/owl2/utils";
 import { AssetsLoadingError, getBundle } from "@web/core/assets";
 import { memoize } from "@web/core/utils/functions";
 
@@ -75,50 +74,6 @@ export function isDragSourceExternalFile(dataTransfer) {
         return dragDataType.includes("Files");
     }
     return false;
-}
-
-/**
- * @param {Object} target
- * @param {string|string[]} key
- * @param {Function} callback
- * @returns {Function} dispose function
- */
-export function onChange(target, key, callback) {
-    let targetProxy;
-    function _observe() {
-        // access targetProxy[key] only once to avoid triggering reactive get() many times
-        const val = targetProxy[key];
-        if (typeof val === "object" && val !== null) {
-            void Object.keys(val);
-        }
-        if (Array.isArray(val)) {
-            void val.length;
-            void val.forEach((i) => i);
-        }
-    }
-    if (Array.isArray(key)) {
-        /** @type {Function[]} */
-        const arrayDisposeFns = [];
-        for (const k of key) {
-            arrayDisposeFns.push(onChange(target, k, callback));
-        }
-        return () => {
-            arrayDisposeFns.forEach((f) => f());
-            arrayDisposeFns.length = 0;
-        };
-    }
-    let running = false;
-    targetProxy = proxy(target);
-    const disposeFn = untrack(() =>
-        immediateEffect(() => {
-            _observe();
-            if (running) {
-                untrack(() => callback());
-            }
-        })
-    );
-    running = true;
-    return disposeFn;
 }
 
 /**
@@ -246,31 +201,6 @@ export const hasHardwareAcceleration = memoize(() => {
 });
 
 /**
- * A hook that repeatedly calls a function with dynamically computed
- * intervals.
- *
- * @template D type of dependencies
- * @param {(...dependencies: D) => Number|void} fn A callback that is
- * invoked initially, after dependencies change (if the dependencies are
- * wrapped in `proxy` or otherwise triggers a re-render) or when the
- * delay has passed. Returning a falsy value cancels the interval.
- * @param {() => D} dependencies Returns an array of dependencies.
- */
-export function useDynamicInterval(fn, dependencies) {
-    useLayoutEffect((...dependencies) => {
-        let timer;
-        function tick() {
-            const nextDelay = fn(...dependencies);
-            if (nextDelay) {
-                timer = setTimeout(tick, Math.ceil(nextDelay));
-            }
-        }
-        tick();
-        return () => clearTimeout(timer);
-    }, dependencies);
-}
-
-/**
  * @param {() => void} effectFn
  * @returns {() => void} A function to dispose the effect then invoke last returned cleanup function
  */
@@ -317,3 +247,78 @@ export async function loadCssFromBundle(targetNode, bundleName) {
         }
     }
 }
+
+export const extractAccentColor = memoize((src, brightnessThreshold = 0.45) => {
+    const threshold = Math.max(0, Math.min(1, brightnessThreshold));
+
+    const toTargetBrightness = (r, g, b) => {
+        const scale = (threshold * 255) / Math.max(r, g, b, 1);
+        let nr = r * scale,
+            ng = g * scale,
+            nb = b * scale;
+        if (threshold > 0.5) {
+            const mix = (threshold - 0.5) * 2;
+            nr += (255 - nr) * mix;
+            ng += (255 - ng) * mix;
+            nb += (255 - nb) * mix;
+        }
+        return { r: Math.round(nr), g: Math.round(ng), b: Math.round(nb) };
+    };
+
+    const [SIZE, ALPHA_FLOOR, BLACK_FLOOR, WHITE_CEILING] = [8, 128, 20, 230];
+    const FALLBACK = toTargetBrightness(128, 128, 128);
+
+    return new Promise((resolve) => {
+        const img = Object.assign(new Image(), {
+            crossOrigin: "Anonymous",
+            onerror: () => resolve(FALLBACK),
+            onload: () => {
+                try {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = canvas.height = SIZE;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(img, 0, 0, SIZE, SIZE);
+                    const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+
+                    let wR = 0,
+                        wG = 0,
+                        wB = 0,
+                        total = 0;
+                    const accumulate = (x, y) => {
+                        const idx = (y * SIZE + x) * 4;
+                        const r = data[idx],
+                            g = data[idx + 1],
+                            b = data[idx + 2],
+                            a = data[idx + 3];
+                        if (
+                            a < ALPHA_FLOOR ||
+                            Math.max(r, g, b) < BLACK_FLOOR ||
+                            Math.min(r, g, b) > WHITE_CEILING
+                        ) {
+                            return;
+                        }
+                        wR += r;
+                        wG += g;
+                        wB += b;
+                        total++;
+                    };
+
+                    for (let i = 0; i < SIZE; i++) {
+                        accumulate(i, 0); // top
+                        accumulate(0, i); // left
+                        accumulate(SIZE - 1, i); // right
+                    }
+
+                    resolve(
+                        total > 0
+                            ? toTargetBrightness(wR / total, wG / total, wB / total)
+                            : FALLBACK
+                    );
+                } catch {
+                    resolve(FALLBACK);
+                }
+            },
+        });
+        img.src = src;
+    });
+});

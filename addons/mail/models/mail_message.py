@@ -252,7 +252,9 @@ class MailMessage(models.Model):
     is_current_user_or_guest_author = fields.Boolean(compute='_compute_is_current_user_or_guest_author')
     # recipients: include inactive partners (they may have been archived after
     # the message was sent, but they should remain visible in the relation)
-    partner_ids = fields.Many2many('res.partner', string='Recipients', context={'active_test': False})
+    partner_ids = fields.Many2many('res.partner', string='Recipients (To)', context={'active_test': False})
+    partner_cc_ids = fields.Many2many('res.partner', relation='mail_message_res_partner_cc_rel',
+                                      string='Recipients (Cc)', context={'active_test': False})
     # email recipients of incoming emails: comma separated list of emails (not necessarily normalized)
     incoming_email_to = fields.Text('Emails To')
     incoming_email_cc = fields.Char('Emails Cc')
@@ -434,8 +436,34 @@ class MailMessage(models.Model):
             return super()._search(domain, offset, limit, order, bypass_access=True, **kwargs)
         if self.env.context.get('_generating_sql_for_fields'):
             raise ValueError("Cannot generate SQL for whole mail.message")
+        if limit is None or 0 < len(condition_values(self, 'model', domain) or ()) <= MAX_COMODELS_FOR_DOMAIN:
+            return super()._search(domain, offset, limit, order, bypass_access=bypass_access, **kwargs)
 
-        return super()._search(domain, offset, limit, order, bypass_access=bypass_access, **kwargs)
+        self_sudo = self.sudo()
+        if self._active_name and not kwargs.get('active_test', True):  # user set active_test=False
+            domain &= Domain(self._active_name, 'in', [True, False])
+        ordered = bool(order)
+        # Fetch by small batches
+        looping_offset = 0
+        limit += offset
+        result = []
+        if not ordered:
+            # By default, order by model to batch access checks.
+            order = 'model nulls first, id'
+        while len(result) < limit:
+            records = self_sudo.search_fetch(
+                domain,
+                [],
+                offset=looping_offset,
+                limit=PREFETCH_MAX,
+                order=order,
+            ).sudo(False)
+            result.extend(records._filtered_access('read')._ids)
+            if len(records) < PREFETCH_MAX:
+                # There are no more records
+                break
+            looping_offset += PREFETCH_MAX
+        return self.browse(result[offset:limit])._as_query(ordered)
 
     def _compute_res_access(self, operation: str):
         assert self.env.su
@@ -517,6 +545,7 @@ class MailMessage(models.Model):
             Domain('create_uid', '=', self.env.uid),
             # force an IN condition with a list of values
             Domain('partner_ids', 'any!', partner._as_query()),
+            Domain('partner_cc_ids', 'any!', partner._as_query()),
             Domain('notified_partner_ids', 'any!', partner._as_query()),
             # User_notification notified relevant partners, hence covered by
             # 'partner_ids' domain part (which is why it is ok to exclude them
@@ -539,12 +568,12 @@ class MailMessage(models.Model):
             - read: if any
                 - author_id == pid, uid is the author
                 - create_uid == uid, uid is the creator
-                - pid is in the recipients (partner_ids)
+                - pid is in the recipients (partner_ids + partner_cc_ids)
                 - pid has been notified (needaction)
                 - uid has access on the related document
             - write: if any
                 - author_id == pid, uid is the author
-                - pid is in the recipients (partner_ids)
+                - pid is in the recipients (partner_ids + partner_cc_ids)
                 - pid has been notified (needaction)
                 - uid has access on the related document
             - create: if any
@@ -570,9 +599,9 @@ class MailMessage(models.Model):
         # once we know they are accessible. At the end, the remaining entries
         # are the invalid ones.
         if self:
-            self.flush_recordset(['model', 'res_id', 'author_id', 'create_uid', 'parent_id', 'message_type', 'partner_ids'])
+            self.flush_recordset(['model', 'res_id', 'author_id', 'create_uid', 'parent_id', 'message_type', 'partner_ids', 'partner_cc_ids'])
         else:
-            self.flush_model(['model', 'res_id', 'author_id', 'create_uid', 'parent_id', 'message_type', 'partner_ids'])
+            self.flush_model(['model', 'res_id', 'author_id', 'create_uid', 'parent_id', 'message_type', 'partner_ids', 'partner_cc_ids'])
         self.env['mail.notification'].flush_model(['mail_message_id', 'res_partner_id'])
         pid = self.env.user.partner_id.id
 
@@ -583,24 +612,27 @@ class MailMessage(models.Model):
         if operation in ('read', 'write'):
             id_sql = table.id
             query.groupby = id_sql
-            # notified: partner_ids or needaction
+            # notified: partner_ids or partner_cc_ids or needaction
             query.add_join('LEFT JOIN', 'partner_rel', 'mail_message_res_partner_rel',
                 SQL('partner_rel.mail_message_id = %s AND partner_rel.res_partner_id = %s', id_sql, pid))
+            query.add_join('LEFT JOIN', 'partner_cc_rel', 'mail_message_res_partner_cc_rel',
+                SQL('partner_cc_rel.mail_message_id = %s AND partner_cc_rel.res_partner_id = %s', id_sql, pid))
             query.add_join('LEFT JOIN', 'needaction_rel', 'mail_notification',
                 SQL('needaction_rel.mail_message_id = %s AND needaction_rel.res_partner_id = %s', id_sql, pid))
-            query = query.select(*(
+            sql = query.select(*(
                 table[fname]
                 for fname in ('id', 'model', 'res_id', 'author_id', 'parent_id', 'message_type', 'create_uid')
-            ), SQL('bool_or(partner_rel.res_partner_id IS NOT NULL OR needaction_rel.res_partner_id IS NOT NULL) AS notified'))
+            ), SQL('bool_or(partner_rel.res_partner_id IS NOT NULL OR partner_cc_rel.res_partner_id IS NOT NULL '
+                   'OR needaction_rel.res_partner_id IS NOT NULL) AS notified'))
         elif operation in ('create', 'unlink'):
-            query = query.select(*(
+            sql = query.select(*(
                 table[fname]
                 for fname in ('id', 'model', 'res_id', 'author_id', 'parent_id', 'message_type')
             ))
         else:
             raise ValueError(_('Wrong operation name (%s)', operation))
         # skip flush which is already done
-        self.env.cr.execute(query)
+        self.env.cr.execute(sql)
         messages_to_check = {
             values['id']: values
             for values in self.env.cr.dictfetchall()
@@ -673,12 +705,16 @@ class MailMessage(models.Model):
                     parent_ids_msg_ids[message['parent_id']].append(mid)
             if parent_ids_msg_ids:
                 query = SQL(
-                    """ SELECT m.id
-                        FROM "mail_message" m
-                        JOIN "mail_message_res_partner_rel" partner_rel
-                            ON partner_rel.mail_message_id = m.id AND partner_rel.res_partner_id = %s
-                        WHERE m.id = ANY(%s) """,
-                    pid, list(parent_ids_msg_ids),
+                    """ SELECT mail_message_id
+                          FROM mail_message_res_partner_rel
+                         WHERE res_partner_id = %s
+                           AND mail_message_id = ANY (%s)
+                         UNION
+                        SELECT mail_message_id
+                          FROM mail_message_res_partner_cc_rel
+                         WHERE res_partner_id = %s
+                           AND mail_message_id = ANY (%s) """,
+                    pid, list(parent_ids_msg_ids), pid, list(parent_ids_msg_ids),
                 )
                 for [parent_id] in self.env.execute_query(query):
                     for mid in parent_ids_msg_ids[parent_id]:
@@ -842,10 +878,10 @@ class MailMessage(models.Model):
             lambda attach: attach.res_model == self._name and (attach.res_id in self.ids or attach.res_id == 0)
         ).unlink()
         messages_by_partner = defaultdict(lambda: self.env['mail.message'])
-        partners_with_user = self.partner_ids.filtered('user_ids')
+        partners_with_user = (self.partner_ids | self.partner_cc_ids).filtered('user_ids')
         for elem in self:
             for partner in (
-                elem.partner_ids & partners_with_user | elem.notification_ids.author_id
+                (elem.partner_ids | elem.partner_cc_ids) & partners_with_user | elem.notification_ids.author_id
             ):
                 messages_by_partner[partner] |= elem
         # Notify front-end of messages deletion for partners having a user
@@ -1178,6 +1214,14 @@ class MailMessage(models.Model):
             sort="id",
             sudo=True,
         )
+        res.many(
+            "partner_cc_ids",
+            lambda res: res.from_method("_store_avatar_fields"),
+            dynamic_fields="_store_partner_name_dynamic_fields",
+            predicate=lambda m: m.model != "discuss.channel",
+            sort="id",
+            sudo=True,
+        )
         res.attr("pinned_at")
         res.from_method("_store_reaction_group_fields")
         res.attr(
@@ -1302,7 +1346,17 @@ class MailMessage(models.Model):
                     ),
                 )
 
+            def needaction_done(message):
+                # sudo: mail.message - checking whether there is a notification for the current user is acceptable
+                return not message.env.user._is_public() and bool(
+                    message.sudo().notification_ids.filtered(
+                        lambda n: n.is_read
+                        and n.res_partner_id == message.env.user.partner_id,
+                    ),
+                )
+
             res.attr("needaction", needaction)
+            res.attr("needaction_done", needaction_done)
 
         # Add extras at the end to guarantee order in result. In particular, the parent message
         # needs to be after the current message (client code assuming the first received message is
@@ -1364,17 +1418,7 @@ class MailMessage(models.Model):
             "_store_notification_fields",
             value=lambda m: m.notification_ids._filtered_for_web_client(),
         )
-        res.one(
-            "thread",
-            lambda res: (
-                res.attr(
-                    "modelName",
-                    lambda thread: thread.env["ir.model"]._get(thread._name).display_name,
-                ),
-                res.attr("display_name"),
-            ),
-            as_thread=True,
-        )
+        res.one("thread", "_store_model_name_fields", as_thread=True)
 
     def _notify_message_notification_update(self):
         """Send bus notifications to update status of notifications in the web

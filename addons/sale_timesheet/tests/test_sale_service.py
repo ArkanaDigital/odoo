@@ -10,6 +10,7 @@ from odoo.tests import Form
 @tagged('-at_install', 'post_install')
 class TestSaleService(TestCommonSaleTimesheet):
     """ This test suite provide checks for miscellaneous small things. """
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -918,7 +919,7 @@ class TestSaleService(TestCommonSaleTimesheet):
         })
         sol.invalidate_recordset()
         self.assertAlmostEqual(sol.remaining_hours, -2.0, places=6)
-        self.assertIn('-02:00', sol.with_context(with_remaining_hours=True).display_name)
+        self.assertIn('-2h', sol.with_context(with_remaining_hours=True).display_name)
 
     def test_service_product_uom_default(self):
         """
@@ -995,3 +996,27 @@ class TestSaleService(TestCommonSaleTimesheet):
         product_form.service_policy = 'delivered_timesheet'
         product = product_form.save()
         self.assertEqual(product.uom_id, uom_day, "time UoM default was not respected")
+
+    def test_compute_last_sol_of_customer_with_list_domain(self):
+        """Domain has a list leaf; used to raise TypeError: unhashable type: 'list' as a dict key.
+        """
+        self.product_delivery_timesheet1.service_policy = 'ordered_prepaid'
+        order = self.sale_order
+
+        sol = self.env['sale.order.line'].create({
+            'order_id': order.id,
+            'product_id': self.product_delivery_timesheet1.id,
+        })
+        order.action_confirm()
+
+        task = self.env['project.task'].create({
+            'name': 'Task 1',
+            'project_id': self.project_task_rate.id,
+            'partner_id': self.partner_a.id,
+            'sale_line_id': sol.id,
+        })
+        self.assertEqual(
+            task.last_sol_of_customer,
+            sol,
+            "last_sol_of_customer should match the expected sale order line.",
+        )

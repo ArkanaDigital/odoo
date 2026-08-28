@@ -13,6 +13,8 @@ from odoo.tools.pdf import PdfFileReader, PdfFileWriter
 @tagged('post_install', '-at_install')
 class TestIrActionsReport(AccountTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
         self.file = BinaryBytes(PDF_RAW)
@@ -100,3 +102,14 @@ class TestIrActionsReport(AccountTestInvoicingCommon):
         # trying to merge with a corrupted attachment should not work
         with self.assertRaises(RedirectWarning):
             self.env['ir.actions.report'].with_context(force_report_rendering=True)._render_qweb_pdf('account.action_account_original_vendor_bill', res_ids=[in_invoice_1.id, in_invoice_2.id])
+
+    def test_print_original_bill_with_image_attachment(self):
+        bill = self._create_invoice(move_type='in_invoice', post=True)
+        bill.message_main_attachment_id = self.env['ir.attachment'].create({
+            'raw': file_open('base/tests/odoo.jpg', 'rb').read(),
+            'name': 'bill.jpg',
+            'mimetype': 'image/jpeg',
+        })
+        report = self.env['ir.actions.report'].with_user(self.simple_accountman).with_context(force_report_rendering=True)
+        generated_report = report._render_qweb_pdf('account.action_account_original_vendor_bill', res_ids=bill.id)
+        self.assertTrue(generated_report)

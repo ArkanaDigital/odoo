@@ -1,16 +1,15 @@
 import { useSubEnv } from "@web/owl2/utils";
-import { EventBus } from "@odoo/owl";
+import { EventBus, t } from "@odoo/owl";
 
 import { x2ManyCommands } from "@web/core/orm_plugin";
 import { useService } from "@web/core/utils/hooks";
 import { createDocumentFragmentFromContent } from "@web/core/utils/html";
 import { patch } from "@web/core/utils/patch";
-import { FormController } from "@web/views/form/form_controller";
+import { FormController, formControllerProps } from "@web/views/form/form_controller";
 
-FormController.props = {
-    ...FormController.props,
-    fullComposerBus: { type: EventBus, optional: true },
-};
+Object.assign(formControllerProps, {
+    fullComposerBus: t.instanceOf(EventBus).optional(),
+});
 
 patch(FormController.prototype, {
     setup() {
@@ -18,17 +17,11 @@ patch(FormController.prototype, {
         if (this.env.services["mail.store"]) {
             this.mailStore = useService("mail.store");
         }
-        useSubEnv({
-            chatter: {
-                fetchThreadData: true,
-                shouldFetchMessages: true,
-            },
-        });
+        useSubEnv({ chatter: { fetchThreadData: true } });
     },
     onWillLoadRoot(nextConfiguration) {
         super.onWillLoadRoot(...arguments);
         this.env.chatter.fetchThreadData = true;
-        this.env.chatter.shouldFetchMessages = true;
         const isSameThread =
             this.model.root?.resId === nextConfiguration.resId &&
             this.model.root?.resModel === nextConfiguration.resModel;

@@ -19,7 +19,6 @@ actions(Check in/Check out) performed by them.
     'data': [
         'data/hr_attendance_data.xml',
         'security/hr_attendance_security.xml',
-        'security/ir.model.access.csv',
         'data/hr_attendance_overtime_ruleset_data.xml',
         'data/hr_attendance_overtime_rule_data.xml',
         'views/hr_attendance_view.xml',
@@ -30,9 +29,13 @@ actions(Check in/Check out) performed by them.
         'views/hr_attendance_kiosk_templates.xml',
         'views/hr_attendance_overtime_rule_views.xml',
         'views/hr_version_views.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'data/hr_attendance_demo.xml'
+    ],
+    'other_files': [
+        'data/scenarios/hr_attendance_scenario.xml',
     ],
     'application': True,
     'assets': {
@@ -73,6 +76,7 @@ actions(Check in/Check out) performed by them.
             # Public Kiosk app and its components
             "hr_attendance/static/src/public_kiosk/**/*",
             'hr_attendance/static/src/components/**/*',
+            ('remove', 'hr_attendance/static/src/components/hr_presence_status/hr_attendance_presence_status.js'),
 
             'hr_attendance/static/src/scss/kiosk/hr_attendance.scss',
             "web/static/src/views/fields/formatters.js",

@@ -43,7 +43,7 @@ class Web_TourTour(models.Model):
     @api.model
     def get_tour_json_by_name(self, tour_name):
         tour_id = self.search([("name", "=", tour_name)])
-        return tour_id._get_tour_json()
+        return tour_id and tour_id._get_tour_json()
 
     def _get_tour_json(self):
         tour_json = self.read(fields={
@@ -61,7 +61,6 @@ class Web_TourTour(models.Model):
         js_content = f"""import {{ registry }} from '@web/core/registry';
 
 registry.category("web_tour.tours").add("{self.name}", {{
-    url: "{self.url}",
     steps: () => {json.dumps(self.step_ids.get_steps_json(), indent=4)}
 }})"""
 

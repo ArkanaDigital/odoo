@@ -5,12 +5,14 @@ import odoo.tests
 from odoo.addons.point_of_sale.tests.common_setup_methods import setup_product_combo_items
 from odoo.addons.point_of_sale.tests.common import archive_products
 from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCommon
-from odoo import Command
+from odoo import Command, fields
 import json
 from datetime import datetime, timedelta
 
 @odoo.tests.tagged('post_install', '-at_install')
 class TestFrontendCommon(TestPointOfSaleHttpCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -44,22 +46,20 @@ class TestFrontendCommon(TestPointOfSaleHttpCommon):
         cls.pos_config = cls.env['pos.config'].create({
             'name': 'Bar Prout',
             'module_pos_restaurant': True,
-            'iface_splitbill': True,
             'iface_printbill': True,
             'use_order_printer': True,
             'preparation_printer_ids': [(4, printer.id)],
             'iface_tipproduct': False,
             'company_id': cls.env.company.id,
             'journal_id': test_sale_journal_2.id,
-            'invoice_journal_id': test_sale_journal_2.id,
             'payment_method_ids': [
                 (4, cls.bank_payment_method.id),
                 (0, 0, {
                     'name': 'Cash',
-                    'split_transactions': False,
                     'receivable_account_id': cls.account_receivable.id,
                     'journal_id': cash_journal_2.id,
-                })
+                    'type': 'cash',
+                }),
             ],
         })
         cls.main_pos_config = cls.pos_config
@@ -234,6 +234,8 @@ class TestFrontendCommon(TestPointOfSaleHttpCommon):
 
 class TestFrontend(TestFrontendCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_01_pos_restaurant(self):
         self.pos_user.write({
             'group_ids': [
@@ -253,24 +255,8 @@ class TestFrontend(TestFrontendCommon):
         self.assertEqual(1, self.env['pos.order'].search_count([('amount_total', '=', 2.2), ('state', '=', 'draft')]))
         self.assertEqual(2, self.env['pos.order'].search_count([('amount_total', '=', 4.4), ('state', '=', 'paid')]))
 
-    def test_02_others(self):
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('SplitBillScreenTour')
-        self.start_pos_tour('FloorScreenTour', login="pos_admin")
-
-    def test_02_others_bis(self):
-        # disable kitchen printer to avoid printing errors
-        self.pos_config.use_order_printer = False
-        self.pos_config.with_user(self.pos_admin).open_ui()
-        self.start_pos_tour('ControlButtonsTour', login="pos_admin")
-
-    def test_04_ticket_screen(self):
-        self.pos_config.use_order_printer = False
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('PosResTicketScreenTour')
-
     def test_05_tip_screen(self):
-        self.pos_config.write({'set_tip_after_payment': True, 'iface_tipproduct': True, 'tip_product_id': self.env.ref('point_of_sale.product_product_tip')})
+        self.pos_config.write({'set_tip_after_payment': True, 'iface_tipproduct': True})
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('PosResTipScreenTour')
 
@@ -313,47 +299,6 @@ class TestFrontend(TestFrontendCommon):
         orders = self.env['pos.order'].search([('pos_reference', '!=', '')], limit=2, order='id desc')
         self.assertEqual(len(orders), 2)
 
-    def test_07_split_bill_screen(self):
-        # disable kitchen printer to avoid printing errors
-        self.pos_config.use_order_printer = False
-        attribute = self.env['product.attribute'].create({
-            'name': 'Attribute',
-            'create_variant': 'always',
-        })
-        attribute_normal = self.env['product.attribute.value'].create({
-            'name': 'Normal',
-            'attribute_id': attribute.id,
-        })
-        attribute_zero = self.env['product.attribute.value'].create({
-            'name': 'Zero',
-            'attribute_id': attribute.id,
-        })
-
-        self.env['product.template.attribute.line'].create({
-            'product_tmpl_id': self.coca_cola_test.product_tmpl_id.id,
-            'attribute_id': attribute.id,
-            'value_ids': [Command.set([attribute_normal.id, attribute_zero.id])],
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('SplitBillScreenTour3')
-        self.start_pos_tour('SplitBillScreenTourPay')
-
-    def test_08_refund_stay_current_table(self):
-        self.pos_config.write({
-            'preparation_printer_ids': False,
-            'other_devices': False,
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('RefundStayCurrentTableTour')
-
-    def test_09_combo_split_bill(self):
-        setup_product_combo_items(self)
-        self.office_combo.product_variant_id.write({'lst_price': 40})
-        # disable kitchen printer to avoid printing errors
-        self.pos_config.use_order_printer = False
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('SplitBillScreenTour4ProductCombo')
-
     def test_10_save_last_preparation_changes(self):
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('SaveLastPreparationChangesTour')
@@ -361,19 +306,10 @@ class TestFrontend(TestFrontendCommon):
         self.assertTrue(self.coca_cola_test.id == self.pos_config.current_session_id.order_ids.prep_order_ids.prep_line_ids.product_id.id, "The last order preparation change should contain 'Coca'")
 
     def test_12_order_tracking(self):
-        self.pos_config.write({'order_edit_tracking': True})
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('OrderTrackingTour')
         order1 = self.env['pos.order'].search([('pos_reference', 'ilike', '%-000001')], limit=1, order='id desc')
         self.assertTrue(order1.is_edited)
-
-    def test_13_category_check(self):
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('CategLabelCheck')
-
-    def test_14_change_synced_order(self):
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('OrderChangeTour')
 
     def test_13_crm_team(self):
         if self.env['ir.module.module']._get('pos_sale').state != 'installed':
@@ -399,11 +335,6 @@ class TestFrontend(TestFrontendCommon):
         self.start_pos_tour('PoSPaymentSyncTour3')
         assert_payment(2, 6.6)
 
-    def test_15_split_bill_screen_actions(self):
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.pos_config.write({'preparation_printer_ids': False})
-        self.start_pos_tour('SplitBillScreenTour5Actions')
-
     def test_pos_restaurant_course(self):
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('test_pos_restaurant_course')
@@ -411,174 +342,6 @@ class TestFrontend(TestFrontendCommon):
         self.assertEqual(len(order), 1)
         # Verify whether the two courses have different timestamps
         self.assertNotEqual(order.course_ids[0].fired_date, order.course_ids[1].fired_date)
-
-    def test_pos_restaurant_default_course(self):
-        drinks_category = self.env['pos.category'].search([('name', '=', 'Drinks')], limit=1)
-        food_category = self.env['pos.category'].search([('name', '=', 'Food')], limit=1)
-        breads_category = self.env['pos.category'].search([('name', '=', 'Breads')], limit=1)
-        self.pos_config.write({
-            'use_course_allocation': True,
-            "iface_available_categ_ids": [(6, 0, [drinks_category.id, food_category.id, breads_category.id])],
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_pos_restaurant_default_course')
-
-    def test_preparation_printer_content(self):
-        self.preset_eat_in = self.env['pos.preset'].create({
-            'name': 'Eat in',
-        })
-        self.preset_takeaway = self.env['pos.preset'].create({
-            'name': 'Takeaway',
-            'identification': 'name',
-        })
-        self.main_pos_config.write({
-            'use_presets': True,
-            'default_preset_id': self.preset_eat_in.id,
-            'available_preset_ids': [(6, 0, [self.preset_takeaway.id])],
-        })
-        resource_calendar = self.env['resource.calendar'].create({
-            'name': 'Takeaway',
-            'attendance_ids': [(0, 0, {
-                'dayofweek': str(day),
-                'hour_from': 0,
-                'hour_to': 24,
-            }) for day in range(0, 7)],
-        })
-        self.preset_takeaway.write({
-            'use_timing': True,
-            'resource_calendar_id': resource_calendar
-        })
-        self.env['pos.printer'].create({
-            'name': 'Printer',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(self.env['pos.category'].search([]).ids)],
-        })
-
-        self.main_pos_config.write({
-            'use_order_printer': True,
-            'preparation_printer_ids': [Command.set(self.env['pos.printer'].search([('use_type', '=', 'preparation')]).ids)],
-        })
-
-        self.product_test = self.env['product.product'].create({
-            'name': 'Product Test',
-            'available_in_pos': True,
-            'list_price': 10,
-            'pos_categ_ids': [(6, 0, [self.env['pos.category'].search([], limit=1).id])],
-            'taxes_id': False,
-        })
-
-        attribute = self.env['product.attribute'].create({
-            'name': 'Attribute 1',
-            'create_variant': 'no_variant',
-        })
-        attribute_value = self.env['product.attribute.value'].create({
-            'name': 'Value 1',
-            'attribute_id': attribute.id,
-        })
-        attribute_value_2 = self.env['product.attribute.value'].create({
-            'name': 'Value 2',
-            'attribute_id': attribute.id,
-        })
-        self.env['product.template.attribute.line'].create({
-            'product_tmpl_id': self.product_test.product_tmpl_id.id,
-            'attribute_id': attribute.id,
-            'value_ids': [(6, 0, [attribute_value.id, attribute_value_2.id])],
-        })
-
-        attribute_2 = self.env['product.attribute'].create({
-            'name': 'Attribute 1',
-            'create_variant': 'always',
-        })
-        attribute_2_value = self.env['product.attribute.value'].create({
-            'name': 'Value 1',
-            'attribute_id': attribute_2.id,
-        })
-        attribute_2_value_2 = self.env['product.attribute.value'].create({
-            'name': 'Value 2',
-            'attribute_id': attribute_2.id,
-        })
-        self.env['product.template.attribute.line'].create({
-            'product_tmpl_id': self.product_test.product_tmpl_id.id,
-            'attribute_id': attribute_2.id,
-            'value_ids': [(6, 0, [attribute_2_value.id, attribute_2_value_2.id])],
-        })
-        self.main_pos_config.with_user(self.pos_user).open_ui()
-        self.start_tour(f"/pos/ui/{self.main_pos_config.id}", 'PreparationPrinterContent', login="pos_user")
-
-    def test_course_restaurant_preparation_tour(self):
-        self.env['pos.printer'].create({
-            'name': 'Printer',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(self.env['pos.category'].search([]).ids)],
-        })
-
-        self.main_pos_config.write({
-            'use_order_printer': True,
-            'preparation_printer_ids': [Command.set(self.env['pos.printer'].search([('use_type', '=', 'preparation')]).ids)],
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_course_restaurant_preparation_tour', login="pos_user")
-
-    def test_combo_preparation_receipt(self):
-        setup_product_combo_items(self)
-        pos_printer = self.env['pos.printer'].create({
-            'name': 'Printer',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(self.env['pos.category'].search([]).ids)],
-        })
-        self.pos_config.write({
-            'use_order_printer': True,
-            'preparation_printer_ids': [Command.set(pos_printer.ids)],
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_combo_preparation_receipt')
-
-    def test_multiple_preparation_printer(self):
-        """This test make sure that no empty receipt are sent when using multiple printer with different categories
-           The tour will check that we tried did not try to print two receipt. We can achieve that by checking the content
-           of the error message. Because we do not have real printer an error message will be displayed, this will contain
-           all the receipt that failed to print. If it contains more than 1 it means that we tried to print a second receipt
-           and it should not be the case here. The only one we should see is 'Detailed Receipt'
-        """
-        pos_category_1 = self.env['pos.category'].create({'name': 'Category 1'})
-        pos_category_2 = self.env['pos.category'].create({'name': 'Category 2'})
-        printer_1 = self.env['pos.printer'].create({
-            'name': 'Printer 1',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(pos_category_2.ids)],
-        })
-        printer_2 = self.env['pos.printer'].create({
-            'name': 'Printer 2',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(pos_category_1.ids)],
-        })
-
-
-        self.main_pos_config.write({
-            'use_order_printer': True,
-            'preparation_printer_ids': [Command.set([printer_1.id, printer_2.id])],
-        })
-
-        self.product_1 = self.env['product.product'].create({
-            'name': 'Product 1',
-            'available_in_pos': True,
-            'list_price': 10,
-            'pos_categ_ids': [(6, 0, [pos_category_1.id])],
-            'taxes_id': False,
-        })
-
-        self.main_pos_config.with_user(self.pos_user).open_ui()
-        self.start_tour(f"/pos/ui/{self.main_pos_config.id}", 'MultiPreparationPrinter', login="pos_user")
 
     def test_user_on_residual_order(self):
         self.pos_config.write({'preparation_printer_ids': False})
@@ -621,100 +384,6 @@ class TestFrontend(TestFrontendCommon):
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('no_ghost_floor', login="pos_admin")
 
-    def test_multiple_preparation_printer_different_categories(self):
-        """This test make sure that no empty receipt are sent when using multiple printer with different categories
-           The tour will check that we tried did not try to print two receipt. We can achieve that by checking the content
-           of the error message. Because we do not have real printer an error message will be displayed, this will contain
-           all the receipt that failed to print. If it contains more than 1 it means that we tried to print a second receipt
-           and it should not be the case here. The only one we should see is 'Detailed Receipt'
-        """
-        pos_category_1 = self.env['pos.category'].create({'name': 'Category 1'})
-        pos_category_2 = self.env['pos.category'].create({'name': 'Category 2'})
-        printer_1 = self.env['pos.printer'].create({
-            'name': 'Printer 1',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(pos_category_2.ids)],
-        })
-        printer_2 = self.env['pos.printer'].create({
-            'name': 'Printer 2',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(pos_category_1.ids)],
-        })
-
-        self.main_pos_config.write({
-            'use_order_printer': True,
-            'preparation_printer_ids': [Command.set([printer_1.id, printer_2.id])],
-        })
-
-        self.product_1 = self.env['product.product'].create({
-            'name': 'Product 1',
-            'available_in_pos': True,
-            'list_price': 10,
-            'pos_categ_ids': [(6, 0, [pos_category_1.id])],
-            'taxes_id': False,
-        })
-
-        self.product_2 = self.env['product.product'].create({
-            'name': 'Product 2',
-            'available_in_pos': True,
-            'list_price': 10,
-            'pos_categ_ids': [(6, 0, [pos_category_2.id])],
-            'taxes_id': False,
-        })
-
-        self.main_pos_config.with_user(self.pos_user).open_ui()
-        self.start_tour(f"/pos/ui/{self.main_pos_config.id}", 'test_multiple_preparation_printer_different_categories', login="pos_user")
-
-    def test_preset_timing_restaurant(self):
-        """
-        Test to set order preset hour inside a tour
-        """
-        self.preset_eat_in = self.env['pos.preset'].create({
-            'name': 'Eat in',
-        })
-        self.preset_takeaway = self.env['pos.preset'].create({
-            'name': 'Takeaway',
-            'identification': 'name',
-        })
-        self.preset_delivery = self.env['pos.preset'].create({
-            'name': 'Delivery',
-            'identification': 'address',
-        })
-        self.main_pos_config.write({
-            'use_presets': True,
-            'default_preset_id': self.preset_delivery.id,
-            'available_preset_ids': [(6, 0, [
-                self.preset_takeaway.id,
-                self.preset_eat_in.id,
-                self.preset_delivery.id,
-            ])],
-        })
-        self.start_pos_tour('test_preset_delivery_restaurant')
-        resource_calendar = self.env['resource.calendar'].create({
-            'name': 'Takeaway',
-            'attendance_ids': [(0, 0, {
-                'dayofweek': str(day),
-                'hour_from': 0,
-                'hour_to': 24,
-            }) for day in range(0, 7)],
-        })
-        self.preset_takeaway.write({
-            'use_timing': True,
-            'resource_calendar_id': resource_calendar
-        })
-        self.main_pos_config.write({'default_preset_id': self.preset_takeaway.id})
-        self.start_pos_tour('test_open_register_with_preset_takeaway')
-        self.main_pos_config.write({'default_preset_id': self.preset_eat_in.id})
-        self.start_pos_tour('test_preset_timing_restaurant')
-        self.preset_eat_in.write({
-            'use_guest': True,
-        })
-        self.start_pos_tour('test_guest_count_bank_payment')
-
     def test_preset_future_timing_restaurant(self):
         """
         Test to set order preset future date inside a tour
@@ -746,58 +415,44 @@ class TestFrontend(TestFrontendCommon):
         })
         self.start_pos_tour('test_cancel_future_order', login="pos_user")
 
-    def test_restaurant_preset_eatin_tour(self):
-        self.pos_config.write({
-            'use_presets': True,
-            'default_preset_id': self.env.ref('pos_restaurant.pos_takein_preset', False).id,
-        })
-        self.pos_user.name = "test_user"
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('RestaurantPresetEatInTour', login="pos_user")
+    def test_close_with_planned_order_later_today(self):
+        """
+        This test ensures that an order planned for later today is not cancelled when the PoS session is closed,
+        and that the session can be closed successfully.
+        """
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        session = self.main_pos_config.current_session_id
+        product = self.env['product.product'].search([('available_in_pos', '=', True)], limit=1)
 
-    def test_combo_preparation_receipt_layout(self):
-        setup_product_combo_items(self)
-        pos_printer = self.env['pos.printer'].create({
-            'name': 'Printer',
-            'printer_type': 'epson_epos',
-            'printer_ip': '0.0.0.0',
-            'use_type': 'preparation',
-            'product_categories_ids': [Command.set(self.env['pos.category'].search([]).ids)],
+        planned_order = self.env['pos.order'].create({
+            'company_id': self.env.company.id,
+            'session_id': session.id,
+            'lines': [(0, 0, {
+                'name': "OL/0001",
+                'product_id': product.id,
+                'price_unit': 10.0,
+                'qty': 1.0,
+                'price_subtotal': 10.0,
+                'price_subtotal_incl': 10.0,
+            })],
+            'amount_tax': 0.0,
+            'amount_total': 10.0,
+            'amount_paid': 0.0,
+            'amount_return': 0.0,
+            'preset_time': fields.Datetime.now() + timedelta(hours=4),
         })
-        self.pos_config.write({
-            'use_order_printer': True,
-            'preparation_printer_ids': [Command.set(pos_printer.ids)],
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_tour(f"/pos/ui/{self.pos_config.id}", 'test_combo_preparation_receipt_layout', login="pos_user")
 
-    def test_combo_apply_after_preparation(self):
-        setup_product_combo_items(self)
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_combo_apply_after_preparation', login="pos_user")
+        session.close_session_from_ui()
 
-    def test_tip_after_payment(self):
-        self.pos_config.write({'iface_tipproduct': True, 'tip_product_id': self.tip.id})
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_tip_after_payment')
+        self.assertEqual(session.state, 'closed')
+        self.assertEqual(planned_order.state, 'draft')
+        self.assertFalse(planned_order.session_id)
 
     def test_customer_alone_saved(self):
         """
         Tests that when a customer is set, it will be saved and not be reset even if this is the only thing that changed in the order
         """
         self.start_tour(f"/pos/ui?config_id={self.main_pos_config.id}", 'test_customer_alone_saved', login="pos_user")
-
-    def test_no_kitchen_confirmation_for_deposit_money(self):
-        if not self.env["ir.module.module"].search([("name", "=", "pos_settle_due"), ("state", "=", "installed")]):
-            self.skipTest("pos_settle_due module is required for this test")
-
-        self.customer_account_payment_method = self.env['pos.payment.method'].create({
-            'name': 'Customer Account',
-            'split_transactions': True,
-        })
-        self.pos_config.write({'payment_method_ids': [(4, self.customer_account_payment_method.id)]})
-        self.pos_config.with_user(self.pos_admin).open_ui()
-        self.start_pos_tour('test_no_kitchen_confirmation_for_deposit_money', login="pos_admin")
 
     def test_open_default_register_screen_config(self):
         """
@@ -806,20 +461,6 @@ class TestFrontend(TestFrontendCommon):
         self.pos_config.write({'default_screen': 'register'})
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('test_open_default_register_screen_config')
-
-    def test_show_default_with_register_screen(self):
-        """
-        Test that showDefault() correctly updates the selected order when
-        default_screen is 'register' (ProductScreen mode, not floor/tables).
-        Regression test: navigating via showDefault() must sync selectedOrderUuid
-        so that ProductScreen displays the correct order.
-        """
-        self.pos_config.write({
-            'default_screen': 'register',
-            'preparation_printer_ids': False,
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_show_default_with_register_screen')
 
     def test_fast_payment_validation_from_restaurant_product_screen_with_automatic_receipt_printing(self):
         preparation_printer = self.env['pos.printer'].create({
@@ -842,7 +483,6 @@ class TestFrontend(TestFrontendCommon):
             'preparation_printer_ids': [Command.set([preparation_printer.id])],
             'receipt_printer_ids': [Command.set([receipt_printer.id])],
             'iface_print_auto': True,
-            'iface_print_skip_screen': True,
             'other_devices': True,
             'preparation_devices': True,
         })
@@ -874,24 +514,6 @@ class TestFrontend(TestFrontendCommon):
         self.assertEqual(order.state, 'paid', "The order should be paid after the fast payment validation")
         self.assertEqual(len(order.payment_ids), 1, "There should be one payment method used for the fast payment")
         self.assertEqual(order.payment_ids.payment_method_id, self.bank_payment_method, "The payment method used should be the bank payment method")
-
-    def test_transfering_orders(self):
-        """
-        We can now transfer order from one table to another and from floating order to another etc.
-        """
-        self.start_pos_tour('test_transfering_orders', login="pos_user")
-
-    def test_direct_sales(self):
-        """
-        Direct sales should not be synced without table_id or floating_order_name, if an order is
-        sync without one of them, we assign pos_reference in floating_order_name.
-        """
-        self.start_pos_tour('test_direct_sales', login="pos_user")
-        orders = self.env['pos.order'].search([], limit=3, order='id desc')
-        self.assertEqual(orders[2].floating_order_name, orders[2].tracking_number)
-        self.assertEqual(orders[1].floating_order_name, "Test")
-        self.assertEqual(orders[0].floating_order_name, False)
-        self.assertIsNotNone(orders[0].table_id)
 
     def test_cancel_order_from_ui(self):
         self.pos_config.with_user(self.pos_user).open_ui()
@@ -978,18 +600,17 @@ class TestFrontend(TestFrontendCommon):
         self.pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('SplitBillScreenTourTransfer')
 
-    def test_name_preset_skip_screen(self):
-        self.preset_takeaway = self.env['pos.preset'].create({
-            'name': 'Takeaway',
-            'identification': 'name',
-        })
-        self.pos_config.write({
-            'use_presets': True,
-            'default_preset_id': self.preset_takeaway.id,
-            'available_preset_ids': [(6, 0, [self.preset_takeaway.id])],
-        })
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_name_preset_skip_screen')
+    def test_direct_sales(self):
+        """
+        Direct sales should not be synced without table_id or floating_order_name, if an order is
+        sync without one of them, we assign pos_reference in floating_order_name.
+        """
+        self.start_pos_tour('test_direct_sales', login="pos_user")
+        orders = self.env['pos.order'].search([], limit=3, order='id desc')
+        self.assertEqual(orders[2].floating_order_name, orders[2].tracking_number)
+        self.assertEqual(orders[1].floating_order_name, "Test")
+        self.assertEqual(orders[0].floating_order_name, False)
+        self.assertIsNotNone(orders[0].table_id)
 
     def test_future_orders_are_not_cancelled(self):
         """
@@ -1040,14 +661,9 @@ class TestFrontend(TestFrontendCommon):
         })
 
         self.start_pos_tour('test_futur_orders_are_not_cancelled')
-        self.pos_config.current_session_id.close_session_from_ui()
         self.assertEqual(present_order.state, 'cancel')
         self.assertEqual(future_order.state, 'draft')
         self.assertEqual(future_order.session_id.id, False)
-
-    def test_add_new_table_number_with_multi_floor(self):
-        self.pos_config.with_user(self.pos_user).open_ui()
-        self.start_pos_tour('test_add_new_table_number_with_multi_floor', login="pos_admin")
 
     def test_floating_order_name_change_partner(self):
         # Create partners
@@ -1076,3 +692,142 @@ class TestFrontend(TestFrontendCommon):
 
         self.main_pos_config.with_user(self.pos_user).open_ui()
         self.start_pos_tour('test_floating_order_name_change_partner', login="pos_user")
+
+    def test_service_fee(self):
+        self.preset_fixed_service_fee = self.env['pos.preset'].create({
+            'name': 'Fixed',
+            'service_fee': True,
+            'service_fee_type': 'fixed',
+            'service_fee_amount': 10,
+        })
+        self.preset_percentage_service_fee_before_discount = self.env['pos.preset'].create({
+            'name': 'Percentage before discount',
+            'service_fee': True,
+            'service_fee_type': 'percent',
+            'service_fee_amount': 0.1,
+            'service_fee_based_on': 'pre_discount',
+        })
+        self.preset_percentage_service_fee_after_discount = self.env['pos.preset'].create({
+            'name': 'Percentage after discount',
+            'service_fee': True,
+            'service_fee_type': 'percent',
+            'service_fee_amount': 0.1,
+            'service_fee_based_on': 'post_discount',
+        })
+
+        self.main_pos_config.write({
+            'use_presets': True,
+            'default_preset_id': self.preset_fixed_service_fee.id,
+            'available_preset_ids': [(6, 0, [self.preset_percentage_service_fee_before_discount.id, self.preset_percentage_service_fee_after_discount.id])],
+        })
+
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('ServiceFeeTour', login="pos_admin")
+
+    def test_service_fee_mixed_tax_quantity(self):
+        """
+        Two tax groups split a fixed service fee into two lines. Editing its
+        quantity must still scale the whole fee: it used to reset to 1, so the
+        cashier could no longer edit it once the fee had split.
+        """
+        tax_a = self.env['account.tax'].create({
+            'name': 'Tax A 0%',
+            'amount': 0,
+            'amount_type': 'percent',
+            'type_tax_use': 'sale',
+        })
+        tax_b = self.env['account.tax'].create({
+            'name': 'Tax B 0%',
+            'amount': 0,
+            'amount_type': 'percent',
+            'type_tax_use': 'sale',
+        })
+        self.env['product.product'].create({
+            'available_in_pos': True,
+            'list_price': 30.0,
+            'name': 'Dish A',
+            'pos_categ_ids': self.coca_cola_test.pos_categ_ids.ids,
+            'taxes_id': [Command.set(tax_a.ids)],
+        })
+        self.env['product.product'].create({
+            'available_in_pos': True,
+            'list_price': 10.0,
+            'name': 'Dish B',
+            'pos_categ_ids': self.coca_cola_test.pos_categ_ids.ids,
+            'taxes_id': [Command.set(tax_b.ids)],
+        })
+        preset_fixed_service_fee = self.env['pos.preset'].create({
+            'name': 'Fixed 2',
+            'service_fee': True,
+            'service_fee_type': 'fixed',
+            'service_fee_amount': 2,
+        })
+        self.main_pos_config.write({
+            'use_presets': True,
+            'iface_tax_included': 'total',
+            'default_preset_id': preset_fixed_service_fee.id,
+            'available_preset_ids': [(6, 0, [])],
+        })
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('ServiceFeeMixedTaxQuantityTour', login="pos_admin")
+
+    def test_service_fee_course(self):
+        """
+        A service fee applies to the whole order, so it stays at the bottom of
+        it even as the cashier splits the order into courses.
+        """
+        preset_fixed_service_fee = self.env['pos.preset'].create({
+            'name': 'Fixed 10',
+            'service_fee': True,
+            'service_fee_type': 'fixed',
+            'service_fee_amount': 10,
+        })
+        self.main_pos_config.write({
+            'use_presets': True,
+            'default_preset_id': preset_fixed_service_fee.id,
+            'available_preset_ids': [(6, 0, [])],
+        })
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('ServiceFeeCourseTour', login="pos_admin")
+
+    def test_service_fee_table_merge(self):
+        """
+        The merged order carries one fee: the destination's, recomputed on the
+        whole bill. Fee lines never merge, so the source's used to linger.
+        """
+        preset_percentage_service_fee = self.env['pos.preset'].create({
+            'name': 'Percentage',
+            'service_fee': True,
+            'service_fee_type': 'percent',
+            'service_fee_amount': 0.1,
+            'service_fee_based_on': 'pre_discount',
+        })
+        self.main_pos_config.write({
+            'use_presets': True,
+            'use_order_printer': False,  # avoid the preparation printer dialog
+            'default_preset_id': preset_percentage_service_fee.id,
+            'available_preset_ids': [(6, 0, [])],
+        })
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('ServiceFeeTableMergeTour', login="pos_admin")
+
+    def test_service_fee_refund(self):
+        """
+        The service fee is refundable like any other orderline, and a refund
+        order (which has no preset) must never recompute it.
+        """
+        preset_percentage_service_fee = self.env['pos.preset'].create({
+            'name': 'Percentage',
+            'service_fee': True,
+            'service_fee_type': 'percent',
+            'service_fee_amount': 0.1,
+            'service_fee_based_on': 'pre_discount',
+        })
+        self.main_pos_config.write({
+            'use_presets': True,
+            'use_order_printer': False,  # avoid the preparation printer dialog when paying
+            'default_preset_id': preset_percentage_service_fee.id,
+            'available_preset_ids': [(6, 0, [])],
+        })
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('ServiceFeeRefundTour', login="pos_admin")

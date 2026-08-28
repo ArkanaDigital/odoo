@@ -18,6 +18,7 @@ class TestSaEdiCommon(AccountTestInvoicingCommon):
     - Products and taxes
     - XPath templates for XML comparison
     """
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     @AccountTestInvoicingCommon.setup_chart_template('sa')
@@ -102,7 +103,7 @@ class TestSaEdiCommon(AccountTestInvoicingCommon):
             'state_id': cls.riyadh.id,
             'country_id': cls.saudi_arabia.id,
             # Saudi-specific address fields
-            'l10n_sa_edi_building_number': '12300',
+            'l10n_sa_edi_building_number': '1230',
             'l10n_sa_edi_plot_identification': '2323',
         })
 

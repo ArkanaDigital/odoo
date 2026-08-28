@@ -1,5 +1,6 @@
-import { useComponent, useExternalListener, useLayoutEffect } from "@web/owl2/utils";
-import { onMounted } from "@odoo/owl";
+import { onMounted, onWillUnmount, untrack, useListener, useProps, useScope } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
+import { useEnv } from "../owl2/utils";
 
 export const scrollSymbol = Symbol("scroll");
 
@@ -39,27 +40,24 @@ export class CallbackRecorder {
  * @param {Function} callback
  */
 export function useCallbackRecorder(callbackRecorder, callback) {
-    const component = useComponent();
-    useLayoutEffect(
-        () => {
-            callbackRecorder.add(component, callback);
-            return () => callbackRecorder.remove(component);
-        },
-        () => []
-    );
+    const scope = useScope();
+    onMounted(() => callbackRecorder.add(scope, callback));
+    onWillUnmount(() => callbackRecorder.remove(scope));
 }
 
 /**
  */
 export function useSetupAction(params = {}) {
-    const component = useComponent();
+    const env = useEnv();
+    const props = useProps();
+    const ui = useService("ui");
     const {
         __beforeLeave__,
         __getGlobalState__,
         __getLocalState__,
         __getContext__,
         __getOrderBy__,
-    } = component.env;
+    } = env;
 
     const {
         beforeVisibilityChange,
@@ -71,11 +69,11 @@ export function useSetupAction(params = {}) {
     } = params;
 
     if (beforeVisibilityChange) {
-        useExternalListener(document, "visibilitychange", beforeVisibilityChange);
+        useListener(document, "visibilitychange", beforeVisibilityChange);
     }
 
     if (beforeUnload) {
-        useExternalListener(window, "beforeunload", beforeUnload);
+        useListener(window, "beforeunload", beforeUnload);
     }
     if (__beforeLeave__ && beforeLeave) {
         useCallbackRecorder(__beforeLeave__, beforeLeave);
@@ -90,17 +88,17 @@ export function useSetupAction(params = {}) {
         });
     }
 
-    // Transitional check: Owl 3 native refs are signals (element obtained by
-    // calling the ref), while legacy refs expose `.el`. Resolve the element
-    // lazily at read time, mirroring the timing of the legacy `.el` getter.
-    const getRootEl = () => (typeof rootRef === "function" ? rootRef() : rootRef?.el);
+    const getRootEl = () => untrack(rootRef);
 
     function setScrollFromState() {
-        const { state } = component.props;
+        const { state } = props;
         const scrolling = state && state[scrollSymbol];
         if (scrolling) {
             const rootEl = getRootEl();
-            if (component.env.isSmall) {
+            if (!rootEl) {
+                return;
+            }
+            if (ui.isSmall) {
                 rootEl.scrollTop = (scrolling.root && scrolling.root.top) || 0;
                 rootEl.scrollLeft = (scrolling.root && scrolling.root.left) || 0;
             } else if (scrolling.content) {
@@ -122,7 +120,10 @@ export function useSetupAction(params = {}) {
             }
             if (rootRef) {
                 const rootEl = getRootEl();
-                if (component.env.isSmall) {
+                if (!rootEl) {
+                    return state;
+                }
+                if (ui.isSmall) {
                     state[scrollSymbol] = {
                         root: { left: rootEl.scrollLeft, top: rootEl.scrollTop },
                     };

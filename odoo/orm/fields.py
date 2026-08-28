@@ -87,9 +87,6 @@ def determine(needle, records: BaseModel, *args):
     raise TypeError("Determination requires a callable or method name")
 
 
-_global_seq = itertools.count()
-
-
 class Field[T]:
     """The field descriptor contains the field definition, and manages accesses
     and assignments of the corresponding field on records. The following
@@ -122,6 +119,13 @@ class Field[T]:
         ``default=None`` to discard default values for the field
     :type default: value or callable
 
+    :param str init_storage: the function that initializes null values in the column in the database;
+
+        The function can initialize the column/relation in the database. It may
+        call `model.pool.post_init` to delay the initialization after other
+        columns. If the function returns a truthy value, the ORM will recompute
+        the field. The ORM cannot be used in this function!
+
     :param str groups: comma-separated list of group xml ids (string); this
         restricts the field access to the users of the given groups only
 
@@ -132,10 +136,13 @@ class Field[T]:
         The field's default values stored in model ir.default are used as fallbacks for
         unspecified values in the jsonb dict.
 
-    :param bool copy: whether the field value should be copied when the record
-        is duplicated (default: ``True`` for normal fields, ``False`` for
+    :param bool|callable copy: whether the field value should be copied when the
+        record is duplicated (default: ``True`` for normal fields, ``False`` for
         ``one2many`` and computed fields, including property fields and
-        related fields)
+        related fields). Can also be a ``(record) -> value`` callable used by
+        :meth:`~odoo.models.Model.copy_data` to produce the copied value
+        (e.g. ``copy=mark_as_copy('name')``).
+        Not called when the field is provided in ``default``.
 
     :param bool store: whether the field is stored in database
         (default:``True``, ``False`` for computed fields)
@@ -258,32 +265,31 @@ class Field[T]:
     is_text: bool = False               # whether the field is a text type in the database
     falsy_value: T | None = None        # falsy value for comparisons (optional)
 
-    write_sequence: int = 0             # field ordering for write()
+    # Used in _fields_update_order__ to order field updates and inverses.
+    write_sequence: int = 0
     # Database column type (ident, spec) for non-company-dependent fields.
-    # Company-dependent fields are stored as jsonb (see column_type).
+    # Company-dependent fields are stored as jsonb (see column_type_ident).
     _column_type: tuple[str, str] | None = None
 
     _args__: dict[str, typing.Any] | None = None  # the parameters given to __init__()
     _module: str | None = None          # the field's module name
     _modules: tuple[str, ...] = ()      # modules that define this field
     _setup_done = True                  # whether the field is completely set up
-    _sequence: int                      # absolute ordering of the field
     _base_fields__: tuple[Self, ...] = ()  # the fields defining self, in override order
     _extra_keys__: tuple[str, ...] = ()  # unknown attributes set on the field
-    _direct: bool = False               # whether self may be used directly (shared)
-    _toplevel: bool = False             # whether self is on the model's registry class
+    _shareable: bool = True             # whether self can be shared across registries
+                                        # developers should never override a non shareable field to shareable
 
     inherited: bool = False             # whether the field is inherited (_inherits)
     inherited_field: Field | None = None  # the corresponding inherited field
 
     name: str = ''                      # name of the field
     model_name: str = ''                # name of the model of this field
-    comodel_name: str | None = None     # name of the model of values (if relational)
 
     store: bool = True                  # whether the field is stored in database
     index: str | None = None            # how the field is indexed in database
     manual: bool = False                # whether the field is a custom field
-    copy: bool = True                   # whether the field is copied over by BaseModel.copy()
+    copy: bool | Callable[[BaseModel], typing.Any] = True  # copied by BaseModel.copy()
     _depends: Collection[str] | None = None  # collection of field dependencies
     _depends_context: Collection[str] | None = None  # collection of context key dependencies
     recursive: bool = False             # whether self depends on itself
@@ -296,6 +302,7 @@ class Field[T]:
     related: str | None = None          # sequence of field names, for related fields
     company_dependent: bool = False     # whether ``self`` is company-dependent (property field)
     default: Callable[[BaseModel], T] | T | None = None  # default(recs) returns the default value
+    init_storage: str | Callable[[BaseModel], bool | None] | None = None  # initialize field values
 
     string: str | None = None           # field label
     export_string_translation: bool = True  # whether the field label translations are exported
@@ -319,7 +326,6 @@ class Field[T]:
 
     def __init__(self, string: str | Sentinel = SENTINEL, **kwargs):
         kwargs['string'] = string
-        self._sequence = next(_global_seq)
         self._args__ = frozendict({key: val for key, val in kwargs.items() if val is not SENTINEL})
 
     def __str__(self):
@@ -328,9 +334,7 @@ class Field[T]:
         return "%s.%s" % (self.model_name, self.name)
 
     def __repr__(self):
-        if not self.name:
-            return f"{'<%s.%s>'!r}" % (__name__, type(self).__name__)
-        return f"{'%s.%s'!r}" % (self.model_name, self.name)
+        return repr(str(self))
 
     def __init_subclass__(cls):
         super().__init_subclass__()
@@ -384,7 +388,7 @@ class Field[T]:
     # and are always recreated as toplevel fields.  On those fields, the base
     # setup is useless, because only field._args__ is used for setting up other
     # fields.  We therefore skip the base setup for those fields.  The only
-    # attributes of those fields are: '_sequence', '_args__', 'model_name', 'name'
+    # attributes of those fields are: '_args__', 'model_name', 'name'
     # and '_module', which makes their __dict__'s size minimal.
 
     def __set_name__(self, owner: type[BaseModel], name: str) -> None:
@@ -397,23 +401,37 @@ class Field[T]:
         # file, it is not yet available and we already declare fields:
         # id and display_name
         assert '_models' not in globals() or isinstance(owner, _models.MetaModel)
+        is_model_definition = getattr(owner, 'pool', None) is None  # models.is_model_definition(owner)
+
+        if self._args__ is None:
+            # assert self in FIELD_CACHE.values()
+            assert not is_model_definition  # model registry class
+            assert self._shareable
+            assert self.name in ('id', 'display_name') or self._module is not None
+            assert owner._name == self.model_name
+            assert name == self.name
+            return
+
         self.model_name = owner._name
         self.name = name
-        if getattr(owner, 'pool', None) is None:  # models.is_model_definition(owner)
-            # only for fields on definition classes, not registry classes
+
+        if is_model_definition:
+            assert '_base_fields__' not in self._args__
             self._module = owner._module
             owner._field_definitions.append(self)
-
-        if not self._args__.get('related'):
-            self._direct = True
-        if self._direct or self._toplevel:
+            if self._shareable and (self._args__.get('related') or not self._args__.get('_shareable', True)):
+                self._shareable = False
+            if self._shareable:
+                # non shareable field objects in model definition classes won't be in a model registry class,
+                # skipping setting attributes for them to save memory
+                self._setup_attrs__(owner, name)
+        else:  # model registry class
             self._setup_attrs__(owner, name)
-            if self._toplevel:
-                # free memory from stuff that is no longer useful
-                self.__dict__.pop('_args__', None)
-                if not self.related:
-                    # keep _base_fields__ on related fields for incremental model setup
-                    self.__dict__.pop('_base_fields__', None)
+            # free memory from stuff that is no longer useful
+            self.__dict__.pop('_args__', None)
+            if not self.related:
+                # keep _base_fields__ on related fields for incremental model setup
+                self.__dict__.pop('_base_fields__', None)
 
     #
     # Setup field parameter attributes
@@ -448,6 +466,8 @@ class Field[T]:
         if name == 'state':
             # by default, `state` fields should be reset on copy
             attrs['copy'] = attrs.get('copy', False)
+        if attrs.get('_shareable'):
+            warnings.warn(f"_shareable attribute shouldn't be set to True on field {self}")
         if attrs.get('compute_sql'):
             if not attrs.get('compute'):
                 warnings.warn(f"compute_sql attribute makes sense only if {self} is a computed field")
@@ -592,7 +612,7 @@ class Field[T]:
                     field_model = model.env[field_model_name]
                     field = field_model._fields[field_name]
                     depends_context.extend(field.get_depends(field_model)[1])
-                    field_model_name = field.comodel_name
+                    field_model_name = field.comodel_name if field.relational else None
                 depends_context = tuple(unique(depends_context))
             return [self.related], depends_context
 
@@ -627,6 +647,10 @@ class Field[T]:
         field_seq = []
         model_name = self.model_name
         for name in self.related.split('.'):
+            if not model_name:
+                raise ValueError(
+                    f"Field {name} in related field {self} is not reachable."
+                )
             field = model.pool[model_name]._fields.get(name)
             if field is None:
                 raise KeyError(
@@ -635,7 +659,7 @@ class Field[T]:
             if not field._setup_done:
                 field.setup(model.env[model_name])
             field_seq.append(field)
-            model_name = field.comodel_name
+            model_name = field.comodel_name if field.relational else None
 
         # check type consistency
         if self.type != field.type:
@@ -693,6 +717,16 @@ class Field[T]:
             # being on the abstract model) are assigned an XML id
             delegate_field = model._fields[self.related.split('.')[0]]
             self._modules = tuple({*self._modules, *delegate_field._modules, *field._modules})
+
+        if (
+            not self.init_storage
+            and self.related.count('.') == 1
+            and self.related_field.store
+            and not self.related_field.compute
+            and self.related_field.column_type
+        ):
+            # optimization for computing simple related fields like 'foo_id.bar'
+            self.init_storage = self._init_column_related
 
     def _compute_related(self, records: BaseModel) -> None:
         """ Compute the related field ``self`` on ``records``. """
@@ -806,7 +840,7 @@ class Field[T]:
         for fname in self.related.split('.'):
             field = records.env[model_name]._fields[fname]
             field_seq.append(field)
-            model_name = field.comodel_name
+            model_name = field.comodel_name if field.relational else None
 
         # build the domain backwards with the any operator
         domain = Domain(field_seq[-1].name, operator, value)
@@ -816,8 +850,36 @@ class Field[T]:
                 domain |= Domain(field.name, '=', False)
         return domain
 
+    def _init_column_related(self, model: BaseModel) -> bool:
+        join_field = model._fields[self.related.split('.')[0]]
+        if (
+            join_field.type == 'many2one'
+            and join_field.store and not join_field.compute
+        ):
+            model.pool.post_init(self._init_column_related_update, model)
+            # discard the "classical" computation
+            return False
+        return True
+
+    def _init_column_related_update(self, model: BaseModel) -> None:
+        """ Compute a stored related field directly in SQL. """
+        comodel = model.env[self.related_field.model_name]
+        join_field, comodel_field = self.related.split('.')
+        model.env.cr.execute(SQL(
+            """ UPDATE %(model_table)s AS x
+                SET %(model_field)s = y.%(comodel_field)s
+                FROM %(comodel_table)s AS y
+                WHERE x.%(join_field)s = y.id
+                AND x.%(model_field)s IS NULL
+            """,
+            model_table=SQL.identifier(model._table),
+            model_field=SQL.identifier(self.name),
+            comodel_table=SQL.identifier(comodel._table),
+            comodel_field=SQL.identifier(comodel_field),
+            join_field=SQL.identifier(join_field),
+        ))
+
     # properties used by setup_related() to copy values from related field
-    _related_comodel_name = property(attrgetter('comodel_name'))
     _related_string = property(attrgetter('string'))
     _related_help = property(attrgetter('help'))
     _related_groups = property(attrgetter('groups'))
@@ -828,10 +890,17 @@ class Field[T]:
         """ Return the actual column type for this field, if stored as a column. """
         return ('jsonb', 'jsonb') if self.company_dependent or self.translate else self._column_type
 
-    @property
-    def sql_column_type(self):
-        assert self._column_type
-        return SQL(self._column_type[1])
+    @functools.cached_property
+    def stored_sql_column_type(self) -> SQL:
+        """ Column type as stored in the database column. """
+        _ident, spec = self.column_type
+        return SQL(spec)  # pylint: disable=sql-injection
+
+    @functools.cached_property
+    def sql_column_type(self) -> SQL:
+        """ Column type used for casting into the field's type. """
+        ident, _spec = self._column_type
+        return SQL.identifier(ident)
 
     @property
     def base_field(self) -> Self:
@@ -865,6 +934,10 @@ class Field[T]:
             check_precompute = self.precompute
 
             for index, fname in enumerate(dotnames.split('.')):
+                if not model_name:
+                    raise ValueError(
+                        f"Field {fname} in {self}'s dependencies is not reachable."
+                    )
                 Model = registry[model_name]
                 if Model0._transient and not Model._transient:
                     # modifying fields on regular models should not trigger
@@ -913,7 +986,7 @@ class Field[T]:
                 if check_precompute and field.type == 'many2one':
                     check_precompute = False
 
-                model_name = field.comodel_name
+                model_name = field.comodel_name if field.relational else None
 
     ############################################################################
     #
@@ -965,6 +1038,8 @@ class Field[T]:
             return True
 
         model = env[self.model_name]
+        if self.relational and getattr(env[self.comodel_name], '_access_domain_heavy', False):
+            return False
         query = model._as_query(ordered=False)
         try:
             model._order_field_to_sql(query.table, self.name, SQL(), SQL())
@@ -984,6 +1059,8 @@ class Field[T]:
             return False
 
         model = env[self.model_name]
+        if self.relational and getattr(env[self.comodel_name], '_access_domain_heavy', False):
+            return False
         groupby = self.name if self.type not in ('date', 'datetime') else f"{self.name}:month"
         try:
             model._read_group_groupby(Query(model).table, groupby)
@@ -1003,6 +1080,8 @@ class Field[T]:
             return False
 
         model = env[self.model_name]
+        if self.relational and getattr(env[self.comodel_name], '_access_domain_heavy', False):
+            return None
         query = model._as_query(ordered=False)
         try:
             model._read_group_select(query.table, f"{self.name}:{self.aggregator}")
@@ -1090,7 +1169,7 @@ class Field[T]:
             value = field_cache[record_id]
         return self.convert_to_column_insert(value, record, validate=False)
 
-    def convert_to_cache(self, value, record, validate=True):
+    def convert_to_cache(self, value, records, validate=True):
         """ Convert ``value`` to the cache format; ``value`` may come from an
         assignment, or have the format of methods :meth:`BaseModel.read` or
         :meth:`BaseModel.write`. If the value represents a recordset, it should
@@ -1149,75 +1228,29 @@ class Field[T]:
         """ Prescribed column order in table. """
         return 0 if self.column_type is None else sql.SQL_ORDER_BY_TYPE[self.column_type[0]]
 
-    def update_db(self, model: BaseModel, columns: dict[str, dict[str, typing.Any]]) -> bool:
+    def update_db(self, model: BaseModel, columns: dict[str, dict[str, typing.Any]]) -> None:
         """ Update the database schema to implement this field.
 
             :param model: an instance of the field's model
             :param columns: a dict mapping column names to their configuration in database
-            :return: ``True`` if the field must be recomputed on existing rows
         """
-        if not self.column_type:
-            return False
+        assert self.column_type, f"override missing of update_db for {self.type}"
 
         column = columns.get(self.name)
 
-        # create/update the column, not null constraint; the index will be
-        # managed by registry.check_indexes()
+        # create/update the column, initialize it and not null constraint.
+        # The index will be managed by registry.check_indexes().
         self.update_db_column(model, column)
-        self.update_db_notnull(model, column)
 
-        # optimization for computing simple related fields like 'foo_id.bar'
-        if (
-            not column
-            and self.related and self.related.count('.') == 1
-            and self.related_field.store and not self.related_field.compute
-            and not (self.related_field.type == 'binary' and self.related_field.attachment)
-            and self.related_field.type not in ('one2many', 'many2many')
-        ):
-            join_field = model._fields[self.related.split('.')[0]]
-            if (
-                join_field.type == 'many2one'
-                and join_field.store and not join_field.compute
-            ):
-                model.pool.post_init(self.update_db_related, model)
-                # discard the "classical" computation
-                return False
-
-        return not column
-
-    def update_db_column(self, model: BaseModel, column: dict[str, typing.Any]):
-        """ Create/update the column corresponding to ``self``.
-
-            :param model: an instance of the field's model
-            :param column: the column's configuration (dict) if it exists, or ``None``
-        """
-        if not column:
-            # the column does not exist, create it
-            sql.create_column(model.env.cr, model._table, self.name, self.column_type[1], self.string)
-            return
-        if column['udt_name'] == self.column_type[0]:
-            return
-        self._convert_db_column(model, column)
-
-    def _convert_db_column(self, model: BaseModel, column: dict[str, typing.Any]):
-        """ Convert the given database column to the type of the field. """
-        sql.convert_column(model.env.cr, model._table, self.name, self.column_type[1])
-
-    def update_db_notnull(self, model: BaseModel, column: dict[str, typing.Any]):
-        """ Add or remove the NOT NULL constraint on ``self``.
-
-            :param model: an instance of the field's model
-            :param column: the column's configuration (dict) if it exists, or ``None``
-        """
+        # initialization of values and null handling
         has_notnull = column and column['is_nullable'] == 'NO'
 
         if not column or (self.required and not has_notnull):
-            # the column is new or it becomes required; initialize its values
-            if model._table_has_rows():
-                model._init_column(self.name)
+            # either we have a new column or it becomes required
+            self._init_column_data(model)
 
         if self.required and not has_notnull:
-            # _init_column may delay computations in post-init phase
+            # _init_column_data may delay computations in post-init phase
             @model.pool.post_init
             def add_not_null():
                 # At the time this function is called, the model's _fields may have been reset, although
@@ -1242,21 +1275,76 @@ class Field[T]:
         elif not self.required and has_notnull:
             sql.drop_not_null(model.env.cr, model._table, self.name)
 
-    def update_db_related(self, model: BaseModel) -> None:
-        """ Compute a stored related field directly in SQL. """
-        comodel = model.env[self.related_field.model_name]
-        join_field, comodel_field = self.related.split('.')
-        model.env.cr.execute(SQL(
-            """ UPDATE %(model_table)s AS x
-                SET %(model_field)s = y.%(comodel_field)s
-                FROM %(comodel_table)s AS y
-                WHERE x.%(join_field)s = y.id """,
-            model_table=SQL.identifier(model._table),
-            model_field=SQL.identifier(self.name),
-            comodel_table=SQL.identifier(comodel._table),
-            comodel_field=SQL.identifier(comodel_field),
-            join_field=SQL.identifier(join_field),
-        ))
+    def update_db_column(self, model: BaseModel, column: dict[str, typing.Any]):
+        """ Create/update the column corresponding to ``self``.
+
+            :param model: an instance of the field's model
+            :param column: the column's configuration (dict) if it exists, or ``None``
+        """
+        if not column:
+            # the column does not exist, create it
+            sql.create_column(model.env.cr, model._table, self.name, self.stored_sql_column_type, self.string)
+            return
+        if column['udt_name'] == self.column_type[0]:
+            return
+        self._convert_db_column(model, column)
+
+    def _convert_db_column(self, model: BaseModel, column: dict[str, typing.Any]):
+        """ Convert the given database column to the type of the field. """
+        sql.convert_column(model.env.cr, model._table, self.name, self.stored_sql_column_type)
+
+    def _init_column_data(self, model: BaseModel) -> None:
+        """ Initialize null values in the column. """
+        assert self.column_type and model._name == self.model_name
+        # skip the initialization when there is nothing to initialize: this
+        # method only fills in NULL values, and does nothing without
+        # init_storage, default or compute; skip empty tables as well
+        if not (self.init_storage or self.default or self.compute):
+            return
+        if not model.env.execute_query(SQL('SELECT 1 FROM %s LIMIT 1', SQL.identifier(model._table))):
+            return
+        # Check if we have a custom init function
+        if self.init_storage:
+            _logger.debug("Table '%s': call %s for column %s", model._table, self.init_storage, self.name)
+            to_compute = determine(self.init_storage, model)
+        else:
+            to_compute = 'default'
+        # Get the default value; ideally, we should use default_get(), but it
+        # fails due to ir.default not being ready
+        if self.default:
+            value = self.default(model)
+            if value is not None and to_compute == 'default':  # we have a default, do not recompute fields
+                to_compute = False
+            value = self.convert_to_write(value, model)
+            value = self.convert_to_column_insert(value, model)
+        else:
+            value = None
+        # Write value if non-NULL, except for booleans for which False means
+        # the same as NULL - this saves us an expensive query on large tables,
+        # if the boolean is required we still write False to allow NOT NULL constraints.
+        cr = model.env.cr
+        if value is False and self.type == 'boolean' and not self.required:
+            value = None
+        if value is not None:
+            _logger.debug("Table '%s': setting default value of new column %s to %r",
+                          model._table, self.name, value)
+            cr.execute(SQL(
+                "UPDATE %(table)s SET %(field)s = %(value)s WHERE %(field)s IS NULL",
+                table=SQL.identifier(model._table),
+                field=SQL.identifier(self.name),
+                value=value,
+            ))
+        # Mark computed fields to recompute
+        if to_compute and self.compute:
+            cr.execute(SQL('SELECT id FROM %s WHERE %s IS NULL', SQL.identifier(model._table), SQL.identifier(self.name)))
+            records = model.browse(row[0] for row in cr.fetchall())
+            self._init_column_notify_compute(records)
+            model.env.add_to_compute(self, records)
+
+    def _init_column_notify_compute(self, records):
+        _logger.info("Prepare computation of %s in %s records", self, len(records))
+        if len(records) > 100000:
+            _logger.warning("%s: %s records will be computed", self, len(records))
 
     ############################################################################
     #
@@ -1285,15 +1373,25 @@ class Field[T]:
             raise ValueError(f"Cannot convert {self} to SQL because it is not stored")
         sql_field = SQL.identifier(table._alias, self.name, to_flush=self)
         if self.company_dependent:
-            fallback = self.get_company_dependent_fallback(model)
-            fallback = self.convert_to_column(self.convert_to_write(fallback, model), model)
+            company_id = model.env.context.get('sql_company_id')
+            if isinstance(company_id, SQL):
+                fallback = model.env['ir.default'].sudo()._search([
+                    ('field_id', '=', model.env['ir.model.fields']._get(self.model_name, self.name).id),
+                    ('user_id', 'in', (False, SUPERUSER_ID)),
+                    Domain.custom(to_sql=lambda table: SQL("(%s IS NULL OR %s = %s)", table.company_id, table.company_id, company_id)),
+                    ('condition', '=', False),
+                ], order="user_id.id, company_id.id, id", limit=1).subselect(SQL('json_value'))
+            else:
+                company_id = str(model.env.company.id)
+                fallback = self.get_company_dependent_fallback(model)
+                fallback = self.convert_to_column(self.convert_to_write(fallback, model), model)
             # in _read_group_orderby the result of field to sql will be mogrified and split to
             # e.g SQL('COALESCE(%s->%s') and SQL('to_jsonb(%s))::boolean') as 2 orderby values
             # and concatenated by SQL(',') in the final result, which works in an unexpected way
             sql_field = SQL(
-                "COALESCE(%(column)s->%(company_id)s,to_jsonb(%(fallback)s::%(column_type)s))",
+                'COALESCE(%(column)s->(%(company_id)s::"varchar"),to_jsonb(%(fallback)s::%(column_type)s))',
                 column=sql_field,
-                company_id=str(model.env.company.id),
+                company_id=company_id,
                 fallback=fallback,
                 column_type=self.sql_column_type,
             )
@@ -1595,6 +1693,7 @@ class Field[T]:
     # Cache management methods
     #
 
+    @typing.final
     def _get_cache(self, env: Environment) -> MutableMapping[IdType, typing.Any]:
         """ Return the field's cache, i.e., a mutable mapping from record id to
         a cache value.  The cache may be environment-specific.  This mapping is
@@ -1604,12 +1703,10 @@ class Field[T]:
         instance for a given environment, unless the transaction was entirely
         invalidated.
         """
-        try:
-            return env._field_cache_memo[self]
-        except KeyError:
-            field_cache = self._get_cache_impl(env)
-            env._field_cache_memo[self] = field_cache
-            return field_cache
+        field_cache = env._field_cache_memo.get(self)
+        if field_cache is None:
+            env._field_cache_memo[self] = field_cache = self._get_cache_impl(env)
+        return field_cache
 
     def _get_cache_impl(self, env: Environment) -> MutableMapping[IdType, typing.Any]:
         """ Implementation of :meth:`_get_cache`.  This method may provide a
@@ -1652,11 +1749,12 @@ class Field[T]:
         either not in cache, or different from ``cache_value``.
         """
         field_cache = self._get_cache(records.env)
-        return records.browse(
+        ids_to_update = tuple(
             record_id
             for record_id in records._ids
             if field_cache.get(record_id, SENTINEL) != cache_value
         )
+        return records.__class__(records.env, ids_to_update, records._prefetch_ids)
 
     def _to_prefetch(self, record: ModelType) -> ModelType:
         """ Return a recordset including ``record`` to prefetch the field. """
@@ -1731,12 +1829,16 @@ class Field[T]:
             value = self.convert_to_cache(False, record, validate=False)
             return self.convert_to_record(value, record)
 
-        if self.compute and self.store:
+        if self.compute and self.store and env.transaction.tocompute.get(self):
             # process pending computations
             self.recompute(record)
 
+        try:
+            field_cache = env._field_cache_memo[self]
+        except KeyError:
+            field_cache = self._get_cache(env)
+
         record_id = record._ids[0]
-        field_cache = self._get_cache(env)
         try:
             value = field_cache[record_id]
             # convert to record may also throw a KeyError if the value is not

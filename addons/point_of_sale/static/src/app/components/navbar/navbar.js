@@ -1,12 +1,11 @@
-import { useExternalListener } from "@web/owl2/utils";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { useService } from "@web/core/utils/hooks";
 import { isDisplayStandalone } from "@web/core/browser/feature_detection";
 
+import { OrderTrackerDropdown } from "@point_of_sale/app/components/order_tracker_dropdown/order_tracker_dropdown";
 import { CashierName } from "@point_of_sale/app/components/navbar/cashier_name/cashier_name";
-import { SyncPopup } from "@point_of_sale/app/components/popups/sync_popup/sync_popup";
 import { SaleDetailsButton } from "@point_of_sale/app/components/navbar/sale_details_button/sale_details_button";
-import { Component, onMounted, proxy } from "@odoo/owl";
+import { Component, proxy, signal, useListener } from "@odoo/owl";
 import { Input } from "@point_of_sale/app/components/inputs/input/input";
 import { isBarcodeScannerSupported } from "@web/core/barcode/barcode_video_scanner";
 import { barcodeService } from "@barcodes/barcode_service";
@@ -14,7 +13,7 @@ import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { OrderTabs } from "@point_of_sale/app/components/order_tabs/order_tabs";
 import { _t } from "@web/core/l10n/translation";
-import { isPrivateIp, uuidv4 } from "@point_of_sale/utils";
+import { isPrivateIp } from "@point_of_sale/utils";
 import { QrCodeCustomerDisplay } from "@point_of_sale/app/customer_display/customer_display_qr_code_popup";
 import { useAsyncLockedMethod } from "@point_of_sale/app/hooks/hooks";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
@@ -28,10 +27,10 @@ export class Navbar extends Component {
         Input,
         Dropdown,
         DropdownItem,
-        SyncPopup,
         OrderTabs,
+        OrderTrackerDropdown,
     };
-    static props = {};
+    inputRef = signal.ref();
     setup() {
         this.pos = usePos();
         this.ui = useService("ui");
@@ -43,11 +42,8 @@ export class Navbar extends Component {
         this.isBarcodeScannerSupported = isBarcodeScannerSupported;
         this.timeout = null;
         this.bufferedInput = "";
-        onMounted(async () => {
-            this.hasProductCreationAccess = await this.pos.allowProductCreation();
-        });
-        useExternalListener(document, "keydown", this.handleKeydown.bind(this));
-        this.openPresetTiming = useAsyncLockedMethod(this.openPresetTiming);
+        useListener(document, "keydown", this.handleKeydown.bind(this));
+        this.openPresetTiming = useAsyncLockedMethod(this.openPresetTiming.bind(this));
     }
 
     async openLnaPopup() {
@@ -89,6 +85,8 @@ export class Navbar extends Component {
         this.dialog.add(AlertDialog, {
             title: _t("LNA Permission status"),
             body: this.pos.lnaState.message,
+            size: "sm",
+            backdrop: true,
         });
     }
 
@@ -101,14 +99,14 @@ export class Navbar extends Component {
             this.checkInput(event);
         } else if (event.key === "Enter") {
             this.checkInput(event);
-            if (event.target === this.inputRef?.el) {
+            if (event.target === this.inputRef()) {
                 this.pos.searchProductsFromDB();
             }
         } else {
             if (!isSpecialKey) {
                 this.bufferedInput += event.key;
             }
-            if (document.activeElement == this.inputRef?.el) {
+            if (document.activeElement == this.inputRef()) {
                 this.checkInput(event);
             } else {
                 this.timeout = setTimeout(() => {
@@ -121,15 +119,15 @@ export class Navbar extends Component {
     checkInput(event) {
         if (
             !this.ui.isSmall &&
-            this.inputRef?.el &&
-            document.activeElement !== this.inputRef.el &&
+            this.inputRef() &&
+            document.activeElement !== this.inputRef() &&
             !this.pos.getOrder()?.getSelectedOrderline() &&
             this.noOpenDialogs() &&
             event.key?.length == 1 &&
             this.bufferedInput.length < 3
         ) {
-            this.inputRef.el.focus();
-            this.inputRef.el.value = this.bufferedInput;
+            this.inputRef().focus();
+            this.inputRef().value = this.bufferedInput;
             event.preventDefault();
         }
         this.bufferedInput = "";
@@ -147,7 +145,7 @@ export class Navbar extends Component {
 
     onTicketButtonClick() {
         // select default selected order and apply paid filter while editing paid order payments
-        if (this.pos.router.state.current == "PaymentScreen" && this.pos.getOrder()?.finalized) {
+        if (this.pos.router.currentScreen() == "PaymentScreen" && this.pos.getOrder()?.finalized) {
             return this.pos.openFinalizedOrders();
         }
         return this.pos.navigate("TicketScreen");
@@ -157,7 +155,7 @@ export class Navbar extends Component {
     }
     onClickScan() {
         if (!this.pos.scanning) {
-            const screenName = this.pos.router.state.current;
+            const screenName = this.pos.router.currentScreen();
             if (["ProductScreen", "TicketScreen"].includes(screenName)) {
                 const params =
                     screenName === "ProductScreen" ? { orderUuid: this.pos.getOrder().uuid } : {};
@@ -181,29 +179,14 @@ export class Navbar extends Component {
         )}&path=${encodeURIComponent(`pos/ui/${this.pos.config.id}`)}`;
     }
 
-    get customerDisplayPath() {
-        if (!localStorage.getItem("device_uuid")) {
-            localStorage.setItem("device_uuid", uuidv4());
-        }
-        const deviceUuid = localStorage.getItem("device_uuid");
-        return `/pos_customer_display/${this.pos.config.id}/${deviceUuid}?access_token=${this.pos.config.access_token}`;
-    }
-
-    async reloadProducts() {
-        this.dialog.add(SyncPopup, {
-            title: _t("Reload Data"),
-            confirm: (fullReload) => this.pos.reloadData(fullReload),
-        });
-    }
-
     openCustomerDisplay() {
         this.dialog.add(QrCodeCustomerDisplay, {
-            customerDisplayURL: `${this.pos.config._base_url}${this.customerDisplayPath}`,
+            customerDisplayURL: this.pos.customerDisplayUrl,
         });
     }
 
     get showCreateProductButton() {
-        return this.hasProductCreationAccess;
+        return this.pos.hasProductCreationAccess;
     }
 
     get showPrinterButton() {
@@ -224,6 +207,9 @@ export class Navbar extends Component {
 
     get mainButton() {
         const screens = ["ProductScreen", "PaymentScreen", "TipScreen"];
-        return screens.includes(this.pos.router.state.current) ? "register" : "order";
+        return screens.includes(this.pos.router.currentScreen()) ? "register" : "order";
+    }
+    get showOderTrackerDropdown() {
+        return false;
     }
 }

@@ -3,16 +3,16 @@ import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { standardFieldProps } from "../standard_field_props";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, t, useProps } from "@odoo/owl";
 import { useRecordObserver } from "@web/model/relational_model/utils";
 
 export class ImageUrlField extends Component {
     static template = "web.ImageUrlField";
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        width: { type: Number, optional: true },
-        height: { type: Number, optional: true },
-    };
+        width: t.number().optional(),
+        height: t.number().optional(),
+    });
 
     static fallbackSrc = "/web/static/img/placeholder.png";
 
@@ -29,12 +29,11 @@ export class ImageUrlField extends Component {
 
     get sizeStyle() {
         let style = "";
-        if (this.props.width) {
-            style += `max-width: ${this.props.width}px;`;
-        }
-        if (this.props.height) {
-            style += `max-height: ${this.props.height}px;`;
-        }
+        const width = this.props.width;
+        const height = this.props.height;
+        style = width ? `max-width: ${width}px;` : `width: auto;`;
+        style += height ? `max-height: ${height}px` : `height: auto`;
+
         return style;
     }
 

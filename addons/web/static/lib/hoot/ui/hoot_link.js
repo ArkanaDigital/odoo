@@ -1,6 +1,6 @@
 /** @odoo-module */
 
-import { Component, props, signal, types as t, xml } from "@odoo/owl";
+import { Component, signal, t, useProps, xml } from "@odoo/owl";
 import { FILTER_SCHEMA } from "../core/config";
 import { createUrlFromId } from "../core/url";
 import { ensureArray, INCLUDE_LEVEL } from "../hoot_utils";
@@ -38,18 +38,20 @@ export class HootLink extends Component {
     `;
 
     // Props & plugins
-    props = props({
-        "class?": t.string(),
-        "ids?": t.record(t.or([t.string(), t.array(t.string())])),
-        "onClick?": t.function([t.instanceOf(PointerEvent)]),
-        "options?": t.object({
-            "debug?": t.boolean(),
-            "ignore?": t.boolean(),
-        }),
+    props = useProps({
+        class: t.string().optional(),
+        ids: t.record(t.or([t.string(), t.array(t.string())])).optional(),
+        onClick: t.function([t.instanceOf(PointerEvent)]).optional(),
+        options: t
+            .object({
+                debug: t.boolean().optional(),
+                ignore: t.boolean().optional(),
+            })
+            .optional(),
         slots: t.object(["default"]),
-        "style?": t.string(),
-        "target?": t.string(),
-        "title?": t.string(),
+        style: t.string().optional(),
+        target: t.string().optional(),
+        title: t.string().optional(),
     });
 
     runner = getRunnerPlugin();
@@ -88,6 +90,7 @@ export class HootLink extends Component {
     updateHref() {
         const { ids, options } = this.props;
         const simplifiedIds = this.runner.simplifyUrlIds(ids);
-        this.href.set(createUrlFromId(simplifiedIds, options));
+        const url = createUrlFromId(simplifiedIds, options);
+        this.href.set(url.toString());
     }
 }

@@ -7,6 +7,7 @@ from datetime import datetime, UTC
 from odoo import api, fields, models
 from odoo.fields import Domain
 from odoo.tools import partition, SQL
+from odoo.tools.misc import clean_context
 
 _logger = logging.getLogger(__name__)
 
@@ -336,8 +337,8 @@ class MailActivityMixin(models.AbstractModel):
 
         return self.env['mail.activity'].search(domain)
 
-    def activity_schedule(self, act_type_xmlid='', date_deadline=None, summary='', note='', activity_user_id_fname='', **act_values):
-        """ Schedule an activity on each record of the current record set.
+    def _activity_schedule_create_vals(self, act_type_xmlid='', date_deadline=None, summary='', note='', activity_user_id_fname='', **act_values):
+        """ Return a list of create values to schedule activities on the current recordset.
         This method allow to provide as parameter act_type_xmlid. This is an
         xml_id of activity type instead of directly giving an activity_type_id.
         It is useful to avoid having various "env.ref" in the code and allow
@@ -352,10 +353,9 @@ class MailActivityMixin(models.AbstractModel):
           as responsible for the activity. Can be a related field path.
           Useless if 'user_id' is already provided in act_values.
         :type activity_user_id_fname: str
+        :returns: a list of activity create vals
+        :rtype: list[dict]
         """
-        if self.env.context.get('mail_activity_automation_skip'):
-            return False
-
         if not date_deadline:
             date_deadline = fields.Date.context_today(self)
         if isinstance(date_deadline, datetime):
@@ -372,9 +372,9 @@ class MailActivityMixin(models.AbstractModel):
                     'Invalid activity type model %s used on %s (tried with xml id %s)',
                     activity_type.res_model, self._name, act_type_xmlid or '',
                 )
-            # TODO master: reset invalid model to default type, keep it for stable as not harmful
-            if not activity_type:
-                activity_type = self._default_activity_type()
+            activity_type = self._default_activity_type()
+            # prevent 'create_vals.update(act_values)' below from restoring the inconsistent type
+            act_values = {k: v for k, v in act_values.items() if k != 'activity_type_id'}
 
         model_id = self.env['ir.model']._get(self._name).id
         create_vals_list = []
@@ -389,7 +389,7 @@ class MailActivityMixin(models.AbstractModel):
                 'res_id': record.id,
             }
             create_vals.update(act_values)
-            if not create_vals.get('user_id') and activity_user_id_fname:
+            if not create_vals.get('user_id') and not create_vals.get('role_id') and activity_user_id_fname:
                 try:
                     user = record.mapped(activity_user_id_fname)
                 except Exception:  # noqa: BLE001
@@ -405,10 +405,19 @@ class MailActivityMixin(models.AbstractModel):
                     )
                 if user:
                     create_vals['user_id'] = user.ids[0]
-            if not create_vals.get('user_id') and activity_type.default_user_id:
+            if not create_vals.get('user_id') and not create_vals.get('role_id') and activity_type.default_user_id:
                 create_vals['user_id'] = activity_type.default_user_id.id
             create_vals_list.append(create_vals)
-        return self.env['mail.activity'].create(create_vals_list)
+        return create_vals_list
+
+    def activity_schedule(self, act_type_xmlid='', date_deadline=None, summary='', note='', activity_user_id_fname='', **act_values):
+        """ Schedule activities on each record of the current record set (see `_activity_schedule_create_vals`). """
+        if self.env.context.get('mail_activity_automation_skip'):
+            return False
+        create_vals_list = self._activity_schedule_create_vals(
+            act_type_xmlid, date_deadline, summary, note, activity_user_id_fname, **act_values)
+        activities = self.env['mail.activity'].with_context(clean_context(self.env.context)).create(create_vals_list)
+        return activities.with_context(self.env.context)
 
     def _activity_schedule_with_view(self, act_type_xmlid='', date_deadline=None, summary='', views_or_xmlid='', render_context=None, **act_values):
         """ Helper method: Schedule an activity on each record of the current record set.

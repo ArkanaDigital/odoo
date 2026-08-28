@@ -12,7 +12,6 @@ from odoo.addons.mail.tests.common import MailCommon, mail_new_test_user
 from odoo.addons.test_mail.tests.common import TestRecipients
 from odoo.exceptions import AccessError
 from odoo.tests import tagged, users, HttpCase
-from odoo.tests.common import JsonRpcException
 from odoo.tools import mute_logger
 
 
@@ -77,7 +76,7 @@ class TestMailMCCommon(MailCommon, TestRecipients):
 class TestMultiCompanySetup(TestMailMCCommon, HttpCase):
 
     @users('employee_c2')
-    @mute_logger('odoo.addons.base.models.ir_rule')
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_post_with_read_access(self):
         """ Check that with readonly access, a message with attachment can be
         posted on a model with the attribute _mail_post_access = 'read'. """
@@ -135,7 +134,7 @@ class TestMultiCompanySetup(TestMailMCCommon, HttpCase):
         self.assertEqual(test_record_c1.message_main_attachment_id, first_attachment)
 
     @users('employee_c2')
-    @mute_logger('odoo.addons.base.models.ir_rule')
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_post_wo_access(self):
         test_records_mc_c1, test_records_mc_c2 = self.test_records_mc.with_env(self.env)
         attachments_data = [
@@ -253,7 +252,7 @@ class TestMultiCompanySetup(TestMailMCCommon, HttpCase):
     def test_recipients_multi_company(self):
         """Test mentioning a partner with no common company."""
         test_records_mc_c2 = self.test_records_mc[1]
-        with self.assertBus(BusResult(self.user_employee_c3, "mail.message/inbox")):
+        with self.assertBus(BusResult(self.user_employee_c3, "mail.message/notification")):
             test_records_mc_c2.with_user(self.user_employee_c2).with_context(
                 allowed_company_ids=self.company_2.ids
             ).message_post(
@@ -267,7 +266,6 @@ class TestMultiCompanySetup(TestMailMCCommon, HttpCase):
 @tagged('-at_install', 'post_install', 'multi_company', 'mail_controller')
 class TestMultiCompanyControllers(TestMailMCCommon, HttpCase):
 
-    @mute_logger('odoo.http')
     def test_mail_thread_data(self):
         """ Test returned thread data, in MC environment, to test notably MC
         access issues on partner, ACL support, ... """
@@ -312,28 +310,30 @@ class TestMultiCompanyControllers(TestMailMCCommon, HttpCase):
         ):
             with self.subTest(user_name=test_user.name):
                 self.authenticate(test_user.login, test_user.login)
-                # crash if calling using portal users -> dedicated portal routes currently
+                result = self.make_jsonrpc_request(
+                    "/mail/store",
+                    {
+                        "fetch_params": [
+                            [
+                                "mail.thread",
+                                {
+                                    "thread_id": record.id,
+                                    "thread_model": record._name,
+                                    "request_list": ["followers"],
+                                },
+                            ]
+                        ]
+                    },
+                )
+                thread_data = result["mail.thread"][0]
+                self.assertEqual(thread_data["hasWriteAccess"], has_w)
+                self.assertEqual(thread_data["hasReadAccess"], has_r)
+                self.assertEqual(thread_data["canPostOnReadonly"], can_post)
                 if test_user in self.user_portal + self.user_portal_c2:
-                    with self.assertRaises(JsonRpcException):
-                        result = self.make_jsonrpc_request(
-                            "/mail/store", {"fetch_params": [["mail.thread", {
-                                "thread_id": record.id,
-                                "thread_model": record._name,
-                                "request_list": ["followers"],
-                            }]]},
-                        )
+                    self.assertNotIn("mail.followers", result)
+                    self.assertNotIn("followersCount", thread_data)
                 else:
-                    result = self.make_jsonrpc_request(
-                        "/mail/store", {"fetch_params": [["mail.thread", {
-                            "thread_id": record.id,
-                            "thread_model": record._name,
-                            "request_list": ["followers"],
-                        }]]},
-                    )
-                    self.assertEqual(result["mail.thread"][0]["followersCount"], 2)
-                    self.assertEqual(result["mail.thread"][0]["hasWriteAccess"], has_w)
-                    self.assertEqual(result["mail.thread"][0]["hasReadAccess"], has_r)
-                    self.assertEqual(result["mail.thread"][0]["canPostOnReadonly"], can_post)
+                    self.assertEqual(thread_data["followersCount"], 2)
 
         record.with_user(self.user_admin).message_post(
             body='Hello!',
@@ -342,7 +342,7 @@ class TestMultiCompanyControllers(TestMailMCCommon, HttpCase):
             partner_ids=[self.partner_employee_c2.id, customer_c3.id],
         )
         self.authenticate(self.user_employee_c2.login, self.user_employee_c2.login)
-        messages = self.make_jsonrpc_request("/mail/store", {"fetch_params": ["/mail/inbox/messages"]})
+        messages = self.make_jsonrpc_request("/mail/store", {"fetch_params": [["/mail/messaging_menu/mail.message/load_more", {"tab_id": "notification", "filter_id": "notification_unread", "limit": 20}]]})
         self.assertEqual(len(messages["mail.message"]), 1)
 
     def test_redirect_to_records(self):

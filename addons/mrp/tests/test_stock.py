@@ -6,6 +6,17 @@ from odoo.tests import Form
 
 
 class TestWarehouseMrp(common.TestMrpCommon):
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'mrp.group_mrp_manager',
+        'mrp.group_mrp_routings',  # view visibility (duration/workorder fields) granted to cls.env.user in Common
+        'mrp.group_mrp_byproducts',  # view visibility (byproducts) granted to mrp users in Common
+        'stock.group_stock_manager',  # setup: warehouse/route/rule/orderpoint/location/picking_type config in test bodies
+        'uom.group_uom',  # view visibility (uom_id) granted to cls.env.user in Common
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -151,7 +162,8 @@ class TestWarehouseMrp(common.TestMrpCommon):
             Everything in mto """
 
         self.route_mto.active = True
-        warehouse_2 = self.env['stock.warehouse'].create({
+        # setup: creating a warehouse writes res.groups (implied_ids) via _check_multiwarehouse_group
+        warehouse_2 = self.env['stock.warehouse'].sudo().create({
             'name': 'Warehouse 2',
             'code': 'WH2',
         })
@@ -271,6 +283,25 @@ class TestWarehouseMrp(common.TestMrpCommon):
         self.assertEqual(location_dest.id, self.depot_location.id)
         self.assertNotEqual(location_dest.id, self.stock_location.id)
 
+    def test_putaway_lot_after_increasing_qty_to_produce(self):
+        """Ensure a generated lot is assigned to all split finished move lines
+        after increasing a confirmed MO's quantity, avoiding missing lot errors.
+        """
+        self.laptop.tracking = 'lot'
+        mo_laptop = self.new_mo_laptop()
+        change_qty = self.env['change.production.qty'].create({
+            'mo_id': mo_laptop.id,
+            'product_qty': 3,
+        })
+        change_qty.change_prod_qty()
+        self.assertEqual(len(mo_laptop.move_finished_ids.move_line_ids), 2)
+        mo_laptop.action_generate_serial()
+        mo_laptop.button_mark_done()
+        self.assertEqual(mo_laptop.state, 'done')
+        move_lines = mo_laptop.move_finished_ids.move_line_ids
+        self.assertTrue(all(ml.lot_id == mo_laptop.lot_producing_ids for ml in move_lines))
+        self.assertEqual(sum(move_lines.mapped('quantity')), 3)
+
     def test_backorder_unpacking(self):
         """ Test that movement of pack in backorder is correctly handled. """
         self.warehouse_1.manufacture_steps = 'pbm'
@@ -355,6 +386,17 @@ class TestWarehouseMrp(common.TestMrpCommon):
 
 
 class TestKitPicking(common.TestMrpCommon):
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'mrp.group_mrp_manager',
+        'mrp.group_mrp_routings',  # view visibility (duration/workorder fields) granted to cls.env.user in Common
+        'mrp.group_mrp_byproducts',  # view visibility (byproducts) granted to mrp users in Common
+        'stock.group_stock_manager',  # setup: warehouse/route/rule/orderpoint/location/picking_type config in test bodies
+        'uom.group_uom',  # view visibility (uom_id) granted to cls.env.user in Common
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

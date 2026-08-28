@@ -8,6 +8,8 @@ from .common import TestPosQrCommon
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestUiSEPA(TestPosQrCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @TestPosQrCommon.setup_country('be')
     def setUpClass(cls):
@@ -25,7 +27,8 @@ class TestUiSEPA(TestPosQrCommon):
             'name': 'QR Code',
             'journal_id': cls.company_data['default_journal_bank'].id,
             'payment_method_type': "bank_qr_code",
-            'qr_code_method': "sct_qr"
+            'qr_code_method': "sct_qr",
+            'type': 'bank',
         })
         cls.main_pos_config.write({
             'payment_method_ids': [(4, qr_payment.id)]
@@ -63,6 +66,8 @@ class TestUiSEPA(TestPosQrCommon):
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestUiCH(TestPosQrCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @TestPosQrCommon.setup_country('ch')
     def setUpClass(cls):
@@ -87,7 +92,8 @@ class TestUiCH(TestPosQrCommon):
             'name': 'QR Code',
             'journal_id': cls.company_data['default_journal_bank'].id,
             'payment_method_type': "bank_qr_code",
-            'qr_code_method': "ch_qr"
+            'qr_code_method': "ch_qr",
+            'type': 'bank',
         })
         cls.main_pos_config.write({
             'payment_method_ids': [(4, qr_payment.id)]
@@ -122,6 +128,8 @@ class TestUiCH(TestPosQrCommon):
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestUiHK(TestPosQrCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setup_armageddon_tax(cls, tax_name, company_data):
         # Hong Kong doesn't have any tax, so this methods will throw errors if we don't return None
@@ -147,7 +155,8 @@ class TestUiHK(TestPosQrCommon):
             'name': 'QR Code',
             'journal_id': cls.company_data['default_journal_bank'].id,
             'payment_method_type': "bank_qr_code",
-            'qr_code_method': "emv_qr"
+            'qr_code_method': "emv_qr",
+            'type': 'bank',
         })
         cls.main_pos_config.write({
             'payment_method_ids': [(4, qr_payment.id)]
@@ -177,9 +186,28 @@ class TestUiHK(TestPosQrCommon):
 
         self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PaymentScreenWithQRPayment', login="pos_user")
 
+    def test_03_pos_emv_qr_payment_value(self):
+        """ The QR-code image is drawn by the POS client, so the server has to
+        return the raw EMV payload the bank application expects, and not the URL
+        of the report rendering that payload.
+        """
+        self.bank_account.write({
+            'proxy_type': 'mobile',
+            'proxy_value': '+852-67891234',
+            'include_reference': True,
+        })
+        qr_payment = self.main_pos_config.payment_method_ids.filtered(lambda pm: pm.payment_method_type == 'bank_qr_code')
+
+        self.assertEqual(
+            qr_payment.get_qr_code_value(4.8, 'Order 00042', '', self.company.currency_id.id, False),
+            '00020101021226330012hk.com.hkicl0313+852-6789123452040000530334454034.85802HK5914company_1_data6002HK62150511Order 000426304EBF2',
+        )
+
 
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestUIBR(TestPosQrCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     @TestPosQrCommon.setup_country('br')
@@ -202,7 +230,8 @@ class TestUIBR(TestPosQrCommon):
             'name': 'QR Code',
             'journal_id': cls.company_data['default_journal_bank'].id,
             'payment_method_type': "bank_qr_code",
-            'qr_code_method': "emv_qr"
+            'qr_code_method': "emv_qr",
+            'type': 'bank',
         })
         cls.main_pos_config.write({
             'payment_method_ids': [(4, qr_payment.id)]

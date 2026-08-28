@@ -1,4 +1,4 @@
-import { Component, proxy } from "@odoo/owl";
+import { Component, onWillDestroy, proxy, t, useProps } from "@odoo/owl";
 import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
 import { checkFileSize } from "@web/core/utils/files";
@@ -11,9 +11,9 @@ export class ShareTargetItem extends Component {
     static name = null;
     static sequence = 10;
     static components = { Record, Field };
-    static props = {
-        files: { type: Array, element: File },
-    };
+    props = useProps({
+        files: t.array(t.instanceOf(File)),
+    });
 
     setup() {
         super.setup();
@@ -23,12 +23,14 @@ export class ShareTargetItem extends Component {
         this.notification = useService("notification");
         this.orm = useService("orm");
 
-        this.env.setHook({
-            save: async () => {
+        const shareTarget = useService("share_target");
+        onWillDestroy(
+            shareTarget.setHook("save", async () => {
                 await this.checkAndActiveIfNeededUserCompany();
                 await this.process();
-            },
-        });
+            })
+        );
+
         this.state = proxy(this.defaultState);
     }
 

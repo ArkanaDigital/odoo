@@ -28,7 +28,7 @@ export class YoutubePlugin extends Plugin {
             return {
                 title: _t("Embed Youtube Video"),
                 description: _t("Embed the youtube video in the document."),
-                icon: "fa-youtube-play",
+                icon: "oi_youtube-play",
                 run: async () => {
                     const videoElement = await this.getYoutubeVideoElement(youtubeUrl[0]);
                     this.dependencies.dom.insert(videoElement);
@@ -70,6 +70,8 @@ export class YoutubePlugin extends Plugin {
     }
 
     createVideoElement(videoData) {
-        return VideoSelector.createElements([{ src: videoData.embed_url }])[0];
+        return VideoSelector.createElements([{ src: videoData.embed_url }], {
+            document: this.document,
+        })[0];
     }
 }

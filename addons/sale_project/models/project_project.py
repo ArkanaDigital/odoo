@@ -5,7 +5,7 @@ import ast
 from odoo import api, fields, models
 from odoo.fields import Domain
 from odoo.models import Query
-from odoo.tools import SQL
+from odoo.tools import SQL, OrderedSet
 from odoo.tools.misc import unquote
 from odoo.tools.translate import _
 
@@ -49,11 +49,12 @@ class ProjectProject(models.Model):
     )
     real_cost = fields.Monetary(compute='_compute_real_cost', export_string_translation=False)
     real_cost_ratio = fields.Float(compute='_compute_real_cost', export_string_translation=False)
+    sale_warning_text = fields.Text('Project Warning', compute='_compute_sale_warning_text', help='Warning for the partner as set by the user.')
 
     @api.model
     def default_get(self, fields):
         defaults = super().default_get(fields)
-        if self.env.context.get('order_state') == 'sale':
+        if self.env.context.get('order_state') in ['draft', 'sent', 'sale']:
             order_id = self.env.context.get('order_id')
             sale_line_id = self.env['sale.order.line'].search(
                 [('order_id', '=', order_id), ('is_service', '=', True)],
@@ -62,8 +63,6 @@ class ProjectProject(models.Model):
                 'reinvoiced_sale_order_id': order_id,
                 'sale_line_id': sale_line_id,
             })
-        if defaults.get('sale_order_id') and self.env['sale.order'].search([('id', '=', defaults['sale_order_id']), ('state', '=', 'draft')]):
-            defaults.pop('sale_line_id', False)
         return defaults
 
     @api.model
@@ -71,6 +70,10 @@ class ProjectProject(models.Model):
         defaults = super()._map_tasks_default_values(project)
         defaults['sale_line_id'] = False
         return defaults
+
+    @api.onchange('partner_id')
+    def _onchange_partner_id(self):
+        self.allow_billable = bool(self.partner_id)
 
     @api.depends('allow_billable', 'partner_id.company_id')
     def _compute_partner_id(self):
@@ -87,6 +90,22 @@ class ProjectProject(models.Model):
                     not p.partner_id or p.sale_line_id.order_partner_id.commercial_partner_id != p.partner_id.commercial_partner_id
                 )
         ).update({'sale_line_id': False})
+
+    @api.depends('partner_id.name', 'partner_id.sale_warn_msg')
+    def _compute_sale_warning_text(self):
+        if not self.env.user.has_group("sale.group_warning_sale"):
+            self.sale_warning_text = ""
+            return
+        for project in self:
+            warnings = OrderedSet()
+            if partner_msg := project.partner_id.sale_warn_msg:
+                warnings.add(
+                    (project.partner_id.name or project.partner_id.display_name) + " - " + partner_msg
+                )
+            if partner_parent_msg := project.partner_id.parent_id.sale_warn_msg:
+                parent = project.partner_id.parent_id
+                warnings.add((parent.name or parent.display_name) + " - " + partner_parent_msg)
+            project.sale_warning_text = "\n".join(warnings)
 
     def _get_projects_for_invoice_status(self, invoice_status):
         """ Returns a recordset of project.project that has any Sale Order which invoice_status is the same as the
@@ -321,21 +340,14 @@ class ProjectProject(models.Model):
             ['move_id'],
         )
         invoice_ids = move_lines.move_id.ids
-        action = {
-            'name': _('Invoices'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'account.move',
-            'views': [[False, 'list'], [False, 'form'], [False, 'kanban']],
-            'domain': [('id', 'in', invoice_ids)],
-            'context': {
-                'default_move_type': 'out_invoice',
-                'default_partner_id': self.partner_id.id,
-                'project_id': self.id
-            },
-            'help': "<p class='o_view_nocontent_smiling_face'>%s</p><p>%s</p>" %
-            (_("Create a customer invoice"),
-                _("Create invoices, register payments and keep track of the discussions with your customers."))
+        action = self.env["ir.actions.act_window"]._for_xml_id("account.action_move_out_invoice")
+        action["domain"] = [("id", "in", invoice_ids)]
+        context = {
+            "default_move_type": "out_invoice",
+            "default_partner_id": self.partner_id.id,
+            "project_id": self.id,
         }
+        action["context"] = context
         if len(invoice_ids) == 1 and not self.env.context.get('from_embedded_action', False):
             action['views'] = [[False, 'form']]
             action['res_id'] = invoice_ids[0]
@@ -350,7 +362,7 @@ class ProjectProject(models.Model):
             return {}
         if len(self) == 1:
             return {self.id: self._fetch_sale_order_items(domain_per_model)}
-        sql = self._get_sale_order_items_query(domain_per_model).select('id', 'ARRAY_AGG(DISTINCT sale_line_id) AS sale_line_ids')
+        sql = self._get_sale_order_items_query(domain_per_model).select(SQL('id'), SQL('ARRAY_AGG(DISTINCT sale_line_id) AS sale_line_ids'))
         sql = SQL("%s GROUP BY id", sql)
         return {
             id_: self.env['sale.order.line'].browse(sale_line_ids)
@@ -366,7 +378,7 @@ class ProjectProject(models.Model):
         query = self._get_sale_order_items_query(domain_per_model)
         query.limit = limit
         query.offset = offset
-        return [id_ for id_, in self.env.execute_query(query.select('DISTINCT sale_line_id'))]
+        return [id_ for id_, in self.env.execute_query(query.select(SQL('DISTINCT sale_line_id')))]
 
     def _get_sale_orders(self):
         return self._get_sale_order_items().order_id
@@ -386,7 +398,7 @@ class ProjectProject(models.Model):
                 billable_project_domain,
             ])
         project_query = self.env['project.project']._search(project_domain)
-        project_sql = project_query.select(f'{self._table}.id ', f'{self._table}.sale_line_id')
+        project_sql = project_query.select(project_query.table.id, project_query.table.sale_line_id)
 
         Task = self.env['project.task']
         task_domain = [('project_id', 'in', self.ids), ('sale_line_id', '!=', False)]
@@ -396,7 +408,7 @@ class ProjectProject(models.Model):
                 task_domain,
             ])
         task_query = Task._search(task_domain)
-        task_sql = task_query.select(f'{Task._table}.project_id AS id', f'{Task._table}.sale_line_id')
+        task_sql = task_query.select(SQL("%s AS id", task_query.table.project_id), task_query.table.sale_line_id)
 
         ProjectMilestone = self.env['project.milestone']
         milestone_domain = [('project_id', 'in', self.ids), ('allow_billable', '=', True), ('sale_line_id', '!=', False)]
@@ -408,8 +420,8 @@ class ProjectProject(models.Model):
             ])
         milestone_query = ProjectMilestone._search(milestone_domain)
         milestone_sql = milestone_query.select(
-            f'{ProjectMilestone._table}.project_id AS id',
-            f'{ProjectMilestone._table}.sale_line_id',
+            SQL("%s AS id", milestone_query.table.project_id),
+            milestone_query.table.sale_line_id,
         )
 
         SaleOrderLine = self.env['sale.order.line']
@@ -423,8 +435,8 @@ class ProjectProject(models.Model):
         ]
         sale_order_line_query = SaleOrderLine._search(sale_order_line_domain, bypass_access=True)
         sale_order_line_sql = sale_order_line_query.select(
-            f'{SaleOrderLine._table}.project_id AS id',
-            f'{SaleOrderLine._table}.id AS sale_line_id',
+            SQL("%s AS id", sale_order_line_query.table.project_id),
+            SQL("%s AS sale_line_id", sale_order_line_query.table.id),
         )
 
         return Query(None, 'project_sale_order_item', SQL('(%s)', SQL(' UNION ').join([
@@ -481,20 +493,12 @@ class ProjectProject(models.Model):
             ['move_id'],
         )
         vendor_bill_ids = move_lines.move_id.ids
-        action_window = {
-            'name': _('Vendor Bills'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'account.move',
-            'views': [[False, 'list'], [False, 'form'], [False, 'kanban']],
-            'domain': [('id', 'in', vendor_bill_ids)],
-            'context': {
-                'default_move_type': 'in_invoice',
-                'project_id': self.id,
-            },
-            'help': "<p class='o_view_nocontent_smiling_face'>%s</p><p>%s</p>" % (
-                _("Create a vendor bill"),
-                _("Create invoices, register payments and keep track of the discussions with your vendors."),
-            ),
+        action_window = self.env["ir.actions.act_window"]._for_xml_id("account.action_move_in_invoice")
+        action_window["display_name"] = _("Vendor Bills")
+        action_window["domain"] = [("id", "in", vendor_bill_ids)]
+        action_window["context"] = {
+            **ast.literal_eval(action_window["context"]),
+            "project_id": self.id,
         }
         if not self.env.context.get('from_embedded_action') and len(vendor_bill_ids) == 1:
             action_window['views'] = [[False, 'form']]
@@ -532,8 +536,17 @@ class ProjectProject(models.Model):
 
     def action_real_margin(self):
         self.ensure_one()
+        embedded_action_context = self.env.context.get('from_embedded_action', False)
         action = self.env['ir.actions.act_window']._for_xml_id('sale_project.action_analytic_reporting_inherit_sale_project')
         action['views'] = [(self.env.ref('sale_project.view_account_analytic_line_inherit_sale_project_pivot_single').id, 'pivot')]
-        action['display_name'] = self.env._("%(name)s's Real Margins", name=self.name)
+        action['display_name'] = self.env._("%(name)s's Margins", name=self.name)
         action['domain'] = [('account_id', 'in', self.account_id.ids)]
+        action['context'] = {
+            **ast.literal_eval(action.get('context', '{}')),
+            'from_embedded_action': embedded_action_context,
+            **({
+                'search_default_month': 0,
+                'pivot_column_groupby': ['date:month'],
+            } if embedded_action_context else {}),
+        }
         return action

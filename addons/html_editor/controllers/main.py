@@ -3,35 +3,36 @@ import re
 import uuid
 from base64 import b64decode
 from datetime import datetime
-from os.path import join as opj
 from urllib.parse import urlparse, urljoin
 
 import requests
 import werkzeug.exceptions
 import werkzeug.urls
-from lxml import etree, html
+from lxml import html
 
 from odoo import SUPERUSER_ID, _, tools
 from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.fields import Domain
 from odoo.http import Controller, request, route
 from odoo.http.stream import STATIC_CACHE_LONG
-from odoo.tools.image import (
-    binary_to_image,
-    get_webp_size,
-    image_data_uri,
-    image_process,
-)
+from odoo.tools.image import image_process
 from odoo.tools.mimetypes import guess_mimetype
-from odoo.tools.misc import file_open
 
 from ..models.ir_attachment import SUPPORTED_IMAGE_MIMETYPES
+from .ms_icons import MS_ICONS
+from .svg_utils import get_shape_svg, make_shaped_image, update_svg_colors
 from odoo.addons.iap.tools import iap_tools
 from odoo.addons.mail.tools import link_preview
 
 DEFAULT_LIBRARY_ENDPOINT = 'https://media-api.odoo.com'
 DEFAULT_OLG_ENDPOINT = 'https://olg.api.odoo.com'
 DEFAULT_OTS_ENDPOINT = 'https://ots.api.odoo.com'
+API_WEBSITE_IMAGES_URL = 'https://website-image.api.odoo.com/images/'
+
+MS_ICONS_INDEX = [
+    (name, icon['has_fill'], f"{name} {icon['tags']}".lower())
+    for name, icon in MS_ICONS.items()
+]
 
 # Regex definitions to apply speed modification in SVG files
 # Note : These regex patterns are duplicated on the server side for
@@ -55,15 +56,6 @@ SVG_DUR_TIMECOUNT_VAL_REGEX = (
 CSS_ANIMATION_RATIO_REGEX = (
     r"(--animation_ratio: (?P<ratio>\d*(\.\d+)?));"
 )
-
-
-def _get_shape_svg(self, module, *segments):
-    shape_path = opj(module, 'static', *segments)
-    try:
-        with file_open(shape_path, 'r', filter_ext=('.svg',)) as file:
-            return file.read()
-    except FileNotFoundError:
-        raise werkzeug.exceptions.NotFound()
 
 
 def get_existing_attachment(IrAttachment, vals):
@@ -160,57 +152,6 @@ def attachment_create(IrAttachment, name='', data=False, url=False, res_id=False
 
 
 class HTML_Editor(Controller):
-
-    def _get_shape_svg(self, module, *segments):
-        shape_path = opj(module, 'static', *segments)
-        try:
-            with file_open(shape_path, 'r', filter_ext=('.svg',)) as file:
-                return file.read()
-        except FileNotFoundError:
-            raise werkzeug.exceptions.NotFound()
-
-    def _update_svg_colors(self, options, svg):
-        user_colors = []
-        svg_options = {}
-        default_palette = {
-            '1': '#3AADAA',
-            '2': '#7C6576',
-            '3': '#F6F6F6',
-            '4': '#FFFFFF',
-            '5': '#383E45',
-        }
-        bundle_css = None
-        regex_hex = r'#[0-9A-F]{6,8}'
-        regex_rgba = r'rgba?\(\d{1,3}, ?\d{1,3}, ?\d{1,3}(?:, ?[0-9.]{1,4})?\)'
-        for key, value in options.items():
-            colorMatch = re.match('^c([1-5])$', key)
-            if colorMatch:
-                css_color_value = value
-                # Check that color is hex or rgb(a) to prevent arbitrary injection
-                if not re.match(r'(?i)^%s$|^%s$' % (regex_hex, regex_rgba), css_color_value.replace(' ', '')):
-                    if re.match('^o-color-([1-5])$', css_color_value):
-                        if not bundle_css:
-                            bundle = 'web.assets_frontend'
-                            asset = request.env["ir.qweb"]._get_asset_bundle(bundle)
-                            bundle_css = asset.css().index_content
-                        color_search = re.search(r'(?i)--%s:\s+(%s|%s)' % (css_color_value, regex_hex, regex_rgba), bundle_css)
-                        if not color_search:
-                            raise werkzeug.exceptions.BadRequest()
-                        css_color_value = color_search.group(1)
-                    else:
-                        raise werkzeug.exceptions.BadRequest()
-                user_colors.append([tools.html_escape(css_color_value), colorMatch.group(1)])
-            else:
-                svg_options[key] = value
-
-        color_mapping = {default_palette[palette_number]: color for color, palette_number in user_colors}
-        # create a case-insensitive regex to match all the colors to replace, eg: '(?i)(#3AADAA)|(#7C6576)'
-        regex = '(?i)%s' % '|'.join('(%s)' % color for color in color_mapping.keys())
-
-        def subber(match):
-            key = match.group().upper()
-            return color_mapping[key] if key in color_mapping else key
-        return re.sub(regex, subber, svg), svg_options
 
     def replace_animation_duration(self,
                                    shape_animation_speed: float,
@@ -656,9 +597,9 @@ class HTML_Editor(Controller):
             # Used for compatibility
             if module == 'web_editor':
                 module = 'html_builder'
-            svg = self._get_shape_svg(module, 'shapes', filename)
+            svg = get_shape_svg(module, 'shapes', filename)
 
-        svg, options = self._update_svg_colors(kwargs, svg)
+        svg, options = update_svg_colors(request.env, kwargs, svg)
         flip_value = options.get('flip', False)
         if flip_value == 'x':
             svg = svg.replace('<svg ', '<svg style="transform: scaleX(-1);" ', 1)
@@ -683,7 +624,7 @@ class HTML_Editor(Controller):
         # Used for compatibility
         if module == 'web_editor':
             module = 'html_builder'
-        svg = self._get_shape_svg(module, 'image_shapes', filename)
+        svg = get_shape_svg(module, 'image_shapes', filename)
 
         record = request.env['ir.binary']._find_record(img_key)
         stream = request.env['ir.binary']._get_image_stream_from(record)
@@ -691,42 +632,37 @@ class HTML_Editor(Controller):
             return stream.get_response()
 
         image = stream.read()
-        if record.mimetype == "image/webp":
-            width, height = (str(size) for size in get_webp_size(image))
-        else:
-            img = binary_to_image(image)
-            width, height = (str(size) for size in img.size)
-        root = etree.fromstring(svg)
+        svg = make_shaped_image(request.env, svg, image, record.mimetype, kwargs)
+        return request.make_response(svg, [
+            ('Content-type', 'image/svg+xml'),
+            ('Cache-control', 'max-age=%s' % STATIC_CACHE_LONG),
+        ])
 
-        # When data-aspect-ratio-crop is set in the shape SVG, it means that we
-        # want to crop the image to fit the shape aspect ratio and fill the
-        # entire shape.
-        if root.attrib.get("data-aspect-ratio-crop") and \
-                (image_elem := root.find('.//svg:image', {'svg': 'http://www.w3.org/2000/svg'})) is not None:
-            # We set the image width and height to 100% to make it fill the
-            # entire shape, and use preserveAspectRatio to crop it if needed.
-            image_elem.attrib.update({
-                'width': '100%',
-                'height': '100%',
-                'preserveAspectRatio': 'xMidYMid slice',
-            })
+    @route('/html_editor/image_shape_url/<module>/<path:filename>', type='http', auth="user", website=True)
+    def image_shape_url(self, module, filename, image_url=None, **kwargs):
+        """Return a shape SVG filled with the image found at ``image_url``.
 
-        if root.attrib.get("data-forced-size") or root.attrib.get("data-aspect-ratio-crop"):
-            # Adjusts the SVG height to ensure the image fits properly within
-            # the SVG (e.g. for "devices" shapes and shapes that need to keep
-            # their aspect ratio).
-            svgHeight = float(root.attrib.get("height"))
-            svgWidth = float(root.attrib.get("width"))
-            svgAspectRatio = svgWidth / svgHeight
-            height = str(float(width) / svgAspectRatio)
+        :param str module: module containing the shape SVG
+        :param str filename: shape SVG path inside the module image shapes
+        :param str image_url: URL of an image hosted on the website images API
+        :return: HTTP response containing the generated SVG
+        :rtype: :class:`werkzeug.wrappers.Response`
+        """
+        if not image_url or not image_url.startswith(API_WEBSITE_IMAGES_URL):
+            raise werkzeug.exceptions.BadRequest()
 
-        root.attrib.update({'width': width, 'height': height})
-        # Update default color palette on shape SVG.
-        svg, _ = self._update_svg_colors(kwargs, etree.tostring(root, pretty_print=True).decode('utf-8'))
-        # Add image in base64 inside the shape.
-        uri = image_data_uri(image)
-        svg = svg.replace('<image xlink:href="', '<image xlink:href="%s' % uri)
+        svg = get_shape_svg(module, 'image_shapes', filename)
 
+        try:
+            response = requests.get(image_url, timeout=10)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise werkzeug.exceptions.NotFound() from exc
+        mimetype = response.headers.get('Content-Type', '')
+        image = response.content
+        if mimetype not in SUPPORTED_IMAGE_MIMETYPES:
+            raise werkzeug.exceptions.BadRequest()
+        svg = make_shaped_image(request.env, svg, image, mimetype, kwargs)
         return request.make_response(svg, [
             ('Content-type', 'image/svg+xml'),
             ('Cache-control', 'max-age=%s' % STATIC_CACHE_LONG),
@@ -870,3 +806,18 @@ class HTML_Editor(Controller):
             return response.json()
         else:
             return {'error': response.status_code}
+
+    @route('/html_editor/material_symbols_search', type='jsonrpc', auth='user', readonly=True)
+    def material_symbols_search(self, needle=''):
+        """Search the Material Symbols icons by name and tags.
+
+        :param str needle: the search term. When empty, every icon is returned,
+            which also provides a plain list of all available icons.
+        :returns: a list of ``{name, has_fill}`` dicts, tags excluded.
+        """
+        needle = (needle or '').strip().lower()
+        return [
+            {'name': name, 'has_fill': has_fill}
+            for name, has_fill, haystack in MS_ICONS_INDEX
+            if not needle or needle in haystack
+        ]

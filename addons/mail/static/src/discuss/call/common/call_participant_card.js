@@ -1,46 +1,79 @@
-import { useRef } from "@web/owl2/utils";
 import { CallContextMenu } from "@mail/discuss/call/common/call_context_menu";
 import { CallParticipantVideo } from "@mail/discuss/call/common/call_participant_video";
 import { CallDropdown } from "@mail/discuss/call/common/call_dropdown";
 import { CONNECTION_TYPES } from "@mail/discuss/call/common/rtc_service";
+import { TalkingAudioBars } from "@mail/discuss/call/common/talking_audio_bars";
 import { useHover } from "@mail/utils/common/hooks";
+import { extractAccentColor } from "@mail/utils/common/misc";
 import { isEventHandled } from "@web/core/utils/misc";
 import { browser } from "@web/core/browser/browser";
 import { isMobileOS } from "@web/core/browser/feature_detection";
 
-import { Component, onMounted, onWillUnmount, useListener } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillUnmount,
+    signal,
+    types,
+    useEffect,
+    useListener,
+    usePlugin,
+    useProps,
+} from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 const HIDDEN_CONNECTION_STATES = new Set(["connected", "completed"]);
 
 export class CallParticipantCard extends Component {
-    static props = [
-        "className",
-        "cardData",
-        "channel",
-        "minimized?",
-        "inset?",
-        "isSidebarItem?",
-        "compact?",
-    ];
-    static components = { CallParticipantVideo, CallContextMenu, CallDropdown };
+    static components = { CallParticipantVideo, CallContextMenu, CallDropdown, TalkingAudioBars };
     static template = "discuss.CallParticipantCard";
     /** @type {import("models").Rtc} */
     rtc;
+    root = signal.ref();
+
+    debugMode = usePlugin(DebugModePlugin);
 
     setup() {
         super.setup();
-        this.root = useRef("root");
+        this.cardBgColor = signal();
         this.rtc = useService("discuss.rtc");
         this.store = useService("mail.store");
+        this.props = useProps({
+            cardData: types.object({
+                key: types.string(),
+                member: types.instanceOf(this.store["discuss.channel.member"]).optional(),
+                session: types.instanceOf(this.store["discuss.channel.rtc.session"]).optional(),
+                type: types.selection(["camera", "screen"]).optional(),
+                videoStream: types
+                    .or([types.instanceOf(MediaStream), types.selection([false])])
+                    .optional(),
+            }),
+            channel: types.instanceOf(this.store["discuss.channel"]),
+            className: types.string(),
+            compact: types.boolean().optional(),
+            inset: types
+                .function([
+                    types.instanceOf(this.store["discuss.channel.rtc.session"]),
+                    types.selection(["camera", "screen"]),
+                ])
+                .optional(),
+            isSidebarItem: types.boolean().optional(),
+            minimized: types.boolean().optional(),
+        });
         this.ui = useService("ui");
-        this.rootHover = useHover("root");
+        this.rootHover = useHover(this.root);
         this.isMobileOS = isMobileOS();
         this.dragPos = undefined;
         this.isDrag = false;
         this.parentBoundingRect = undefined;
-        onMounted(() => {
+        onMounted(async () => {
+            const avatarUrl = this.channelMember?.avatarUrl;
+            if (avatarUrl) {
+                const { r, g, b } = await extractAccentColor(avatarUrl, 0.53);
+                this.cardBgColor.set(`rgb(${r}, ${g}, ${b})`);
+            }
             if (!this.rtcSession) {
                 return;
             }
@@ -57,13 +90,43 @@ export class CallParticipantCard extends Component {
             });
         });
         useListener(browser, "fullscreenchange", () => this.onFullScreenChange());
+        // Drive the talking glow on rAF, reading volume in render would re-render too often.
+        useEffect(() => {
+            if (!this.isTalking) {
+                this.root()?.style.setProperty("--discuss-CallParticipantCard-talkingVolume", 0);
+                return;
+            }
+            let frame;
+            const update = () => {
+                const volume = this.rtcSession?.talkingVolume ?? 0;
+                const logScaledVolume = volume > 0 ? Math.log10(1 + volume * 9) : 0;
+                this.root()?.style.setProperty(
+                    "--discuss-CallParticipantCard-talkingVolume",
+                    logScaledVolume
+                );
+                frame = browser.requestAnimationFrame(update);
+            };
+            // Defer the read so this effect tracks isTalking, not volume.
+            frame = browser.requestAnimationFrame(update);
+            return () => browser.cancelAnimationFrame(frame);
+        });
+    }
+
+    get cardBgStyle() {
+        return this.cardBgColor()
+            ? `--discuss-CallParticipantCard-bgColor: ${this.cardBgColor()};`
+            : "";
+    }
+
+    get isActiveCall() {
+        return Boolean(this.props.channel.eq(this.rtc.channel));
     }
 
     get isContextMenuAvailable() {
         return (
             this.isOfActiveCall &&
             (this.rtcSession.notEq(this.rtc.selfSession) ||
-                (this.env.debug && this.rtc.connectionType === CONNECTION_TYPES.SERVER))
+                (this.debugMode.isActive() && this.rtc.connectionType === CONNECTION_TYPES.SERVER))
         );
     }
 
@@ -220,7 +283,7 @@ export class CallParticipantCard extends Component {
         }
         const onMousemove = (ev) => this.drag(ev);
         const onMouseup = () => {
-            const insetEl = this.root.el;
+            const insetEl = this.root();
             const bottomOffset = this.env.inChatWindow ? this.window.innerHeight * 0.05 : 0; // 5vh in pixels
             if (parseInt(insetEl.style.left) < insetEl.parentNode.offsetWidth / 2) {
                 insetEl.style.left = "1vh";
@@ -257,7 +320,7 @@ export class CallParticipantCard extends Component {
 
     drag(ev) {
         this.isDrag = true;
-        const insetEl = this.root.el;
+        const insetEl = this.root();
         const parent = insetEl.parentNode;
         const boundingRect =
             this.parentBoundingRect || (this.parentBoundingRect = parent.getBoundingClientRect());
@@ -278,6 +341,10 @@ export class CallParticipantCard extends Component {
     }
 
     onFullScreenChange() {
-        this.root.el.style = "left:''; top:''";
+        if (!this.root()) {
+            return;
+        }
+        this.root().style.left = "";
+        this.root().style.top = "";
     }
 }

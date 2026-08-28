@@ -171,17 +171,9 @@ export class PaymentSafaricom extends PaymentInterface {
             return false;
         }
 
-        // Set QR payment data for customer display
-        line.qrPaymentData = {
-            name: this.payment_method_id.name,
-            amount: this.pos.env.utils.formatCurrency(line.amount),
-            qrCode: "data:image/png;base64," + qrCode,
-        };
-
-        // Update customer display to show the QR code
-        if (this.pos.customerDisplay) {
-            this.pos.customerDisplay.update();
-        }
+        // Show the QR on the customer display. `uiState` is not a tracked
+        // field, so the dispatch has to be asked for explicitly.
+        line.updateCustomerDisplayQrCode("data:image/png;base64," + qrCode);
 
         try {
             const transaction = await makeAwaitable(
@@ -198,6 +190,7 @@ export class PaymentSafaricom extends PaymentInterface {
             }
             line.setAmount(transaction.amount);
             line.transaction_id = transaction.id;
+            line.safaricom_transaction_id = transaction.trans_id;
             line.card_type = "M-Pesa";
             line.cardholder_name = transaction.phone;
             line.setPaymentStatus("done");
@@ -208,10 +201,7 @@ export class PaymentSafaricom extends PaymentInterface {
             return true;
         } finally {
             // Clear QR payment data from customer display
-            line.qrPaymentData = null;
-            if (this.pos.customerDisplay) {
-                this.pos.customerDisplay.update();
-            }
+            line.updateCustomerDisplayQrCode(null);
         }
     }
 }

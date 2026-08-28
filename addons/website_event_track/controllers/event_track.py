@@ -1,6 +1,5 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-import base64
 import json
 import operator
 from ast import literal_eval
@@ -15,7 +14,7 @@ from odoo import _, fields, http, tools
 from odoo.fields import Domain
 from odoo.http import request
 from odoo.http.stream import content_disposition
-from odoo.tools import is_html_empty, plaintext2html
+from odoo.tools import BinaryBytes, is_html_empty, plaintext2html
 from odoo.tools.misc import babel_locale_parse
 
 
@@ -518,7 +517,7 @@ class EventTrackController(http.Controller):
             'description': plaintext2html(post['description']),
             'partner_biography': plaintext2html(post['partner_biography']),
             'user_id': False,
-            'image': base64.b64encode(post['image'].read()) if post.get('image') else False,
+            'image': BinaryBytes(post['image'].read()) if post.get('image') else False,
         })
 
         if request.env.user != self.env.website.user_id:
@@ -535,12 +534,8 @@ class EventTrackController(http.Controller):
     # HELPERS ROUTES
     # ------------------------------------------------------------
 
-    @http.route(['''/event/<model("event.event"):event>/track/<model("event.track"):track>/ics'''], type='http', auth="public")
+    @http.route(['''/event/<model("event.event"):event>/track/<model("event.track"):track>/ics'''], type='http', auth="public", website=True, sitemap=False)
     def event_track_ics_file(self, event, track):
-        lang = request.env.context.get('lang', request.env.user.lang)
-        if request.env.user._is_public():
-            lang = request.cookies.get('frontend_lang')
-        track = track.with_context(lang=lang)
         files = track._get_ics_file()
         content = files.get(track.id)
         if not content:

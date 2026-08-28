@@ -22,7 +22,7 @@ from odoo.tools.translate import LazyTranslate
 
 if typing.TYPE_CHECKING:
     from collections.abc import Sequence
-    from odoo.orm.types import DomainType, ValuesType
+    from odoo.api import DomainType, ValuesType
 
 _lt = LazyTranslate(__name__)
 SEARCH_PANEL_ERROR_MESSAGE = _lt("Too many items to display.")
@@ -227,7 +227,7 @@ class Base(models.AbstractModel):
             })
         if next_id:
             record = record.browse(next_id)
-        return record.with_context(bin_size=True).web_read(specification)
+        return record.web_read(specification)
 
     def web_save_multi(self, vals_list: list[dict], specification: dict[str, dict]) -> list[dict]:
         """
@@ -255,7 +255,7 @@ class Base(models.AbstractModel):
         for record, val in zip(self, vals_list):
             record.write(val)
 
-        return self.with_context(bin_size=True).web_read(specification)
+        return self.web_read(specification)
 
     @api.readonly
     def web_read(self, specification: dict[str, dict]) -> list[dict]:
@@ -317,7 +317,7 @@ class Base(models.AbstractModel):
             # this also avoid a call to read on the co-model that might have different access rules
             values_list = [{'id': id_} for id_ in self._ids]
         else:
-            values_list: list[dict] = self.read(fields_to_read, load=None)
+            values_list: list[dict] = self.read(fields_to_read, load='web')
 
         if not values_list:
             return values_list
@@ -577,12 +577,22 @@ class Base(models.AbstractModel):
             for records within the group.
 
         """
-        assert isinstance(groupby, (list, tuple)) and groupby
+        assert isinstance(groupby, (list, tuple))
+        if not groupby:
+            raise ValueError(self.env._("Need at least one item to groupby"))
 
         aggregates = list(aggregates)
         if '__count' not in aggregates:  # Used for computing length of sublevel groups
             aggregates.append('__count')
-        domain = Domain(domain).optimize(self)
+
+        # If the domain contains a condition on the active field, we need to disable
+        # the active test to ensure that we can read all records, including inactive ones.
+        # Because optimizing the domain may remove the condition on the active field, and
+        # only active records will get returned in the default case
+        domain = Domain(domain)
+        if any(cond.field_expr == self._active_name for cond in domain.iter_conditions()):
+            domain &= Domain(self._active_name, 'in', [True, False])
+        domain = domain.optimize(self)
 
         # dict to help creating order compatible with _read_group and for search
         dict_order: dict[str, str] = {}  # {fname_and_property: "<direction> <nulls>"}
@@ -2289,8 +2299,10 @@ class Base(models.AbstractModel):
         # process names in order
         while todo:
             # apply field-specific onchange methods
+            visited_onchanges = set()
             for field_name in todo:
-                record._apply_onchange_methods(field_name, result)
+                record._apply_onchange_methods(field_name, result, visited_onchanges)
+                visited_onchanges.update(self._onchange_methods.get(field_name, ()))
                 done.add(field_name)
 
             if not env.context.get('recursive_onchanges', True):

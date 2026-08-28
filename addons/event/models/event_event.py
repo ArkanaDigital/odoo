@@ -13,10 +13,11 @@ from odoo import _, api, Command, fields, models, tools
 from odoo.addons.base.models.res_partner import _tz_get
 from odoo.exceptions import ValidationError
 from odoo.fields import Datetime, Domain
-from odoo.tools import format_date, format_datetime, format_time, frozendict
+from odoo.models import Query
+from odoo.tools import format_date, frozendict
 from odoo.tools.mail import is_html_empty, html_to_inner_content
 from odoo.tools.misc import formatLang
-from odoo.tools.translate import html_translate
+from odoo.tools.translate import html_translate, mark_as_copy
 
 _logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class EventEvent(models.Model):
     def _default_question_ids(self):
         return self.env['event.type']._default_question_ids()
 
-    name = fields.Char(string='Event', translate=True, required=True)
+    name = fields.Char(string='Event', translate=True, required=True, copy=mark_as_copy('name'))
     note = fields.Html(string='Note', store=True, compute="_compute_note", readonly=False)
     description = fields.Html(string='Description', translate=html_translate, sanitize_attributes=False, sanitize_form=False, default=_default_description)
     active = fields.Boolean(default=True)
@@ -171,6 +172,7 @@ class EventEvent(models.Model):
         tracking=True,
         index=True,
     )
+    # TODO remove address_search in master
     address_search = fields.Many2one(
         'res.partner', string='Address', compute='_compute_address_search', search='_search_address_search')
     contact_address_inline = fields.Char(
@@ -437,6 +439,8 @@ class EventEvent(models.Model):
         if isinstance(value, Domain):
             domain = value.map_conditions(lambda cond: cond if cond.field_expr != 'display_name' else make_codomain(cond.value))
             return Domain('address_id', operator, domain)
+        if isinstance(value, Query):
+            return Domain('address_id', 'in', value)
         if operator == 'ilike' and isinstance(value, str):
             return Domain('address_id', 'any', make_codomain(value))
         # for the trivial "empty" case, there is no empty address
@@ -627,6 +631,11 @@ class EventEvent(models.Model):
                     }
                 }
 
+    def _search(self, domain, *a, **kw):
+        domain = Domain(domain).optimize(self).map_conditions(
+            lambda c: self._search_address_search(c.operator, c.value) if c.field_expr == 'address_search' else c)
+        return super()._search(domain, *a, **kw)
+
     @api.depends('event_registrations_sold_out', 'seats_limited', 'seats_max', 'seats_available')
     @api.depends_context('name_with_seats_availability')
     def _compute_display_name(self):
@@ -646,10 +655,6 @@ class EventEvent(models.Model):
             else:
                 name = event.name
             event.display_name = name
-
-    def copy_data(self, default=None):
-        vals_list = super().copy_data(default=default)
-        return [dict(vals, name=self.env._("%s (copy)", event.name)) for event, vals in zip(self, vals_list)]
 
     def _mail_get_operation_for_mail_message_operation(self, message_operation):
         if (message_operation == 'create' and self.env.user.has_group('event.group_event_registration_desk')):

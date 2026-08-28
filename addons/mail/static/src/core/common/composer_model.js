@@ -5,9 +5,9 @@ import {
     generatePartnerMentionElement,
     prettifyMessageText,
 } from "@mail/utils/common/format";
-import { getInnerHtml } from "@mail/utils/common/html";
+import { createElementFromContent, getInnerHtml } from "@mail/utils/common/html";
 import { markup } from "@odoo/owl";
-import { createDocumentFragmentFromContent, isHtmlEmpty } from "@web/core/utils/html";
+import { isHtmlEmpty } from "@web/core/utils/html";
 import { nbsp } from "@web/core/utils/strings";
 
 export class Composer extends Record {
@@ -50,10 +50,10 @@ export class Composer extends Record {
     attachments = fields.Many("ir.attachment");
     /** @type {boolean} */
     emailAddSignature = true;
+    isEditComposerVisible = false;
     message = fields.One("mail.message");
     mentionedPartners = fields.Many("res.partner");
     mentionedRoles = fields.Many("res.role");
-    mentionedChannels = fields.Many("discuss.channel");
     cannedResponses = fields.Many("mail.canned.response");
     isDirty = false;
     composerText = fields.Attr("", {
@@ -63,7 +63,6 @@ export class Composer extends Record {
                 return;
             }
             const validMentions = this.store.getMentionsFromText(this.composerText, {
-                mentionedChannels: this.mentionedChannels,
                 mentionedPartners: this.mentionedPartners,
                 mentionedRoles: this.mentionedRoles,
                 thread: this.targetThread,
@@ -105,11 +104,14 @@ export class Composer extends Record {
     });
     thread = fields.One("mail.thread");
     /** @type {{ start: number, end: number, direction: "forward" | "backward" | "none"}}*/
-    selection = {
-        start: 0,
-        end: 0,
-        direction: "none",
-    };
+    selection = fields.Attr(
+        {
+            start: 0,
+            end: 0,
+            direction: "none",
+        },
+        { asProxy: true }
+    );
     /** @type {boolean} */
     forceCursorMove;
     isFocused = fields.Attr(false, {
@@ -149,7 +151,7 @@ export class Composer extends Record {
             }
             return;
         }
-        const composerBody = createDocumentFragmentFromContent(this.composerHtml).body;
+        const composerBody = createElementFromContent(this.composerHtml);
         if (
             composerBody.querySelector(
                 `a.o_mail_redirect[data-oe-model="res.partner"][data-oe-id="${message.author.id}"]`

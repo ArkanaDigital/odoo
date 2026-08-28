@@ -220,8 +220,12 @@ class TestIrAttachment(TransactionCaseWithUserDemo):
         store_path = os.path.join(self.filestore, a1.store_fname)
         self.assertTrue(os.path.isfile(store_path), 'file exists')
         a1.unlink()
-        self.Attachment._gc_file_store_unsafe()
-        self.assertFalse(os.path.isfile(store_path), 'file removed')
+        with self.registry_test_mode(), self.registry.cursor() as cr:
+            env = self.Attachment.env(cr=cr)
+            self.Attachment.with_env(env)._gc_file_store_unsafe(grace_period=500)
+            self.assertTrue(os.path.isfile(store_path), 'file still exists')
+            self.Attachment.with_env(env)._gc_file_store_unsafe(grace_period=0)
+            self.assertFalse(os.path.isfile(store_path), 'file removed')
 
     def test_13_rollback(self):
         # the data needs to be unique so that no other attachment link
@@ -231,8 +235,10 @@ class TestIrAttachment(TransactionCaseWithUserDemo):
             a1 = self.env['ir.attachment'].create({'name': 'a1', 'raw': unique_blob})
             store_path = os.path.join(self.filestore, a1.store_fname)
             self.assertTrue(os.path.isfile(store_path), 'file exists')
-        self.env['ir.attachment']._gc_file_store_unsafe()
-        self.assertFalse(os.path.isfile(store_path), 'file removed')
+        with self.registry_test_mode(), self.registry.cursor() as cr:
+            env = self.Attachment.env(cr=cr)
+            self.Attachment.with_env(env)._gc_file_store_unsafe(grace_period=0)
+            self.assertFalse(os.path.isfile(store_path), 'file removed')
 
     def test_14_invalid_mimetype_with_correct_file_extension_no_post_processing(self):
         # test with fake svg with png mimetype
@@ -241,7 +247,7 @@ class TestIrAttachment(TransactionCaseWithUserDemo):
         self.assertEqual(a1.raw.content, unique_blob)
         self.assertEqual(a1.mimetype, 'image/png')
 
-    def test_15_read_binary_bin_size_is_lazy(self):
+    def test_15_read_binary_is_lazy(self):
         self.env.invalidate_all()
         IrAttachment = self.registry['ir.attachment']
         main_partner = self.env.ref('base.main_partner')
@@ -251,10 +257,33 @@ class TestIrAttachment(TransactionCaseWithUserDemo):
             side_effect=IrAttachment._file_read,
             autospec=True,
         ) as patch_file_read:
-            self.env['res.partner'].with_context(bin_size=True).search_read(
-                [('id', 'in', main_partner.ids)], ['image_128']
+            self.env['res.partner'].search_read(
+                [('id', 'in', main_partner.ids)], ['image_128'], load='web',
             )
             self.assertEqual(patch_file_read.call_count, 0)
+
+    def test_16_upload_file(self):
+        # Only try the attachment creation without the indexation
+        with (
+            patch(
+                "odoo.addons.base.models.ir_attachment.IrAttachment._index",
+                new=lambda *args, **kwargs: None,
+            ),
+            file_open('base/i18n/base.pot', 'rb') as f,
+        ):
+            # create the file
+            a = self.env['ir.attachment']._upload_file(
+                f,
+                {'name': 'base.pot'},
+            )
+            self.assertTrue(a.raw.size, "No bytes written")
+            # create the file again
+            f.seek(0)
+            a = self.env['ir.attachment']._upload_file(
+                f,
+                {'name': 'base.pot'},
+            )
+            self.assertTrue(a.raw.size, "No bytes written")
 
     def test_16_from_file_takes_little_memory(self):
         # The biggest file we reliably have is "i18n/base.pot" which is
@@ -334,11 +363,11 @@ class TestPermissions(TransactionCaseWithUserDemo):
         a = self.attachment = self.Attachments.create(self.vals)
 
         # prevent create, write and unlink accesses on record
-        self.rule = self.env['ir.rule'].sudo().create({
+        self.rule = self.env['ir.access'].sudo().create({
             'name': 'remove access to record %d' % record.id,
             'model_id': self.env['ir.model']._get_id(record._name),
-            'domain_force': "[('id', '!=', %s)]" % record.id,
-            'perm_read': False
+            'operation': 'cud',
+            'domain': "[('id', '!=', %s)]" % record.id,
         })
         self.env.flush_all()
         a.invalidate_recordset()
@@ -351,7 +380,7 @@ class TestPermissions(TransactionCaseWithUserDemo):
         # check that the information can be read out of the box
         self.attachment.raw
         # prevent read access on record
-        self.rule.perm_read = True
+        self.rule.operation = 'crud'
         self.attachment.invalidate_recordset()
         with self.assertRaises(AccessError):
             self.attachment.raw
@@ -381,7 +410,7 @@ class TestPermissions(TransactionCaseWithUserDemo):
         self.assertNotEqual(SUPERUSER_ID, admin_user.id)
         attachment_admin.with_user(admin_user).raw
 
-    @mute_logger("odoo.addons.base.models.ir_rule", "odoo.models")
+    @mute_logger("odoo.addons.base.models.ir_access", "odoo.models")
     def test_field_read_permission(self):
         """If the record field can't be read,
         e.g. `groups="base.group_system"` on the field,
@@ -442,7 +471,7 @@ class TestPermissions(TransactionCaseWithUserDemo):
         created, updated, or deleted (or copied).
         """
         # enable write permission on linked record
-        self.rule.perm_write = False
+        self.rule.operation = 'cd'
         attachment = self.Attachments.create(self.vals)
         attachment.copy()
         attachment.write({'raw': b'test'})
@@ -491,9 +520,8 @@ class TestPermissions(TransactionCaseWithUserDemo):
     def test_write_error(self):
         # try to write a file in a place where we have no access
         # /proc is not writeable, check if we have an error raised
-        self.patch(IrAttachment, '_get_path', lambda self, binary, _checksum: ('dummy_test', '/proc/dummy_test'))
-        with self.assertRaises(OSError):
-            self.env['ir.attachment']._file_write(b'test', 'test')
+        with patch.object(IrAttachment, '_full_path', lambda self, path: '/proc/dummy_test'), self.assertRaises(OSError):
+            self.env['ir.attachment']._file_write('test', io.BytesIO(b'test'))
 
     def test_write_create_url_binary_attachment(self):
         with self.assertRaisesRegex(ValidationError, r"Sorry, you are not allowed to write on this document"):

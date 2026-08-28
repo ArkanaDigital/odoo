@@ -803,7 +803,7 @@ class DomainCustom(Domain):
         query = records._filtered_access('read')._as_query(ordered=False)
         if query.is_empty():
             return Domain.FALSE._as_predicate(records)
-        query.add_where(self.optimize_full(records)._to_sql(query.table))
+        query.add_where(self._to_sql(query.table))
         return DomainCondition('id', 'any!', query)._as_predicate(records)
 
     def __eq__(self, other):
@@ -1037,13 +1037,30 @@ class DomainCondition(Domain):
 
     def _optimize_field_search_method(self, model: BaseModel) -> Domain:
         field = self._field(model)
-        if not model.env.su:
-            if self.operator not in ('any!', 'not any!'):
+        operator, value = self.operator, self.value
+        env = model.env
+        if not env.su:
+            if operator not in ('any!', 'not any!'):
                 model.check_field_access(field, 'read')
             if field.compute_sudo:
                 # run search in sudo because the compute is done in sudo as well
                 model = model.sudo()
-        operator, value = self.operator, self.value
+        if (
+            operator in ('any', 'not any', 'any!', 'not any!')
+            and field.relational
+            and isinstance(value, Domain)
+            and not field.related  # related fields handle 'any' properly
+            # accept domains which are not context-dependent
+            and any(not isinstance(cond.value, (SQL, Query)) for cond in value.iter_conditions())
+        ):
+            comodel = env[field.comodel_name]
+            if field.type in ('many2many', 'one2many'):
+                comodel = comodel.with_context(**field.context)
+            else:
+                comodel = comodel.with_context(active_test=False)
+            query = comodel._search(value, bypass_access='!' in operator or field.bypass_search_access)
+            value = DomainCondition('id', 'any!', query)
+
         # use the `Field.search` function
         original_exception = None
         try:
@@ -1059,38 +1076,42 @@ class DomainCondition(Domain):
             original_exception is None
             and (inversed_opeator := _INVERSE_OPERATOR.get(operator))
         ):
-            computed_domain = field.determine_domain(model, inversed_opeator, value)
-            if computed_domain is not NotImplemented:
-                return ~Domain(computed_domain, internal=True)
-        # compatibility for any!
+            try:
+                computed_domain = field.determine_domain(model, inversed_opeator, value)
+            except (NotImplementedError, UserError):
+                pass
+            else:
+                if computed_domain is not NotImplemented:
+                    return ~Domain(computed_domain, internal=True)
+        # compatibility for 'any!'
         try:
             if operator in ('any!', 'not any!') and not isinstance(original_exception, AccessError):
                 # Not strictly equivalent! If a search is executed, it will be done using sudo.
                 computed_domain = DomainCondition(self.field_expr, operator.rstrip('!'), value)
                 computed_domain = computed_domain._optimize_field_search_method(model.sudo())
-                _logger.warning("Field %s should implement any! operator", field)
+                _logger.warning("Field %s should implement 'any!' operator", field)
                 return computed_domain
         except (NotImplementedError, UserError) as e:
             if original_exception is None:
                 original_exception = e
-        # backward compatibility to implement only '=' or '!='
+        # compatibility for '=' and '!='
         try:
             if operator == 'in':
                 return Domain.OR(Domain(field.determine_domain(model, '=', v), internal=True) for v in value)
-            elif operator == 'not in':
+            if operator == 'not in':
                 return Domain.AND(Domain(field.determine_domain(model, '!=', v), internal=True) for v in value)
         except (NotImplementedError, UserError) as e:
             if original_exception is None:
                 original_exception = e
         # raise the error
-        if original_exception:
+        if isinstance(original_exception, UserError):
             raise original_exception
-        raise UserError(model.env._(
+        raise UserError(env._(
             "Unsupported operator on %(field_label)s %(model_label)s in %(domain)s",
             domain=repr(self),
             field_label=self._field(model).get_description(model.env, ['string'])['string'],
             model_label=f"{model.env['ir.model']._get(model._name).name!r} ({model._name})",
-        ))
+        )) from original_exception
 
     def _as_predicate(self, records):
         if not records:
@@ -1753,23 +1774,6 @@ def _optimize_type_selection(condition, model):
     return DomainCondition(condition.field_expr, 'in', included)
 
 
-@field_type_optimization(['binary'])
-def _optimize_type_binary_attachment(condition, model):
-    field = condition._field(model)
-    operator = condition.operator
-    value = condition.value
-    if field.attachment and not (operator in ('in', 'not in') and set(value) == {False}):
-        try:
-            condition._raise('Binary field stored in attachment, accepts only existence check; skipping domain')
-        except ValueError:
-            # log with stacktrace
-            _logger.exception("Invalid operator for a binary field")
-        return _TRUE_DOMAIN
-    if operator.endswith('like'):
-        condition._raise('Cannot use like operators with binary fields', error=NotImplementedError)
-    return condition
-
-
 @operator_optimization(['parent_of', 'child_of'], OptimizationLevel.FULL)
 def _operator_hierarchy(condition, model):
     """Transform a hierarchy operator into a simpler domain.
@@ -1899,7 +1903,6 @@ def _operator_parent_of_domain(comodel: BaseModel, parent):
 
 @operator_optimization(['access'], level=OptimizationLevel.DYNAMIC_VALUES)
 def _operator_access_rule_domain(condition, model):
-    operation = condition.value
     field = condition._field(model)
     if condition.field_expr != field.name:
         condition._raise("The 'access' operator does not work for properties")
@@ -1912,12 +1915,14 @@ def _operator_access_rule_domain(condition, model):
         condition._raise("The 'access' operator works only for many2one and 'id' fields")
         assert False, "no return above"  # for pylint
 
+    operation = condition.value
+    if operation not in ('read', 'write', 'create', 'unlink'):
+        condition._raise("Invalid value for 'access' operator")
+
     comodel = comodel.sudo(False)
     access_domain = comodel._access_domain(operation)
     if access_domain.is_false():
         # no access to the comodel for any record
-        if operation not in model.env.registry['ir.rule']._MODES:
-            condition._raise("Invalid value for 'access' operator")
         return Domain.FALSE
     if access_domain.is_true() or comodel.env.su:
         # access to all or edge-case for super user
@@ -1992,13 +1997,13 @@ def _optimize_x2m_in_operator(condition, model):
     ids = condition.value
     # rewrite condition (field_expr, 'in', ids), then negate in the case 'not in'
     domain = Domain.FALSE
+    comodel = model.env[condition._field(model).comodel_name]
     if False in ids:
         # x2m in {False, ...} => x2m not any! (Domain.TRUE) or x2m in {...}
-        domain |= Domain(field_expr, 'not any!', Domain.TRUE)
+        domain |= Domain(field_expr, 'not any!', Query(comodel))
         ids = ids - {False}
     if ids:
         # x2m in ids => x2m any! (ids_as_query)
-        comodel = model.env[condition._field(model).comodel_name]
         domain |= Domain(field_expr, 'any!', comodel.browse(ids)._as_query(ordered=False))
     return domain if condition.operator == 'in' else ~domain
 

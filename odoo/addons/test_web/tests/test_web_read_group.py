@@ -143,6 +143,9 @@ class TestWebReadGroup(common.TransactionCase):
                 },
             )
 
+        with self.assertRaisesRegex(ValueError, "Need at least one item to groupby"):
+            Model.web_read_group(domain=[], groupby=[], aggregates=['__count'])
+
     @patch("odoo.addons.web.models.models.MAX_NUMBER_OPENED_GROUPS", 2)
     def test_auto_unfold_limit(self):
         Model = self.env["test_read_group.aggregate"]
@@ -1281,3 +1284,34 @@ class TestWebReadGroup(common.TransactionCase):
         self.assertEqual(result, [{"name": "test", "__count": 1, "__extra_domain": [("name", "=", "test")]}])
         result = self.env["test_orm.view.str.id"].formatted_read_group([], [], ["name:count"])
         self.assertEqual(result, [{"name:count": 1, "__extra_domain": []}])
+
+    def test_web_read_group_custom_active_field(self):
+        """ Test web_read_group on a model with a custom active field (x_active) """
+        Model = self.env['test_read_group.aggregate']
+
+        # Add x_active field to the model
+        self.env['ir.model.fields'].create({
+            'model_id': self.env['ir.model']._get(Model._name).id,
+            'name': 'x_active',
+            'ttype': 'boolean',
+        })
+
+        # Invalidate cache to ensure _active_name is updated
+        self.env.transaction.invalidate_ormcache()
+        Model = self.env[Model._name]
+
+        self.assertEqual(Model._active_name, 'x_active')
+
+        Model.create([
+            {'key': 1, 'value': 10, 'x_active': True},
+            {'key': 1, 'value': 20, 'x_active': False},
+        ])
+
+        result = Model.web_read_group(
+            domain=[('x_active', 'in', [True, False])],
+            groupby=['key'],
+            aggregates=['value:sum'],
+        )
+
+        self.assertEqual(result['groups'][0]['value:sum'], 30)
+        self.assertEqual(result['groups'][0]['__count'], 2)

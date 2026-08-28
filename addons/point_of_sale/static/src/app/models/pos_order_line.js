@@ -105,11 +105,11 @@ export class PosOrderline extends PosOrderlineAccounting {
     }
 
     get config() {
-        return this.models["pos.config"].getFirst();
+        return this.models["pos.config"].get(odoo.pos_config_id);
     }
 
     get session() {
-        return this.models["pos.session"].getFirst();
+        return this.models["pos.session"].get(odoo.pos_session_id);
     }
 
     get currency() {
@@ -413,7 +413,7 @@ export class PosOrderline extends PosOrderlineAccounting {
     get refundedQty() {
         return (
             this.refund_orderline_ids?.reduce(
-                (acc, line) => (line.order_id.state !== "cancel" ? acc - line.qty : acc),
+                (acc, line) => (line.order_id?.state !== "cancel" ? acc - line.qty : acc),
                 0
             ) || 0
         );
@@ -437,6 +437,33 @@ export class PosOrderline extends PosOrderlineAccounting {
 
     get prepQty() {
         return this.prep_line_ids?.reduce((sum, pl) => sum + pl.quantity - pl.cancelled, 0) ?? 0;
+    }
+
+    isServiceFeeApplicable() {
+        return !this.isTipLine() && !this.isServiceFeeLine();
+    }
+    isServiceFeeLine() {
+        const serviceFeeProductIds = this.models["pos.preset"]
+            .getAll()
+            .map((preset) => preset.service_fee_product_id?.id)
+            .filter(Boolean);
+        return serviceFeeProductIds.includes(this.product_id?.id);
+    }
+    getServiceFeeDisplayInfo() {
+        const preset = this.order_id?.preset_id;
+        if (!preset || !this.isServiceFeeLine()) {
+            return {};
+        }
+        if (preset.service_fee_type !== "percent") {
+            return { amount: this.currencyDisplayPrice, description: "" };
+        }
+        return {
+            amount: `${formatFloat(preset.service_fee_amount * 100, { trailingZeros: false })}%`,
+            description:
+                preset.service_fee_based_on === "pre_discount"
+                    ? _t(" (before discount)")
+                    : _t(" (after discount)"),
+        };
     }
 }
 

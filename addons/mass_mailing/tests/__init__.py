@@ -2,8 +2,12 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from . import common
+from . import test_mail_mail
 from . import test_mail_render_mixin
 from . import test_mailing_ab_testing
+from . import test_mailing_contact_to_list
+from . import test_mailing_filter
+from . import test_mailing_contact
 from . import test_mailing_internals
 from . import test_mailing_list
 from . import test_mailing_controllers

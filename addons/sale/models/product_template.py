@@ -5,6 +5,8 @@ from collections import defaultdict
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
+from odoo.addons.sale.models.res_company import SALE_INVOICE_POLICY
+
 
 class ProductTemplate(models.Model):
     _inherit = "product.template"
@@ -39,7 +41,7 @@ class ProductTemplate(models.Model):
     )
     sales_count = fields.Float(string="Sold", compute="_compute_sales_count", digits="Product Unit")
     invoice_policy = fields.Selection(
-        selection=[("order", "Ordered quantities"), ("delivery", "Delivered quantities")],
+        selection=SALE_INVOICE_POLICY,
         string="Invoicing Policy",
         compute="_compute_invoice_policy",
         precompute=True,
@@ -206,7 +208,11 @@ class ProductTemplate(models.Model):
 
     @api.depends("type")
     def _compute_invoice_policy(self):
-        self.filtered(lambda t: t.type == "consu" or not t.invoice_policy).invoice_policy = "order"
+        for template in self:
+            if not template.invoice_policy:
+                template.invoice_policy = self.env.company.sale_invoice_policy
+            elif template.type == "consu":
+                template.invoice_policy = "order"
 
     def _get_backend_root_menu_ids(self):
         return super()._get_backend_root_menu_ids() + [self.env.ref("sale.sale_menu_root").id]
@@ -266,14 +272,10 @@ class ProductTemplate(models.Model):
         """
         res = super().get_single_product_variant()
         if res.get("product_id", False):
-            has_optional_products = False
-            for optional_product in self.product_variant_id.optional_product_ids:
-                if (
-                    optional_product.has_dynamic_attributes()
-                    or optional_product._get_possible_variants()
-                ):
-                    has_optional_products = True
-                    break
+            has_optional_products = any(
+                op.has_dynamic_attributes() or op._get_possible_variants()
+                for op in self.product_variant_id.optional_product_ids
+            )
             res.update({
                 "has_optional_products": has_optional_products,
                 "is_combo": self.type == "combo",

@@ -8,6 +8,14 @@ from odoo.addons.website_sale_stock.tests.common import WebsiteSaleStockCommon
 
 @tagged("post_install", "-at_install")
 class TestWebsiteSaleStockCheckout(WebsiteSaleStockCommon, HttpCase):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -25,3 +33,15 @@ class TestWebsiteSaleStockCheckout(WebsiteSaleStockCommon, HttpCase):
             response = self.CheckoutController.shop_checkout()
 
         self.assertEqual(response.status_code, 200)  # Success without redirection
+
+    def test_pickup_address_excluded_from_delivery_address_list(self):
+        """Pickup addresses must not appear in the selectable delivery address list."""
+        pickup_address = self.env["res.partner"].create({
+            "name": "DHL Locker",
+            "type": "delivery",
+            "parent_id": self.partner.id,
+            "pickup_delivery_method_id": self.carrier.id,
+        })
+        with self.mock_request():
+            address_data = CheckoutController()._prepare_address_data(self.partner)
+        self.assertNotIn(pickup_address, address_data["delivery_addresses"])

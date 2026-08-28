@@ -1,4 +1,3 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
@@ -15,7 +14,20 @@ import { standardFieldProps } from "../standard_field_props";
 import { PropertyDefinition } from "./property_definition";
 import { PropertyValue } from "./property_value";
 
-import { Component, onWillStart, onWillUpdateProps, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onPatched,
+    onWillStart,
+    onWillUpdateProps,
+    proxy,
+    signal,
+    t,
+    untrack,
+    useEffect,
+    useProps,
+} from "@odoo/owl";
+import { deepCopy } from "@web/core/utils/objects";
 
 export class PropertiesField extends Component {
     static template = "web.PropertiesField";
@@ -25,16 +37,12 @@ export class PropertiesField extends Component {
         PropertyDefinition,
         PropertyValue,
     };
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        context: { type: Object, optional: true },
-        columns: {
-            type: Number,
-            optional: true,
-            validate: (columns) => [1, 2].includes(columns),
-        },
-        editMode: { type: Boolean, optional: true },
-    };
+        context: t.object().optional(),
+        columns: t.customValidator(t.number(), (columns) => [1, 2].includes(columns)).optional(),
+        editMode: t.boolean().optional(),
+    });
 
     setup() {
         this.notification = useService("notification");
@@ -48,8 +56,10 @@ export class PropertiesField extends Component {
             fixedPosition: true,
             arrow: false,
             setActiveElement: false, // make tag navigation work when adding a tag property
+            closeOnEscape: false,
         });
-        this.propertiesRef = useRef("properties");
+        this.propertiesRef = signal.ref();
+        this.uiService = useService("ui");
 
         let currentResId;
         useRecordObserver((record) => {
@@ -110,8 +120,10 @@ export class PropertiesField extends Component {
             });
         });
 
-        useLayoutEffect(
-            () => {
+        useEffect(() => {
+            // subscribe to the definition record changing
+            void this.props.record.data[this.definitionRecordField];
+            untrack(() => {
                 // when the field has a new definition record:
                 if (this.props.readonly || (!this.state.isInEditMode && !this.props.editMode)) {
                     return;
@@ -124,9 +136,8 @@ export class PropertiesField extends Component {
                         (this.state.isInEditMode || this.props.editMode);
                     this.setEditMode(editable);
                 });
-            },
-            () => [this.props.record.data[this.definitionRecordField]]
-        );
+            });
+        });
 
         onWillUpdateProps(async (nextProps) => {
             if (nextProps.readonly && !this.props.readonly) {
@@ -149,28 +160,20 @@ export class PropertiesField extends Component {
             }
         });
 
-        useLayoutEffect(
-            () => {
-                if (this.openPropertyDefinition) {
-                    const propertyName = this.openPropertyDefinition;
-                    const labels = this.propertiesRef.el.querySelectorAll(
-                        `.o_property_field[property-name="${propertyName}"] .o_field_property_open_popover`
-                    );
-                    this.openPropertyDefinition = null;
-                    const lastLabel = labels[labels.length - 1];
-                    this._openPropertyDefinition(lastLabel, propertyName, true);
-                }
-            },
-            () => [this.openPropertyDefinition]
-        );
-
-        useLayoutEffect(() => this._movePopoverIfNeeded());
+        onMounted(() => {
+            this._openPendingPropertyDefinition();
+            this._movePopoverIfNeeded();
+        });
+        onPatched(() => {
+            this._openPendingPropertyDefinition();
+            this._movePopoverIfNeeded();
+        });
 
         // sort properties
         useSortable({
             enable: () => !this.props.readonly && this.state.canChangeDefinition,
             ref: this.propertiesRef,
-            handle: ".o_field_property_label .oi-draggable",
+            handle: ".o_field_property_label [data-icon='drag_indicator']",
             // on mono-column layout, allow to move before a separator to make the usage more fluid
             elements:
                 this.renderedColumnsCount === 1
@@ -181,7 +184,7 @@ export class PropertiesField extends Component {
             cursor: "grabbing",
             onDragStart: ({ element, group }) => {
                 this.state.isDragging = true;
-                this.propertiesRef.el.classList.add("o_property_dragging");
+                this.propertiesRef().classList.add("o_property_dragging");
                 element.classList.add("o_property_drag_item");
                 group.classList.add("o_property_drag_group");
                 // without this, if we edit a char property, move it,
@@ -220,9 +223,9 @@ export class PropertiesField extends Component {
             },
             onDragEnd: ({ element }) => {
                 this.state.isDragging = false;
-                this.propertiesRef.el.classList.remove("o_property_dragging");
+                this.propertiesRef().classList.remove("o_property_dragging");
                 element.classList.remove("o_property_drag_item");
-                const targetGroup = this.propertiesRef.el.querySelector(".o_property_drag_group");
+                const targetGroup = this.propertiesRef().querySelector(".o_property_drag_group");
                 if (targetGroup) {
                     targetGroup.classList.remove("o_property_drag_group");
                 }
@@ -240,12 +243,12 @@ export class PropertiesField extends Component {
         useSortable({
             enable: () => !this.props.readonly && this.state.canChangeDefinition,
             ref: this.propertiesRef,
-            handle: ".o_field_property_group_label .oi-draggable",
+            handle: ".o_field_property_group_label [data-icon='drag_indicator']",
             elements: ".o_property_group:not([property-name=''])",
             cursor: "grabbing",
             onDragStart: ({ element }) => {
                 this.state.isDragging = true;
-                this.propertiesRef.el.classList.add("o_property_dragging");
+                this.propertiesRef().classList.add("o_property_dragging");
                 element.classList.add("o_property_drag_item");
                 document.activeElement.blur();
             },
@@ -256,7 +259,7 @@ export class PropertiesField extends Component {
             },
             onDragEnd: ({ element }) => {
                 this.state.isDragging = false;
-                this.propertiesRef.el.classList.remove("o_property_dragging");
+                this.propertiesRef().classList.remove("o_property_dragging");
                 element.classList.remove("o_property_drag_item");
             },
         });
@@ -278,7 +281,7 @@ export class PropertiesField extends Component {
      * @returns {object}
      */
     get renderedColumnsCount() {
-        return this.env.isSmall ? 1 : this.props.columns;
+        return this.uiService.isSmall ? 1 : this.props.columns;
     }
 
     /**
@@ -706,9 +709,9 @@ export class PropertiesField extends Component {
         propertiesDefinitions.push(this._getNewPropertyDefinition(newName, count));
 
         this.initialValues[newName] = { name: newName, type: "char" };
-        this.openPropertyDefinition = newName;
         await this.props.record.update({ [this.props.name]: propertiesDefinitions });
         await this._unfoldPropertyGroup(count - 1, propertiesDefinitions);
+        this.openPropertyDefinition = newName;
     }
 
     /**
@@ -783,8 +786,9 @@ export class PropertiesField extends Component {
      * Move the popover to the given property id.
      * Used when we change the position of the properties.
      *
-     * We change the popover position after the DOM has been updated (see @useLayoutEffect)
-     * because if we update it after changing the component properties,
+     * We change the popover position after the DOM has been updated (see the
+     * onMounted/onPatched hooks) because if we update it after changing the
+     * component properties,
      */
     _movePopoverIfNeeded() {
         if (!this.movePopoverToProperty) {
@@ -801,6 +805,23 @@ export class PropertiesField extends Component {
         );
 
         reposition(popover, target, { position: "top", margin: 10 });
+    }
+
+    /**
+     * Open the definition popover of a property that was just created, once the
+     * new property has been rendered in the DOM.
+     */
+    _openPendingPropertyDefinition() {
+        if (!this.openPropertyDefinition) {
+            return;
+        }
+        const propertyName = this.openPropertyDefinition;
+        const labels = this.propertiesRef().querySelectorAll(
+            `.o_property_field[property-name="${propertyName}"] .o_field_property_open_popover`
+        );
+        this.openPropertyDefinition = null;
+        const lastLabel = labels[labels.length - 1];
+        this._openPropertyDefinition(lastLabel, propertyName, true);
     }
 
     /**
@@ -902,12 +923,24 @@ export class PropertiesField extends Component {
             return propertyName;
         };
 
+        const currentPropertyName = currentName(propertyName);
+        const initialPropertiesSnapshot = deepCopy(
+            isNewlyCreated
+                ? propertiesList.filter((property) => property.name !== currentPropertyName)
+                : propertiesList
+        );
+
+        let shouldDiscardChanges = true;
         this.onCloseCurrentPopover = () => {
+            document.activeElement.blur?.();
             this.state.isPopoverOpen = false;
             this.onCloseCurrentPopover = null;
+            this.movePopoverToProperty = null;
             target.classList.remove("disabled");
-            if (isNewlyCreated) {
-                this._setDefaultPropertyValue(currentName(propertyName));
+            if (shouldDiscardChanges) {
+                this.props.record.update({
+                    [this.props.name]: initialPropertiesSnapshot,
+                });
             }
         };
 
@@ -921,7 +954,21 @@ export class PropertiesField extends Component {
             ),
             context: this.props.context,
             onChange: this.onPropertyDefinitionChange.bind(this),
-            onDelete: () => this.onPropertyDelete(currentName(propertyName)),
+            onDelete: () => {
+                document.activeElement.blur?.();
+                shouldDiscardChanges = false;
+                this.onPropertyDelete(currentName(propertyName));
+            },
+            onAdd: () => {
+                shouldDiscardChanges = false;
+                if (isNewlyCreated) {
+                    this._setDefaultPropertyValue(currentName(propertyName));
+                }
+                this.popover.close();
+            },
+            onDiscard: () => {
+                this.popover.close();
+            },
             isNewlyCreated: isNewlyCreated,
             propertiesSize: propertiesList.length,
             record: this.props.record,
@@ -937,7 +984,7 @@ export class PropertiesField extends Component {
     _setDefaultPropertyValue(propertyName) {
         const propertiesValues = this.propertiesList;
         const newProperty = propertiesValues.find((property) => property.name === propertyName);
-        if (newProperty.default) {
+        if (newProperty?.default) {
             newProperty.value = newProperty.default;
         }
         // it won't update the props, it's a trick because the onClose event of the popover
@@ -991,7 +1038,7 @@ export class PropertiesField extends Component {
     }
 
     _getClosestField() {
-        return this.propertiesRef.el.closest(".o_field_properties");
+        return this.propertiesRef().closest(".o_field_properties");
     }
 
     _getNewPropertyDefinition(newName, count) {

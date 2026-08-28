@@ -12,7 +12,7 @@
                         <t t-set="popover_content">
                             <div t-field="sponsor.name" class="h5"/>
                             <div t-if="sponsor.url" class="d-flex align-items-baseline">
-                                <i class="fa fa-globe me-2"/><a t-att-href="sponsor.url" t-field="sponsor.url" class="text-truncate"/>
+                                <i class="oi me-2" data-icon="public"/><a t-att-href="sponsor.url" t-field="sponsor.url" class="text-truncate"/>
                             </div>
                         </t>
                         <a class="o_wevent_sponsor o_wevent_sponsor_card h-100 rounded text-decoration-none position-relative" tabindex="0" role="button"
@@ -33,7 +33,7 @@
 <template id="event_sponsor_thumb_details">
     <div class="p-2">
         <span t-field="sponsor.image_128"
-            t-options='{"widget": "image", "class": "img img-fluid", "filename-field": "partner_name", "preview_image": "image_128"}'/>
+            t-options='{"widget": "image", "class": "img img-fluid", "filename-field": "partner_name"}'/>
     </div>
     <span t-if="sponsor.sudo().sponsor_type_id.display_ribbon_style and sponsor.sudo().sponsor_type_id.display_ribbon_style != 'no_ribbon'"
             t-field="sponsor.sudo().sponsor_type_id" t-attf-class="o_ribbon d-block w-100 ribbon_#{sponsor.sudo().sponsor_type_id.display_ribbon_style}"/>

@@ -102,6 +102,7 @@
                             <field name="category_id" groups="maintenance.group_equipment_manager" context="{'default_company_id':company_id}" invisible="not equipment_id"/>
                             <field name="close_date" readonly="True" invisible="state != 'done'"/>
                             <field name="maintenance_type" widget="radio"/>
+                            <field name="equipment_req_properties" widget="properties" nolabel="1" colspan="2"/>
                         </group>
                         <group>
                             <field name="maintenance_team_id" options="{'no_create': True, 'no_open': True}"/>
@@ -135,12 +136,11 @@
         </field>
     </record>
 
-    <record id="hr_equipment_request_view_kanban" model="ir.ui.view">
-        <field name="name">equipment.request.kanban</field>
+    <record id="hr_equipment_request_view_card" model="ir.ui.view">
+        <field name="name">equipment.request.card</field>
         <field name="model">maintenance.request</field>
         <field name="arch" type="xml">
-            <kanban highlight_color="color" default_group_by="stage_id" sample="1">
-                <progressbar field="state" colors='{"done": "success", "cancelled": "danger"}'/>
+            <card>
                 <templates>
                     <t t-name="menu">
                         <t t-if="widget.editable"><a role="menuitem" type="open" class="dropdown-item">Edit...</a></t>
@@ -166,6 +166,16 @@
                         </main>
                     </t>
                 </templates>
+            </card>
+        </field>
+    </record>
+
+    <record id="hr_equipment_request_view_kanban" model="ir.ui.view">
+        <field name="name">equipment.request.kanban</field>
+        <field name="model">maintenance.request</field>
+        <field name="arch" type="xml">
+            <kanban card_id="%(hr_equipment_request_view_card)d" highlight_color="color" default_group_by="stage_id" sample="1">
+                <progressbar field="state" colors='{"done": "success", "cancelled": "danger"}'/>
             </kanban>
         </field>
     </record>
@@ -222,13 +232,6 @@
                 <field name="user_ids" filters="1"/>
                 <field name="priority"/>
                 <field name="maintenance_type"/>
-                <field name="recurring_maintenance" invisible="1"/>
-                <field name="repeat_interval" invisible="1"/>
-                <field name="repeat_unit" invisible="1"/>
-                <field name="repeat_type" invisible="1"/>
-                <field name="repeat_until" invisible="1"/>
-                <field name="duration" invisible="1"/>
-                <field name="state" invisible="1"/>
             </calendar>
         </field>
     </record>
@@ -358,7 +361,7 @@
                             type="action"
                             class="oe_stat_button"
                             context="{'default_company_id': company_id, 'default_maintenance_team_id': maintenance_team_id}"
-                            icon="fa-wrench">
+                            icon="build">
                             <field string="Maintenance" name="maintenance_count" widget="statinfo"/>
                         </button>
                     </div>
@@ -454,6 +457,7 @@
                         <field t-if="record.serial_no.raw_value" name="serial_no"/>
                         <!-- below div is used in hr_maintenance and fleet_maintenance-->
                         <div id="unassigned" invisible="1">Unassigned</div>
+                        <field name="equipment_properties" widget="properties"/>
                         <footer>
                             <div class="badge rounded-pill text-bg-danger" t-if="record.maintenance_open_count.raw_value">
                                 <field name="maintenance_open_count" /> Request
@@ -577,14 +581,14 @@
                 <div class="oe_button_box" name="button_box">
                     <button name="%(hr_equipment_action_from_category_form)d"
                         class="oe_stat_button"
-                        icon="fa-cubes"
+                        icon="inventory_2"
                         type="action">
                         <field string="Equipment" name="equipment_count" widget="statinfo"/>
                     </button>
                     <button name="%(hr_equipment_request_action_link)d"
                         type="action"
                         class="oe_stat_button"
-                        icon="fa-wrench">
+                        icon="build">
                         <field string="Maintenance" name="maintenance_count" widget="statinfo"/>
                     </button>
                 </div>
@@ -944,6 +948,7 @@
     <menuitem
         id="menu_maintenance_title"
         name="Maintenance"
+        groups="base.group_user_regular"
         web_icon="maintenance,static/description/icon.png"
         sequence="160"/>
 

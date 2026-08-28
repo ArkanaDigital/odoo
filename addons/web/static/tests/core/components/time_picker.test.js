@@ -1,18 +1,18 @@
-import { Component, xml, proxy } from "@odoo/owl";
 import { beforeEach, expect, queryFirst, test } from "@odoo/hoot";
 import {
+    animationFrame,
     click,
-    queryAll,
-    queryAllTexts,
     edit,
     press,
-    animationFrame,
+    queryAll,
+    queryAllTexts,
     runAllTimers,
 } from "@odoo/hoot-dom";
 import { mockDate } from "@odoo/hoot-mock";
-import { mountWithCleanup, defineParams, getMockEnv } from "@web/../tests/web_test_helpers";
-import { TimePicker } from "@web/core/time_picker/time_picker";
+import { Component, proxy, xml } from "@odoo/owl";
+import { defineParams, isSmall, mountWithCleanup } from "@web/../tests/web_test_helpers";
 import { Dropdown } from "@web/core/dropdown/dropdown";
+import { TimePicker } from "@web/core/time_picker/time_picker";
 import { range } from "@web/core/utils/numbers";
 
 const { DateTime } = luxon;
@@ -30,7 +30,7 @@ function assertTimePickerInput() {
 
     for (let i = 0; i < expectedTimes.length; i++) {
         expect(queryAll(".o_time_picker_input")[i].value).toBe(
-            getMockEnv().isSmall
+            isSmall()
                 ? DateTime.fromFormat(expectedTimes[i], "H:mm").toFormat("HH:mm")
                 : expectedTimes[i]
         );
@@ -287,7 +287,6 @@ test("typing a value that is in the suggestions will focus it in the dropdown", 
 test("false, null and undefined are accepted values", async () => {
     class Parent extends Component {
         static components = { TimePicker };
-        static props = {};
         static template = xml`<TimePicker value="this.state.value"/>`;
 
         setup() {
@@ -313,7 +312,6 @@ test.tags("desktop");
 test("click-out triggers onChange", async () => {
     class Parent extends Component {
         static components = { TimePicker, Dropdown };
-        static props = {};
         static template = xml`
             <div>
                 <Dropdown>
@@ -353,7 +351,6 @@ test("click-out triggers onChange", async () => {
 test("changing the props value updates the input", async () => {
     class Parent extends Component {
         static components = { TimePicker };
-        static props = {};
         static template = xml`<TimePicker value="this.state.value" onChange.bind="this.onChange"/>`;
 
         setup() {
@@ -379,7 +376,7 @@ test("changing the props value updates the input", async () => {
     // Set value by clicking
     await click(".o_time_picker_input");
     await animationFrame();
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await edit("11:30", { confirm: false });
     } else {
         await click(`.o_time_picker_option:contains("11:30")`);
@@ -399,7 +396,6 @@ test.tags("desktop");
 test("ensure placeholder is customizable", async () => {
     class Parent extends Component {
         static components = { TimePicker };
-        static props = {};
         static template = xml`<TimePicker placeholder="this.state.placeholder"/>`;
 
         setup() {
@@ -419,7 +415,6 @@ test("ensure placeholder is customizable", async () => {
 test("add a custom class", async () => {
     class Parent extends Component {
         static components = { TimePicker };
-        static props = {};
         static template = xml`<TimePicker cssClass="'o_custom_class'"/>`;
     }
 
@@ -430,7 +425,6 @@ test("add a custom class", async () => {
 test("add a custom input class", async () => {
     class Parent extends Component {
         static components = { TimePicker };
-        static props = {};
         static template = xml`<TimePicker inputCssClass="'o_custom_class'"/>`;
     }
 

@@ -5,29 +5,31 @@ from odoo.tests import tagged
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestUblImportBis3InvoiceBEVehicle(TestUblImportBis3InvoiceBE):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.ensure_installed('fleet')
-        cls.env.user.group_ids |= cls.env.ref('fleet.fleet_group_manager')
         # create car datas
-        brand = cls.env['fleet.vehicle.model.brand'].create({  # noqa: OLS03001
+        brand = cls.env['fleet.vehicle.model.brand'].sudo().create({  # noqa: OLS03001
             'name': 'Test Brand',
         })
-        model = cls.env['fleet.vehicle.model'].create({  # noqa: OLS03001
+        model = cls.env['fleet.vehicle.model'].sudo().create({  # noqa: OLS03001
             'name': 'Test Model',
             'brand_id': brand.id,
         })
-        cls.car = cls.env['fleet.vehicle'].create({  # noqa: OLS03001
+        FleetVehicleSudo = cls.env['fleet.vehicle'].sudo()  # noqa: OLS03001
+        cls.car = FleetVehicleSudo.create({
             'model_id': model.id,
             'vin_sn': 'ABCDEF012345GHJKL',
             'license_plate': '1-ABC-123',
         })
-        cls.car2 = cls.env['fleet.vehicle'].create({  # noqa: OLS03001
+        cls.car2 = FleetVehicleSudo.create({
             'model_id': model.id,
             'vin_sn': 'ABCDEF012346GHJKL',
         })
-        cls.car3 = cls.env['fleet.vehicle'].create({  # noqa: OLS03001
+        cls.car3 = FleetVehicleSudo.create({
             'model_id': model.id,
             'vin_sn': 'ABCDEF012347GHJKL',
         })

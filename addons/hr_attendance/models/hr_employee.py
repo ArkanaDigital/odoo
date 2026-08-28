@@ -1,5 +1,6 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import datetime
+from datetime import time
 from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
@@ -86,6 +87,10 @@ class HrEmployee(models.Model):
 
         return res
 
+    def _has_attendance_check_in_ability(self):
+        self.ensure_one()
+        return self.company_id.attendance_from_systray
+
     @api.depends('parent_id')
     def _compute_attendance_manager(self):
         for employee in self:
@@ -108,6 +113,23 @@ class HrEmployee(models.Model):
             })
         return res
 
+    @api.depends_context('uid')
+    @api.depends('user_id', 'user_id.group_ids')
+    def _compute_display_attendances(self):
+        current_user = self.env.user
+        if not current_user:
+            self.display_attendances = False
+            return
+
+        is_attendance_officer = current_user.has_group('hr_attendance.group_hr_attendance_officer')
+        has_attendance_user_group = current_user.has_group('hr_attendance.group_hr_attendance_user')  # manager implies user
+        has_attendance_own_reader_group = current_user.has_group('hr_attendance.group_hr_attendance_own_reader')
+
+        for employee in self:
+            is_approver = is_attendance_officer and employee.attendance_manager_id and employee.attendance_manager_id == current_user
+            is_users_employee = has_attendance_own_reader_group and employee in current_user.employee_ids
+            employee.display_attendances = has_attendance_user_group or is_approver or is_users_employee
+
     @api.depends('overtime_ids.manual_duration', 'overtime_ids', 'overtime_ids.status')
     def _compute_total_overtime(self):
         mapped_validated_overtimes = dict(
@@ -123,6 +145,7 @@ class HrEmployee(models.Model):
         for employee in self:
             employee.total_overtime = mapped_validated_overtimes.get(employee, 0)
 
+    @api.depends('attendance_ids', 'attendance_ids.check_in', 'attendance_ids.check_out', 'attendance_ids.worked_hours', 'attendance_ids.validated_overtime_hours')
     def _compute_hours_last_month(self):
         """
         Compute hours and overtime hours in the current month, if we are the 15th of october, will compute from 1 oct to 15 oct
@@ -134,7 +157,7 @@ class HrEmployee(models.Model):
             now_tz = now_utc.astimezone(tz)
             start_tz = now_tz.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             start_naive = start_tz.astimezone(datetime.UTC).replace(tzinfo=None)
-            end_tz = now_tz
+            end_tz = datetime.datetime.combine(now_tz + relativedelta(day=31), time.max, tzinfo=now_tz.tzinfo)
             end_naive = end_tz.astimezone(datetime.UTC).replace(tzinfo=None)
 
             for employee in employees:
@@ -148,14 +171,9 @@ class HrEmployee(models.Model):
                     overtime_hours += att.validated_overtime_hours or 0
                 employee.hours_last_month = round(hours, 2)
                 employee.hours_last_month_display = "%g" % employee.hours_last_month
-                # overtime_adjustments = sum(
-                #     ot.duration or 0
-                #     for ot in employee.overtime_ids.filtered(
-                #         lambda ot: ot.date >= start_tz.date() and ot.date <= end_tz.date() and ot.adjustment
-                #     )
-                # )
                 employee.hours_last_month_overtime = round(overtime_hours, 2)
 
+    @api.depends('attendance_ids', 'attendance_ids.check_in', 'attendance_ids.check_out')
     def _compute_hours_today(self):
         now = fields.Datetime.now()
         now_utc = now.replace(tzinfo=datetime.UTC)
@@ -205,17 +223,6 @@ class HrEmployee(models.Model):
         for employee in self:
             att = employee.last_attendance_id.sudo()
             employee.attendance_state = att and not att.check_out and 'checked_in' or 'checked_out'
-
-    @api.depends_context('uid')
-    @api.depends('user_id', 'user_id.group_ids')
-    def _compute_display_attendances(self):
-        current_user = self.env.user
-        for employee in self:
-            if current_user.has_group('hr_attendance.group_hr_attendance_officer'):
-                employee.display_attendances = True
-            else:
-                employee.display_attendances = current_user.has_group('hr_attendance.group_hr_attendance_own_reader') \
-                                                and employee in current_user.employee_ids
 
     def _notify_employee_presence_status(self):
         self.ensure_one()
@@ -299,6 +306,7 @@ class HrEmployee(models.Model):
             "res_model": "hr.attendance",
             "views": [[self.env.ref('hr_attendance.hr_attendance_employee_calendar_view').id, "calendar"]],
             "context": {
+                "default_employee_id": self.id,
                 "display_extra_hours": self.display_extra_hours,
             },
             "domain": [('employee_id', '=', self.id)]

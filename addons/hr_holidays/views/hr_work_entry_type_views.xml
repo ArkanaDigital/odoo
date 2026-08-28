@@ -24,7 +24,8 @@
                 <button class="oe_stat_button"
                         type="object"
                         name="action_see_days_allocated"
-                        icon="fa-calendar"
+                        icon="calendar_today"
+                        icon_class="oi-filled"
                         invisible="not requires_allocation or not id"
                         help="Count of allocations for this time type (approved or waiting for approbation) with a validity period starting this year.">
                     <div class="o_stat_info">
@@ -35,7 +36,8 @@
                 <button class="oe_stat_button"
                         type="object"
                         name="action_see_group_leaves"
-                        icon="fa-calendar"
+                        icon="calendar_today"
+                        icon_class="oi-filled"
                         invisible="not id"
                         help="Count of time off requests for this time type (approved or waiting for approbation) with a start date in the current year.">
                     <div class="o_stat_info">
@@ -44,9 +46,10 @@
                     </div>
                 </button>
             </div>
-            <group name="identification" class="o_form_fw_labels" position="inside">
-                <field name="time_off_selectable"/>
-            </group>
+            <xpath expr="//div[@name='availability_row']/field[@name='resource_calendar_selectable']" position="before">
+                <field name="time_off_selectable" nolabel="1" help="Tells whether this time type can be selected as time off or not"/>
+                <label for="time_off_selectable" string="Time Off"/>
+            </xpath>
             <xpath expr="//field[@name='count_as']" position="after">
                 <field name="unit_of_measure" widget="radio" options="{'horizontal': True}"/>
                 <field name="request_unit" widget="radio" options="{'horizontal': True}"/>
@@ -60,41 +63,30 @@
                             <field name="leave_validation_type" string="Approval" widget="radio"/>
                         </group>
                         <group name="allocation_validation" id="allocation_requests" string="Allocation">
-                            <field name="requires_allocation" string="Limited Days"/>
+                            <field name="requires_allocation" string="Requires Allocation"/>
                             <field name="employee_requests" invisible="not requires_allocation"/>
                             <field name="allocation_validation_type" string="Approval" widget="radio" invisible="not requires_allocation or not employee_requests"/>
                         </group>
                     </group>
                     <group style="justify-content: unset;">
                         <group name="configuration" id="configuration" string="Configuration">
-                            <div class="o_cell o_wrap_label text-break text-900 d-flex flex-row" colspan="2">
-                                <div class="d-flex flex-column gap-2">
-                                    <label for="allows_negative" class="me-4" readonly="0" invisible="not requires_allocation"/>
-                                    <label for="count_days_as" class="me-4"/>
-                                    <label for="include_public_holidays_in_duration" class="me-4"/>
-                                    <label for="hide_on_dashboard" class="me-4"/>
-                                    <label for="support_document" class="me-4" string="Require Supporting Document"/>
-                                    <label for="elligible_for_accrual_rate" class="me-4"/>
-                                    <label for="allow_request_on_top" class="me-4" invisible="count_as == 'absence'"/>
-                                </div>
-                                <div class="d-flex flex-column gap-1">
-                                    <div class="d-flex align-items-center gap-2 text-900" invisible="not requires_allocation">
-                                        <field name="allows_negative" nolabel="1"/>
-                                        <div invisible="not allows_negative" class="gap-2 d-flex align-items-center align-items-sm-start text-nowrap">
-                                            <span>up to</span>
-                                            <field name="max_allowed_negative" class="w-25"/>
-                                            <span invisible="unit_of_measure == 'hour'">days</span>
-                                            <span invisible="unit_of_measure != 'hour'">hours</span>
-                                        </div>
-                                    </div>
-                                    <field name="count_days_as" class="mb-2" nolabel="1" widget="radio" options="{'horizontal': true}"/>
-                                    <field name="include_public_holidays_in_duration" class="mb-2" nolabel="1"/>
-                                    <field name="hide_on_dashboard" class="mb-2" nolabel="1"/>
-                                    <field name="support_document" nolabel="1"/>
-                                    <field name="elligible_for_accrual_rate" nolabel="1" readonly="count_as != 'absence'"/>
-                                    <field name="allow_request_on_top" nolabel="1" invisible="count_as == 'absence'"/>
+                            <label name="label_negative_cap" for="allows_negative" invisible="not requires_allocation"/>
+                            <div name="div_negative_cap" class="gap-2 d-flex align-items-center align-items-sm-start text-nowrap" invisible="not requires_allocation">
+                                <field name="allows_negative" nolabel="1"/>
+                                <div invisible="not allows_negative" class="gap-2 d-flex">
+                                    <span>up to</span>
+                                    <field name="max_allowed_negative" class="w-25"/>
+                                    <span invisible="unit_of_measure == 'hour'">days</span>
+                                    <span invisible="unit_of_measure != 'hour'">hours</span>
                                 </div>
                             </div>
+                            <field name="count_days_as" widget="radio" options="{'horizontal': true}"/>
+                            <field name="include_public_holidays_in_duration"/>
+                            <field name="hide_on_dashboard"/>
+                            <field name="support_document"/>
+                            <field name="elligible_for_accrual_rate" readonly="count_as != 'absence'"/>
+                            <field name="allow_request_on_top" invisible="count_as == 'absence'"/>
+                            <field name="create_calendar_meeting" invisible="count_as == 'absence'"/>
                         </group>
                     </group>
                 </page>
@@ -129,9 +121,10 @@
                 <field name="unit_of_measure"/>
                 <field name="request_unit"/>
                 <field name="leave_validation_type" optional="hide" string="Time Type Approval"/>
+                <field name="time_off_selectable" optional="hide"/>
                 <field name="requires_allocation" optional="hide"/>
-                <field name="allocation_validation_type" string="Allocation Approval" optional="hide" invisible="not requires_allocation"/>
                 <field name="employee_requests" optional="hide"/>
+                <field name="allocation_validation_type" string="Allocation Approval" optional="hide" invisible="not (requires_allocation and employee_requests)"/>
             </field>
         </field>
     </record>

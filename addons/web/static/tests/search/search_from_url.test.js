@@ -1,4 +1,4 @@
-import { expect, test, waitFor, fill } from "@odoo/hoot";
+import { beforeEach, expect, test, waitFor, fill } from "@odoo/hoot";
 import { animationFrame, press, queryAllTexts } from "@odoo/hoot-dom";
 import {
     contains,
@@ -12,6 +12,7 @@ import {
     onRpc,
     patchWithCleanup,
     toggleMenuItem,
+    toggleMenuItemOption,
     toggleSearchBarMenu,
     webModels,
     defineActions,
@@ -45,6 +46,17 @@ const SHARE_KEY = "Share\nALT + SHIFT + H";
 
 const { ResCompany, ResPartner, ResUsers } = webModels;
 defineModels({ MockPurchaseOrders, ResCompany, ResPartner, ResUsers });
+
+/** URLs written to the clipboard during a test, captured by the patch below. */
+let clipboardWrites;
+beforeEach(() => {
+    clipboardWrites = [];
+    patchWithCleanup(browser.navigator.clipboard, {
+        async writeText(text) {
+            clipboardWrites.push(text);
+        },
+    });
+});
 
 test("URL with single filter creates filter with domain", async () => {
     redirect("?domain=" + encodeURIComponent('[["state", "=", "sent"]]'));
@@ -125,6 +137,7 @@ test("URL with groupBy and orderBy activates ordered groupBy", async () => {
         searchViewId: false,
     });
     expect(`.o_searchview .o_searchview_facet`).toHaveCount(1);
+    expect(`.o_searchview_facet_label .oi[data-icon='arrow_downward']`).toHaveCount(1); // OrderBy desc icon
     expect(searchBar.env.searchModel.groupBy).toEqual(["partner_id"]);
     expect(searchBar.env.searchModel.orderBy).toEqual([{ asc: false, name: "__count" }]);
 });
@@ -144,6 +157,7 @@ test("URL with filter + groupBy + orderBy activates filters", async () => {
     expect(`.o_searchview .o_searchview_facet`).toHaveCount(2); // One for the shared filter and one for the groupby
     expect(searchBar.env.searchModel.domain).toEqual([["state", "=", "sent"]]);
     expect(searchBar.env.searchModel.groupBy).toEqual(["partner_id"]);
+    expect(`.o_searchview_facet_label .oi[data-icon='arrow_upward']`).toHaveCount(1); // OrderBy ascending icon
     expect(searchBar.env.searchModel.orderBy).toEqual([{ asc: true, name: "__count" }]);
 
     // Regenerating the url should give the same result as before, without the "?"
@@ -362,12 +376,6 @@ test("hotkey sharing triggers notification", async () => {
         },
     });
 
-    patchWithCleanup(browser.navigator.clipboard, {
-        async writeText() {
-            expect.step("Copy to clipboard");
-        },
-    });
-
     await mountView({
         type: "list",
         resModel: "mock.purchase.order",
@@ -377,19 +385,14 @@ test("hotkey sharing triggers notification", async () => {
 
     await press(["alt", "shift", "h"]);
     await animationFrame();
-    expect.verifySteps(["Copy to clipboard", "Success notification"]);
+    expect(clipboardWrites).toHaveLength(1);
+    expect.verifySteps(["Success notification"]);
 });
 
 test.tags("desktop"); // Shortcut testing only on computer
 test("hotkey sharing copies simple domain + groupBy to clipboard", async () => {
     // Less comprehensinve testing then decoding url, as we use the same helper
     // as when saving favorite filters to encode the search params in the url
-    patchWithCleanup(browser.navigator.clipboard, {
-        async writeText(url) {
-            expect.step(url.split("?domain=")[1]);
-        },
-    });
-
     await mountView({
         type: "list",
         resModel: "mock.purchase.order",
@@ -413,23 +416,17 @@ test("hotkey sharing copies simple domain + groupBy to clipboard", async () => {
     await press(["alt", "shift", "h"]);
     await animationFrame();
 
-    expect.verifySteps([
+    expect(clipboardWrites[0].split("?domain=")[1]).toBe(
         encodeURIComponent('[("state", "=", "draft")]') +
             "&groupBy=" +
-            encodeURIComponent('["state"]'),
-    ]);
+            encodeURIComponent('["state"]')
+    );
 });
 
 test.tags("desktop"); // Shortcut testing only on computer
 test("hotkey sharing copies complex search to clipboard", async () => {
     // Less comprehensinve testing then decoding url, as we use the same helper
     // as when saving favorite filters to encode the search params in the url
-    patchWithCleanup(browser.navigator.clipboard, {
-        async writeText(url) {
-            expect.step(url.split("?domain=")[1]);
-        },
-    });
-
     await mountView({
         type: "list",
         resModel: "mock.purchase.order",
@@ -452,17 +449,44 @@ test("hotkey sharing copies complex search to clipboard", async () => {
     await toggleMenuItem("Cool Vendors");
     await toggleMenuItem("Vendor");
 
-    await contains(".o_count_header").click();
+    await contains(".oi[data-icon='swap_vert']", { visible: false }).click(); // Facet click to trigger orderBy
     await animationFrame();
 
     await press(["alt", "shift", "h"]);
     await animationFrame();
 
-    expect.verifySteps([
+    expect(clipboardWrites[0].split("?domain=")[1]).toBe(
         encodeURIComponent(`["|", ("state", "=", "draft"), ("partner_id", "ilike", "%Juan%")]`) +
             "&groupBy=" +
             encodeURIComponent('["partner_id"]') +
             "&orderBy=" +
-            encodeURIComponent('[{"name":"__count","asc":true}]'),
-    ]);
+            encodeURIComponent('[{"name":"__count","asc":false}]')
+    );
+});
+
+test.tags("desktop"); // Shortcut testing only on computer
+test("hotkey sharing keeps a relative date filter relative in the URL", async () => {
+    await mountView({
+        type: "list",
+        resModel: "mock.purchase.order",
+        arch: `<list><field name="state"/></list>`,
+        searchMenuTypes: ["filter"],
+        searchViewArch: `
+            <search>
+                <filter string="Date" name="date_order" date="date_order"/>
+            </search>
+        `,
+        config: { actionId: 1 },
+    });
+
+    await toggleSearchBarMenu();
+    await toggleMenuItem("Date");
+    await toggleMenuItemOption("Date", "This Week");
+
+    await press(["alt", "shift", "h"]);
+    await animationFrame();
+
+    expect(decodeURIComponent(clipboardWrites[0].split("?domain=")[1].split("&")[0])).toBe(
+        `["&", ("date_order", ">=", "today =week_start"), ("date_order", "<", "today =week_start +1w")]`
+    );
 });

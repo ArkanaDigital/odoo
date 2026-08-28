@@ -19,14 +19,14 @@ patch(PrintPopup.prototype, {
                 label: _t("Full Page Ticket"),
                 method: () => this.doPrintEventFull.call(),
                 status: this.doPrintEventFull.status,
-                icon: "fa-ticket",
+                icon: "confirmation_number",
                 isPrimary: false,
             });
             list.push({
                 label: _t("Badge"),
                 method: () => this.doPrintEventBadge.call(),
                 status: this.doPrintEventBadge.status,
-                icon: "fa-id-badge",
+                icon: "badge",
                 isPrimary: false,
             });
         }
@@ -39,6 +39,7 @@ patch(PrintPopup.prototype, {
         ]);
     },
     async printEventBadge() {
+        super.printEventBadge();
         const registrations = this.order.eventRegistrations.map((reg) => reg.id);
         await this.report.doAction("event.action_report_event_registration_badge", [registrations]);
 

@@ -12,6 +12,8 @@ from odoo.addons.website_sale.tests.common import WebsiteSaleCommon
 
 @tagged("post_install", "-at_install")
 class WebsiteSaleCartPayment(PaymentHttpCommon, WebsiteSaleCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -81,23 +83,3 @@ class WebsiteSaleCartPayment(PaymentHttpCommon, WebsiteSaleCommon):
                 salesperson,
                 "Salesperson should get assigned when sending payment confirmation mail",
             )
-
-    def test_payment_archives_customer_if_automatic_invoice(self):
-        # Async emails must be disabled otherwise invoice (and partner archiving) will be handled in
-        # a cron.
-        self.env["ir.config_parameter"].set_bool("sale.async_emails", False)
-        self.env["ir.config_parameter"].set_bool("sale.automatic_invoice", True)
-        self._update_transaction(self.tx, state="done")
-        self._run_post_processing(self.tx)
-        self.assertFalse(self.cart.partner_id.active)
-
-    def test_payment_doesnt_archive_partner_if_manual_invoicing(self):
-        """Customers shouldn't be archived if automatic invoice is disabled, otherwise their address
-        won't be considered when sending the invoice later on."""
-        # Async emails must be disabled otherwise invoice (and partner archiving) will be handled in
-        # a cron.
-        self.env["ir.config_parameter"].set_bool("sale.async_emails", False)
-        self.env["ir.config_parameter"].set_bool("sale.automatic_invoice", False)
-        self._update_transaction(self.tx, state="done")
-        self._run_post_processing(self.tx)
-        self.assertTrue(self.cart.partner_id.active)

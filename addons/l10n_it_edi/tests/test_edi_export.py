@@ -9,6 +9,8 @@ from odoo.addons.l10n_it_edi.tests.common import TestItEdi
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestItEdiExport(TestItEdi):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -172,6 +174,35 @@ class TestItEdiExport(TestItEdi):
         invoice.action_post()
         self._assert_export_invoice(invoice, 'invoice_non_latin_and_latin.xml')
 
+    def test_simplified_invoice_with_multiple_taxes_with_natura(self):
+        self.default_tax.write({'l10n_it_exempt_reason': 'N3.1'})
+        natura_tax = self.env['account.tax'].with_company(self.company).create({
+            'name': 'Exempt tax',
+            'amount_type': 'percent',
+            'amount': 4,
+        })
+
+        invoice = self.env['account.move'].with_company(self.company).create({
+            'move_type': 'out_invoice',
+            'partner_id': self.italian_partner_no_address_codice.id,
+            'invoice_line_ids': [
+                Command.create({
+                    'name': 'line_with_multiple_taxes',
+                    'price_unit': 100.0,
+                    'tax_ids': [Command.set((self.default_tax + natura_tax).ids)],
+                }),
+            ],
+        })
+        invoice.action_post()
+
+        xml = invoice._l10n_it_edi_render_xml()
+        xml_root = etree.fromstring(xml)
+
+        natura_node = xml_root.xpath('.//DatiBeniServizi/Natura', namespaces={'p': 'http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.0'})
+
+        self.assertTrue(natura_node, "The exported simplified invoice should contain a Natura node.")
+        self.assertEqual(natura_node[0].text, "N3.1")
+
     def test_invoice_below_400_codice_simplified(self):
         invoice = self.env['account.move'].with_company(self.company).create({
             'move_type': 'out_invoice',
@@ -213,7 +244,7 @@ class TestItEdiExport(TestItEdi):
         invoice.action_post()
         self._assert_export_invoice(invoice, 'invoice_total_400_VAT_simplified.xml')
 
-    def test_invoice_more_400_simplified(self):
+    def test_invoice_more_400_is_not_simplified(self):
         invoice = self.env['account.move'].with_company(self.company).create({
             'move_type': 'out_invoice',
             'invoice_date': '2022-03-24',
@@ -227,9 +258,10 @@ class TestItEdiExport(TestItEdi):
                 }),
             ],
         })
+        self.assertFalse(invoice._l10n_it_edi_is_simplified())
         self.assertEqual(['l10n_it_edi_partner_address_missing'], list(invoice._l10n_it_edi_export_data_check().keys()))
 
-    def test_invoice_non_domestic_simplified(self):
+    def test_invoice_non_domestic_is_not_simplified(self):
         invoice = self.env['account.move'].with_company(self.company).create({
             'move_type': 'out_invoice',
             'invoice_date': '2022-03-24',
@@ -243,6 +275,7 @@ class TestItEdiExport(TestItEdi):
                 }),
             ],
         })
+        self.assertFalse(invoice._l10n_it_edi_is_simplified())
         self.assertEqual(['l10n_it_edi_partner_address_missing'], list(invoice._l10n_it_edi_export_data_check().keys()))
 
     def test_bill_refund_no_reconcile(self):
@@ -666,10 +699,19 @@ class TestItEdiExport(TestItEdi):
             ],
         })
         invoice_a.action_post()
+        extra_attachment = self.env['ir.attachment'].create({
+            'name': 'goodbye.pdf',
+            'raw': b'i\'ve come to talk with you again',
+        })
+
         self._assert_export_invoice(invoice_a, 'invoice_with_attachment.xml', pdf_values={
             'name': 'hello.pdf',
             'raw': b'hello darkness my old friend',
-        })
+        }, extra_attachments=[{
+            'id': extra_attachment.id,
+            'manual': True,
+            'name': extra_attachment.name,
+        }])
 
     def test_export_XML_oss_tax(self):
         be_partner = self.env['res.partner'].create({
@@ -728,3 +770,43 @@ class TestItEdiExport(TestItEdi):
 
         uom_nodes = invoice_tree.xpath("//*[local-name()='DettaglioLinee']/*[local-name()='UnitaMisura']")
         self.assertEqual(uom_nodes[0].text, 'm2')
+
+    # Simplified tests ----------------------------------------------------
+    def _force_simplified(self, partner):
+        td07 = self.env['l10n_it.document.type'].search([('code', '=', 'TD07')], limit=1)
+        return self.env['account.move'].with_company(self.company).create({
+            'move_type': 'out_invoice',
+            'invoice_date': '2022-03-24',
+            'invoice_date_due': '2022-03-24',
+            'partner_id': partner.id,
+            'invoice_line_ids': [
+                Command.create({
+                    'name': 'cheap_line',
+                    'price_unit': 100.00,
+                    'tax_ids': [Command.set(self.default_tax.ids)],
+                }),
+            ],
+            'l10n_it_document_type': td07.id,
+        })
+
+    def _get_simplified_errors(self, moves):
+        return [
+            k
+            for k, v in moves._l10n_it_edi_is_simplified_checks().items()
+            if v.get('level') in ('warning', 'error')
+        ]
+
+    def test_invoice_non_domestic_force_simplified(self):
+        """ If the user forces a simplified document type (i.e. TD07) on a non-italian partner, an error is raised """
+        invoice = self._force_simplified(self.american_partner)
+        self.assertEqual(['l10n_it_edi_move_simplified_partner'], self._get_simplified_errors(invoice))
+
+    def test_invoice_domestic_force_simplified(self):
+        """ If the user forces a simplified document type (i.e. TD07) on an italian partner, it works """
+        invoice = self._force_simplified(self.italian_partner_a)
+        self.assertEqual([], self._get_simplified_errors(invoice))
+
+    def test_invoice_pa_force_simplified(self):
+        """ If the user forces a simplified document type (i.e. TD07) on an italian PA partner, errors are raised """
+        invoice = self._force_simplified(self.italian_partner_b)
+        self.assertEqual(['l10n_it_edi_move_simplified_partner'], self._get_simplified_errors(invoice))

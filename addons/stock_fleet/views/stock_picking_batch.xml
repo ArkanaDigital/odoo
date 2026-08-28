@@ -96,17 +96,16 @@
             </xpath>
             <xpath expr="//filter[@name='my_transfers']" position="after">
                 <filter name="scheduled_date" date="scheduled_date" string="Scheduled Date"/>
-                <filter string="Today" name="filter_today" domain="[('scheduled_date', '&gt;=', 'today'), ('scheduled_date', '&lt;', 'today +1d')]"/>
                 <filter string="Tomorrow" name="filter_tomorrow" domain="[('scheduled_date','&gt;=', 'today +1d')]" /><!-- wrong -->
                 <filter string="Next 7 Days" name="filter_next_7_days" domain="[('scheduled_date','&gt;=', 'today +7d')]"/><!-- wrong -->
             </xpath>
         </field>
     </record>
 
-    <record id="stock_picking_batch_kanban" model="ir.ui.view">
-        <field name="name">stock.picking.batch.kanban.inherit.stock.fleet</field>
+    <record id="stock_picking_batch_card" model="ir.ui.view">
+        <field name="name">stock.picking.batch.card.inherit.stock.fleet</field>
         <field name="model">stock.picking.batch</field>
-        <field name="inherit_id" ref="stock_picking_batch.stock_picking_batch_kanban"/>
+        <field name="inherit_id" ref="stock_picking_batch.stock_picking_batch_card"/>
         <field name="arch" type="xml">
             <data>
                 <xpath expr="//field[@name='company_id']" position="after">
@@ -117,7 +116,7 @@
                     <field name="vehicle_volume_capacity"/>
                 </xpath>
                 <xpath expr="//field[@name='scheduled_date']" position="after">
-                    <i class="fa fa-long-arrow-right mx-2" title="Arrow"/>
+                    <i class="oi mx-2" data-icon="east" title="Arrow"/>
                     <field name="end_date"/>
                 </xpath>
                 <xpath expr="//div[field[@name='scheduled_date']]" position="after">
@@ -125,7 +124,7 @@
                     <t t-set="total_vehicle_volume_capacity" t-value="record.vehicle_volume_capacity.raw_value"/>
                     <div t-if="record.vehicle_id.raw_value" class="d-flex">
                         <div>
-                            <i class="fa fa-truck text-primary me-2" title="Vehicle"/>
+                            <i class="oi text-primary me-2" data-icon="local_shipping" title="Vehicle"/>
                         </div>
                         <div>
                             <t t-out="record.vehicle_id.value"/>
@@ -141,7 +140,7 @@
                         </div>
                     </div>
                     <div t-if="record.dock_id.raw_value" class="text-truncate" invisible="not allowed_dock_ids" groups="stock.group_stock_multi_locations">
-                        <i class="fa fa-cubes text-primary me-2" title="Location"/>
+                        <i class="oi text-primary me-2" data-icon="inventory_2" title="Location"/>
                         <field name="dock_id"/>
                     </div>
                 </xpath>

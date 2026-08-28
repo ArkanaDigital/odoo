@@ -1,29 +1,32 @@
-import { TimeOffCard } from "./time_off_card";
-import { useBus, useService } from "@web/core/utils/hooks";
+import { useNewAllocationRequest } from "@hr_holidays/views/hooks";
+import { Component, onWillStart, proxy, types as t, usePlugin, useProps } from "@odoo/owl";
 import { DateTimeInput } from "@web/core/datetime/datetime_input";
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
+import { TimeOffPlugin } from "../views/time_off_plugin";
+import { TimeOffCard } from "./time_off_card";
 
 export class TimeOffDashboard extends Component {
     static components = { TimeOffCard, DateTimeInput };
     static template = "hr_holidays.TimeOffDashboard";
-    static props = ["employeeId"];
+
+    props = useProps({
+        employeeId: t.or([t.number(), t.literal(null)]),
+    });
 
     setup() {
         this.orm = useService("orm");
         this.actionService = useService("action");
+        this.newAllocRequest = useNewAllocationRequest();
         this.state = proxy({
             date: luxon.DateTime.now(),
             today: luxon.DateTime.now(),
             holidays: [],
-            allocationRequests: 0,
-        });
-        useBus(this.env.timeOffBus, "update_dashboard", async () => {
-            await this.loadDashboardData();
+            allocationRequestDaysHours: "",
         });
 
-        onWillStart(async () => {
-            this.loadDashboardData();
-        });
+        usePlugin(TimeOffPlugin).onUpdateDashboard(() => this.loadDashboardData());
+
+        onWillStart(async () => this.loadDashboardData());
     }
 
     getContext() {
@@ -46,7 +49,7 @@ export class TimeOffDashboard extends Component {
             { context }
         );
         this.state.holidays = dashboardData["allocation_data"];
-        this.state.allocationRequests = dashboardData["allocation_request_amount"];
+        this.state.allocationRequestDaysHours = dashboardData["allocation_request_days_hours"];
         this.hasAccrualAllocation = dashboardData["has_accrual_allocation"];
         this.hasFutureAllocation = dashboardData["has_future_allocation"];
     }
@@ -56,13 +59,9 @@ export class TimeOffDashboard extends Component {
         this.loadDashboardData();
     }
 
-    async openPendingRequests() {
-        if (!this.state.allocationRequests) {
-            return;
-        }
-        const action = await this.orm.call("hr.leave", "open_pending_requests", [], {
-            context: this.getContext(),
+    openNewAllocation() {
+        this.newAllocRequest({
+            employeeId: this.props.employeeId,
         });
-        this.actionService.doAction(action);
     }
 }

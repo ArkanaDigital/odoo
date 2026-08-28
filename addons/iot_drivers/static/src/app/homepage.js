@@ -9,7 +9,6 @@ import { UpdateDialog } from "./components/dialog/update_dialog.js";
 import { DeviceDialog } from "./components/dialog/device_dialog.js";
 import { SixTerminalDialog } from "./components/dialog/six_terminal_dialog.js";
 import { LoadingFullScreen } from "./components/loading_full_screen.js";
-import { IconButton } from "./components/icon_button.js";
 
 const { Component, xml, onWillStart, signal, computed } = owl;
 
@@ -23,7 +22,6 @@ export class Homepage extends Component {
         DeviceDialog,
         SixTerminalDialog,
         LoadingFullScreen,
-        IconButton,
     };
 
     store = useStore();
@@ -112,12 +110,18 @@ export class Homepage extends Component {
 
         <div t-if="!this.loading()" class="w-100 d-flex flex-column align-items-center justify-content-center background">
             <div class="bg-white p-4 rounded overflow-auto position-relative w-100 main-container">
-                <div class="position-absolute end-0 top-0 mt-3 me-4 d-flex gap-1">
-                    <IconButton t-if="!this.store.base().is_access_point_up" onClick.bind="this.toggleAdvanced" icon="this.store.advanced() ? 'fa-cog' : 'fa-cogs'" />
-                    <IconButton onClick.bind="this.restartOdooService" icon="'fa-power-off'" />
-                </div>
-                <div class="d-flex mb-4 flex-column align-items-center justify-content-center">
-                    <h4 class="text-center m-0">IoT Box</h4>
+                <div class="d-flex mb-4 align-items-center justify-content-between">
+                    <h4 class="m-0">IoT Box</h4>
+                    <div class="d-flex gap-1">
+                        <div
+                            class="btn btn-sm btn-secondary"
+                            t-on-click="this.toggleAdvanced"
+                            t-esc="this.store.advanced() ? 'Show less' : 'Show more'"
+                        />
+                        <div class="d-flex align-items-center justify-content-center btn btn-sm btn-primary" t-on-click="this.restartOdooService">
+                            <i class="oi oi-fw me-1" t-att-data-icon="'power_settings_new'" aria-hidden="true"></i> Restart
+                        </div>
+                    </div>
                 </div>
                 <div t-if="!this.store.base().certificate_end_date and !this.store.base().is_access_point_up" class="alert alert-warning" role="alert">
                     <p class="m-0 fw-bold">
@@ -128,47 +132,44 @@ export class Homepage extends Component {
                         try to restart it.
                     </small>
                 </div>
-                <div t-if="this.store.advanced() and this.store.base().certificate_end_date and !this.store.base().is_access_point_up" class="alert alert-info" role="alert">
-                    Your IoT Box subscription is valid until <span class="fw-bold" t-out="this.store.base().certificate_end_date"/>.
-                </div>
                 <div t-if="this.store.base().is_access_point_up" class="alert alert-info" role="alert">
                     <p class="m-0 fw-bold">No Internet Connection</p>
                     <small>
-                        Please connect your IoT Box to internet via an ethernet cable or via Wi-Fi by clicking on "Configure" below
+                        Please connect your IoT Box to internet via an Ethernet cable or via Wi-Fi by clicking on "Configure" below
                     </small>
                 </div>
-                <SingleData name="'Identifier'" value="this.store.base().identifier" icon="'fa-address-card'" />
-                <SingleData t-if="this.store.advanced()" name="'Mac Address'" value="this.store.base().mac_address" icon="'fa-address-book'" />
-                <SingleData t-if="this.store.advanced()" name="'Version'" value="this.store.base().version" icon="'fa-microchip'">
+                <SingleData name="'Identifier'" value="this.store.base().identifier" icon="'contact_mail'" iconClass="'oi-filled'" />
+                <SingleData t-if="this.store.advanced()" name="'Mac Address'" value="this.store.base().mac_address" icon="'contact_page'" iconClass="'oi-filled'" />
+                <SingleData t-if="this.store.advanced()" name="'Version'" value="this.store.base().version" icon="'memory'">
                     <t t-set-slot="button">
                         <UpdateDialog />
                     </t>
                 </SingleData>
-                <SingleData t-if="this.store.advanced()" name="'IP address'" value="this.store.base().ip" icon="'fa-globe'" />
-                <SingleData t-if="this.store.isLinux()" name="'Internet Status'" value="this.networkStatus()" icon="'fa-wifi'">
+                <SingleData t-if="this.store.advanced()" name="'IP address'" value="this.store.base().ip" icon="'public'" />
+                <SingleData t-if="this.store.isLinux()" name="'Internet Status'" value="this.networkStatus()" icon="'wifi'">
                     <t t-set-slot="button">
                         <WifiDialog />
                     </t>
                 </SingleData>
-                <SingleData t-if="!this.store.base().is_access_point_up" name="'Odoo database connected'" value="this.store.base().server_status" icon="'fa-link'">
+                <SingleData t-if="!this.store.base().is_access_point_up" name="'Odoo database connected'" value="this.store.base().server_status" icon="'link'">
                     <t t-set-slot="button">
                         <DatabaseDialog />
                     </t>
                 </SingleData>
-                <SingleData t-if="this.store.base().pairing_code and !this.store.base().is_access_point_up and !this.store.base().pairing_code_expired" name="'Pairing Code'" value="this.store.base().pairing_code + ' - Enter this code in the IoT app in your Odoo database'" icon="'fa-code'"/>
-                <SingleData t-if="this.store.base().pairing_code_expired" name="'Pairing Code'" value="'Code has expired - restart the IoT Box to generate a new one'" icon="'fa-code'"/>
-                <SingleData  t-if="this.store.advanced() and !this.store.base().is_access_point_up" name="'Six terminal'" value="this.store.base().six_terminal" icon="'fa-money'">
+                <SingleData t-if="this.store.base().pairing_code and !this.store.base().is_access_point_up and !this.store.base().pairing_code_expired" name="'Pairing Code'" value="this.store.base().pairing_code + ' - Enter this code in the IoT app in your Odoo database'" icon="'code'"/>
+                <SingleData t-if="this.store.base().pairing_code_expired" name="'Pairing Code'" value="'Code has expired - restart the IoT Box to generate a new one'" icon="'code'"/>
+                <SingleData  t-if="this.store.advanced() and !this.store.base().is_access_point_up" name="'Six terminal'" value="this.store.base().six_terminal" icon="'payments'">
                     <t t-set-slot="button">
                         <SixTerminalDialog />
                     </t>
                 </SingleData>
-                <SingleData t-if="!this.store.base().is_access_point_up" name="'Devices'" value="this.numDevices() + ' devices'" icon="'fa-plug'">
+                <SingleData t-if="!this.store.base().is_access_point_up" name="'Devices'" value="this.numDevices() + ' devices'" icon="'power'">
                     <t t-set-slot="button">
                         <DeviceDialog />
                     </t>
                 </SingleData>
 
-                <hr class="mt-5" />
+                <hr class="mt-4" />
                 <FooterButtons />
                 <div class="d-flex justify-content-center gap-2 mt-2" t-if="!this.store.base().is_access_point_up">
                     <a href="https://www.odoo.com/fr_FR/help" target="_blank" class="link-primary">Help</a>

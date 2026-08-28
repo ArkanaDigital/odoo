@@ -9,7 +9,7 @@ class StockMove(models.Model):
         vals = super()._get_new_picking_values()
         orders = self.reference_ids.pos_order_ids
         if orders:
-            order = orders.filtered(lambda o: o.is_refund and o.state == 'paid')[:1] or orders[:1]
+            order = orders.filtered(lambda o: o.is_refund_or_negative() and o.state == 'paid')[:1] or orders[:1]
             vals['pos_session_id'] = order.session_id.id
             vals['pos_order_id'] = order.id
         return vals
@@ -41,7 +41,7 @@ class StockMove(models.Model):
             moves_product_ids = set(moves.mapped('product_id').ids)
             lots = lines.pack_lot_ids.filtered(lambda l: l.lot_name and l.product_id.id in moves_product_ids)
             lots_data = set(lots.mapped(lambda l: (l.product_id.id, l.lot_name)))
-            existing_lots = self.env['stock.lot'].search([
+            existing_lots = self.env['stock.lot'].with_context(skip_preprocess_gs1=True).search([
                 '|', ('company_id', '=', False), ('company_id', '=', moves[0].picking_type_id.company_id.id),
                 ('product_id', 'in', lines.product_id.ids),
                 ('name', 'in', lots.mapped('lot_name')),
@@ -104,7 +104,7 @@ class StockMove(models.Model):
                 move.move_line_ids.unlink()
                 for line in lines_data[move.product_id.id]['order_lines']:
                     for lot in line.pack_lot_ids.filtered(lambda l: l.lot_name):
-                        qty = 1 if line.product_id.tracking == 'serial' else abs(line.qty)
+                        qty = self._get_lot_line_qty(line, move, lines_data)
                         if existing_lots:
                             existing_lot = existing_lots.filtered_domain([('product_id', '=', line.product_id.id), ('name', '=', lot.lot_name)])
                             quants = self.env['stock.quant']
@@ -141,14 +141,14 @@ class StockMove(models.Model):
             for move in moves_remaining:
                 for line in lines_data[move.product_id.id]['order_lines']:
                     for lot in line.pack_lot_ids.filtered(lambda l: l.lot_name):
-                        if line.product_id.tracking == 'serial':
-                            qty = 1
-                        else:
-                            qty = abs(line.qty)
+                        qty = self._get_lot_line_qty(line, move, lines_data)
                         if existing_lots:
                             existing_lot = existing_lots.filtered_domain([('product_id', '=', line.product_id.id), ('name', '=', lot.lot_name)])
                             if existing_lot:
                                 move._update_reserved_quantity(qty, move.location_id, lot_id=existing_lot)
+
+    def _get_lot_line_qty(self, line, move, lines_data):
+        return 1 if line.product_id.tracking == 'serial' else abs(line.qty)
 
     @api.depends("product_id")
     def _compute_description_picking(self):
@@ -162,10 +162,16 @@ class StockMove(models.Model):
             line = pos_order.lines.filtered(
                 lambda l: l.product_id == product
                 and l.id not in seen
-                and any(av.attribute_id.create_variant == "no_variant" for av in l.attribute_value_ids)
+                and any(av.attribute_id.create_variant == "no_variant" or av.is_custom for av in l.attribute_value_ids)
             )[:1]
 
             if line and move.description_picking == product.display_name:
-                extra = line.full_product_name.replace(product.name, "", 1).strip()
-                move.description_picking = f"\n{extra}" if extra else ""
+                never_values = line.attribute_value_ids.filtered(
+                    lambda av: av.attribute_id.create_variant == 'no_variant' and not av.is_custom
+                )
+                descriptions = never_values.mapped("display_name")
+                for custom_value in line.custom_attribute_value_ids:
+                    descriptions.append(f"{custom_value.display_name}")
+
+                move.description_picking = "\n".join(descriptions) if descriptions else ""
                 seen.add(line.id)

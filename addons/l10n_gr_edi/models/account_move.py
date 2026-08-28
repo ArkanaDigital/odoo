@@ -4,7 +4,6 @@ from urllib.parse import urlencode
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools import cleanup_xml_node
-from odoo.tools.sql import column_exists, create_column
 
 from odoo.addons.l10n_gr_edi.models.l10n_gr_edi_document import _make_mydata_request
 from odoo.addons.l10n_gr_edi.models.preferred_classification import (
@@ -23,7 +22,6 @@ from odoo.addons.l10n_gr_edi.models.preferred_classification import (
     TYPES_WITH_VAT_CATEGORY_8,
     TYPES_WITH_VAT_EXEMPT,
     VALID_TAX_AMOUNTS,
-    VALID_TAX_CATEGORY_MAP,
 )
 
 
@@ -34,11 +32,13 @@ class AccountMove(models.Model):
         string='Mark',
         compute='_compute_from_l10n_gr_edi_document_ids',
         store=True,
+        init_storage=lambda model: None,
     )
     l10n_gr_edi_cls_mark = fields.Char(
         string='Classification Mark',
         compute='_compute_from_l10n_gr_edi_document_ids',
         store=True,
+        init_storage=lambda model: None,
     )
     l10n_gr_edi_document_ids = fields.One2many(
         comodel_name='l10n_gr_edi.document',
@@ -56,6 +56,7 @@ class AccountMove(models.Model):
         compute='_compute_from_l10n_gr_edi_document_ids',
         store=True,
         tracking=True,
+        init_storage=lambda model: None,
     )
     l10n_gr_edi_available_inv_type = fields.Char(compute='_compute_l10n_gr_edi_available_inv_type')
     l10n_gr_edi_correlation_id = fields.Many2one(
@@ -68,12 +69,14 @@ class AccountMove(models.Model):
         compute='_compute_l10n_gr_edi_inv_type',
         store=True,
         readonly=False,
+        init_storage=lambda model: None,
     )
     l10n_gr_edi_payment_method = fields.Selection(
         selection=PAYMENT_METHOD_SELECTION,
         string='Payment Method',
         compute='_compute_l10n_gr_edi_payment_method',
         store=True,
+        init_storage=lambda model: None,
     )
     l10n_gr_edi_alerts = fields.Json(compute='_compute_l10n_gr_edi_alerts')
     l10n_gr_edi_need_correlated = fields.Boolean(compute='_compute_l10n_gr_edi_need_fields')
@@ -85,24 +88,25 @@ class AccountMove(models.Model):
         comodel_name='ir.attachment',
         compute='_compute_from_l10n_gr_edi_document_ids',
         store=True,
+        init_storage=lambda model: None,
     )
-
-    def _auto_init(self):
-        """
-        Create all compute-stored fields here to avoid MemoryError when initializing on large databases.
-        """
-        for column_name, column_type in (
-            ('l10n_gr_edi_mark', 'varchar'),
-            ('l10n_gr_edi_cls_mark', 'varchar'),
-            ('l10n_gr_edi_state', 'varchar'),
-            ('l10n_gr_edi_inv_type', 'varchar'),
-            ('l10n_gr_edi_payment_method', 'varchar'),
-            ('l10n_gr_edi_attachment_id', 'int4'),
-        ):
-            if not column_exists(self.env.cr, 'account_move', column_name):
-                create_column(self.env.cr, 'account_move', column_name, column_type)
-
-        return super()._auto_init()
+    l10n_gr_edi_budget_type = fields.Selection([
+        ('1', '1 - Ordinary Budget'),
+        ('2', '2 - PDE (Public Investment Budget)'),
+        ('3', '3 - Other Budget')
+        ], string="Budget Type"
+    )
+    l10n_gr_edi_project_reference = fields.Char(
+        string='Project reference number',
+        help='ADA or Enaritmos number',
+    )
+    l10n_gr_edi_contract_reference = fields.Char(
+        string='Contract ADAM',
+        help='Internet contract posting number(ADAM) of the Central Electronic Register of Public Procurement (KIMDIS)',
+        default='0',
+        init_storage=lambda model: None,
+        required=True,
+    )
 
     ################################################################################
     # Standard Field Computes
@@ -515,7 +519,7 @@ class AccountMove(models.Model):
                 vat_exemption_category = ''
                 if line.tax_ids and move.l10n_gr_edi_inv_type not in TYPES_WITH_VAT_EXEMPT:
                     tax = base_line['tax_details']['taxes_data'][0]['tax']  # here, `tax` is guaranteed to be a single `account.tax` record
-                    vat_category = VALID_TAX_CATEGORY_MAP[int(tax.amount)]
+                    vat_category = tax._l10n_gr_edi_get_vat_category()
                 if vat_category == 7 and move.l10n_gr_edi_inv_type in TYPES_WITH_VAT_CATEGORY_8:
                     vat_category = 8
                 if vat_category == 7:  # Need vat exemption category
@@ -786,3 +790,19 @@ class AccountMove(models.Model):
             raise UserError(_("Some of the selected moves does not meet the requirements to be sent to myDATA."))
 
         self.l10n_gr_edi_try_send_expense_classification()
+
+    ################################################################################
+    # Peppol/UBL helpers
+    ################################################################################
+
+    def _need_ubl_cii_xml(self, ubl_cii_format):
+        """
+        Override the generic check to postpone the creation of the UBL file
+        for Greek B2G invoices until we actually receive the `l10n_gr_edi_mark`
+        from myDATA.
+        """
+        if not super()._need_ubl_cii_xml(ubl_cii_format):
+            return False
+        if ubl_cii_format == 'ubl_gr':
+            return bool(self.l10n_gr_edi_mark)
+        return True

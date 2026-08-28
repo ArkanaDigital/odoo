@@ -1,5 +1,6 @@
 import { htmlToTextContentInline } from "@mail/utils/common/format";
 
+import { isAndroid } from "@web/core/browser/feature_detection";
 import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
@@ -27,9 +28,14 @@ export class OutOfFocusService {
         /** @type {import("models").Store} */
         this.store = services["mail.store"];
         this.closeFuncs = [];
+        this.contributingMessageLocalIds = new Set();
+        env.bus.addEventListener("window_focus", () => this.onWindowFocus());
     }
-
     async notify(message, thread) {
+        if (this.contributingMessageLocalIds.has(message.localId)) {
+            return;
+        }
+        this.contributingMessageLocalIds.add(message.localId);
         const modelsHandleByPush = ["mail.thread", "discuss.channel"];
         if (
             modelsHandleByPush.includes(message.thread?.model) &&
@@ -148,6 +154,11 @@ export class OutOfFocusService {
     }
 
     async _playSound() {
+        // On Android with push notifications granted, suppress in-browser sound —
+        // push notifications handle alerts there and respect the device's silent mode.
+        if (isAndroid() && browser.Notification?.permission === "granted") {
+            return;
+        }
         if (
             this.canPlayAudio &&
             this.store.settings.messageSound &&
@@ -163,6 +174,12 @@ export class OutOfFocusService {
 
     get canSendNativeNotification() {
         return Boolean(window.Notification && window.Notification.permission === "granted");
+    }
+    clearUnreadMessage() {
+        this.contributingMessageLocalIds.clear();
+    }
+    onWindowFocus() {
+        this.clearUnreadMessage();
     }
 }
 

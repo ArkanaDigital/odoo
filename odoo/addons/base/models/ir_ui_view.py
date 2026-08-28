@@ -25,13 +25,20 @@ from odoo.tools import _, config, frozendict, partition, unique, SQL
 from odoo.tools.convert import _fix_multiple_roots
 from odoo.tools.misc import file_path, get_diff, ConstantMapping
 from odoo.tools.template_inheritance import apply_inheritance_specs, locate_node
-from odoo.tools.translate import xml_translate, TRANSLATED_ATTRS
+from odoo.tools.translate import xml_translate, TRANSLATED_ATTRS, StoredTranslations
 from odoo.tools.view_validation import valid_view, get_domain_value_names, get_expression_field_names, get_dict_asts
 
 _logger = logging.getLogger(__name__)
 
 MOVABLE_BRANDING = ['data-oe-model', 'data-oe-id', 'data-oe-field', 'data-oe-xpath', 'data-oe-source-id']
 VIEW_MODIFIERS = ('column_invisible', 'invisible', 'readonly', 'required')
+
+# Period options of a date filter that are not month/year offsets, and relative
+# ("smart date") options of its companion relative filter. Both can be used in
+# the `default_period` attribute.
+# @see web/static/src/search/utils/dates.js
+QUARTER_PERIODS = {'first_quarter', 'second_quarter', 'third_quarter', 'fourth_quarter'}
+RELATIVE_PERIODS = {'today', 'this_week', 'this_month', 'this_quarter', 'this_year'}
 
 # Some views have a js compiler that generates an owl template from the arch. In that template,
 # `__comp__` is a reserved keyword giving access to the component instance (e.g. the form renderer
@@ -154,6 +161,7 @@ class IrUiView(models.Model):
                              ('calendar', 'Calendar'),
                              ('kanban', 'Kanban'),
                              ('search', 'Search'),
+                             ('card', "Card"),
                              ('qweb', 'QWeb')], string='View Type')
     arch = fields.Text(compute='_compute_arch', inverse='_inverse_arch', string='View Architecture',
                        help="""This field should be used when accessing view arch. It will use translation.
@@ -239,8 +247,8 @@ actual arch.
                 # replace %(xml_id)s, %(xml_id)d, %%(xml_id)s, %%(xml_id)d by the res_id
                 if arch_fs:
                     arch_fs = resolve_external_ids(arch_fs, xml_id).replace('%%', '%')
-                    translation_dictionary = field_arch_db.get_translation_dictionary(
-                        view.with_env(env_en).arch_db, {lang: view.with_env(env_lang).arch_db}
+                    translation_dictionary = StoredTranslations._get_translation_dictionary(
+                        field_arch_db, view.with_env(env_en).arch_db, {lang: view.with_env(env_lang).arch_db}
                     )
                     arch_fs = field_arch_db.translate(
                         lambda term: translation_dictionary[term][lang],
@@ -312,7 +320,7 @@ actual arch.
         name = 'name' if isinstance(value, str) else 'id'
         domain = [('model', '=', 'ir.ui.view'), (name, operator, value)]
         query = self.env['ir.model.data'].sudo()._search(domain)
-        return [('id', 'in', query.subselect('res_id'))]
+        return [('id', 'in', query.subselect(query.table.res_id))]
 
     @api.depends('model')
     def _compute_model_id(self):
@@ -464,8 +472,7 @@ actual arch.
                     # During an upgrade, we can only use the views that have been
                     # fully upgraded already.
                     if not self.pool.ready and sibling_primary_views and self.pool._init_modules:
-                        query = sibling_primary_views._get_filter_xmlid_query()
-                        sql = SQL(query, res_ids=tuple(sibling_primary_views.ids), modules=tuple(self.pool._init_modules))
+                        sql = sibling_primary_views._get_filter_xmlid_query(modules=tuple(self.pool._init_modules))
                         loaded_view_ids = {id_ for id_, in self.env.execute_query(sql)}
                         loaded_view_ids.update({
                             id
@@ -715,12 +722,12 @@ actual arch.
         return domain
 
     @api.model
-    def _get_filter_xmlid_query(self):
+    def _get_filter_xmlid_query(self, *, modules):
         """This method is meant to be overridden by other modules.
         """
-        return """SELECT res_id FROM ir_model_data
+        return SQL("""SELECT res_id FROM ir_model_data
                   WHERE res_id IN %(res_ids)s AND model = 'ir.ui.view' AND module IN %(modules)s
-               """
+               """, res_ids=self._ids, modules=tuple(modules))
 
     def _get_inheriting_views(self):
         """
@@ -797,8 +804,7 @@ actual arch.
         if not ids_to_check:
             return self
         loaded_modules = tuple(self.pool._init_modules) + (self.env.context.get('install_module'),)
-        query = self._get_filter_xmlid_query()
-        sql = SQL(query, res_ids=tuple(ids_to_check), modules=loaded_modules)
+        sql = self.browse(ids_to_check)._get_filter_xmlid_query(modules=loaded_modules)
         valid_view_ids = {id_ for id_, in self.env.execute_query(sql)} | check_view_ids
         return self.browse(vid for vid in self.ids if vid in valid_view_ids)
 
@@ -1529,12 +1535,11 @@ actual arch.
         return name_manager
 
     def _get_access_groups(self, group_definitions, model_name):
-        group_list = self.env['ir.model.access']._get_all_access_groups()['read'].get(model_name, ())
-        if not group_list:
-            return group_definitions.empty
-        if False in group_list:  # there is some global access
-            return group_definitions.universe
-        return group_definitions.from_ids(group_list)
+        """ Return the group expression object that represents the users who
+        can perform ``operation`` on model ``model_name``.
+        """
+        groups = self.env['ir.access']._get_groups_with_access(model_name, 'read')
+        return group_definitions.from_ids(groups._ids)
 
     def _add_missing_fields(self, node, name_manager):
         """ Add the fields required for evaluating expressions in the view given by ``node``. """
@@ -1723,12 +1728,24 @@ actual arch.
         # contain fields on the comodel
         name = node.get('name')
         field = name_manager.model._fields.get(name)
-        if not field or not field.comodel_name:
+        if not field or not field.relational:
             return
         # post-process the node as a nested view, and associate it to the field
         node_info['children'] = []
         self._postprocess_view(node, field.comodel_name, editable=False, node_info=node_info)
         name_manager.has_field(node, name, node_info)
+
+    def _postprocess_tag_card(self, node, name_manager, node_info):
+        # When this is called as the root of the recursive sub-view call below,
+        # view_type is 'card' and children should be processed normally by the
+        # inner stack — returning here lets that happen without re-entering.
+        if node_info.get('view_type') == 'card':
+            return
+        # card nodes are processed as nested sub-views on the same model so that
+        # fields auto-added for expression evaluation land inside <card> rather
+        # than being appended to the parent view root.
+        node_info['children'] = []
+        self._postprocess_view(node, name_manager.model._name, editable=False, node_info=node_info)
 
     def _postprocess_tag_label(self, node, name_manager, node_info):
         if not node.get('for'):
@@ -1743,6 +1760,12 @@ actual arch.
         if searchpanel:
             self._postprocess_view(searchpanel[0], name_manager.model._name, editable=False, node_info=node_info)
             node_info['children'] = [child for child in node if child.tag != 'searchpanel']
+
+    def _postprocess_tag_kanban(self, node, name_manager, node_info):
+        # Inline the card view if the kanban node references one via the 'card_id' attribute.
+        if card_id := node.get('card_id'):
+            card_arch, _card_view = self._get_view(view_id=int(card_id), view_type='card')
+            node.append(card_arch)
 
     def _postprocess_tag_list(self, node, name_manager, node_info):
         # reuse form view post-processing
@@ -1996,7 +2019,7 @@ actual arch.
             custom_options = {f'custom_{child.attrib["name"]}' for child in node.getchildren()}
             for default_period in default_periods.split(","):
                 if not re.fullmatch(r"(year|month)((-|\+)[1-9]\d*)?", default_period)\
-                    and default_period not in custom_options | {"first_quarter", "second_quarter", "third_quarter", "fourth_quarter"}:
+                    and default_period not in custom_options | QUARTER_PERIODS | RELATIVE_PERIODS:
                     msg = _(
                         "Invalid default period %(default_period)s for date filter",
                         default_period=default_period,
@@ -2044,7 +2067,7 @@ actual arch.
 
         if node.get('icon'):
             description = 'A button with icon attribute (%s)' % node.get('icon')
-            self._validate_fa_class_accessibility(node, description)
+            self._validate_data_icon_accessibility(node, description)
 
     def _validate_tag_groupby(self, node, name_manager, node_info):
         # groupby nodes should be considered as nested view because they may
@@ -2156,7 +2179,7 @@ actual arch.
                 self._log_view_warning(msg, node)
 
     def _is_qweb_based_view(self, view_type):
-        return view_type == 'kanban'
+        return view_type == 'kanban' or view_type == 'card' or view_type == 'calendar'
 
     def _validate_attributes(self, node, name_manager, node_info):
         """ Generic validation of node attributes. """
@@ -2224,6 +2247,10 @@ actual arch.
                     msg = 'aria-controls in tablink cannot contains "#"'
                     self._log_view_warning(msg, node)
 
+            elif attr == 'data-icon':
+                description = 'A <%s> with data-icon attribute (%s)' % (node.tag, expr)
+                self._validate_data_icon_accessibility(node, description)
+
             elif attr == "role" and expr in ('presentation', 'none'):
                 msg = ("A role cannot be `none` or `presentation`. "
                     "All your elements must be accessible with screen readers, describe it.")
@@ -2281,10 +2308,6 @@ actual arch.
                         "be read immediately.")
                 self._log_view_warning(msg, node)
 
-        if any(klass.startswith('fa-') for klass in classes):
-            description = 'A <%s> with fa class (%s)' % (node.tag, expr)
-            self._validate_fa_class_accessibility(node, description)
-
         if any(klass.startswith('btn') for klass in classes):
             if node.tag in ('a', 'button', 'select'):
                 pass
@@ -2300,7 +2323,7 @@ actual arch.
                         "btn-group/btn-toolbar/btn-addr")
                 self._log_view_warning(msg, node)
 
-    def _validate_fa_class_accessibility(self, node, description):
+    def _validate_data_icon_accessibility(self, node, description):
         valid_aria_attrs = {
             *att_names('title'), *att_names('aria-label'), *att_names('aria-labelledby'),
         }
@@ -2308,7 +2331,7 @@ actual arch.
 
         ## Following or preceding text
         if (node.tail or '').strip() or (node.getparent().text or '').strip():
-            # text<i class="fa-..."/> or <i class="fa-..."/>text or
+            # text<i class="oi" data-icon="..."/> or <i class="oi" data-icon="..."/>text or
             return
 
         ## Following or preceding text in span
@@ -2337,7 +2360,7 @@ actual arch.
         ## And we ignore all elements with describing in children
         def contains_description(node, depth=0):
             if depth > 2:
-                _logger.warning('excessive depth in fa')
+                _logger.warning('excessive depth in data-icon')
             if any(node.get(attr) for attr in valid_t_attrs):
                 return True
             if has_title_or_aria_label(node):
@@ -2431,7 +2454,7 @@ actual arch.
                         field=name, field_path=field_path, use=use,
                     )
                     self._raise_view_error(msg, node)
-                Model = self.pool.get(field.comodel_name)
+                Model = self.pool.get(field.comodel_name) if field.relational else None
 
     #------------------------------------------------------
     # QWeb template views
@@ -2547,7 +2570,7 @@ actual arch.
     @api.model
     def render_public_asset(self, template, values=None):
         self._get_template_view(template).sudo()._check_view_access()
-        return self.env['ir.qweb'].sudo()._render(template, values)
+        return self.sudo()._render_template(template, values)
 
     def _render_template(self, template, values=None):
         return self.env['ir.qweb']._render(template, values)

@@ -8,7 +8,11 @@ from odoo.addons.account.models.company import PEPPOL_MAILING_COUNTRIES
 class AccountMove(models.Model):
     _inherit = 'account.move'
 
-    peppol_message_uuid = fields.Char(string='Peppol message ID', copy=False)
+    peppol_message_uuid = fields.Char(
+        string='Peppol message ID',
+        index='btree_not_null',
+        copy=False,
+    )
     peppol_move_state = fields.Selection(
         selection=[
             ('ready', 'Ready to send'),
@@ -112,7 +116,13 @@ class AccountMove(models.Model):
     @api.depends('peppol_move_state')
     def _compute_peppol_is_sent(self):
         for move in self:
-            move.peppol_is_sent = move.peppol_move_state not in {False, 'ready', 'to_send', 'error'}
+            move.peppol_is_sent = move.peppol_move_state not in {False, 'ready', 'to_send', 'error', 'skipped'}
+
+    @api.depends('peppol_is_sent')
+    def _compute_show_reset_to_draft_button(self):
+        # EXTEND 'account' to hide the reset to draft button for sent Peppol invoices
+        super()._compute_show_reset_to_draft_button()
+        self.filtered(lambda move: move.peppol_is_sent and move.is_sale_document(include_receipts=True)).show_reset_to_draft_button = False
 
     @api.depends("peppol_response_ids.peppol_state")
     def _compute_peppol_can_send_response(self):
@@ -143,6 +153,7 @@ class AccountMove(models.Model):
             render_context['peppol_info'] = {
                 'peppol_country': invoice_country,
                 'is_peppol_sent': invoice.peppol_is_sent,
+                'is_partner_b2c': invoice.commercial_partner_id._is_vat_void(invoice.commercial_partner_id.vat),
                 'partner_on_peppol': invoice.commercial_partner_id.peppol_verification_state in ('valid', 'not_valid_format'),
             }
         return render_context
@@ -151,3 +162,13 @@ class AccountMove(models.Model):
         res = super()._post(soft)
         self.action_peppol_send_approval_response()
         return res
+
+    def action_peppol_cancel_and_remove_sequence(self):
+        self.button_cancel()
+        self.write({'name': '/'})
+
+    def action_peppol_reset_documents(self, ids_to_delete=None):
+        self.filtered(lambda m: m.state == 'draft').action_peppol_cancel_and_remove_sequence()
+        self.filtered(lambda m: m.state not in ('draft', 'cancel') and not m.inalterable_hash).button_draft()
+        if ids_to_delete:
+            self.env['account.move'].browse(ids_to_delete).exists().unlink()

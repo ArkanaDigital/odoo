@@ -14,6 +14,13 @@ from odoo.addons.http_routing.tests.common import MockRequest
 
 @tagged("post_install", "-at_install")
 class TestWebsiteSequence(BaseCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',  # product.template sequencing/publishing is the subject
+    )
+
+    _test_user_name = 'Test User'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -40,6 +47,13 @@ class TestWebsiteSequence(BaseCommon):
                     "UPDATE product_template SET active = false WHERE id = %s",
                     time_product.product_tmpl_id.id,
                 )
+            )
+        # The Donation products cannot be archived nor deleted via ORM
+        donation_products = product_templates.filtered(lambda pt: pt._is_donation())
+        product_templates -= donation_products
+        for dp in donation_products:
+            cls.env.cr.execute(
+                SQL("UPDATE product_template SET active = false WHERE id = %s", dp.id)
             )
         product_templates.write({"active": False})
         cls.product_tmpls = cls.p1, cls.p2, cls.p3, cls.p4 = ProductTemplate.create([

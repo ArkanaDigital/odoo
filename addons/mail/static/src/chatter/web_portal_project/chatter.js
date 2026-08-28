@@ -1,30 +1,37 @@
-import { useChildSubEnv, useSubEnv } from "@web/owl2/utils";
+import { useSubEnv } from "@web/owl2/utils";
 import { Composer } from "@mail/core/common/composer";
 import { Thread } from "@mail/core/common/thread";
-import { useMessageScrolling } from "@mail/utils/common/hooks";
+import { propComputed, useMessageScrolling } from "@mail/utils/common/hooks";
 
-import { Component, onMounted, onWillUpdateProps, proxy, signal, types } from "@odoo/owl";
+import { Component, onMounted, proxy, signal, t, useOnChange } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
 import { router } from "@web/core/browser/router";
-import { useService } from "@web/core/utils/hooks";
+import { useBus, useService } from "@web/core/utils/hooks";
 import { useThrottleForAnimation } from "@web/core/utils/timing";
 
-/**
- * @typedef {Object} Props
- * @extends {Component<Props, Env>}
- */
 export class Chatter extends Component {
     static template = "mail.Chatter";
     static components = { Thread, Composer };
-    static props = ["composer?", "threadId?", "threadModel", "twoColumns?"];
-    static defaultProps = { composer: true, threadId: false, twoColumns: false };
 
     setup() {
         this.store = useService("mail.store");
+        this.composer = propComputed("composer", t.boolean().optional(true));
+        this.threadId = propComputed(
+            "threadId",
+            t.or([t.number(), t.literal(false)]).optional(false)
+        );
+        this.threadModel = propComputed("threadModel", t.string());
+        this.twoColumns = propComputed("twoColumns", t.boolean().optional(false));
+        this.thread = signal(null, {
+            type: t.instanceOf(this.store["mail.thread"]),
+        });
         this.state = proxy({
             jumpThreadPresent: 0,
-            /** @type {import("models").Thread} */
+            /**
+             * @deprecated use the `this.thread` signal instead
+             * @type {import("models").Thread}
+             */
             thread: undefined,
         });
         this.messageHighlight = useMessageScrolling({
@@ -32,37 +39,45 @@ export class Chatter extends Component {
             messageFetchRouteParams: () => this.messageFetchRouteParams,
         });
         this.highlightMessage = router.current.highlight_message_id;
-        this.rootRef = signal(null, { type: types.instanceOf(HTMLDivElement) });
-        this.onScrollDebounced = useThrottleForAnimation(this.onScroll);
-        useChildSubEnv(this.childSubEnv);
+        this.rootRef = signal.ref(HTMLDivElement);
+        this.topRef = signal.ref(HTMLDivElement);
+        this.onScrollDebounced = useThrottleForAnimation(this.onScroll.bind(this));
         useSubEnv(this.subEnv);
 
         onMounted(this._onMounted);
-        onWillUpdateProps((nextProps) => {
-            if (
-                this.props.threadId !== nextProps.threadId ||
-                this.props.threadModel !== nextProps.threadModel
-            ) {
-                this.changeThread(nextProps.threadModel, nextProps.threadId);
-            }
-            if (!this.env.chatter || this.env.chatter?.fetchThreadData) {
-                if (this.env.chatter) {
-                    this.env.chatter.fetchThreadData = false;
+
+        useOnChange(
+            () => [this.threadId(), this.threadModel()],
+            (threadId, threadModel) => this.changeThread(threadModel, threadId),
+            { initialRun: false }
+        );
+        useOnChange(
+            () => [this.state.thread],
+            (thread) => {
+                if (!this.env.chatter || this.env.chatter?.fetchThreadData) {
+                    if (this.env.chatter) {
+                        this.env.chatter.fetchThreadData = false;
+                    }
+                    this.load(thread, this.initialRequestList);
                 }
-                this.load(this.state.thread, this.requestList);
+            },
+            { initialRun: false }
+        );
+        // The useOnChange above only refetches when the thread identity changes.
+        // A same-record form reload keeps the same thread, so we also refetch on
+        // MAIL:RELOAD-THREAD to catch data that changed without a message_post
+        // (e.g. an attachment created server-side). Mirrors the message refetch
+        // in Thread.
+        useBus(this.env.bus, "MAIL:RELOAD-THREAD", ({ detail }) => {
+            const thread = this.state.thread;
+            if (thread?.model === detail.model && thread?.id === detail.id) {
+                this.load(thread, this.requestList);
             }
         });
     }
 
     get afterPostRequestList() {
         return ["messages"];
-    }
-
-    get childSubEnv() {
-        return {
-            inChatter: this.state,
-            messageHighlight: this.messageHighlight,
-        };
     }
 
     get extraMessageFetchRouteParams() {
@@ -77,12 +92,20 @@ export class Chatter extends Component {
         return this.state.thread.fullComposerCloseRequestList;
     }
 
+    get initialRequestList() {
+        return [...this.requestList, "messages"];
+    }
+
     get requestList() {
         return [];
     }
 
     get subEnv() {
-        return { messageFetchRouteParams: this.extraMessageFetchRouteParams };
+        return {
+            inChatter: this.state,
+            messageFetchRouteParams: this.extraMessageFetchRouteParams,
+            messageHighlight: this.messageHighlight,
+        };
     }
 
     changeThread(threadModel, threadId) {
@@ -93,19 +116,22 @@ export class Chatter extends Component {
         if (this.highlightMessage) {
             data.highlightMessage = this.highlightMessage;
         }
-        this.state.thread = this.store["mail.thread"].insert(data);
+        this.thread.set(this.store["mail.thread"].insert(data));
+        this.state.thread = this.thread();
         if (threadId === false) {
-            if (this.state.thread.messages.length === 0) {
-                const { effectiveSelf } = this.state.thread;
+            this.thread().isLoaded = true;
+            this.thread().status = "ready";
+            if (this.thread().messages.length === 0) {
+                const { effectiveSelf } = this.thread();
                 const authorModelName = effectiveSelf.Model.getName();
-                this.state.thread.messages.push({
+                this.thread().messages.push({
                     id: this.store.getNextTemporaryId(),
                     is_transient: true,
                     author_id: authorModelName === "res.partner" ? effectiveSelf : undefined,
                     author_guest_id: authorModelName === "mail.guest" ? effectiveSelf : undefined,
                     body: _t("Creating a new record..."),
                     message_type: "notification",
-                    thread: this.state.thread,
+                    thread: this.thread(),
                     res_id: threadId,
                     model: threadModel,
                 });
@@ -119,7 +145,7 @@ export class Chatter extends Component {
      * @param {string[]} requestList
      */
     async load(thread, requestList) {
-        if (!thread.id || !this.state.thread?.eq(thread)) {
+        if (!thread?.id || !this.state.thread?.eq(thread)) {
             return;
         }
         await thread.fetchThreadData(requestList, {
@@ -132,12 +158,12 @@ export class Chatter extends Component {
     }
 
     _onMounted() {
-        this.changeThread(this.props.threadModel, this.props.threadId);
+        this.changeThread(this.threadModel(), this.threadId());
         if (!this.env.chatter || this.env.chatter?.fetchThreadData) {
             if (this.env.chatter) {
                 this.env.chatter.fetchThreadData = false;
             }
-            this.load(this.state.thread, this.requestList);
+            this.load(this.state.thread, this.initialRequestList);
         }
     }
 

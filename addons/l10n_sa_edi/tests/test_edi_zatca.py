@@ -17,6 +17,8 @@ from odoo.addons.l10n_sa_edi.tests.common import TestSaEdiCommon
 class TestEdiZatca(TestSaEdiCommon):
     # """Test ZATCA EDI compliance for Saudi Arabia."""
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def _test_document_generation(self, test_file_path, expected_xpath, freeze_time_at, additional_xpath='', document_type=False, move=False, move_data=False):
         """
         Common helper to test document generation against expected XML.
@@ -745,4 +747,23 @@ class TestEdiZatca(TestSaEdiCommon):
             payable_amount,
             '0.00',
             f"Payable amount should be 0.00 (fully prepaid), got {payable_amount}",
+        )
+
+    def test_csr_validation_with_multibyte_characters(self):
+        vals = self._get_company_vals({"name": "مجموعة النخبة العالمية للاستشارات الفنية"})
+        new_company = self._create_company(**vals)
+        journal = self.env['account.journal'].search([
+            ('company_id', '=', new_company.id),
+            ('type', '=', 'sale'),
+        ], limit=1)
+
+        wizard = self.env['l10n_sa_edi.otp.wizard'].create({
+            'journal_id': journal.id,
+            'l10n_sa_otp': '123456',
+        })
+        self.assertFalse(journal.l10n_sa_csr_errors)
+        wizard.validate()
+        self.assertRegex(
+            journal.l10n_sa_csr_errors,
+            r"Please make sure the following fields are shorter than 64 bytes.*Company Name",
         )

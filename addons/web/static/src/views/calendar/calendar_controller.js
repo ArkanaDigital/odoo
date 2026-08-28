@@ -1,4 +1,3 @@
-import { reactive } from "@web/owl2/utils";
 import {
     deleteConfirmationMessage,
     ConfirmationDialog,
@@ -21,7 +20,7 @@ import { standardViewProps } from "@web/views/standard_view_props";
 import { MultiSelectionButtons } from "@web/views/view_components/multi_selection_buttons";
 import { getLocalYearAndWeek } from "@web/core/l10n/dates";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, t, useProps } from "@odoo/owl";
 import { hasTouch } from "@web/core/browser/feature_detection";
 
 const { DateTime } = luxon;
@@ -57,19 +56,20 @@ export class CalendarController extends Component {
         MultiSelectionButtons,
     };
     static template = "web.CalendarController";
-    static props = {
+    props = useProps({
         ...standardViewProps,
-        Model: Function,
-        Renderer: Function,
-        archInfo: Object,
-        buttonTemplate: String,
-        itemCalendarProps: { type: Object, optional: true },
-    };
+        Model: t.function(),
+        Renderer: t.function(),
+        archInfo: t.object(),
+        buttonTemplate: t.string(),
+        itemCalendarProps: t.object().optional(),
+    });
 
     setup() {
         this.action = useService("action");
         this.orm = useService("orm");
         this.displayDialog = useUniqueDialog();
+        this.uiService = useService("ui");
 
         this.model = useModelWithSampleData(this.props.Model, this.modelParams);
 
@@ -84,7 +84,7 @@ export class CalendarController extends Component {
                     ? JSON.parse(browser.localStorage.getItem("calendar.isWeekendVisible"))
                     : true,
             sidePanelExpanded:
-                !this.env.isSmall &&
+                !this.uiService.isSmall &&
                 Boolean(localSidePanelExpanded != null ? JSON.parse(localSidePanelExpanded) : true),
         });
 
@@ -113,13 +113,17 @@ export class CalendarController extends Component {
     }
 
     get canScheduleEvents() {
-        return !this.env.isSmall && this.props.archInfo.canSchedule && this.props.archInfo.canEdit;
+        return (
+            !this.uiService.isSmall &&
+            this.props.archInfo.canSchedule &&
+            this.props.archInfo.canEdit
+        );
     }
 
     get currentDate() {
         const meta = this.model.meta;
         const scale = meta.scale;
-        if (this.env.isSmall && ["week", "month"].includes(scale)) {
+        if (this.uiService.isSmall && ["week", "month"].includes(scale)) {
             const date = meta.date || DateTime.now();
             let text = "";
             if (scale === "week") {
@@ -206,7 +210,7 @@ export class CalendarController extends Component {
     }
 
     get showCalendar() {
-        return !this.env.isSmall || !this.state.sidePanelExpanded;
+        return !this.uiService.isSmall || !this.state.sidePanelExpanded;
     }
 
     get hasSidePanel() {
@@ -215,6 +219,26 @@ export class CalendarController extends Component {
 
     get sidePanelExpanded() {
         return this.state.sidePanelExpanded;
+    }
+
+    get filters() {
+        const res = [];
+        for (const f of this.model.filterSections) {
+            const filter = { label: f.label, active: false };
+            if (f.filters.some((f) => f.active)) {
+                filter.active = true;
+            }
+            res.push(filter);
+        }
+        return res;
+    }
+
+    get toScheduleString() {
+        const { eventsToSchedule } = this.model.data;
+        if (eventsToSchedule.length) {
+            return _t("%s to schedule", eventsToSchedule.length);
+        }
+        return _t("Nothing to schedule");
     }
 
     get className() {
@@ -226,7 +250,7 @@ export class CalendarController extends Component {
     }
 
     prepareMultiSelectionButtonsReactive() {
-        return reactive({
+        return proxy({
             onCancel: this.cleanSquareSelection.bind(this),
             onAdd: (multiCreateData) => {
                 this.onMultiCreate(multiCreateData, this.selectedCells);

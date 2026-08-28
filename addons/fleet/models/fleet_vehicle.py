@@ -15,7 +15,7 @@ MODEL_FIELDS_TO_VEHICLE = {
     'transmission': 'transmission', 'model_year': 'model_year', 'electric_assistance': 'electric_assistance',
     'seats': 'seats', 'doors': 'doors', 'default_co2': 'co2',
     'co2_standard': 'co2_standard', 'default_fuel_type': 'fuel_type', 'power': 'power', 'horsepower': 'horsepower',
-    'horsepower_tax': 'horsepower_tax', 'category_id': 'category_id', 'vehicle_range': 'vehicle_range',
+    'category_id': 'category_id', 'vehicle_range': 'vehicle_range',
     'power_unit': 'power_unit', 'range_unit': 'range_unit',
 }
 
@@ -25,7 +25,7 @@ class FleetVehicle(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin', 'avatar.mixin']
     _description = 'Vehicle'
     _order = 'license_plate asc, acquisition_date asc'
-    _rec_names_search = ['name', 'driver_id.name']
+    _rec_names_search = ('name', 'driver_id.name')
 
     def _get_default_state(self):
         state = self.env.ref('fleet.fleet_vehicle_state_new_request', raise_if_not_found=False)
@@ -34,6 +34,14 @@ class FleetVehicle(models.Model):
     def _get_year_selection(self):
         current_year = datetime.now().year
         return [(str(i), i) for i in range(1970, current_year + 1)]
+
+    @api.model
+    def default_get(self, fields):
+        result = super().default_get(fields)
+        default_name = self.env.context.get('default_name')
+        if 'license_plate' not in result and not self.env.context.get('default_license_plate') and default_name:
+            result['license_plate'] = default_name
+        return result
 
     name = fields.Char(compute="_compute_vehicle_name", store=True)
     description = fields.Html("Vehicle Description")
@@ -60,7 +68,7 @@ class FleetVehicle(models.Model):
     driver_id = fields.Many2one('res.partner', 'Driver', tracking=True, help='Driver address of the vehicle', copy=False)
     future_driver_id = fields.Many2one('res.partner', 'Future Driver', tracking=True, help='Next Driver Address of the vehicle', copy=False, check_company=True)
     model_id = fields.Many2one('fleet.vehicle.model', 'Model',
-        tracking=True, required=True, index=True)
+        tracking=True, index=True)
     brand_id = fields.Many2one('fleet.vehicle.model.brand', 'Brand', related="model_id.brand_id", store=True, readonly=False)
     log_drivers = fields.One2many('fleet.vehicle.assignation.log', 'vehicle_id', string='Assignment Logs')
     log_services = fields.One2many('fleet.vehicle.log.services', 'vehicle_id', 'Services Logs')
@@ -104,7 +112,6 @@ class FleetVehicle(models.Model):
         ('horsepower', 'Horsepower')
         ], 'Power Unit', default='power', required=True)
     horsepower = fields.Float(compute='_compute_horsepower', store=True, readonly=False)
-    horsepower_tax = fields.Float('Horsepower Taxation', compute='_compute_horsepower_tax', store=True, readonly=False)
     power = fields.Float('Power', help='Power in kW of the vehicle',
         compute='_compute_power', store=True, readonly=False)
     co2 = fields.Float('CO₂ Emissions', help='CO2 emissions of the vehicle', compute='_compute_co2',
@@ -125,6 +132,7 @@ class FleetVehicle(models.Model):
         [('futur', 'Incoming'),
          ('open', 'In Progress'),
          ('expired', 'Expired'),
+         ('done', 'Done'),
          ('closed', 'Closed')
         ], string='Last Contract State', compute='_compute_contract_reminder', required=False)
     car_value = fields.Float(string="Catalog Value (Tax Incl.)", tracking=True)
@@ -209,10 +217,6 @@ class FleetVehicle(models.Model):
         self._load_fields_from_model(['horsepower'])
 
     @api.depends('model_id')
-    def _compute_horsepower_tax(self):
-        self._load_fields_from_model(['horsepower_tax'])
-
-    @api.depends('model_id')
     def _compute_fuel_type(self):
         self._load_fields_from_model(['fuel_type'])
 
@@ -235,7 +239,13 @@ class FleetVehicle(models.Model):
     @api.depends('model_id.brand_id.name', 'model_id.name', 'license_plate')
     def _compute_vehicle_name(self):
         for record in self:
-            record.name = (record.license_plate or self.env._('No Plate')) + ': ' + (record.model_id.brand_id.name or '') + '/' + (record.model_id.name or '')
+            name_parts = []
+            if record.license_plate:
+                name_parts.append(record.license_plate)
+            if model := record.model_id:
+                name_parts.append(f"{model.brand_id.name or ''}/{model.name or ''}".strip('/'))
+
+            record.name = (name_parts and ": ".join(name_parts)) or self.env._("Unnamed Vehicle")
 
     @api.depends('range_unit')
     def _compute_co2_emission_unit(self):
@@ -320,8 +330,11 @@ class FleetVehicle(models.Model):
             vehicle_data = prepared_data.get(record.id)
             if vehicle_data:
                 diff_time = (vehicle_data['expiration_date'] - current_date).days
-                record.contract_renewal_overdue = diff_time < 0
-                record.contract_renewal_due_soon = not record.contract_renewal_overdue and (diff_time < delay_alert_contract)
+                # A done contract is already taken care of, so it should not warn us anymore.
+                is_done = vehicle_data['state'] == 'done'
+                record.contract_renewal_overdue = not is_done and diff_time < 0
+                record.contract_renewal_due_soon = not is_done and not record.contract_renewal_overdue and (diff_time < delay_alert_contract)
+                # We still show the state so the user knows the contract was handled.
                 record.contract_state = vehicle_data['state']
             else:
                 record.contract_renewal_overdue = False
@@ -443,12 +456,6 @@ class FleetVehicle(models.Model):
 
             cleanup = set()
             for vehicle in self:
-                vehicle.activity_schedule(
-                    'mail.mail_activity_data_todo',
-                    date_deadline=fields.Date.context_today(vehicle) + relativedelta(weeks=1),
-                    note=_('Review driver change of %s and specify End date', vehicle.display_name),
-                    user_id=vehicle.manager_id.id or self.env.user.id,
-                )
                 driver_id = vals.get('driver_id', vehicle.driver_id.id)
                 future_driver_id = vals.get('future_driver_id', vehicle.future_driver_id.id)
                 if driver_id and driver_id == future_driver_id:
@@ -510,8 +517,10 @@ class FleetVehicle(models.Model):
         if xml_id:
 
             res = self.env['ir.actions.act_window']._for_xml_id('fleet.%s' % xml_id)
+            env_context = dict(self.env.context)
+            env_context.pop('list_view_ref', None)
             res.update(
-                context=dict(self.env.context, default_vehicle_id=self.id, group_by=False),
+                context=dict(env_context, default_vehicle_id=self.id, group_by=False),
                 domain=[('vehicle_id', '=', self.id)]
             )
             return res

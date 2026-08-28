@@ -1,5 +1,5 @@
-import { useExternalListener, useLayoutEffect } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { useLayoutEffect } from "@web/owl2/utils";
+import { Component, proxy, signal, useListener, useProps, t } from "@odoo/owl";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
 
 /**
@@ -26,17 +26,19 @@ import { useAutofocus, useService } from "@web/core/utils/hooks";
  */
 export class SearchBar extends Component {
     static template = "point_of_sale.SearchBar";
-    static props = {
-        config: Object,
-        placeholder: String,
-        onSearch: Function,
-        onFilterSelected: Function,
-    };
+    props = useProps({
+        config: t.object(),
+        placeholder: t.string(),
+        onSearch: t.function(),
+        onFilterSelected: t.function(),
+    });
+
+    autofocusRef = signal.ref();
 
     setup() {
         this.ui = useService("ui");
-        useAutofocus();
-        useExternalListener(window, "click", this._hideOptions);
+        useAutofocus({ ref: this.autofocusRef });
+        useListener(window, "click", this._hideOptions.bind(this));
         this.filterOptionsList = [...this.props.config.filter.options.keys()];
         this.searchFieldsList = [...this.props.config.searchFields.keys()];
         const defaultSearchFieldId = this.searchFieldsList.indexOf(

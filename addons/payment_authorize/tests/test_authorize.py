@@ -11,14 +11,14 @@ from odoo.addons.payment_authorize.tests.common import AuthorizeCommon
 
 @tagged("post_install", "-at_install")
 class AuthorizeTest(AuthorizeCommon):
-    def test_compatible_providers(self):
+    def test_available_providers(self):
         # Note: in the test common, 'USD' is specified as the currency linked to the user account.
         unsupported_currency = self._enable_currency("CHF")
-        providers = self.env["payment.provider"]._get_compatible_providers(
+        providers = self.env["payment.provider"]._find_available_providers(
             self.company.id, self.partner.id, self.amount, currency_id=unsupported_currency.id
         )
         self.assertNotIn(self.authorize, providers)
-        providers = self.env["payment.provider"]._get_compatible_providers(
+        providers = self.env["payment.provider"]._find_available_providers(
             self.company.id, self.partner.id, self.amount, currency_id=self.currency_usd.id
         )
         self.assertIn(self.authorize, providers)
@@ -100,3 +100,38 @@ class AuthorizeTest(AuthorizeCommon):
                 "authorize_profile": "987654321",
             },
         )
+
+    def test_validation_tx_is_tokenized_before_being_voided(self):
+        """Test that the tokenization request is sent before the void request.
+        The customer profile can only be created from a transaction that has not been voided yet,
+        so the tokenization must happen before the validation transaction is voided.
+        """
+        tx = self._create_transaction("direct", operation="validation", tokenize=True)
+        call_order = []
+
+        def tokenize(*args, **kwargs):
+            call_order.append("tokenize")
+            tx.with_context(payment_safe_write=True).tokenize = False
+
+        def void(*args, **kwargs):
+            call_order.append("void")
+
+        with (
+            patch(
+                "odoo.addons.payment.models.payment_transaction.PaymentTransaction._tokenize",
+                side_effect=tokenize,
+            ),
+            patch(
+                "odoo.addons.payment.models.payment_transaction.PaymentTransaction._void",
+                side_effect=void,
+            ),
+        ):
+            tx.with_context(payment_safe_write=True)._process({
+                "response": {
+                    "x_response_code": "1",
+                    "x_type": "auth_only",
+                    "x_trans_id": "test_trans_id",
+                }
+            })
+
+        self.assertEqual(call_order, ["tokenize", "void"])

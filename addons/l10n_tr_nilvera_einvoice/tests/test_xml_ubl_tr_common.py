@@ -6,6 +6,8 @@ from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 
 class TestUBLTRCommon(AccountTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @AccountTestInvoicingCommon.setup_country('tr')
     @freeze_time('2025-03-05')
@@ -79,6 +81,7 @@ class TestUBLTRCommon(AccountTestInvoicingCommon):
             'partner_id': partner_id.id,
             'name': 'EIN/2025/1',
             'invoice_date': '2025-03-03',
+            'invoice_date_due': '2025-03-05',
             'narration': '3 products',
             'invoice_line_ids': [
                 Command.create({

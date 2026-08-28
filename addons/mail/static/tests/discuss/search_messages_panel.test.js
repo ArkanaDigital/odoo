@@ -4,14 +4,16 @@ import {
     defineMailModels,
     editInput,
     insertText,
+    listenStoreFetch,
     openDiscuss,
     patchUiSize,
     scroll,
     SIZES,
     start,
     startServer,
+    waitStoreFetch,
 } from "@mail/../tests/mail_test_helpers";
-import { expect, mockTouch, mockUserAgent, test } from "@odoo/hoot";
+import { animationFrame, expect, mockUserAgent, test } from "@odoo/hoot";
 import { press } from "@odoo/hoot-dom";
 import { tick } from "@odoo/hoot-mock";
 import { serverState } from "@web/../tests/web_test_helpers";
@@ -38,7 +40,7 @@ test("Should open the search panel when search button is clicked", async () => {
     await contains(".o-discuss-ChannelMemberList"); // wait for auto-open of this panel
     await click("[title='Search Messages']");
     await contains(".o-mail-SearchMessagesPanel");
-    await contains(".o-mail-SearchMessageInput");
+    await contains(".o-mail-ActionPanel-header .o-mail-SearchMessageInput");
     await contains(".o-mail-SearchInput input");
 });
 
@@ -87,6 +89,125 @@ test("Search a message", async () => {
 });
 
 test.tags("desktop");
+test("Searching messages shows spinner icon", async () => {
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
+    pyEnv["mail.message"].create({
+        author_id: serverState.partnerId,
+        body: "This is a message",
+        attachment_ids: [],
+        message_type: "comment",
+        model: "discuss.channel",
+        res_id: channelId,
+    });
+    let blockedFetchMessages = Promise.withResolvers();
+    listenStoreFetch("/discuss/channel/messages", {
+        logParams: ["/discuss/channel/messages"],
+        async onRpc(request) {
+            await blockedFetchMessages.promise;
+            blockedFetchMessages = Promise.withResolvers();
+        },
+    });
+    await start();
+    await openDiscuss(channelId);
+    blockedFetchMessages.resolve();
+    await contains(".o-mail-Message");
+    await waitStoreFetch([
+        [
+            "/discuss/channel/messages",
+            { channel_id: channelId, fetch_params: { limit: 60, around: 0 } },
+        ],
+    ]);
+    await click("button[title='Search Messages']");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput input");
+    await editInput(document.body, ".o-mail-SearchInput input", "message");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput.o-searching");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput i.oi.oi-spin");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput i.oi[data-icon='search']", {
+        count: 0,
+    });
+    blockedFetchMessages.resolve();
+    await waitStoreFetch([
+        [
+            "/discuss/channel/messages",
+            {
+                channel_id: channelId,
+                fetch_params: { search_term: "message", before: false },
+            },
+        ],
+    ]);
+    await contains(".o-mail-SearchMessagesPanel .o-mail-Message");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput:not(.o-searching)");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput i.oi[data-icon='search']");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput i.oi.oi-spin", { count: 0 });
+});
+
+test.tags("desktop");
+test("Clearing message input while pending search should empty message results", async () => {
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
+    pyEnv["mail.message"].create({
+        author_id: serverState.partnerId,
+        body: "This is a message",
+        attachment_ids: [],
+        message_type: "comment",
+        model: "discuss.channel",
+        res_id: channelId,
+    });
+    let blockedFetchMessages = Promise.withResolvers();
+    listenStoreFetch("/discuss/channel/messages", {
+        logParams: ["/discuss/channel/messages"],
+        async onRpc(request) {
+            await blockedFetchMessages.promise;
+            blockedFetchMessages = Promise.withResolvers();
+        },
+    });
+    await start();
+    await openDiscuss(channelId);
+    blockedFetchMessages.resolve();
+    await contains(".o-mail-Message");
+    await waitStoreFetch([
+        [
+            "/discuss/channel/messages",
+            { channel_id: channelId, fetch_params: { limit: 60, around: 0 } },
+        ],
+    ]);
+    await click("button[title='Search Messages']");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput input");
+    await editInput(document.body, ".o-mail-SearchInput input", "This is");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput.o-searching");
+    blockedFetchMessages.resolve();
+    await waitStoreFetch([
+        [
+            "/discuss/channel/messages",
+            {
+                channel_id: channelId,
+                fetch_params: { search_term: "This is", before: false },
+            },
+        ],
+    ]);
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput:not(.o-searching)");
+    await contains(".o-mail-SearchMessageResult .o-mail-Message");
+    await editInput(document.body, ".o-mail-SearchInput input", "This is a message");
+    await contains(".o-mail-SearchMessageInput .o-mail-SearchInput.o-searching");
+    await click("button[aria-label='Clear']");
+    await contains(".o-mail-SearchInput input", { value: "" });
+    blockedFetchMessages.resolve();
+    await waitStoreFetch([
+        [
+            "/discuss/channel/messages",
+            {
+                channel_id: channelId,
+                fetch_params: { search_term: "This is a message", before: false },
+            },
+        ],
+    ]);
+    await animationFrame();
+    await contains(".o-mail-SearchMessageResult .o-mail-Message", { count: 0 });
+    await contains(".o-mail-SearchInput input", { value: "" });
+});
+
+test.tags("desktop");
 test("Search should be hightlighted", async () => {
     const pyEnv = await startServer();
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
@@ -105,113 +226,6 @@ test("Search should be hightlighted", async () => {
     await contains(".o-mail-SearchMessageInput");
     await insertText(".o-mail-SearchInput input", "message");
     await contains(`.o-mail-SearchMessagesPanel .o-mail-Message .${HIGHLIGHT_CLASS}`);
-});
-
-test.tags("desktop");
-test("Search a bookmark", async () => {
-    const pyEnv = await startServer();
-    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
-    pyEnv["mail.message"].create({
-        author_id: serverState.partnerId,
-        body: "This is a message",
-        attachment_ids: [],
-        message_type: "comment",
-        model: "discuss.channel",
-        res_id: channelId,
-        bookmarked_partner_ids: [serverState.partnerId],
-    });
-    await start();
-    await openDiscuss("mail.box_bookmark");
-    await contains(".o-mail-Message");
-    await click("[title='Search Messages']");
-    await insertText(".o-mail-SearchInput input", "message");
-    await contains(".o-mail-SearchMessagesPanel .o-mail-Message");
-});
-
-test.tags("desktop");
-test("Search a message in inbox", async () => {
-    const pyEnv = await startServer();
-    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
-    pyEnv["mail.message"].create({
-        author_id: serverState.partnerId,
-        body: "This is a message",
-        attachment_ids: [],
-        message_type: "comment",
-        model: "discuss.channel",
-        res_id: channelId,
-        needaction: true,
-    });
-    await start();
-    await openDiscuss("mail.box_inbox");
-    await contains(".o-mail-Message");
-    await click("[title='Search Messages']");
-    await insertText(".o-mail-SearchInput input", "message");
-    await contains(".o-mail-SearchMessagesPanel .o-mail-Message");
-});
-
-test.tags("desktop");
-test("Search a message in history (desktop)", async () => {
-    const pyEnv = await startServer();
-    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
-    const messageId = pyEnv["mail.message"].create({
-        author_id: serverState.partnerId,
-        body: "This is a message",
-        attachment_ids: [],
-        message_type: "comment",
-        model: "discuss.channel",
-        res_id: channelId,
-        needaction: false,
-    });
-    pyEnv["mail.notification"].create({
-        is_read: true,
-        mail_message_id: messageId,
-        notification_status: "sent",
-        notification_type: "inbox",
-        res_partner_id: serverState.partnerId,
-    });
-    await start();
-    await openDiscuss("mail.box_history");
-    await click("[title='Search Messages']");
-    await insertText(".o-mail-SearchInput input", "message");
-    await contains(".o-mail-SearchMessagesPanel .o-mail-Message");
-    await click(".o-mail-SearchMessagesPanel .o-mail-MessageCard-jump");
-    await contains(".o-mail-Thread .o-mail-Message.o-highlighted");
-});
-
-test.tags("mobile");
-test("Search a message in history (mobile)", async () => {
-    mockTouch(true);
-    mockUserAgent("android");
-    patchUiSize({ size: SIZES.SM });
-    const pyEnv = await startServer();
-    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
-    const messageId = pyEnv["mail.message"].create({
-        author_id: serverState.partnerId,
-        body: "This is a message",
-        attachment_ids: [],
-        message_type: "comment",
-        model: "discuss.channel",
-        res_id: channelId,
-        needaction: false,
-    });
-    pyEnv["mail.notification"].create({
-        is_read: true,
-        mail_message_id: messageId,
-        notification_status: "sent",
-        notification_type: "inbox",
-        res_partner_id: serverState.partnerId,
-    });
-    await start();
-    await openDiscuss("mail.box_history");
-    await contains(".o-mail-Thread");
-    await click("[title='Search Messages']");
-    await contains(".o-mail-SearchMessagesPanel");
-    await contains(".o-mail-Thread", { count: 0 });
-    await insertText(".o-mail-SearchInput input", "message");
-    await contains(".o-mail-SearchMessagesPanel .o-mail-Message");
-    await click(".o-mail-MessageCard-jump");
-    await contains(".o-mail-Thread");
-    await contains(".o-mail-SearchMessagesPanel", { count: 0 });
 });
 
 test.tags("desktop");
@@ -320,11 +334,30 @@ test.tags("mobile");
 test("Close message search panel when navigating back on mobile", async () => {
     mockUserAgent("android");
     patchUiSize({ size: SIZES.SM });
-    await startServer();
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
     await start();
-    await openDiscuss("mail.box_bookmark");
-    await click("[title='Search Messages']");
+    await openDiscuss(channelId);
+    await click(".o-mail-ChatWindow-moreActions");
+    await click("button:text('Search Messages')");
     await contains(".o-mail-SearchMessagesPanel");
     history.back();
     await contains(".o-mail-SearchMessagesPanel", { count: 0 });
+});
+
+test.tags("desktop");
+test("Search should trigger a single store fetch", async () => {
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
+    await start();
+    await openDiscuss(channelId);
+    await insertText(".o-mail-Composer-input", "This is a message");
+    await click(".o-sendMessageActive:enabled");
+    await contains(".o-mail-Message");
+    await click("button[title='Search Messages']");
+    await contains(".o-mail-SearchMessageInput");
+    listenStoreFetch("/discuss/channel/messages");
+    await insertText(".o-mail-SearchInput input", "message");
+    await waitStoreFetch("/discuss/channel/messages");
+    await waitStoreFetch();
 });

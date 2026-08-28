@@ -1,22 +1,35 @@
-import { StateSelectionField, stateSelectionField } from "@web/views/fields/state_selection/state_selection_field";
+import { useProps, t } from "@odoo/owl";
 import { registry } from "@web/core/registry";
+import { useService } from "@web/core/utils/hooks";
+import { standardFieldProps } from "@web/views/fields/standard_field_props";
+import { StateSelectionField, stateSelectionField } from "@web/views/fields/state_selection/state_selection_field";
 
 export class MaintenanceRequestStateSelection extends StateSelectionField {
     static template = "maintenance.MaintenanceRequestStateSelection";
 
-    static props = {
-        ...stateSelectionField.component.props,
-        viewType: { type: String },
-    };
+    props = useProps({
+        ...standardFieldProps,
+        showLabel: t.boolean().optional(true),
+        withCommand: t.boolean().optional(),
+        viewType: t.string().optional(),
+    });
 
     setup() {
         super.setup();
+        this.uiService = useService("ui");
         this.icons = {
+            normal: "",
+            changes_requested: "error",
+            approved: "",
+            done: "check_circle",
+            cancelled: "cancel",
+        };
+        this.classIcons = {
             normal: "o_status",
-            changes_requested: "fa fa-lg fa-exclamation-circle",
+            changes_requested: "",
             approved: "o_status o_status_green",
-            done: "fa fa-lg fa-check-circle",
-            cancelled: "fa fa-lg fa-times-circle",
+            done: "oi-filled",
+            cancelled: "oi-filled",
         };
         this.colorIcons = {
             normal: "",
@@ -38,6 +51,10 @@ export class MaintenanceRequestStateSelection extends StateSelectionField {
         return this.icons[value] || "";
     }
 
+    stateIconClass(value) {
+        return this.classIcons[value] || "";
+    }
+
     statusColor(value) {
         return this.colorIcons[value] || "";
     }
@@ -48,7 +65,7 @@ export class MaintenanceRequestStateSelection extends StateSelectionField {
     }
 
     get isKanbanOrMobileView() {
-        return this.props.viewType === "kanban" || this.env.isSmall;
+        return this.props.viewType === "kanban" || this.uiService.isSmall;
     }
 
     getTogglerClass(currentValue) {

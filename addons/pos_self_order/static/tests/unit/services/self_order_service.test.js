@@ -1,5 +1,10 @@
 import { test, describe, expect, beforeEach } from "@odoo/hoot";
-import { setupSelfPosEnv, getFilledSelfOrder, addComboProduct } from "../utils";
+import {
+    setupSelfPosEnv,
+    getFilledSelfOrder,
+    addComboProduct,
+    mockLNAPermissionCheck,
+} from "../utils";
 import { mockDate } from "@odoo/hoot-mock";
 import { registry } from "@web/core/registry";
 import { definePosSelfModels } from "../data/generate_model_definitions";
@@ -33,7 +38,7 @@ describe("initProducts", () => {
         const models = store.models;
         const tipProductTmpl = models["product.template"].get(1);
 
-        expect(store.config._pos_special_products_ids.includes(tipProductTmpl.id)).toBe(true);
+        expect(tipProductTmpl.product_variant_ids[0]._is_pos_special_product).toBe(true);
 
         models["product.template"].get(14).pos_categ_ids = [];
         store.initData();
@@ -53,9 +58,11 @@ describe("initProducts", () => {
         store.initData();
 
         store.computeAvailableCategories();
-        expect(models["pos.category"].length).toBe(5);
-        expect(store.availableCategories).toHaveLength(6); // Uncategorised also added
-        expect(store.availableCategories.map((c) => c.id)).toEqual([1, 2, 4, 3, 5, 0]);
+        expect(models["pos.category"].length).toBe(14);
+        expect(store.availableCategories).toHaveLength(15); // Uncategorised also added
+        expect(store.availableCategories.map((c) => c.id)).toEqual([
+            1, 200, 2, 201, 4, 203, 3, 204, 5, 205, 206, 207, 208, 209, 0,
+        ]);
 
         // When all products have categories - Uncategorised should be not there
         models["product.template"]
@@ -63,8 +70,10 @@ describe("initProducts", () => {
             .forEach((prd) => prd.update({ pos_categ_ids: [2] }));
         store.initData();
         store.computeAvailableCategories();
-        expect(store.availableCategories).toHaveLength(5);
-        expect(store.availableCategories.map((c) => c.id)).toEqual([1, 2, 4, 3, 5]);
+        expect(store.availableCategories).toHaveLength(14);
+        expect(store.availableCategories.map((c) => c.id)).toEqual([
+            1, 200, 2, 201, 4, 203, 3, 204, 5, 205, 206, 207, 208, 209,
+        ]);
 
         // Time availability
         const unAvailableCatg = models["pos.category"].get(1);
@@ -74,7 +83,7 @@ describe("initProducts", () => {
         });
         mockDate("2025-11-29 18:00:00");
         store.computeAvailableCategories();
-        expect(store.availableCategories).toHaveLength(4);
+        expect(store.availableCategories).toHaveLength(13);
         expect(store.isCategoryAvailable(unAvailableCatg)).toBeEmpty();
     });
 });
@@ -93,30 +102,54 @@ describe("initHardware", () => {
 
         expect(mockTerminalMethod.payment_interface).toBeInstanceOf(MockTerminal);
     });
+
+    test("initLNA is only called in kiosk mode", async () => {
+        const store = await setupSelfPosEnv();
+        store.models["pos.printer"].get(1).use_lna = true;
+
+        const lna = mockLNAPermissionCheck();
+        store.initHardware();
+        expect(lna.wasCalled).toBe(true);
+
+        lna.reset();
+        store.config.self_ordering_mode = "mobile";
+        store.initHardware();
+        expect(lna.wasCalled).toBe(false);
+    });
 });
 
-test("showComboSelectionPage", async () => {
+test("applyPendingComboConversion", async () => {
     const store = await setupSelfPosEnv();
-    const models = store.models;
-    const product = models["product.template"].get(7);
-    const combo = models["product.combo"].get(2);
-    product.combo_ids = [2];
 
-    const defaultReturnValue = { show: true, selectedCombos: [] };
-    expect(store.showComboSelectionPage(product)).toMatchObject(defaultReturnValue);
-    // only One choice
-    models["product.combo.item"].get(3).delete();
-    const showCombo = store.showComboSelectionPage(product);
-    expect(showCombo.show).toBe(false);
-    expect(showCombo.selectedCombos).toHaveLength(1);
-    expect(showCombo.selectedCombos[0].combo_item_id.id).toBe(4);
-    // qty_max is more than one
-    combo.qty_max = 3;
-    expect(store.showComboSelectionPage(product)).toMatchObject(defaultReturnValue);
+    await store.addToCart(store.models["product.template"].get(8), 2);
+    await store.addToCart(store.models["product.template"].get(10), 1);
+
+    const [chairLine, deskLine] = store.currentOrder.lines;
+    store.pendingComboConversion = {
+        concernedLinesQty: {
+            [chairLine.uuid]: 1,
+            [deskLine.uuid]: 1,
+        },
+    };
+
+    store.applyPendingComboConversion();
+
+    expect(store.currentOrder.lines).toHaveLength(1);
+    expect(store.currentOrder.lines[0].uuid).toBe(chairLine.uuid);
+    expect(store.currentOrder.lines[0].qty).toBe(1);
+    expect(store.pendingComboConversion).toBe(null);
 });
 
 test("createNewOrder", async () => {
-    const store = await setupSelfPosEnv();
+    const store = await setupSelfPosEnv(
+        "kiosk",
+        "counter",
+        "each",
+        {
+            default_preset_id: 1,
+        },
+        true
+    );
     const models = store.models;
     {
         expect(store.config.available_preset_ids.length > 1).toBe(true);
@@ -165,9 +198,19 @@ test("getProductPriceInfo", async () => {
 
     const models = store.models;
     const product5 = models["product.template"].get(5);
+    const variant5 = models["product.product"].get(5);
     const pricelist = models["product.pricelist"].get(3);
     const inPreset = models["pos.preset"].get(1);
     const outPreset = store.models["pos.preset"].get(2);
+
+    // Template-only call uses first variant lst_price (same default as addToCart).
+    const savedList = product5.list_price;
+    const savedLst = variant5.lst_price;
+    product5.list_price = 1;
+    variant5.lst_price = 222;
+    expect(store.getProductPriceInfo(product5).pricelist_price).toBe(222);
+    product5.list_price = savedList;
+    variant5.lst_price = savedLst;
 
     expect(store.getProductPriceInfo(product5).pricelist_price).toBe(100);
 
@@ -177,10 +220,36 @@ test("getProductPriceInfo", async () => {
     order.setPreset(outPreset);
     expect(store.getProductPriceInfo(product5).pricelist_price).toBe(10);
 
+    const savedPercentPrice = pricelist.item_ids[0].percent_price;
     pricelist.item_ids[0].percent_price = 80;
     inPreset.pricelist_id = pricelist;
     order.setPreset(inPreset);
     expect(store.getProductPriceInfo(product5).pricelist_price).toBe(20);
+    pricelist.item_ids[0].percent_price = savedPercentPrice;
+
+    // Fiscal position on the order (via setPreset) must change display price.
+    store.config.pricelist_id = false;
+    const fpStrip = models["account.fiscal.position"].get(2);
+    const savedOutFp = outPreset.fiscal_position_id;
+    const savedOutPricelist = outPreset.pricelist_id;
+    const savedDefaultFp = store.config.default_fiscal_position_id;
+    outPreset.fiscal_position_id = false;
+    outPreset.pricelist_id = false;
+    store.config.default_fiscal_position_id = false;
+    order.setPreset(outPreset);
+
+    const displayWithTaxes = store.getProductDisplayPrice(product5);
+    expect(displayWithTaxes).toBe(115);
+
+    outPreset.fiscal_position_id = fpStrip;
+    order.setPreset(outPreset);
+    const displayAfterStripFp = store.getProductDisplayPrice(product5);
+    expect(displayAfterStripFp).toBe(100);
+    expect(displayAfterStripFp).not.toBe(displayWithTaxes);
+
+    outPreset.fiscal_position_id = savedOutFp;
+    outPreset.pricelist_id = savedOutPricelist;
+    store.config.default_fiscal_position_id = savedDefaultFp;
 });
 
 describe("addToCart", () => {
@@ -349,6 +418,27 @@ describe("cancelOrder", () => {
         expect(models["pos.order"].length).toBe(1);
         expect(models["pos.order.line"].length).toBe(2);
     });
+    test("reverts to the last-sent qty, not the pending delta, across multiple sync rounds", async () => {
+        const store = await setupSelfPosEnv();
+        const order = await getFilledSelfOrder(store);
+        const product1 = store.models["product.template"].get(5);
+        const line1 = order.lines.find((l) => l.product_id.id === 5);
+
+        expect(line1.qty).toBe(3);
+        await store.sendDraftOrderToServer(); // round 1 sent: qty 3
+
+        await store.addToCart(product1, 1);
+        expect(line1.qty).toBe(4);
+        await store.sendDraftOrderToServer(); // round 2 sent: qty 4
+
+        await store.addToCart(product1, 1);
+        expect(line1.qty).toBe(5); // round 3: pending, not sent
+
+        store.cancelOrder();
+        // Must revert to the last SENT quantity (4), not the pending
+        // delta (5 - 4 = 1).
+        expect(line1.qty).toBe(4);
+    });
 });
 
 test("cancelBackendOrder", async () => {
@@ -397,7 +487,7 @@ test("resetCategorySelection", async () => {
 
 describe("printOrderChanges", () => {
     beforeEach(async () => {
-        const store = await setupSelfPosEnv();
+        const store = await setupSelfPosEnv("kiosk", "counter", "each", {}, true);
 
         store.config.self_ordering_mode = "kiosk";
         for (const relPrinter of store.models["pos.printer"].getAll()) {
@@ -418,12 +508,6 @@ describe("printOrderChanges", () => {
             async generateIframe(template, data) {
                 printedData.push(data.changes.data.map((line) => line.basic_name));
                 return document.createElement("iframe");
-            },
-            setIframeSizeFromPrinter(iframe, printer) {
-                return;
-            },
-            async generateImage() {
-                return "fake_image_data";
             },
             print() {
                 return { successful: true };
@@ -548,22 +632,87 @@ describe("printOrderChanges", () => {
     });
 });
 
-test("product with single 'is_custom' attr is configurable in 'mobile' mode", async () => {
-    const store = await setupSelfPosEnv("mobile");
-    const product = store.models["product.template"].get(51);
-    product.attribute_line_ids = [product.attribute_line_ids[1]];
-    const ptv = product.attribute_line_ids[0].product_template_value_ids;
-    expect(ptv.length).toBe(1);
-    expect(ptv[0].is_custom).toBe(true);
-    expect(!!store.isProductConfigurable(product)).toBe(true);
+test("orderLineNotSend", async () => {
+    const store = await setupSelfPosEnv();
+
+    expect(store.orderLineNotSend).toMatchObject({
+        priceWithTax: 0,
+        priceWithoutTax: 0,
+        count: 0,
+        tax: 0,
+    });
+    await getFilledSelfOrder(store);
+    expect(store.orderLineNotSend).toMatchObject({
+        priceWithTax: 595,
+        priceWithoutTax: 500,
+        count: 5,
+        tax: 95,
+    });
+
+    const product1 = store.models["product.template"].get(5);
+    await store.addToCart(product1, 1);
+    expect(store.orderLineNotSend).toMatchObject({
+        priceWithTax: 710,
+        priceWithoutTax: 600,
+        count: 6,
+        tax: 110,
+    });
 });
 
-test("product with single 'is_custom' attr is not configurable in 'kiosk' mode", async () => {
+test("orderLineNotSend only prices the pending delta once a line has already been sent", async () => {
     const store = await setupSelfPosEnv();
-    const product = store.models["product.template"].get(51);
-    product.attribute_line_ids = [product.attribute_line_ids[1]];
-    const ptv = product.attribute_line_ids[0].product_template_value_ids;
-    expect(ptv.length).toBe(1);
-    expect(ptv[0].is_custom).toBe(true);
-    expect(!!store.isProductConfigurable(product)).toBe(false);
+    await getFilledSelfOrder(store);
+
+    await store.sendDraftOrderToServer();
+    expect(store.orderLineNotSend).toMatchObject({
+        priceWithTax: 0,
+        priceWithoutTax: 0,
+        count: 0,
+        tax: 0,
+    });
+
+    const product1 = store.models["product.template"].get(5);
+    await store.addToCart(product1, 1);
+    expect(store.orderLineNotSend).toMatchObject({
+        priceWithTax: 115,
+        priceWithoutTax: 100,
+        count: 1,
+        tax: 15,
+    });
+});
+
+test("orderLineSent", async () => {
+    const store = await setupSelfPosEnv();
+
+    expect(store.orderLineSent).toMatchObject({
+        priceWithTax: 0,
+        priceWithoutTax: 0,
+        count: 0,
+        tax: 0,
+    });
+
+    await getFilledSelfOrder(store);
+    expect(store.orderLineSent).toMatchObject({
+        priceWithTax: 0,
+        priceWithoutTax: 0,
+        count: 0,
+        tax: 0,
+    });
+
+    await store.sendDraftOrderToServer();
+    expect(store.orderLineSent).toMatchObject({
+        priceWithTax: 595,
+        priceWithoutTax: 500,
+        count: 5,
+        tax: 95,
+    });
+
+    const product1 = store.models["product.template"].get(5);
+    await store.addToCart(product1, 1);
+    expect(store.orderLineSent).toMatchObject({
+        priceWithTax: 595,
+        priceWithoutTax: 500,
+        count: 5,
+        tax: 95,
+    });
 });

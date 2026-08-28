@@ -15,20 +15,36 @@
                             onSearch.bind="this.onSearch"
                             onFilterSelected.bind="this.onFilterSelected" />
                         <div class="filter-buttons buttons d-flex gap-1 overflow-auto" t-if="usePreset" t-att-class="{'mt-2 mt-sm-0': this.ui.isSmall}">
-                            <button t-foreach="this.pos.models['pos.preset'].getAll()" t-as="preset" t-key="preset.id"
+                            <t t-set="presets" t-value="this.presetFilterButtons"/>
+                            <t t-set="dropdownPresets" t-value="presets.slice(3)"/>
+                            <button t-foreach="presets.slice(0, 3)" t-as="preset" t-key="preset.id"
                                 class="btn btn-lg btn-secondary text-nowrap" t-on-click="() => this.onPresetSelected(preset)"
                                 t-att-class="{'active': this.state.selectedPreset === preset}">
                                 <t t-out="preset.name"/>
                             </button>
+                            <Dropdown t-if="dropdownPresets.length > 0">
+                                <button class="btn btn-lg btn-secondary text-nowrap d-flex align-items-center gap-1"
+                                    t-att-class="{'active': dropdownPresets.includes(this.state.selectedPreset)}">
+                                    <span>More</span>
+                                    <i class="oi" data-icon="arrow_drop_down"/>
+                                </button>
+                                <t t-set-slot="content">
+                                    <DropdownItem t-foreach="dropdownPresets" t-as="preset" t-key="preset.id"
+                                        class="this.state.selectedPreset === preset ? 'active' : ''"
+                                        onSelected="() => this.onPresetSelected(preset)">
+                                        <t t-out="preset.name"/>
+                                    </DropdownItem>
+                                </t>
+                            </Dropdown>
                         </div>
                         <div class="item d-none d-xl-flex align-items-center justify-content-end">
                             <span class="page me-2" role="button" t-on-click="this.onClickPageNbr"><t t-out="this.getPageNumber()" /></span>
                             <div class="page-controls d-flex align-items-center gap-1">
                                 <button class="previous btn btn-secondary" t-on-click="() => this.onPrevPage()">
-                                    <i class="fa fa-fw fa-caret-left" role="img" aria-label="Previous Order List" title="Previous Order List"></i>
+                                    <i class="oi oi-fw" data-icon="arrow_left" role="img" aria-label="Previous Order List" title="Previous Order List"></i>
                                 </button>
                                 <button class="next btn btn-secondary" t-on-click="() => this.onNextPage()">
-                                    <i class="fa fa-fw fa-caret-right" role="img" aria-label="Next Order List" title="Next Order List"></i>
+                                    <i class="oi oi-fw" data-icon="arrow_right" role="img" aria-label="Next Order List" title="Next Order List"></i>
                                 </button>
                             </div>
                         </div>
@@ -79,24 +95,19 @@
                                             </td>
                                             <td class="align-middle text-end">
                                                 <t t-set="status" t-value="this.getStatus(order)" />
-                                                <div t-attf-class="badge rounded fs-6 text-bg-{{
-                                                    status === 'Ongoing' || status === 'Payment'
-                                                    ? 'info'
-                                                    : status === 'Receipt' || status === 'Paid'
-                                                    ? 'success'
-                                                    : 'secondary'
-                                                }}">
+                                                <t t-set="decoration" t-value="this.getStatusDecoration(status)" />
+                                                <div t-attf-class="badge rounded fs-6 text-bg-{{decoration}}">
                                                     <t t-out="status"></t>
                                                 </div>
                                             </td>
-                                            <td class="align-middle text-end" name="info-column">
+                                            <td class="align-middle text-end info-column" name="info-column">
                                                 <button t-on-click.stop="() => this._onInfoOrder(order)" class="btn btn-link p-0 lh-1 text-info">
-                                                    <i class="fa fa-info-circle fa-lg align-middle" aria-hidden="true"/>
+                                                    <i class="oi oi-lg oi-filled align-middle" data-icon="info" aria-hidden="true"/>
                                                 </button>
                                             </td>
                                             <td class="align-middle text-end delete-column" name="delete-column">
                                                 <button t-if="!this.shouldHideDeleteButton(order) and this.pos.cashier._role !== 'minimal'" t-on-click.stop="() => this.onDeleteOrder(order)" class="btn btn-link btn-lg text-danger">
-                                                    <i class="fa fa-trash" aria-hidden="true"/>
+                                                    <i class="oi oi-filled" data-icon="delete" aria-hidden="true"/>
                                                 </button>
                                                 <div t-if="this.state.filter == 'TIPPING'" class="col end narrow p-2" name="tip">
                                                     <div t-if="this.ui.isSmall">Tip</div>
@@ -122,20 +133,16 @@
                                     <div class="p-2 d-flex flex-column flex-grow-1 justify-content-center align-items-end">
                                         <div class="fw-bolder"><t t-out="this.getTotal(order)"></t></div>
                                                 <t t-set="status" t-value="this.getStatus(order)" />
-                                                <div t-attf-class="badge rounded fs-6 text-bg-{{
-                                                    status === 'Ongoing' || status === 'Payment'
-                                                    ? 'info'
-                                                    : status === 'Receipt' || status === 'Paid'
-                                                    ? 'success'
-                                                    : 'secondary'
-                                                }}">
+                                                <t t-set="decoration" t-value="this.getStatusDecoration(status)" />
+                                                <div t-attf-class="badge rounded fs-6 text-bg-{{decoration}}">
                                                     <t t-out="status"></t>
                                                 </div>
                                     </div>
+                                    <CenteredIcon icon="'info'" iconClass="'fs-2 oi-filled'" class="'info-column'" t-on-click="() => this._onInfoOrder(order)"/>
                                     <div class="mx-2" name="delete-column">
                                         <div t-if="!this.shouldHideDeleteButton(order) and this.pos.cashier._role !== 'minimal'" class="d-flex align-items-center justify-content-center h-100" role="button" name="delete" t-on-click.stop="() => this.onDeleteOrder(order)">
                                             <div class="btn btn-danger btn-lg">
-                                                <i class="fa fa-trash" aria-hidden="true"/>
+                                                <i class="oi oi-filled" data-icon="delete" aria-hidden="true"/>
                                             </div>
                                         </div>
                                         <div t-if="this.state.filter == 'TIPPING'" class="col end narrow p-2" name="tip">
@@ -148,7 +155,8 @@
                         </t>
                         <div t-else="" class="d-flex h-100 flex-column align-items-center justify-content-center">
                             <CenteredIcon
-                                icon="this.pos.data.network.loading ? 'fa-circle-o-notch fa-spin' : 'fa-shopping-cart fa-4x'"
+                                icon="this.pos.data.network.loading ? 'autorenew' : 'shopping_cart'"
+                                iconClass="this.pos.data.network.loading ? 'oi-spin' : 'oi-filled oi-4x'"
                                 text="this.pos.data.network.loading ? 'Loading...' : 'No orders found'"
                                 class="'w-100'"/>
                             <button class="btn btn-secondary" t-on-click="this.onClickNewOrder">New Order</button>
@@ -156,13 +164,15 @@
                     </div>
                     <div class="switchpane d-flex gap-2 m-2" t-if="this.ui.isSmall">
                         <t t-set="_selectedSyncedOrder" t-value="this.getSelectedOrder()" />
+                        <t t-set="_showLoadButton" t-value="!_selectedSyncedOrder or (!this.isOrderSynced and !this.isOrderCancelled(_selectedSyncedOrder))" />
                         <button class="btn-switchpane load-order-button primary btn btn-primary btn-lg lh-lg w-50 py-3"
                             t-att-disabled="!_selectedSyncedOrder"
-                            t-if="!this.isOrderSynced"
+                            t-if="_showLoadButton"
+                            t-att-class="{'syncing': _selectedSyncedOrder and this.pos.isOrderSyncing(_selectedSyncedOrder, false)}"
                             t-on-click="() => this.setOrder(_selectedSyncedOrder)">
                             <span class="d-block">Load Order</span>
                         </button>
-                        <button class="btn-switchpane btn btn-lg lh-lg py-3 btn-secondary review-button" t-att-class="this.isOrderSynced ? 'w-100 btn-primary' : 'w-50 btn-secondary'" t-on-click="this.switchPane">
+                        <button class="btn-switchpane btn btn-lg lh-lg py-3 btn-secondary review-button" t-att-class="_showLoadButton ? 'w-50 btn-secondary' : 'w-100 btn-primary'" t-on-click="this.switchPane">
                             <span class="d-block">Review</span>
                         </button>
                     </div>
@@ -175,7 +185,7 @@
                         <div t-if="this.isOrderSynced" t-att-class="{ 'highlight text-danger': !this.getHasItemsToRefund() }" class="py-2 px-3 rounded-3 bg-view text-center">
                             Select the product(s) to refund and set the quantity
                         </div>
-                        <OrderDisplay order="_selectedSyncedOrder" t-if="_selectedSyncedOrder" t-slot-scope="scope">
+                        <OrderDisplay order="_selectedSyncedOrder" t-slot-scope="scope">
                             <t t-set="line" t-value="scope.line" />
                             <t t-set="qty" t-value="line.order_id?.uiState?.lineToRefund?.[line.uuid]?.qty" />
                             <Orderline line="line" t-on-click="() => this.onClickOrderline(line)" toRefund="qty" class="{'selected': line.id === _selectedOrderlineId}">
@@ -187,20 +197,24 @@
                                 </li>
                             </Orderline>
                         </OrderDisplay>
-                        <div class="pads">
+                        <div class="pads" t-if="!this.isOrderCancelled(_selectedSyncedOrder)">
                             <t t-if="this.isOrderSynced">
                                 <div class="control-buttons d-flex gap-2 pb-2">
                                     <button class="edit-order-payment control-button btn btn-secondary btn-lg lh-lg flex-grow-1 flex-shrink-1" t-on-click="() => this.pos.showOrderDetails(_selectedSyncedOrder)">
-                                        <i class="fa fa-pencil-square-o me-1" /> Details
+                                        <i class="oi me-1" data-icon="edit_square" /> Details
                                     </button>
                                     <InvoiceButton
+                                        t-if="this.showInvoiceButton"
                                         onInvoiceOrder.bind="this.onInvoiceOrder"
                                         order="_selectedSyncedOrder" />
                                     <button class="control-button btn btn-secondary btn-lg lh-lg flex-grow-1 flex-shrink-1" t-on-click="() => this.doPrint.call(_selectedSyncedOrder)">
-                                        <i t-attf-class="fa {{this.doPrint.status === 'loading' ? 'fa-fw fa-spin fa-circle-o-notch' : 'fa-print'}} me-1" />Print Receipt
+                                        <i t-attf-class="oi {{this.doPrint.status === 'loading' ? 'oi-fw oi-spin' : ''}} me-1" t-att-data-icon="this.doPrint.status === 'loading' ? 'autorenew' : 'print'"/>Receipt
+                                    </button>
+                                    <button t-if="this.pos.canSendReceipt" class="control-button send-button btn btn-secondary btn-lg lh-lg flex-grow-1 flex-shrink-1" t-on-click="this.onClickSend">
+                                        <i class="oi oi-filled me-1" data-icon="send" />Send
                                     </button>
                                 </div>
-                                <div class="subpads d-flex flex-column">
+                                <div t-if="this.showSubPads" class="subpads d-flex flex-column">
                                     <Numpad class="'pb-2'" buttons="this.getNumpadButtons()"/>
                                         <ActionpadWidget
                                             order="this.getSelectedOrder()"
@@ -215,10 +229,11 @@
                                 <button class="button btn btn-secondary btn-lg d-flex flex-row align-items-center justify-content-center"
                                     t-on-click="() => this.onClickReprintAll(_selectedSyncedOrder)"
                                     t-if="this.pos.ticketPrinter.hasPreparationPrinters and _selectedSyncedOrder.lastPrints.length">
-                                    <i class="fa fa-cutlery" aria-hidden="true"/>
+                                    <i class="oi" data-icon="restaurant" aria-hidden="true"/>
                                 </button>
                                 <button class="button validation load-order-button w-100 btn btn-lg btn-primary py-3"
                                     t-att-disabled="!_selectedSyncedOrder"
+                                    t-att-class="{'syncing': _selectedSyncedOrder and this.pos.isOrderSyncing(_selectedSyncedOrder, false)}"
                                     t-on-click="() => this.setOrder(_selectedSyncedOrder)">
                                     <span class="d-block">Load Order</span>
                                 </button>
@@ -227,7 +242,7 @@
                     </t>
                     <t t-else="">
                         <BarcodeVideoScanner t-if="this.pos.scanning" onError.bind="()=>{}" onResult.bind="this.onClickScanOrder" facingMode="'environment'"/>
-                        <CenteredIcon t-if="!this.pos.scanning" icon="'fa-shopping-cart fa-4x'" text.translate="Select an order or scan QR code" class="'bg-100 h-100 rounded'"/>
+                        <CenteredIcon t-if="!this.pos.scanning" icon="'shopping_cart'" iconClass="'oi-4x'" text.translate="Select an order or scan QR code" class="'bg-100 h-100 rounded'"/>
                         <BackButton t-if="this.ui.isSmall" onClick="() => this.pos.onClickBackButton()"/>
                     </t>
                 </div>

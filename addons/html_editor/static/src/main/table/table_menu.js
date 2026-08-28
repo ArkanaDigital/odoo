@@ -1,67 +1,72 @@
-import { useExternalListener, useLayoutEffect, useRef } from "@web/owl2/utils";
-import { useCrossDocumentListener } from "../../utils/hooks";
+import { getBaseContainerSelector } from "@html_editor/utils/base_container";
+import { getIframeAdjustedBoundingRect, isEmpty, isTableCell } from "@html_editor/utils/dom_info";
 import { closestElement } from "@html_editor/utils/dom_traversal";
-import { Component, onMounted, onWillUnmount } from "@odoo/owl";
 import { getRowIndex, getSelectedCellsMergeInfo } from "@html_editor/utils/table";
+import { Component, onMounted, onWillUnmount, useProps, signal, t, useListener } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { _t } from "@web/core/l10n/translation";
-import { getIframeAdjustedBoundingRect, isEmpty, isTableCell } from "@html_editor/utils/dom_info";
-import { getBaseContainerSelector } from "@html_editor/utils/base_container";
+import { useLayoutEffect } from "@web/owl2/utils";
+import { useCrossDocumentListener } from "../../utils/hooks";
 
 export class TableMenu extends Component {
     static template = "html_editor.TableMenu";
-    static props = {
-        type: String, // column or row
-        moveColumn: Function,
-        addColumn: Function,
-        removeColumn: Function,
-        moveRow: Function,
-        addRow: Function,
-        removeRow: Function,
-        turnIntoHeader: Function,
-        turnIntoRow: Function,
-        resetRowHeight: Function,
-        resetColumnWidth: Function,
-        resetTableSize: Function,
-        clearColumnContent: Function,
-        mergeSelectedCells: Function,
-        unmergeSelectedCell: Function,
-        clearRowContent: Function,
-        toggleAlternatingRows: Function,
-        buildTableGrid: Function,
-        close: Function,
-        tableDragDropOverlay: Object,
-        dropdownState: Object,
-        target: { validate: (el) => el.nodeType === Node.ELEMENT_NODE },
-        document: { validate: (p) => p.nodeType === Node.DOCUMENT_NODE },
-        editable: { validate: (p) => p.nodeType === Node.ELEMENT_NODE },
-        direction: { type: String, optional: true },
-    };
-    static defaultProps = { direction: "ltr" };
+    props = useProps({
+        type: t.string(), // column or row
+        moveColumn: t.function(),
+        addColumn: t.function(),
+        removeColumn: t.function(),
+        moveRow: t.function(),
+        addRow: t.function(),
+        removeRow: t.function(),
+        turnIntoHeader: t.function(),
+        turnIntoRow: t.function(),
+        resetSize: t.function().optional(),
+        resetRowHeight: t.function().optional(),
+        resetColumnWidth: t.function().optional(),
+        clearColumnContent: t.function(),
+        mergeSelectedCells: t.function(),
+        unmergeSelectedCell: t.function(),
+        clearRowContent: t.function(),
+        toggleAlternatingRows: t.function(),
+        buildTableGrid: t.function(),
+        close: t.function(),
+        commit: t.function(),
+        tableDragDropOverlay: t.object(),
+        dropdownState: t.object(),
+        target: t.customValidator(t.any(), (el) => el.nodeType === Node.ELEMENT_NODE),
+        document: t.customValidator(t.any(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+        editable: t.customValidator(t.any(), (p) => p.nodeType === Node.ELEMENT_NODE),
+        direction: t.string().optional("ltr"),
+    });
     static components = { Dropdown, DropdownItem };
+
+    menuRef = signal.ref();
 
     setup() {
         this.editableDocument = this.props.editable.ownerDocument;
-        this.menuRef = useRef("menuRef");
         const onPointerDown = (ev) => this.onPointerDown(ev);
         onMounted(() => {
-            this.overlayEl = this.menuRef.el;
+            this.overlayEl = this.menuRef();
             this.overlayEl.addEventListener("pointerdown", onPointerDown);
         });
         onWillUnmount(() => {
-            this.menuRef?.el.removeEventListener("pointerdown", onPointerDown);
+            this.menuRef()?.removeEventListener("pointerdown", onPointerDown);
         });
-        useCrossDocumentListener(this.props.document, "pointerup", this.onPointerUp);
+        useCrossDocumentListener(this.props.document, "pointerup", this.onPointerUp.bind(this));
         useLayoutEffect(
             () => {
                 const { type, target } = this.props;
                 this.tableGrid = this.props.buildTableGrid(closestElement(target, "table"));
+                const rowIndex = getRowIndex(target.parentElement);
+                const colIndex = this.tableGrid[rowIndex].indexOf(target);
+                this.anchorCell =
+                    type === "column" ? this.tableGrid[0][colIndex] : this.tableGrid[rowIndex][0];
                 if (type === "column") {
-                    this.isFirst = target.cellIndex === 0;
-                    this.isLast = !target.nextElementSibling;
+                    this.isFirst = this.anchorCell.cellIndex === 0;
+                    this.isLast = !this.anchorCell.nextElementSibling;
                 } else {
-                    const tr = target.parentElement;
+                    const tr = this.anchorCell.parentElement;
                     this.isFirst = !tr.previousElementSibling;
                     this.isLast = !tr.nextElementSibling;
                     this.isTableHeader = [...tr.children][0].nodeName === "TH";
@@ -72,10 +77,10 @@ export class TableMenu extends Component {
             () => [this.props.target]
         );
         if (this.props.document.defaultView.frameElement) {
-            useExternalListener(this.props.document, "scroll", () => {
+            useListener(this.props.document, "scroll", () => {
                 this.updatePosition();
             });
-            useExternalListener(this.props.document, "pointerdown", (ev) => {
+            useListener(this.props.document, "pointerdown", (ev) => {
                 if (!this.overlayEl.contains(ev.target)) {
                     this.props.close();
                 }
@@ -84,33 +89,35 @@ export class TableMenu extends Component {
     }
 
     get hasCustomTableSize() {
-        const table = closestElement(this.props.target, "table");
+        const table = closestElement(this.anchorCell, "table");
         if (!table) {
             return false;
         }
-        const rows = [...table.rows];
-        const rowHasHeight = rows.some((row) => row.style.height);
-        const colgroup = table.querySelector("colgroup");
-        return rowHasHeight || colgroup;
+        const rowHasHeight = [...table.rows].some((row) => row.style.height);
+        const colHasWidth = [...table.querySelectorAll("colgroup col")].some(
+            (col) => col.style.width
+        );
+        return rowHasHeight || colHasWidth;
     }
 
     get hasCustomRowHeight() {
-        return !!closestElement(this.props.target, "tr")?.style.height;
+        return !!closestElement(this.anchorCell, "tr")?.style.height;
     }
 
     get hasCustomColumnWidth() {
-        const table = closestElement(this.props.target, "table");
-        const index = this.tableGrid[0].indexOf(closestElement(this.props.target, isTableCell));
+        const table = closestElement(this.anchorCell, "table");
+        const index = this.tableGrid[0].indexOf(this.anchorCell);
         const colgroup = table.querySelector("colgroup");
-        if (colgroup) {
-            return colgroup.children[index]?.style.width;
+        if (!colgroup) {
+            return false;
         }
-        return false;
+        const targetCols = [...colgroup.children].slice(index, index + this.anchorCell.colSpan);
+        return targetCols.some((col) => col.style.width);
     }
 
     get hasContent() {
         const baseContainerSelector = getBaseContainerSelector();
-        const cell = this.props.target;
+        const cell = this.anchorCell;
         const colIndex = this.tableGrid[0].indexOf(cell);
         const targetCells =
             this.props.type === "row"
@@ -127,11 +134,11 @@ export class TableMenu extends Component {
     }
 
     updatePosition() {
-        const { target, type, direction } = this.props;
-        if (!this.overlayEl || !target) {
+        const { type, direction } = this.props;
+        if (!this.overlayEl || !this.anchorCell) {
             return;
         }
-        const targetRect = getIframeAdjustedBoundingRect(target);
+        const targetRect = getIframeAdjustedBoundingRect(this.anchorCell);
         const container = this.overlayEl.parentElement;
         const containerRect = container.getBoundingClientRect();
         const top = targetRect.top - containerRect.top;
@@ -156,12 +163,13 @@ export class TableMenu extends Component {
         }
     }
     onSelected(item) {
-        item.action(this.props.target);
+        item.action(this.anchorCell);
+        this.props.commit();
         this.props.close();
     }
 
     onPointerDown(ev) {
-        const target = this.props.target;
+        const target = this.anchorCell;
         let hasMergedSpan = false;
         if (this.props.type === "column") {
             const colIndex = this.tableGrid[0].indexOf(target);
@@ -188,6 +196,7 @@ export class TableMenu extends Component {
                     close: () => this.props.tableDragDropOverlay.close(),
                     moveRow: this.props.moveRow,
                     moveColumn: this.props.moveColumn,
+                    commit: this.props.commit,
                     tableGrid: this.tableGrid,
                 },
             });
@@ -201,7 +210,7 @@ export class TableMenu extends Component {
     }
 
     isCurrentOrAdjacentCellRowSpanned(position) {
-        const td = this.props.target;
+        const td = this.anchorCell;
         const tr = closestElement(td, "tr");
         const rowIndex = getRowIndex(tr);
         const adjacentRowIndex = position === "move_down" ? rowIndex + 1 : rowIndex - 1;
@@ -212,7 +221,7 @@ export class TableMenu extends Component {
     }
 
     isCurrentOrAdjacentCellColSpanned(position) {
-        const targetCell = this.props.target;
+        const targetCell = this.anchorCell;
         const columnIndex = this.tableGrid[0].indexOf(targetCell);
         const adjacentIndex = position === "move_right" ? columnIndex + 1 : columnIndex - 1;
         return this.tableGrid.some(
@@ -225,12 +234,13 @@ export class TableMenu extends Component {
         const { canMerge, canUnmerge, cells, spanType } = getSelectedCellsMergeInfo(
             this.editableDocument,
             this.tableGrid,
-            this.props.target
+            this.anchorCell
         );
         return [
             !this.isFirst && {
                 name: "move_left",
-                icon: "fa-chevron-left disabled",
+                icon: "chevron_left",
+                iconClass: "disabled",
                 text: ltr ? _t("Move left") : _t("Move right"),
                 action: (target) =>
                     this.props.moveColumn(this.tableGrid[0].indexOf(target) - 1, target),
@@ -239,7 +249,7 @@ export class TableMenu extends Component {
             },
             !this.isLast && {
                 name: "move_right",
-                icon: "fa-chevron-right",
+                icon: "chevron_right",
                 text: ltr ? _t("Move right") : _t("Move left"),
                 action: (target) =>
                     this.props.moveColumn(this.tableGrid[0].indexOf(target) + 1, target),
@@ -248,44 +258,70 @@ export class TableMenu extends Component {
             },
             {
                 name: "insert_left",
-                icon: "fa-plus",
+                icon: "add",
                 text: ltr ? _t("Insert left") : _t("Insert right"),
                 action: this.props.addColumn.bind(this, "before"),
             },
             {
                 name: "insert_right",
-                icon: "fa-plus",
+                icon: "add",
                 text: ltr ? _t("Insert right") : _t("Insert left"),
                 action: this.props.addColumn.bind(this, "after"),
             },
             {
                 name: "delete",
-                icon: "fa-trash",
+                icon: "delete",
+                iconClass: "oi-filled",
                 text: _t("Delete"),
                 action: this.props.removeColumn.bind(this),
             },
-            this.hasCustomColumnWidth && {
-                name: "reset_column_size",
-                icon: "fa-table",
-                text: _t("Reset column size"),
-                action: (target) =>
-                    this.props.resetColumnWidth(closestElement(target, isTableCell)),
-            },
-            this.hasCustomTableSize && {
-                name: "reset_table_size",
-                icon: "fa-table",
-                text: _t("Reset table size"),
-                action: (target) => this.props.resetTableSize(closestElement(target, "table")),
-            },
+            this.props.resetColumnWidth &&
+                this.hasCustomColumnWidth && {
+                    name: "reset_column_size",
+                    icon: "table_chart",
+                    text: _t("Reset column size"),
+                    action: (target) => {
+                        const cell = closestElement(target, isTableCell);
+                        const table = closestElement(cell, "table");
+                        const colgroup = table.querySelector("colgroup");
+                        if (!colgroup) {
+                            return;
+                        }
+                        const colIndex = this.tableGrid[0].indexOf(cell);
+                        const targetCols = [...colgroup.children].slice(
+                            colIndex,
+                            colIndex + cell.colSpan
+                        );
+                        const layoutContainer = closestElement(cell, "table");
+                        targetCols.forEach((col) => {
+                            this.props.resetColumnWidth(col, {
+                                layoutContainer,
+                                hasProxyElements: true,
+                            });
+                        });
+                    },
+                },
+            this.props.resetSize &&
+                this.hasCustomTableSize && {
+                    name: "reset_table_size",
+                    icon: "table_chart",
+                    text: _t("Reset table size"),
+                    action: (target) =>
+                        this.props.resetSize(closestElement(target, "table"), {
+                            proxyElementSelector: "colgroup",
+                            heightElementsSelector: "tr",
+                        }),
+                },
             this.hasContent && {
                 name: "clear_content",
-                icon: "fa-times-circle",
+                icon: "cancel",
+                iconClass: "oi-filled",
                 text: _t("Clear content"),
                 action: this.props.clearColumnContent.bind(this),
             },
             cells.length > 1 && {
                 name: "merge_cell",
-                icon: "fa fa-compress",
+                icon: "close_fullscreen",
                 text: _t("Merge Cells"),
                 disable: !canMerge,
                 tooltip: _t("Only rows or cells selection can be merged"),
@@ -293,7 +329,7 @@ export class TableMenu extends Component {
             },
             canUnmerge && {
                 name: "unmerge_cell",
-                icon: "fa fa-compress",
+                icon: "close_fullscreen",
                 text: _t("Unmerge Cells"),
                 action: this.props.unmergeSelectedCell.bind(this),
             },
@@ -301,31 +337,31 @@ export class TableMenu extends Component {
     }
 
     rowItems() {
-        const table = closestElement(this.props.target, "table");
+        const table = closestElement(this.anchorCell, "table");
         const hasAlternatingRowClass = table.classList.contains("o_alternating_rows");
         const { canMerge, canUnmerge, cells, spanType } = getSelectedCellsMergeInfo(
             this.editableDocument,
             this.tableGrid,
-            this.props.target
+            this.anchorCell
         );
         return [
             this.isFirst &&
                 !this.isTableHeader && {
                     name: "make_header",
-                    icon: "fa-th-large",
+                    icon: "view_module",
                     text: _t("Turn into header"),
                     action: (target) => this.props.turnIntoHeader(target.parentElement),
                 },
             this.isFirst &&
                 this.isTableHeader && {
                     name: "remove_header",
-                    icon: "fa-table",
+                    icon: "table_chart",
                     text: _t("Turn into row"),
                     action: (target) => this.props.turnIntoRow(target.parentElement),
                 },
             !this.isFirst && {
                 name: "move_up",
-                icon: "fa-chevron-up",
+                icon: "expand_less",
                 text: _t("Move up"),
                 action: (target) =>
                     this.props.moveRow(getRowIndex(target) - 1, target.parentElement),
@@ -334,7 +370,7 @@ export class TableMenu extends Component {
             },
             !this.isLast && {
                 name: "move_down",
-                icon: "fa-chevron-down",
+                icon: "expand_more",
                 text: _t("Move down"),
                 action: (target) =>
                     this.props.moveRow(getRowIndex(target) + 1, target.parentElement),
@@ -343,19 +379,19 @@ export class TableMenu extends Component {
             },
             !this.isTableHeader && {
                 name: "insert_above",
-                icon: "fa-plus",
+                icon: "add",
                 text: _t("Insert above"),
                 action: (target) => this.props.addRow("before", target.parentElement),
             },
             {
                 name: "insert_below",
-                icon: "fa-plus",
+                icon: "add",
                 text: _t("Insert below"),
                 action: (target) => this.props.addRow("after", target.parentElement),
             },
             {
                 name: "toggle_alternating_rows",
-                icon: "fa-paint-brush",
+                icon: "colors",
                 text: hasAlternatingRowClass
                     ? _t("Clear alternate colors")
                     : _t("Alternate row colors"),
@@ -363,31 +399,43 @@ export class TableMenu extends Component {
             },
             {
                 name: "delete",
-                icon: "fa-trash",
+                icon: "delete",
+                iconClass: "oi-filled",
                 text: _t("Delete"),
                 action: (target) => this.props.removeRow(target.parentElement),
             },
-            this.hasCustomRowHeight && {
-                name: "reset_row_size",
-                icon: "fa-table",
-                text: _t("Reset row size"),
-                action: (target) => this.props.resetRowHeight(closestElement(target, "tr")),
-            },
-            this.hasCustomTableSize && {
-                name: "reset_table_size",
-                icon: "fa-table",
-                text: _t("Reset table size"),
-                action: (target) => this.props.resetTableSize(closestElement(target, "table")),
-            },
+            this.props.resetRowHeight &&
+                this.hasCustomRowHeight && {
+                    name: "reset_row_size",
+                    icon: "table_chart",
+                    text: _t("Reset row size"),
+                    action: (target) =>
+                        this.props.resetRowHeight(closestElement(target, "tr"), {
+                            layoutContainer: closestElement(target, "table"),
+                            elementsSelector: "tr",
+                        }),
+                },
+            this.props.resetSize &&
+                this.hasCustomTableSize && {
+                    name: "reset_table_size",
+                    icon: "table_chart",
+                    text: _t("Reset table size"),
+                    action: (target) =>
+                        this.props.resetSize(closestElement(target, "table"), {
+                            proxyElementSelector: "colgroup",
+                            heightElementsSelector: "tr",
+                        }),
+                },
             this.hasContent && {
                 name: "clear_content",
-                icon: "fa-times-circle",
+                icon: "cancel",
+                iconClass: "oi-filled",
                 text: _t("Clear content"),
                 action: (target) => this.props.clearRowContent(target.parentElement),
             },
             cells.length > 1 && {
                 name: "merge_cell",
-                icon: "fa fa-compress",
+                icon: "close_fullscreen",
                 text: _t("Merge Cells"),
                 disable: !canMerge,
                 tooltip: _t("Only rows or cells selection can be merged"),
@@ -395,7 +443,7 @@ export class TableMenu extends Component {
             },
             canUnmerge && {
                 name: "unmerge_cell",
-                icon: "fa fa-compress",
+                icon: "close_fullscreen",
                 text: _t("Unmerge Cells"),
                 action: this.props.unmergeSelectedCell.bind(this),
             },

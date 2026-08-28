@@ -33,10 +33,10 @@
                     <sheet>
                         <div name="button_box" class="oe_button_box">
                             <button class="oe_stat_button" type="action"
-                                    name="%(action_account_moves_all_a)d" icon="fa-book"
+                                    name="%(action_account_moves_all_a)d" icon="book"
                                     context="{'search_default_journal_id':id}">
                                     <div class="o_stat_info">
-                                        <span class="o_stat_text">Journal Entries</span>
+                                        <span class="o_stat_text">Journal Items</span>
                                     </div>
                             </button>
                         </div>
@@ -158,7 +158,7 @@
                                     <field name="selected_payment_method_codes" invisible="1"/>
                                     <group name="outgoing_payment" />
                             </page>
-                            <page name="advanced_settings" string="Advanced Settings" invisible="type in ['bank', 'cash']">
+                            <page name="advanced_settings" string="Advanced Settings">
                                 <group>
                                     <group string="Automation" groups="account.group_account_manager">
                                         <field name="restrict_mode_hash_table" groups="account.group_account_readonly" invisible="type not in ['sale', 'purchase', 'general']"
@@ -166,15 +166,20 @@
                                         <field name="is_self_billing" invisible="type != 'purchase'"/>
                                     </group>
                                     <group string="Emails" name="group_email_alias"
-                                           invisible="type not in ('general', 'sale', 'purchase')">
+                                           invisible="type not in ('general', 'sale', 'purchase', 'cash', 'credit', 'bank')">
                                         <field name="display_alias_fields" invisible="1"/>
                                         <div class="o_row" colspan="2" invisible="display_alias_fields">
                                             <a type='action' name='%(action_open_settings)d' class="btn btn-link" role="button">
-                                                <i class="oi oi-fw o_button_icon oi-arrow-right"/> Configure Alias Domain
+                                                <i class="o_button_icon oi me-2" data-icon="east"/> Configure Alias Domain
                                             </a>
                                         </div>
-                                        <div class="o_row" colspan="2" dir="ltr" invisible="not display_alias_fields">
-                                            <label string="Email Alias" for="alias_name" class="fw-medium"/>
+                                        <div colspan="2" invisible="not display_alias_fields or type not in ('bank', 'cash', 'credit')">
+                                            <p class="text-muted mb-2">
+                                                CSV, XLS and XLSX files cannot be imported automatically.
+                                            </p>
+                                        </div>
+                                        <label string="Email Alias" for="alias_name" class="fw-medium" invisible="not display_alias_fields"/>
+                                        <div class="o_row" dir="ltr" invisible="not display_alias_fields">
                                             <field name="alias_name" placeholder="alias" class="o_field_highlight"/>@
                                             <field name="alias_domain_id" placeholder="e.g. mycompany.com" options="{'no_create': True, 'no_open': True}" class="o_field_highlight"/>
                                             <div class="w-25">
@@ -191,6 +196,9 @@
                                     <group string="Payment Communications" invisible="type != 'sale'">
                                         <field name="invoice_reference_type"/>
                                         <field name="invoice_reference_model" invisible="invoice_reference_type == 'none'"/>
+                                    </group>
+                                    <group string="Dashboard" groups="base.group_no_one" invisible="type not in ('sale', 'purchase')">
+                                        <field name="disable_dashboard_graph"/>
                                     </group>
                                 </group>
                             </page>

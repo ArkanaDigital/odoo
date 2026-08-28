@@ -54,7 +54,7 @@ class TestChannelRTC(MailCommon, HttpCase):
             cls.env["discuss.channel"]
             .with_user(cls.user_employee)
             ._create_group(
-                partners_to=(cls.user_employee.partner_id + cls.test_user.partner_id).ids,
+                users_to=cls.user_employee + cls.test_user,
                 name="A group with user_employee, test_user and guest inside",
             )
         )
@@ -70,7 +70,7 @@ class TestChannelRTC(MailCommon, HttpCase):
             cls.env["discuss.channel"]
             .with_user(cls.user_employee)
             ._create_group(
-                partners_to=cls.user_employee.partner_id.ids,
+                users_to=cls.user_employee,
                 name="A group with only user_employee inside",
             )
         )
@@ -128,6 +128,8 @@ class TestChannelRTC(MailCommon, HttpCase):
                         "discuss.channel.member": [
                             self._res_for_member(
                                 self.member_of_employee_in_channel_internal,
+                                message_unread_counter=0,
+                                message_unread_counter_bus_id=0,
                                 new_message_separator=message.id + 1,
                             ),
                         ],
@@ -232,6 +234,8 @@ class TestChannelRTC(MailCommon, HttpCase):
                         "discuss.channel.member": [
                             self._res_for_member(
                                 self.member_of_employee_in_chat,
+                                message_unread_counter=0,
+                                message_unread_counter_bus_id=0,
                                 new_message_separator=message.id + 1,
                             ),
                         ],
@@ -372,6 +376,8 @@ class TestChannelRTC(MailCommon, HttpCase):
                         "discuss.channel.member": [
                             self._res_for_member(
                                 self.member_of_employee_in_group_a,
+                                message_unread_counter=0,
+                                message_unread_counter_bus_id=0,
                                 new_message_separator=message.id + 1,
                             ),
                         ],
@@ -1240,7 +1246,6 @@ class TestChannelRTC(MailCommon, HttpCase):
     def _res_for_user(self, user, internal=False):
         res = {
             "all_employee_ids": [],
-            "employee_ids": [],
             "should_display_in_call_im_status": False,
             "id": user.id,
             "partner_id": user.partner_id.id,

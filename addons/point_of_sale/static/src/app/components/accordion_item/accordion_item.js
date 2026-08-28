@@ -1,20 +1,17 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onMounted, proxy } from "@odoo/owl";
+import { useLayoutEffect } from "@web/owl2/utils";
+import { Component, onMounted, useProps, proxy, signal, t } from "@odoo/owl";
 
 export class AccordionItem extends Component {
     static template = "pos_hr.AccordionItem";
 
-    static props = {
-        disabled: { type: Boolean, optional: true },
-        slots: Object,
-    };
+    props = useProps({
+        disabled: t.boolean().optional(false),
+        slots: t.object(),
+    });
 
-    static defaultProps = {
-        disabled: false,
-    };
+    content = signal.ref();
 
     setup() {
-        this.content = useRef("content_container");
         this.state = proxy({
             open: false,
         });
@@ -37,7 +34,7 @@ export class AccordionItem extends Component {
     }
 
     calculateFullHeight() {
-        const children = Array.from(this.content.el.getElementsByClassName("accordion-content"));
+        const children = Array.from(this.content().getElementsByClassName("accordion-content"));
         const fullHeight = children.reduce(
             (accumulator, child) => accumulator + Math.min(this.getHiddenHeight(child), 100),
             0

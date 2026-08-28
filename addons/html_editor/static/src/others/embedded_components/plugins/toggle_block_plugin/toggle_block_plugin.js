@@ -64,7 +64,7 @@ export class ToggleBlockPlugin extends Plugin {
                 id: "insertToggleBlock",
                 title: _t("Toggle list"),
                 description: _t("Hide Text under foldable toggles"),
-                icon: "fa-caret-square-o-right",
+                icon: "chevron_forward",
                 isAvailable: (selection) =>
                     isHtmlContentSupported(selection) &&
                     !closestElement(selection.anchorNode, `${toggleSelector} ${titleSelector}`),
@@ -197,7 +197,8 @@ export class ToggleBlockPlugin extends Plugin {
             block.nextElementSibling ||
             leaf !== endContainer ||
             !isParagraphRelatedElement(block) ||
-            this.preventDeleteBackwardContentEnd
+            this.preventDeleteBackwardContentEnd ||
+            closestBlock(block.parentElement) !== content
         ) {
             return;
         }
@@ -597,6 +598,7 @@ export class ToggleBlockPlugin extends Plugin {
             const baseContainer = this.dependencies.baseContainer.createBaseContainer();
             emptyToggleNode.replaceChildren(baseContainer);
         }
+        return element;
     }
 
     renderToggleBlock(initialText) {

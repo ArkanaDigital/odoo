@@ -8,6 +8,14 @@ from odoo.addons.website_sale_stock.tests.common import WebsiteSaleStockCommon
 
 @tagged("post_install", "-at_install")
 class TestWebsiteSaleStockConfigurators(HttpCase, WebsiteSaleStockCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     def test_website_sale_stock_product_configurator(self):
         stock_attribute = self.env["product.attribute"].create({
             "name": "Stock",
@@ -35,7 +43,7 @@ class TestWebsiteSaleStockConfigurators(HttpCase, WebsiteSaleStockCommon):
             "allow_out_of_stock_order": False,
             "optional_product_ids": [Command.set(optional_product.ids)],
         })
-        self.env["stock.quant"].create([
+        self.env["stock.quant"].sudo().create([
             {
                 "product_id": optional_product.product_variant_ids[1].id,
                 "location_id": self.warehouse.lot_stock_id.id,
@@ -51,7 +59,7 @@ class TestWebsiteSaleStockConfigurators(HttpCase, WebsiteSaleStockCommon):
 
     def test_website_sale_stock_combo_configurator(self):
         product = self._create_product(name="Test product")
-        self.env["stock.quant"].create({
+        self.env["stock.quant"].sudo().create({
             "product_id": product.id,
             "location_id": self.warehouse.lot_stock_id.id,
             "quantity": 2,

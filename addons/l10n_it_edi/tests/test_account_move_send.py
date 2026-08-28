@@ -1,7 +1,10 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
+import base64
 from unittest.mock import patch
 
+from odoo import Command
 from odoo.tests import tagged
+from odoo.tools import BinaryBytes
 from odoo.addons.account.tests.test_account_move_send import TestAccountMoveSendCommon
 from odoo.addons.account_edi_proxy_client.models.account_edi_proxy_user import AccountEdiProxyError
 from odoo.addons.l10n_it_edi.tests.common import TestItEdi
@@ -9,6 +12,8 @@ from odoo.addons.l10n_it_edi.tests.common import TestItEdi
 
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestItAccountMoveSend(TestItEdi, TestAccountMoveSendCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     def _create_invoice_it(self, **invoice_args):
         invoice_args.setdefault('name', 'test line')
@@ -38,7 +43,7 @@ class TestItAccountMoveSend(TestItEdi, TestAccountMoveSendCommon):
 
         def _get_default_extra_edis(self, move):
             # in batch sending we use default settings, which is to use italian gov edi, bypass it
-            return {}
+            return []
 
         with patch(
                 'odoo.addons.account.models.account_move_send.AccountMoveSend._get_default_extra_edis',
@@ -64,7 +69,7 @@ class TestItAccountMoveSend(TestItEdi, TestAccountMoveSendCommon):
 
         def _get_default_extra_edis(self, move):
             # in batch sending we use default settings, which is to use italian gov edi, bypass it
-            return {}
+            return []
 
         with patch(
                 'odoo.addons.account.models.account_move_send.AccountMoveSend._get_default_extra_edis',
@@ -317,3 +322,115 @@ class TestItAccountMoveSend(TestItEdi, TestAccountMoveSendCommon):
         invoice.action_post()
         self.generate_l10n_it_edi_send_attachments(invoice)
         self.assertTrue(invoice.l10n_it_edi_attachment_file)
+
+    def test_detach_invoice(self):
+        # Prepare an invoice
+        invoice = self._create_invoice_it()
+        self.italian_partner_a.with_company(invoice.company_id).invoice_edi_format = 'it_edi_xml'
+
+        def _get_default_extra_edis(self, move):
+            return []
+
+        # Fake sending to the EDI and reset to draft
+        with patch(
+            'odoo.addons.account.models.account_move_send.AccountMoveSend._get_default_extra_edis',
+            _get_default_extra_edis
+        ):
+            self.env['account.move.send']._generate_and_send_invoices(invoice)
+        attachments = self.env['ir.attachment'].search([
+            ('res_model', '=', 'account.move'),
+            ('res_field', '=', 'l10n_it_edi_attachment_file'),
+            ('res_id', 'in', invoice.ids),
+        ])
+        invoice.button_draft()
+
+        self.assertFalse(invoice.l10n_it_edi_attachment_name)
+        self.assertTrue('detached' in attachments.name.lower())
+
+    def test_detach_bill_fails(self):
+        # Fake an exported bill by manually attaching its export
+        values = {
+            'invoice_date': '2022-03-24',
+            'invoice_date_due': '2022-03-24',
+            'partner_id': self.italian_partner_a.id,
+            'invoice_line_ids': [
+                Command.create({
+                    'name': "Product A",
+                    'price_unit': 800.40,
+                    'tax_ids': [(6, 0, self.default_tax.ids)],
+                })
+            ],
+        }
+        bill = self.env['account.move'].with_company(self.company).create({'move_type': 'in_invoice', **values})
+
+        # Post it, add an attachment, revert to draft
+        bill.action_post()
+        bill.l10n_it_edi_attachment_file = BinaryBytes(base64.b64encode(bill._l10n_it_edi_render_xml()))
+        bill.l10n_it_edi_attachment_name = "IT1234567890_10001.xml"
+        attachments = self.env['ir.attachment'].search([
+            ('res_model', '=', 'account.move'),
+            ('res_field', '=', 'l10n_it_edi_attachment_file'),
+            ('res_id', 'in', bill.ids),
+        ])
+        bill.button_draft()
+
+        self.assertEqual(bill.l10n_it_edi_attachment_name, "IT1234567890_10001.xml")
+        self.assertFalse('detached' in attachments.name.lower())
+
+    def test_detach_reverse_charged_bill(self):
+        # Create a reverse charged tax
+        purchase_rc_tax = self.env['account.tax'].with_company(self.company).create({
+            'name': 'Tax 4% (Goods) Reverse Charge',
+            'amount': 4.0,
+            'amount_type': 'percent',
+            'type_tax_use': 'purchase',
+            'invoice_repartition_line_ids': self.repartition_lines(
+                self.RepartitionLine(100, 'base', ('03', 'vj9')),
+                self.RepartitionLine(100, 'tax', ('5v',)),
+                self.RepartitionLine(-100, 'tax', ('4v',))),
+            'refund_repartition_line_ids': self.repartition_lines(
+                self.RepartitionLine(100, 'base', ('03', 'vj9')),
+                self.RepartitionLine(100, 'tax', False),
+                self.RepartitionLine(-100, 'tax', False)),
+        })
+
+        # Create a reverse charged bill
+        bill = self.env['account.move'].with_company(self.company).create({
+            'move_type': 'in_invoice',
+            'invoice_date': '2022-03-24',
+            'invoice_date_due': '2022-03-24',
+            'partner_id': self.american_partner.id,
+            'invoice_line_ids': [
+                Command.create({
+                    'name': "Product A",
+                    'price_unit': 800.40,
+                    'tax_ids': [Command.set(purchase_rc_tax.ids)],
+                })
+            ],
+        })
+
+        # Post it, add an attachment, revert to draft
+        bill.with_company(self.company).action_post()
+        bill.l10n_it_edi_attachment_file = BinaryBytes(base64.b64encode(bill._l10n_it_edi_render_xml()))
+        attachments = self.env['ir.attachment'].search([
+            ('res_model', '=', 'account.move'),
+            ('res_field', '=', 'l10n_it_edi_attachment_file'),
+            ('res_id', 'in', bill.ids),
+        ])
+        bill.with_company(self.company).button_draft()
+        attachments.invalidate_recordset(fnames=['name'])
+
+        self.assertFalse(bill.l10n_it_edi_attachment_name)
+        self.assertTrue('detached' in attachments.name.lower())
+
+    def test_invoice_send_email_then_sdi(self):
+        invoice = self._create_invoice_it(partner_id=self.partner_a.id)
+        invoice.partner_id.with_company(invoice.company_id).invoice_edi_format = False
+
+        settings_email = {'sending_methods': ['email'], 'extra_edis': list()}
+        self.env['account.move.send']._generate_and_send_invoices(invoice, **settings_email)
+        self.assertTrue(invoice.invoice_pdf_report_id)
+        self.assertFalse(invoice.l10n_it_edi_attachment_file)
+
+        wizard = self.env['account.move.send.wizard'].create({'move_id': invoice.id})
+        self.assertIn('l10n_it_edi_pdf_already_generated', wizard.alerts)

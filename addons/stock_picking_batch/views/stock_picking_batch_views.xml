@@ -99,11 +99,11 @@
                     <button name="action_confirm" invisible="state != 'draft'" string="Confirm" type="object" class="oe_highlight" data-hotkey="q"/>
                     <button name="action_done" string="Validate" type="object" class="oe_highlight"
                         invisible="not picking_ids or state != 'in_progress' or show_check_availability" data-hotkey="v"/>
-                    <button name="action_assign" string="Check Availability" type="object" class="oe_highlight"
+                    <button name="action_assign" string="Reserve" type="object" class="oe_highlight"
                         invisible="state != 'in_progress' or not show_check_availability" data-hotkey="w"/>
                     <button name="action_done" string="Validate" type="object"
                         invisible="not picking_ids or state != 'in_progress' or not show_check_availability" data-hotkey="v"/>
-                    <button name="action_assign" string="Check Availability" type="object"
+                    <button name="action_assign" string="Reserve" type="object"
                         invisible="state != 'draft' or not show_check_availability" data-hotkey="w"/>
                     <button name="action_print" invisible="state not in ('in_progress', 'done')" string="Print" type="object" data-hotkey="o"/>
                     <button string="Print Labels" type="object" name="action_open_label_layout" data-hotkey="shift+o"/>
@@ -113,7 +113,7 @@
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <button name="action_see_packages" string="Packages" type="object"
-                            class="oe_stat_button" icon="fa-cubes"
+                            class="oe_stat_button" icon="inventory_2"
                             groups="stock.group_tracking_lot">
                             <div class="o_stat_info">
                                 <span class="o_stat_text">Packages</span>
@@ -121,17 +121,16 @@
                         </button>
                         <button name="action_batch_detailed_operations"
                                 class="oe_stat_button"
-                                icon="fa-bars"
+                                icon="menu"
                                 type="object"
                                 help="List view of detailed operations">
                                 <div class="o_form_field o_stat_info">
                                     <span class="o_stat_text">Moves</span>
                                 </div>
                         </button>
-                        <button name="action_view_reception_report" string="Allocation" type="object"
-                            class="oe_stat_button" icon="fa-list"
-                            invisible="not show_allocation"
-                            groups="stock.group_reception_report"/>
+                        <button name="action_view_allocation_report" string="Allocation" type="object"
+                            class="oe_stat_button" icon="format_list_bulleted"
+                            invisible="not show_allocation"/>
                     </div>
                     <div class="oe_title">
                         <h1 class="o_outlined d-flex align-items-center gap-2">
@@ -186,11 +185,11 @@
         </field>
     </record>
 
-    <record id="stock_picking_batch_kanban" model="ir.ui.view">
-        <field name="name">stock.picking.batch.kanban</field>
+    <record id="stock_picking_batch_card" model="ir.ui.view">
+        <field name="name">stock.picking.batch.card</field>
         <field name="model">stock.picking.batch</field>
         <field name="arch" type="xml">
-            <kanban class="o_kanban_mobile oe_stock_picking_batch" sample="1">
+            <card>
                 <field name="company_id"/>
                 <field name="picking_ids"/>
                 <templates>
@@ -204,7 +203,7 @@
                             <field name="description"/>
                         </div>
                         <div t-if="record.scheduled_date.raw_value">
-                            <i class="fa fa-calendar text-primary me-2" title="Calendar"/>
+                            <i class="oi oi-filled text-primary me-2" data-icon="calendar_today" title="Calendar"/>
                             <field name="scheduled_date"/>
                         </div>
                         <footer class="mt-auto">
@@ -222,7 +221,15 @@
                         </footer>
                     </t>
                 </templates>
-            </kanban>
+            </card>
+        </field>
+    </record>
+
+    <record id="stock_picking_batch_kanban" model="ir.ui.view">
+        <field name="name">stock.picking.batch.kanban</field>
+        <field name="model">stock.picking.batch</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile oe_stock_picking_batch" sample="1" card_id="%(stock_picking_batch.stock_picking_batch_card)d"/>
         </field>
     </record>
 

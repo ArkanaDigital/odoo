@@ -7,18 +7,13 @@ export function useDraggableScroll(scrollContainerRef, options = {}) {
     }
     const threshold = options.threshold ?? 5;
 
-    // Transitional: Owl 3 native refs are signals (element via calling the ref),
-    // while legacy refs expose `.el`. Resolve the element in one place so both work.
-    const getScrollEl = () =>
-        typeof scrollContainerRef === "function" ? scrollContainerRef() : scrollContainerRef?.el;
-
     let isDragging = false;
     let dragMoved = false;
     let startX;
     let scrollLeft;
     let shouldSuppressClick = false;
     const onMouseDown = (e) => {
-        const scrollEl = getScrollEl();
+        const scrollEl = scrollContainerRef();
         if (!scrollEl) {
             return;
         }
@@ -29,7 +24,7 @@ export function useDraggableScroll(scrollContainerRef, options = {}) {
     };
 
     const onMouseMove = (e) => {
-        const scrollEl = getScrollEl();
+        const scrollEl = scrollContainerRef();
 
         if (!isDragging || !scrollEl) {
             return;
@@ -65,7 +60,7 @@ export function useDraggableScroll(scrollContainerRef, options = {}) {
     };
 
     onMounted(() => {
-        const scrollEl = getScrollEl();
+        const scrollEl = scrollContainerRef();
         scrollEl?.addEventListener("mousedown", onMouseDown);
         scrollEl?.addEventListener("click", onClick, true);
         window.addEventListener("mousemove", onMouseMove);
@@ -73,7 +68,7 @@ export function useDraggableScroll(scrollContainerRef, options = {}) {
     });
 
     onWillUnmount(() => {
-        const scrollEl = getScrollEl();
+        const scrollEl = scrollContainerRef();
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
         scrollEl?.removeEventListener("mousedown", onMouseDown);

@@ -76,7 +76,14 @@ patch(SaleOrderLineOne2Many.prototype, {
         const orderLineValues = await this.orm.call(
             "sale.order.template",
             "prepare_section_template_order_lines",
-            [templateId, orderChanges, fieldsSpec]
+            [
+                templateId,
+                orderChanges,
+                this.props.record.data.fiscal_position_id.id,
+                this.props.record.data.company_id.id,
+                this.props.record.data.currency_id.id,
+                fieldsSpec,
+            ]
         );
 
         // Start from 10 if there are no existing lines
@@ -172,7 +179,7 @@ patch(SaleOrderLineOne2Many.prototype, {
 });
 
 patch(SaleOrderLineListRenderer, {
-    rowsTemplate: "sale_management.ListRenderer.Rows",
+    createRowTemplate: "sale_management.ListRenderer.CreateRow",
 });
 
 patch(SaleOrderLineListRenderer.prototype, {
@@ -257,7 +264,7 @@ patch(SaleOrderLineListRenderer.prototype, {
 
     getRowClass(record) {
         let rowClasses = super.getRowClass(record);
-        if (this.shouldCollapse(record, 'is_optional')) {
+        if (this.shouldCollapse(record, 'is_optional', true)) {
             rowClasses += ' text-primary';
         }
         return rowClasses;

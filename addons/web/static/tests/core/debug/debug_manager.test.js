@@ -8,15 +8,15 @@ import {
     queryText,
 } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import {
+    assignDialogTestEnv,
     clearRegistry,
     contains,
     defineModels,
     defineWebModels,
     fields,
     getService,
-    makeDialogMockEnv,
     models,
     mountWithCleanup,
     onRpc,
@@ -37,7 +37,7 @@ import { WebClient } from "@web/webclient/webclient";
 class DebugMenuParent extends Component {
     static template = xml`<DebugMenu/>`;
     static components = { DebugMenu };
-    static props = ["*"];
+    props = useProps();
     setup() {
         useOwnDebugContext({ categories: ["default", "custom"] });
     }
@@ -140,13 +140,12 @@ describe("DebugMenu", () => {
     });
 
     test("Don't display the DebugMenu if debug mode is disabled", async () => {
-        const env = await makeDialogMockEnv();
+        assignDialogTestEnv();
         await mountWithCleanup(ActionDialog, {
-            env,
             props: { close: () => {} },
         });
         expect(".o_dialog").toHaveCount(1);
-        expect(".o_dialog .o_debug_manager .fa-bug").toHaveCount(0);
+        expect(".o_dialog .o_debug_manager [data-icon='bug_report']").toHaveCount(0);
     });
 
     test("Display the DebugMenu correctly in a ActionDialog if debug mode is enabled", async () => {
@@ -184,13 +183,12 @@ describe("DebugMenu", () => {
             }
         }
         serverState.debug = "1";
-        const env = await makeDialogMockEnv();
+        assignDialogTestEnv();
         await mountWithCleanup(WithCustom, {
-            env,
             props: { close: () => {} },
         });
         expect(".o_dialog").toHaveCount(1);
-        expect(".o_dialog .o_debug_manager .fa-bug").toHaveCount(1);
+        expect(".o_dialog .o_debug_manager [data-icon='bug_report']").toHaveCount(1);
         await contains(".o_dialog .o_debug_manager button").click();
         expect(".dropdown-menu .dropdown-item").toHaveCount(2);
         // Check that global debugManager elements are not displayed (global_1)

@@ -232,7 +232,7 @@ patch(PosStore.prototype, {
                 }
                 acc[lot.lot_name].total += lot.pos_order_line_id?.qty || 0;
 
-                if (lot.pos_order_line_id?.order_id?.id === this.selectedOrder.id) {
+                if (lot.pos_order_line_id?.order_id?.id === this.getOrder().id) {
                     acc[lot.lot_name].currentOrderCount += lot.pos_order_line_id?.qty || 0;
                 }
                 return acc;
@@ -252,16 +252,31 @@ patch(PosStore.prototype, {
             return usedQty ? usedQty >= totalQty : false;
         };
 
-        const existingLotsName = existingLots.map((l) => l.name);
-        if (!packLotLinesToEdit.length && existingLotsName.length === 1) {
-            if (existingLots[0].expiration_date) {
-                this.showNotificationIfLotExpired(
-                    existingLots[0].name,
-                    existingLots[0].expiration_date
-                );
+        if (!packLotLinesToEdit.length) {
+            const removalStrategy = product.categ_id?.removal_strategy_id?.method;
+            if (existingLots.length === 1) {
+                if (existingLots[0].expiration_date) {
+                    this.showNotificationIfLotExpired(
+                        existingLots[0].name,
+                        existingLots[0].expiration_date
+                    );
+                }
+                // If there's only one existing lot/serial number, automatically assign it to the order line
+                return { newPackLotLines: [{ lot_name: existingLots[0].name }] };
+            } else if (removalStrategy && existingLots.length > 1) {
+                // Auto-select the appropriate lot for new order lines based on the product's
+                // FIFO, LIFO removal strategy.
+                switch (removalStrategy) {
+                    case "fifo":
+                        return {
+                            newPackLotLines: [{ lot_name: existingLots[0].name }],
+                        };
+                    case "lifo":
+                        return {
+                            newPackLotLines: [{ lot_name: existingLots.at(-1).name }],
+                        };
+                }
             }
-            // If there's only one existing lot/serial number, automatically assign it to the order line
-            return { newPackLotLines: [{ lot_name: existingLotsName[0] }] };
         }
         const payload = await makeAwaitable(this.dialog, SelectLotPopup, {
             title: _t("Lot/Serial number(s) required for"),

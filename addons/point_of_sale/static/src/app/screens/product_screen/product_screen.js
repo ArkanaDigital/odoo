@@ -1,4 +1,4 @@
-import { onWillRender, useRef } from "@web/owl2/utils";
+import { onWillRender } from "@web/owl2/utils";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { useTrackedAsync } from "@point_of_sale/app/hooks/hooks";
@@ -7,7 +7,18 @@ import { useBarcodeReader } from "@point_of_sale/app/hooks/barcode_reader_hook";
 import { _t } from "@web/core/l10n/translation";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { user } from "@web/core/user";
-import { Component, onMounted, onWillUnmount, computed, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillUnmount,
+    computed,
+    proxy,
+    useProps,
+    t,
+    signal,
+    usePlugin,
+} from "@odoo/owl";
+import { PosNumberBufferPlugin } from "@point_of_sale/app/plugins/pos_number_buffer_plugin";
 import { CategorySelector } from "@point_of_sale/app/components/category_selector/category_selector";
 import { Input } from "@point_of_sale/app/components/inputs/input/input";
 import {
@@ -47,22 +58,24 @@ export class ProductScreen extends Component {
         ProductCard,
         BarcodeVideoScanner,
     };
-    static props = {
-        orderUuid: { type: String },
-    };
+
+    props = useProps({
+        orderUuid: t.string(),
+    });
+
+    productsRootRef = signal.ref();
 
     setup() {
-        super.setup();
         this.pos = usePos();
         this.ui = useService("ui");
         this.dialog = useService("dialog");
         this.notification = useService("notification");
-        this.numberBuffer = useService("number_buffer");
+        this.numberBuffer = usePlugin(PosNumberBufferPlugin);
         this.state = proxy({
             quantityByProductTmplId: {},
         });
 
-        useRouterParamsChecker();
+        useRouterParamsChecker(this.constructor.name);
         onMounted(() => {
             this.currentOrder.deselectOrderline();
             this.pos.openOpeningControl();
@@ -98,13 +111,13 @@ export class ProductScreen extends Component {
         this.sound = useService("mail.sound_effects");
 
         useBarcodeReader({
-            product: this._barcodeProductAction,
-            quantity: this._barcodeProductAction,
-            weight: this._barcodeProductAction,
-            price: this._barcodeProductAction,
-            client: this._barcodePartnerAction,
-            discount: this._barcodeDiscountAction,
-            gs1: this._barcodeGS1Action,
+            product: this._barcodeProductAction.bind(this),
+            quantity: this._barcodeProductAction.bind(this),
+            weight: this._barcodeProductAction.bind(this),
+            price: this._barcodeProductAction.bind(this),
+            client: this._barcodePartnerAction.bind(this),
+            discount: this._barcodeDiscountAction.bind(this),
+            gs1: this._barcodeGS1Action.bind(this),
         });
 
         this.numberBuffer.use({
@@ -133,7 +146,7 @@ export class ProductScreen extends Component {
         });
 
         useSortable({
-            ref: useRef("productsRoot"),
+            ref: this.productsRootRef,
             elements: ".product-sortable",
             cursor: "move",
             tolerance: 10,
@@ -212,15 +225,25 @@ export class ProductScreen extends Component {
             "-": "o_colorlist_item_numpad_color_3",
         };
 
+        const order = this.currentOrder;
         const defaultLastRowValues =
             DEFAULT_LAST_ROW.map((button) => button.value) + [BACKSPACE.value];
 
         return getButtons(DEFAULT_LAST_ROW, [
-            { value: "quantity", text: _t("Qty") },
+            {
+                value: "quantity",
+                text: _t("Qty"),
+                disabled:
+                    order?.getSelectedOrderline()?.isServiceFeeLine() &&
+                    order?.preset_id?.service_fee_type === "percent",
+            },
             {
                 value: "discount",
                 text: _t("%"),
-                disabled: !this.pos.config.manual_discount || this.pos.cashier._role === "minimal",
+                disabled:
+                    !this.pos.config.manual_discount ||
+                    this.pos.cashier._role === "minimal" ||
+                    order?.getSelectedOrderline()?.isServiceFeeLine(),
             },
             {
                 value: "price",
@@ -234,7 +257,9 @@ export class ProductScreen extends Component {
             ...button,
             disabled:
                 button.disabled ||
-                (button.value === SWITCHSIGN.value && this.pos.cashier._role === "minimal"),
+                (button.value === SWITCHSIGN.value && this.pos.cashier._role === "minimal") ||
+                (order?.getSelectedOrderline()?.isServiceFeeLine() &&
+                    order?.preset_id?.service_fee_type === "percent"),
             class: `
                 ${defaultLastRowValues.includes(button.value) ? "" : ""}
                 ${colorClassMap[button.value] || ""}
@@ -252,7 +277,7 @@ export class ProductScreen extends Component {
             this.pos.numpadMode = buttonValue;
             return;
         }
-        if (this.pos.selectedOrder.isRefund && buttonValue !== "Backspace") {
+        if (this.pos.getOrder().isRefund && buttonValue !== "Backspace") {
             return this.dialog.add(AlertDialog, {
                 title: _t("%s update not allowed", this.pos.numpadMode),
                 body: _t("You can not change the %s of the refund order.", this.pos.numpadMode),
@@ -334,7 +359,6 @@ export class ProductScreen extends Component {
     }
     async _barcodeProductAction(code) {
         const product = await this._getProductByBarcode(code);
-
         if (!product) {
             this.sound.play("scan-error");
             this.barcodeReader.showNotFoundNotification(code);
@@ -346,13 +370,18 @@ export class ProductScreen extends Component {
             return;
         }
 
-        await this.pos.addLineToCurrentOrder(
+        const allocation = this.pos.autoCourseAllocation(product);
+        const line = await this.pos.addLineToCurrentOrder(
             { product_id: product, product_tmpl_id: product.product_tmpl_id },
             { code },
             product.needToConfigure()
         );
+        this.pos.cleanAutoCourseAllocation(line, allocation);
+
         this.numberBuffer.reset();
-        this.showOptionalProductPopupIfNeeded(product);
+        if (line) {
+            this.showOptionalProductPopupIfNeeded(product);
+        }
     }
     async _getPartnerByBarcode(code) {
         let partner = this.pos.models["res.partner"].getBy("barcode", code.code);
@@ -414,9 +443,15 @@ export class ProductScreen extends Component {
             vals.qty = qty.value;
         }
 
-        await this.pos.addLineToCurrentOrder(vals, { code: lotBarcode }, product.needToConfigure());
+        const line = await this.pos.addLineToCurrentOrder(
+            vals,
+            { code: lotBarcode },
+            product.needToConfigure()
+        );
         this.numberBuffer.reset();
-        this.showOptionalProductPopupIfNeeded(product);
+        if (line) {
+            this.showOptionalProductPopupIfNeeded(product);
+        }
     }
     displayAllControlPopup() {
         this.dialog.add(ControlButtonsPopup);
@@ -441,16 +476,21 @@ export class ProductScreen extends Component {
         }
         const options = {};
         if (this.searchWord && product.isConfigurable()) {
-            const barcode = this.searchWord;
+            const searchWord = this.searchWord;
             const searchedProduct = product.product_variant_ids.filter(
-                (p) => p.barcode && p.barcode.includes(barcode)
+                (p) =>
+                    (p.barcode && p.barcode.includes(searchWord)) ||
+                    (p.default_code &&
+                        p.default_code.toLowerCase().includes(searchWord.toLowerCase()))
             );
             if (searchedProduct.length === 1) {
                 options["presetVariant"] = searchedProduct[0];
             }
         }
         const line = await this.pos.addLineToCurrentOrder({ product_tmpl_id: product }, options);
-        this.showOptionalProductPopupIfNeeded(product);
+        if (line) {
+            this.showOptionalProductPopupIfNeeded(product);
+        }
 
         return line;
     }

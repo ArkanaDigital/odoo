@@ -1,30 +1,30 @@
-import { useLayoutEffect } from '@web/owl2/utils';
-import { Component, onMounted, onWillUnmount, proxy } from '@odoo/owl';
+import { Component, onMounted, onPatched, onWillUnmount, useProps, proxy, t } from '@odoo/owl';
 import { browser } from '@web/core/browser/browser';
 import { Dialog } from '@web/core/dialog/dialog';
 import { _t } from '@web/core/l10n/translation';
 import { rpc } from '@web/core/network/rpc';
+import { useService } from "@web/core/utils/hooks";
 import { useDebounced } from '@web/core/utils/timing';
 import { LocationList } from '@website_sale_stock/js/location_selector/location_list/location_list';
 import { MapContainer } from '@website_sale_stock/js/location_selector/map_container/map_container';
 
+export const locationSelectorDialogProps = {
+    isFrontend: t.boolean().optional(),
+    deliveryMethodId: t.number().optional(),
+    countryId: t.number().optional(),
+    zipCode: t.string(),
+    selectedLocationId: t.string().optional(),
+    save: t.function(),
+    close: t.function(), // This is the close from the env of the Dialog Component
+};
+
 export class LocationSelectorDialog extends Component {
     static components = { Dialog, LocationList, MapContainer };
     static template = 'website_sale_stock.locationSelector.dialog';
-    static props = {
-        isFrontend: { type: Boolean, optional: true },
-        deliveryMethodId: { type: Number, optional: true },
-        countryId: { type: Number, optional: true },
-        zipCode: String,
-        selectedLocationId: { type: String, optional: true },
-        save: Function,
-        close: Function, // This is the close from the env of the Dialog Component
-    };
-    static defaultProps = {
-        selectedLocationId: false,
-    };
+    props = useProps(locationSelectorDialogProps);
 
     setup() {
+        this.uiService = useService("ui");
         this.state = proxy({
             locations: [],
             error: false,
@@ -32,12 +32,12 @@ export class LocationSelectorDialog extends Component {
             zipCode: this.props.zipCode,
             // Some APIs like FedEx use strings to identify locations.
             selectedLocationId: String(this.props.selectedLocationId),
-            isSmall: this.env.isSmall,
+            isSmall: this.uiService.isSmall,
         });
 
         this.getLocationUrl = '/website_sale_stock/get_pickup_locations';
 
-        this.debouncedOnResize = useDebounced(this.updateSize, 300);
+        this.debouncedOnResize = useDebounced(this.updateSize.bind(this), 300);
         this.debouncedSearchButton = useDebounced(() => {
             this.state.locations = [];
             this._loadLocations();
@@ -50,15 +50,18 @@ export class LocationSelectorDialog extends Component {
         onWillUnmount(() => browser.removeEventListener('resize', this.debouncedOnResize));
 
         // Fetch new locations when the zip code is updated.
-        useLayoutEffect(
-            () => {
-                this._loadLocations()
-                return () => {
-                    this.state.locations = []
-                };
-            },
-            () => [this.state.zipCode]
-        );
+        let zipCode;
+        onMounted(() => {
+            zipCode = this.state.zipCode;
+            this._loadLocations();
+        });
+        onPatched(() => {
+            if (this.state.zipCode !== zipCode) {
+                zipCode = this.state.zipCode;
+                this.state.locations = [];
+                this._loadLocations();
+            }
+        });
     }
 
     get locations() { return this.state.locations; }
@@ -70,11 +73,12 @@ export class LocationSelectorDialog extends Component {
      * @return {Object} The result values.
      */
     _getLocationsParams() {
-        return {
-            zip_code: this.state.zipCode,
-            delivery_method_id: this.props.deliveryMethodId,
-            country_id: this.props.countryId,
-         };
+        const params = { zip_code: this.state.zipCode };
+        if (!this.props.isFrontend) { // The delivery method is fetched from the order for frontend
+            params.delivery_method_id = this.props.deliveryMethodId;
+            params.country_id = this.props.countryId;
+        }
+        return params;
     }
 
     //--------------------------------------------------------------------------
@@ -178,6 +182,6 @@ export class LocationSelectorDialog extends Component {
      * @return {void}
      */
     updateSize() {
-        this.state.isSmall = this.env.isSmall;
+        this.state.isSmall = this.uiService.isSmall;
     }
 }

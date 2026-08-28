@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import functools
 import logging
+import os.path
 import re
 import threading
 import typing
@@ -42,16 +43,16 @@ from odoo.tools.misc import submap
 
 from . import request, request_var
 from .dispatcher import HttpDispatcher, JsonRPCDispatcher, _dispatchers
-from .response import Response
-from .retrying import retrying
-from .routing_map import ROUTING_KEYS, _generate_routing_rules
-from .stream import STATIC_CACHE, Stream
 from .requestlib import (
     HTTPRequest,
     Request,
     is_cors_preflight,
 )
+from .response import Response
+from .retrying import retrying
+from .routing_map import ROUTING_KEYS, _generate_routing_rules
 from .session import SessionExpiredException, get_default_session, logout, session_store
+from .stream import STATIC_CACHE, Stream
 
 if typing.TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -185,7 +186,8 @@ class Application:
         the given ``host``.
         """
 
-        netloc, path = urlparse(url)[1:3]  # TODO: use urllib3
+        netloc, path = urlparse(url)[1:3]
+        path = os.path.normpath(os.path.normcase(path))
         try:
             path_netloc, module, static, resource = path.split('/', 3)
         except ValueError:
@@ -381,6 +383,8 @@ def serve_db(request: Request) -> Response:
             cr = registry.cursor(readonly=True)
             # check signaling
             request.env = Environment(cr, request.session.uid, request.session.context)
+            request.update_context(host_id=request.env['ir.http']._get_host_id_from_domain(request.httprequest.host))
+
             request.registry = request.env.registry
         except (AttributeError, psycopg2.OperationalError, psycopg2.ProgrammingError) as e:
             raise RegistryError(f"Cannot get registry {request.db}") from e
@@ -570,7 +574,7 @@ def _serve_ir_http_fallback(request: Request, not_found: NotFound) -> Response:
     provided a response, a generic 404 - Not Found page is returned.
     """
     request.params = request.get_http_params()
-    request.registry['ir.http']._auth_method_public()
+    request.registry['ir.http']._auth_method_public({})
     response = request.registry['ir.http']._serve_fallback()
     if response:
         request.registry['ir.http']._post_dispatch(response)

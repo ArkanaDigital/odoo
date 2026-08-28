@@ -10,7 +10,7 @@
             <div class="modal-dialog modal-lg d-flex">
                 <div class="modal-content oe_structure">
                     <button class="s_popup_close js_close_popup border-0 p-0 o_we_no_overlay o_not_editable shadow-none" aria-label="Close">×</button>
-                    <section class="s_text_image pt0 pb0" data-snippet="s_text_image" data-name="Box">
+                    <section class="s_text_image pt0 pb0" data-snippet="s_text_image">
                         <div class="container">
                             <div class="row align-items-center">
                                 <div class="col-lg-6 pt24 pb0">
@@ -19,9 +19,9 @@
                                 <div class="col-lg-6 pt24 pb24">
                                     <h2 class="h3-fs">Stay Ahead with weekly insights &amp; updates</h2>
                                     <p class="lead">Join our mailing list to receive carefully curated resources, tips, and updates straight to your inbox.</p>
-                                    <p><i class="fa fa-check text-o-color-1" role="img"/>  Curated Industry Insights</p>
-                                    <p><i class="fa fa-check text-o-color-1" role="img"/>  Expert Tips &amp; How-Tos</p>
-                                    <p><i class="fa fa-check text-o-color-1" role="img"/>  Guides &amp; Resources</p>
+                                    <p><i class="oi text-o-color-1" data-icon="check" role="img"/>  Curated Industry Insights</p>
+                                    <p><i class="oi text-o-color-1" data-icon="check" role="img"/>  Expert Tips &amp; How-Tos</p>
+                                    <p><i class="oi text-o-color-1" data-icon="check" role="img"/>  Guides &amp; Resources</p>
                                     <t t-set="thank_you_message">
                                         <p class="h6-fs text-success">Thanks for registering!</p>
                                     </t>

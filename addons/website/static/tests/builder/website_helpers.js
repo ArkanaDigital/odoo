@@ -24,7 +24,7 @@ import {
 } from "@web/../tests/web_test_helpers";
 import { loadBundle } from "@web/core/assets";
 import { isBrowserFirefox } from "@web/core/browser/feature_detection";
-import { registry } from "@web/core/registry";
+import { Registry, registry } from "@web/core/registry";
 import { uniqueId } from "@web/core/utils/functions";
 import { WebClient } from "@web/webclient/webclient";
 import { EditInteractionPlugin } from "@website/builder/plugins/edit_interaction_plugin";
@@ -38,12 +38,10 @@ import { WebsiteBuilder } from "@website/builder/website_builder";
 import { session } from "@web/session";
 import { getTranslatedElements } from "./translated_elements_getter.hoot";
 import { BackgroundShapeOptionPlugin } from "@html_builder/plugins/background_option/background_shape_option_plugin";
+import { _t, translatedTerms, translationLoaded } from "@web/core/l10n/translation";
 
 class Website extends models.Model {
     _name = "website";
-    get_current_website() {
-        return [1];
-    }
 }
 
 class IrUiView extends models.Model {
@@ -64,6 +62,7 @@ export function defineWebsiteModels({ includeMailModels = true } = {}) {
         defineMailModels();
     }
     defineModels([Website, IrUiView]);
+    onRpc("/website/get_current_website_id", () => 1);
     onRpc("/website/theme_customize_data_get", () => []);
     onRpc("website", "web_search_read", () => ({
         length: 1,
@@ -73,6 +72,7 @@ export function defineWebsiteModels({ includeMailModels = true } = {}) {
                 default_lang_id: {
                     code: "en_US",
                 },
+                company_id: 1,
             },
         ],
     }));
@@ -110,6 +110,7 @@ export async function setupWebsiteBuilder(
         openEditor = true,
         loadIframeBundles = false,
         loadAssetsFrontendJS = false,
+        loadIframeMinimalJS = false,
         hasToCreateWebsite = true,
         styleContent,
         headerContent = "",
@@ -117,10 +118,12 @@ export async function setupWebsiteBuilder(
         beforeWrapwrapContent = "",
         translateMode = false,
         enableIframeTransitions = false,
+        withIframeRegistry,
         onIframeLoaded = () => {},
         delayReload = async () => {},
     } = {}
 ) {
+    loadIframeMinimalJS ||= withIframeRegistry;
     // TODO: fix when the iframe is reloaded and become empty (e.g. discard button)
     if (hasToCreateWebsite) {
         const pyEnv = await startServer();
@@ -135,10 +138,10 @@ export async function setupWebsiteBuilder(
     let resolveIframeLoaded = async () => {};
     const bodyHTML = `${beforeWrapwrapContent}
         <div id="wrapwrap">${headerContent} <div id="wrap" class="oe_structure oe_empty" ${
-            translateMode
-                ? ""
-                : `data-oe-model="ir.ui.view" data-oe-id="${setupWebsiteBuilderOeId}" data-oe-field="arch"`
-        }>${websiteContent}</div> ${footerContent}</div>`;
+        translateMode
+            ? ""
+            : `data-oe-model="ir.ui.view" data-oe-id="${setupWebsiteBuilderOeId}" data-oe-field="arch"`
+    }>${websiteContent}</div> ${footerContent}</div>`;
     const iframeLoaded = new Promise((resolve) => {
         resolveIframeLoaded = async (el) => {
             const iframe = el;
@@ -195,16 +198,27 @@ export async function setupWebsiteBuilder(
         // with Hoot.
         preparePublicRootReady() {},
         async loadAssetsEditBundle() {
+            const { contentDocument: targetDoc, contentWindow } = queryOne(
+                "iframe[data-src^='/website/force/1']"
+            );
             // To instantiate interactions in the iframe test we need to load
             // the frontend bundle in it. The problem is that Hoot does not have
             // control of this iframe and therefore does not mock anything in it
             // (location, rpc, ...). So we don't load the js part of the bundle
-
             if (loadIframeBundles) {
-                await loadBundle("website.assets_inside_builder_iframe", {
-                    targetDoc: queryOne("iframe[data-src^='/website/force/1']").contentDocument,
-                    js: false,
-                });
+                await loadBundle("website.assets_inside_builder_iframe", { targetDoc, js: false });
+            }
+            if (loadIframeMinimalJS) {
+                // Load the builder's *.edit.xml, needed for some options
+                await loadBundle("website.assets_inside_builder_iframe_tests", { targetDoc });
+                // Reuse the translation in the iframe to avoid loading them
+                const translation = contentWindow.odoo.loader.require("@web/core/l10n/translation");
+                translation.translatedTerms[translation.translationLoaded] =
+                    translatedTerms[translationLoaded];
+
+                withIframeRegistry?.(
+                    contentWindow.odoo.loader.require("@web/core/registry").registry
+                );
             }
             await resolveEditAssetsLoaded();
         },
@@ -213,7 +227,7 @@ export async function setupWebsiteBuilder(
         },
         async reloadIframe() {
             await delayReload();
-            this.websiteContent.el.contentDocument.body.innerHTML = bodyHTML;
+            this.websiteContent().contentDocument.body.innerHTML = bodyHTML;
         },
     });
     patchWithCleanup(WebsiteSystrayItem.prototype, {
@@ -282,10 +296,12 @@ export async function setupWebsiteBuilder(
             return {};
         },
         getRegistry() {
-            return registry;
+            return loadIframeMinimalJS || loadAssetsFrontendJS
+                ? super.getRegistry()
+                : new Registry();
         },
-        _t() {
-            return (source, ...substitutions) => source;
+        get _t() {
+            return _t;
         },
     });
 
@@ -340,7 +356,12 @@ export async function setupWebsiteBuilder(
     return {
         getEditor: () => editor,
         getEditableContent: () => editableContent,
-        openBuilderSidebar: async () => await openBuilderSidebar(editAssetsLoaded),
+        openBuilderSidebar: async () => {
+            await openBuilderSidebar(editAssetsLoaded);
+            if (translateMode) {
+                iframe.contentDocument.documentElement.dataset.edit_translations = "1";
+            }
+        },
         waitSidebarUpdated,
     };
 }
@@ -410,7 +431,7 @@ export async function setupWebsiteBuilderWithDummySnippet(content) {
     const snippetsStructure = {
         snippets: {
             snippet_groups: [
-                '<div name="A" data-oe-thumbnail="a.svg" data-oe-snippet-id="123" data-o-snippet-group="a"><section data-snippet="s_snippet_group"></section></div>',
+                '<div name="A" data-oe-snippet-id="123" data-o-snippet-group="a"><section data-snippet="s_snippet_group"></section></div>',
             ],
             snippet_structure: snippetsDescription().map((snippetDesc) =>
                 getSnippetStructure(snippetDesc)
@@ -503,7 +524,7 @@ export async function setupSidebarBuilderForTranslation(options) {
     // on the "Edit" button of the systray. The goal of this hack is to avoid
     // the handling of an extra reload of the action to arrive in translate
     // mode.
-    patchWithCleanup(Builder.prototype, {
+    patchWithCleanup(WebsiteBuilder.prototype, {
         setup() {
             super.setup();
             this.env.services.website = websiteServiceInTranslateMode;
@@ -511,20 +532,18 @@ export async function setupSidebarBuilderForTranslation(options) {
             this.websiteContext = this.websiteService.context;
         },
     });
-    const { getEditor, getEditableContent, openBuilderSidebar } = await setupWebsiteBuilder(
-        websiteContent,
-        {
+    const { getEditor, getEditableContent, openBuilderSidebar, waitSidebarUpdated } =
+        await setupWebsiteBuilder(websiteContent, {
             openEditor: false,
             translateMode: true,
             onIframeLoaded: (iframe) => {
                 websiteServiceInTranslateMode.pageDocument = iframe.contentDocument;
             },
             loadIframeBundles,
-        }
-    );
+        });
     await getTranslatedElements();
     await openBuilderSidebar();
-    return { getEditor, getEditableContent };
+    return { getEditor, getEditableContent, waitSidebarUpdated };
 }
 
 export async function getStructureSnippet(snippetName) {

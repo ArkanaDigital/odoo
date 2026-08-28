@@ -25,9 +25,9 @@ import psycopg2.errorcodes  # noqa: F401
 import psycopg2.errors
 import psycopg2.extensions
 import psycopg2.extras
+from psycopg2 import sql as psql
 from psycopg2.extensions import ISOLATION_LEVEL_REPEATABLE_READ
 from psycopg2.pool import PoolError
-from psycopg2.sql import Composable
 from werkzeug import urls
 
 import odoo
@@ -45,6 +45,26 @@ if typing.TYPE_CHECKING:
     _CursorProtocol = psycopg2.extensions.cursor
 else:
     _CursorProtocol = object
+
+try:
+    from pygments import highlight
+    from pygments.formatters import TerminalFormatter
+    from pygments.lexers import PostgresLexer
+
+    def highlight_sql(sql_query: str) -> str:
+        """
+        Applies ANSI syntax highlighting to a SQL string for terminal output.
+
+        Enable it via the ~/.odoorc (-c/--config) configuration file::
+
+            [colors]
+            sql = auto
+        """
+        return highlight(sql_query, PostgresLexer(), TerminalFormatter()).strip()
+except ImportError:
+    def highlight_sql(sql_query: str) -> str:
+        warnings.warn("Pygments needs to be installed in order to highlight SQL")
+        return sql_query
 
 
 def undecimalize(value, cr) -> float | None:
@@ -86,7 +106,7 @@ def categorize_query(decoded_query: str) -> tuple[typing.Literal['from', 'into']
 
 sql_counter: int = 0
 
-MAX_IDLE_TIMEOUT = 60 * 10
+MAX_IDLE_TIMEOUT = int(os.getenv("ODOO_DB_MAX_IDLE_TIMEOUT", "600"))
 
 
 class Savepoint:
@@ -112,7 +132,7 @@ class Savepoint:
         self.name = str(uuid.uuid1())
         self._cr = cr
         self.closed: bool = False
-        cr.execute('SAVEPOINT "%s"' % self.name)
+        cr.execute(psql.SQL('SAVEPOINT {}').format(psql.Identifier(self.name)))
 
     def __enter__(self):
         return self
@@ -125,12 +145,12 @@ class Savepoint:
             self._close(rollback)
 
     def rollback(self):
-        self._cr.execute('ROLLBACK TO SAVEPOINT "%s"' % self.name)
+        self._cr.execute(psql.SQL('ROLLBACK TO SAVEPOINT {}').format(psql.Identifier(self.name)))
 
     def _close(self, rollback: bool):
         if rollback:
             self.rollback()
-        self._cr.execute('RELEASE SAVEPOINT "%s"' % self.name)
+        self._cr.execute(psql.SQL('RELEASE SAVEPOINT {}').format(psql.Identifier(self.name)))
         self.closed = True
 
 
@@ -363,15 +383,18 @@ class Cursor(_CursorProtocol):
 
     def _format(self, query, params=None) -> str:
         encoding = psycopg2.extensions.encodings[self.connection.encoding]
-        return self.mogrify(query, params).decode(encoding, 'replace')
+        formatted = self.mogrify(query, params).decode(encoding, 'replace')
+        if config.colors['sql']:
+            return highlight_sql(formatted)
+        return formatted
 
-    def mogrify(self, query, params=None) -> bytes:
+    def mogrify(self, query: SQL | typing.LiteralString | psql.Composable, params=None) -> bytes:
         if isinstance(query, SQL):
             assert params is None, "Unexpected parameters for SQL query object"
             query, params, _fields = query._sql_tuple
         return self._obj.mogrify(query, params)
 
-    def execute(self, query, params=None, log_exceptions: bool = True) -> None:
+    def execute(self, query: SQL | typing.LiteralString | psql.Composable, params=None, log_exceptions: bool = True) -> None:
         """ Execute a query inside the current transaction. """
         global sql_counter
 
@@ -383,6 +406,13 @@ class Cursor(_CursorProtocol):
             raise ValueError(f"SQL query parameters should be a tuple, list or dict; got {params!r}")
 
         start = real_time()
+        update_query_endtime_functions = []
+        current_thread = threading.current_thread()
+        for hook in getattr(current_thread, 'query_hooks', ()):
+            func = hook(self, query, params, start, 10)
+            if func and callable(func):
+                update_query_endtime_functions.append(func)
+
         try:
             self._obj.execute(query, params)
         except Exception as e:
@@ -393,20 +423,18 @@ class Cursor(_CursorProtocol):
             delay = real_time() - start
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("[%.3f ms] query: %s", 1000 * delay, self._format(query, params))
+            # optional hooks for performance and tracing analysis
+            for update_query_endtime_function in update_query_endtime_functions:
+                update_query_endtime_function(delay)
 
         # simple query count is always computed
         self.sql_log_count += 1
         sql_counter += 1
 
-        current_thread = threading.current_thread()
         if hasattr(current_thread, 'query_count'):
             current_thread.query_count += 1
         if hasattr(current_thread, 'query_time'):
             current_thread.query_time += delay
-
-        # optional hooks for performance and tracing analysis
-        for hook in getattr(current_thread, 'query_hooks', ()):
-            hook(self, query, params, start, delay)
 
         # advanced stats
         if _logger.isEnabledFor(logging.DEBUG):
@@ -421,16 +449,20 @@ class Cursor(_CursorProtocol):
             if log_target:
                 stat_count, stat_time = log_target.get(table or '', (0, 0))
                 log_target[table or ''] = (stat_count + 1, stat_time + delay * 1E6)
-        return None
 
-    def execute_values(self, query, argslist, template=None, page_size=100, fetch=False):
+    def executemany(self, query: typing.LiteralString | psql.Composable, vars_list) -> None:
+        """Execute the query for each row in the vars_list."""
+        for params in vars_list:
+            self.execute(query, params)
+
+    def execute_values(self, query: typing.LiteralString | psql.Composable, argslist, template=None, page_size=100, fetch=False):
         """
         A proxy for psycopg2.extras.execute_values which can log all queries like execute.
         But this method cannot set log_exceptions=False like execute
         """
         # Odoo Cursor only proxies all methods of psycopg2 Cursor. This is a patch for problems caused by passing
         # self instead of self._obj to the first parameter of psycopg2.extras.execute_values.
-        if isinstance(query, Composable):
+        if isinstance(query, psql.Composable):
             query = query.as_string(self._obj)
         return psycopg2.extras.execute_values(self, query, argslist, template=template, page_size=page_size, fetch=fetch)
 
@@ -535,14 +567,28 @@ class Cursor(_CursorProtocol):
         """ Rollback the current transaction. """
         self.precommit.clear()
         self.postcommit.clear()
-        self.prerollback.run()
+        try:
+            self.prerollback.run()
+        except Exception:
+            _logger.exception("Error during prerollback execution, ignore")
+            self.prerollback.clear()
         rollbacking = self.transaction.rollbacking() if self.transaction is not None else nullcontext()
         with rollbacking:
             self._cnx.rollback()
             self._now = None
         if self._closing:
             self._close()
-        self.postrollback.run()
+        try:
+            self.postrollback.run()
+        except Exception:
+            if self.closed:
+                _logger.exception("Error during postrollback execution, cursor closed")
+                return
+            _logger.exception("Error during postrollback execution, rollback again")
+            # make sure there are no more hooks and retry
+            self.prerollback.clear()
+            self.postrollback.clear()
+            self.rollback()
 
     def __getattr__(self, name):
         if self._closed and name == '_obj':
@@ -821,7 +867,7 @@ def close_db(db_name: str) -> None:
     if _Pool:
         _Pool.close_all(connection_info_for(db_name)[1])
     if _Pool_readonly:
-        _Pool_readonly.close_all(connection_info_for(db_name)[1])
+        _Pool_readonly.close_all(connection_info_for(db_name, readonly=True)[1])
 
 
 def close_all() -> None:

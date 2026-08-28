@@ -1,6 +1,11 @@
 import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
 import { Plugin } from "@html_editor/plugin";
-import { isEmptyBlock, paragraphRelatedElementsSelector } from "@html_editor/utils/dom_info";
+import {
+    allowsParagraphRelatedElements,
+    isEmptyBlock,
+    paragraphRelatedElementsSelector,
+} from "@html_editor/utils/dom_info";
+import { closestElement } from "@html_editor/utils/dom_traversal";
 import { withSequence } from "@html_editor/utils/resource";
 import { markup } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
@@ -13,15 +18,19 @@ export class UserSignaturePlugin extends Plugin {
     static id = "userSignature";
     static dependencies = ["dom", "history", "selection"];
     static shared = ["cleanSignatures"];
+    /** @type {import("plugins").EditorResources} */
     resources = {
         user_commands: [
             {
                 id: "insertUserSignature",
                 title: _t("Signature"),
                 description: _t("Insert your email signature"),
-                icon: "fa-pencil-square-o",
+                icon: "edit_square",
                 run: this.insertUserSignature.bind(this),
-                isAvailable: isHtmlContentSupported,
+                isAvailable: (selection) =>
+                    isHtmlContentSupported(selection) &&
+                    closestElement(selection.anchorNode, allowsParagraphRelatedElements)
+                        ?.isContentEditable,
             },
         ],
         powerbox_categories: withSequence(100, { id: "basic_block", name: _t("Basic Block") }),

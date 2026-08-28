@@ -41,6 +41,7 @@ class HrAttendance(http.Controller):
                 'display_systray': employee.company_id.attendance_from_systray,
                 'device_tracking_enabled': employee.company_id.attendance_device_tracking,
                 'capture_check_in_image': employee.company_id.attendance_capture_check_in,
+                'has_attendance_check_in_ability': employee._has_attendance_check_in_ability(),
             }
         return response
 
@@ -119,6 +120,14 @@ class HrAttendance(http.Controller):
             'type': mimetype,
         }
 
+    @staticmethod
+    def _get_active_company(request):
+        cids = request.httprequest.cookies.get('cids')
+        if cids:
+            return int(cids.split("-")[0])
+
+        return request.env.company
+
     @http.route('/hr_attendance/kiosk_mode_menu/<int:company_id>', auth='user', type='http')
     def kiosk_menu_item_action(self, company_id):
         if request.env.user.has_group("hr_attendance.group_hr_attendance_user"):
@@ -189,12 +198,22 @@ class HrAttendance(http.Controller):
     def create_employee(self, name, token):
         company = self._get_company(token)
         if company:
-            request.env["hr.employee"].create({
+            new_emp = request.env["hr.employee"].create({
                 "name": name,
                 "company_id": company.id,
             })
-            return True
-        return False
+            return {
+                "status": True,
+                "employee": {
+                    "id": new_emp.id,
+                    "name": new_emp.name,
+                },
+            }
+
+        return {
+            "status": False,
+            "employee": None,
+        }
 
     @http.route('/hr_attendance/kiosk_keepalive', auth='user', type='jsonrpc')
     def kiosk_keepalive(self):
@@ -253,13 +272,13 @@ class HrAttendance(http.Controller):
         return {}
 
     @http.route('/hr_attendance/attendance_barcode_scanned', type="jsonrpc", auth="public")
-    def scan_barcode(self, token, barcode, check_in_image=None):
+    def scan_barcode(self, token, barcode, latitude=False, longitude=False, check_in_image=None):
         company = self._get_company(token)
         if company:
             employee = request.env['hr.employee'].sudo().search([('barcode', '=', barcode), ('company_id', '=', company.id)], limit=1)
             if employee:
                 notification = employee._attendance_action_change(
-                    self._get_geoip_response('kiosk', device_tracking_enabled=company.attendance_device_tracking),
+                    self._get_geoip_response('kiosk', latitude=latitude, longitude=longitude, device_tracking_enabled=company.attendance_device_tracking),
                     self._get_validated_check_in_image_and_type(check_in_image, company.attendance_capture_check_in),
                 )
                 return self._get_attendance_action_response(employee, notification)
@@ -313,7 +332,7 @@ class HrAttendance(http.Controller):
 
     @http.route('/hr_attendance/systray_check_in_out', type="jsonrpc", auth="user")
     def systray_attendance(self, latitude=False, longitude=False, check_in_image=None):
-        employee = request.env.user.employee_id
+        employee = request.env.user.with_company(self._get_active_company(request)).employee_id
         geo_ip_response = self._get_geoip_response(mode='systray',
                                                   latitude=latitude,
                                                   longitude=longitude,
@@ -324,7 +343,7 @@ class HrAttendance(http.Controller):
 
     @http.route('/hr_attendance/attendance_user_data', type="jsonrpc", auth="user", readonly=True)
     def user_attendance_data(self):
-        employee = request.env.user.employee_id
+        employee = request.env.user.with_company(self._get_active_company(request)).employee_id
         return self._get_user_attendance_data(employee)
 
     def has_password(self):

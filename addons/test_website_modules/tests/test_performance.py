@@ -19,6 +19,15 @@ from odoo.addons.website_sale.tests.test_pricelist import TestWebsitePriceList
 @tagged('at_install', '-post_install')  # LEGACY at_install
 class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceList, WebsiteSaleCommon):
 
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+        'website.group_website_designer',  # FIXME: use base.group_user
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -31,7 +40,7 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
             'public': True,
             'name': 's_default_image.jpg',
             'type': 'url',
-            'url': f'{cls.base_url()}/web/image/website.s_banner_default_image.jpg',
+            'url': f'{cls.base_url()}/web/image/website.landscape_md_1.jpg',
         })
 
         cats = cls.env['product.public.category'].create([{
@@ -318,8 +327,6 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
         addons = tuple(self.env.registry._init_modules) + (self.env.context.get('install_module'),)
         if 'website_helpdesk' in addons:
             queries['helpdesk_team'] = 1
-        if 'website_sale_subscription' in addons:
-            queries['product_product'] += 1
 
         tax = self.env.ref(f'account.{self.env.company.id}_sale_tax_template', raise_if_not_found=False)
         if tax and tax.name == '15%':
@@ -363,6 +370,14 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
 @tagged('post_install', '-at_install')
 class TestWebsiteAllPerformanceShop(TestWebsiteAllPerformance):
 
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     def test_perf_sql_queries_shop(self):
         # To increase the query count you must ask the permission to al
         queries = self._get_queries_shop()
@@ -371,7 +386,7 @@ class TestWebsiteAllPerformanceShop(TestWebsiteAllPerformance):
         queries['account_account_tag'] = 2
 
         if self.env['res.groups']._is_feature_enabled('uom.group_uom'):
-            queries['uom_uom'] += 1
+            queries['uom_uom'] += 2
 
         if self._has_demo_data():
             queries['ir_attachment'] += -1

@@ -9,20 +9,19 @@ import { READONLY_MAIN_EMBEDDINGS } from "@html_editor/others/embedded_component
 import { normalizeHTML, parseHTML } from "@html_editor/utils/html";
 import { canRenderAsHTML } from "@html_editor/utils/sanitize";
 import { Wysiwyg } from "@html_editor/wysiwyg";
-import { beforeEach, describe, expect, test } from "@odoo/hoot";
+import { beforeEach, describe, expect, microTick, test } from "@odoo/hoot";
 import {
     click,
     press,
     queryAll,
     queryAllTexts,
-    queryFirst,
     queryOne,
     waitFor,
     hover,
     manuallyDispatchProgrammaticEvent,
     advanceTime,
 } from "@odoo/hoot-dom";
-import { Deferred, animationFrame, mockSendBeacon, tick } from "@odoo/hoot-mock";
+import { animationFrame, mockSendBeacon, tick } from "@odoo/hoot-mock";
 import { onWillDestroy, proxy, signal, xml } from "@odoo/owl";
 import {
     clickSave,
@@ -55,6 +54,7 @@ import {
 import { unformat } from "./_helpers/format";
 import { expandToolbar } from "./_helpers/toolbar";
 import { expectElementCount } from "./_helpers/ui_expectations";
+import { PLUGINS_TO_EXCLUDE } from "./_helpers/editor";
 
 class Partner extends models.Model {
     txt = fields.Html({ trim: true });
@@ -145,7 +145,9 @@ beforeEach(() => {
         },
         getConfig() {
             const config = super.getConfig();
-            config.Plugins = config.Plugins.filter((Plugin) => Plugin.id !== "editorVersion");
+            config.Plugins = config.Plugins.filter(
+                (Plugin) => !["editorVersion", ...PLUGINS_TO_EXCLUDE].includes(Plugin.id)
+            );
             return config;
         },
     });
@@ -208,7 +210,7 @@ test("html field in readonly updated by onchange", async () => {
 test("html field in readonly with embedded components", async () => {
     patchWithCleanup(Counter, {
         template: xml`
-            <span t-custom-ref="root" class="counter" t-on-click="this.increment"><t t-out="this.props.name || ''"/>:<t t-out="this.state.value"/></span>`,
+            <span t-ref="this.ref" class="counter" t-on-click="this.increment"><t t-out="this.props.name || ''"/>:<t t-out="this.state.value"/></span>`,
     });
     const unpatch = patch(Counter.prototype, {
         setup() {
@@ -705,13 +707,13 @@ test("blurring an inner contenteditable field by clicking outside should trigger
 
 test.tags("focus required");
 test("edit html field and blur multiple time should apply 1 onchange", async () => {
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     Partner._onChanges = {
         txt() {},
     };
     onRpc("partner", "onchange", async ({ args }) => {
         expect.step(`onchange: ${args[1].txt}`);
-        await def;
+        await def.promise;
     });
     await mountView({
         type: "form",
@@ -741,7 +743,7 @@ test("edit html field and blur multiple time should apply 1 onchange", async () 
 
 test.tags("focus required");
 test("edit an html field during an onchange", async () => {
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     Partner._onChanges = {
         txt(record) {
             record.txt = "<p>New Value</p>";
@@ -749,7 +751,7 @@ test("edit an html field during an onchange", async () => {
     };
     onRpc("partner", "onchange", async ({ args }) => {
         expect.step(`onchange: ${args[1].txt}`);
-        await def;
+        await def.promise;
     });
     await mountView({
         type: "form",
@@ -910,12 +912,13 @@ test("A new MediaDialog after switching record in a Form view should have the co
             this.title = "TEST";
             this.tabs = [];
             this.notebookPages = [];
-            this.activeTab = signal(null);
+            this.activeTab = signal("");
             this.isSaving = signal(false);
             this.selectedMedia = proxy({});
             // no call to super to avoid services dependencies
             // this test only cares about the props given to the dialog
         },
+        onTabChange() {},
     });
     await mountView({
         type: "form",
@@ -1239,7 +1242,7 @@ test("should display overlay on video hover and handle video replacement and rem
     await click(".video-overlay button");
     await waitFor(".o-dropdown-item");
     expect(queryAllTexts(".o-dropdown-item")[0]).toBe("Replace");
-    await click(".o-dropdown-item .fa-exchange");
+    await click(".o-dropdown-item [data-icon='swap_horiz']");
     await waitFor("textarea[id='o_video_text']");
 
     // Replace video
@@ -1266,7 +1269,7 @@ test("should display overlay on video hover and handle video replacement and rem
     await click(".video-overlay button");
     await waitFor(".o-dropdown-item");
     expect(queryAllTexts(".o-dropdown-item")[1]).toBe("Remove");
-    await click(".o-dropdown-item .fa-trash");
+    await click(".o-dropdown-item [data-icon='delete'].oi-filled");
     await expectElementCount('div[data-embedded="video"]', 0);
 });
 
@@ -1320,7 +1323,7 @@ test("should preserve vertical video setting when reopening media dialog", async
     await click(".video-overlay button");
     await waitFor(".o-dropdown-item");
     expect(queryAllTexts(".o-dropdown-item")[0]).toBe("Replace");
-    await click(".o-dropdown-item .fa-exchange");
+    await click(".o-dropdown-item [data-icon='swap_horiz']");
 
     // Ensure the vertical setting is still active
     await waitFor(".o_video_dialog_form .o_video_dialog_options label:contains(Vertical) input");
@@ -1442,42 +1445,6 @@ test("MediaDialog contains 'Videos' tab when sanitize_tags = true and 'allowVide
         "Icons",
         "Videos",
     ]);
-});
-
-test("Image should not be inserted in a formatted empty node", async () => {
-    Partner._records = [
-        {
-            id: 1,
-            txt: `<div class="o-paragraph"><strong>test</strong></div>
-                    <div class="o-paragraph">
-                        <strong data-oe-zws-empty-inline="">\u200b</strong><br />
-                    </div>`,
-        },
-    ];
-
-    await mountView({
-        type: "form",
-        resId: 1,
-        resModel: "partner",
-        arch: `
-            <form>
-                <field name="txt" widget="html"/>
-            </form>`,
-    });
-    setSelection({
-        anchorNode: queryOne("div.o-paragraph strong[data-oe-zws-empty-inline]"),
-        anchorOffset: 0,
-    });
-    await insertText(htmlEditor, "/media");
-    await waitFor(".o-we-powerbox");
-    expect(queryAllTexts(".o-we-command-name")[0]).toBe("Media");
-
-    await press("Enter");
-    await animationFrame();
-    await click(queryFirst(".o_existing_attachment_cell button"));
-    await animationFrame();
-    const img = htmlEditor.editable.querySelector("div.o-paragraph img");
-    expect(img.parentElement.nodeName).toBe("DIV");
 });
 
 test("'Media' command is available by default", async () => {
@@ -2357,7 +2324,7 @@ describe("save image", () => {
                 .replace(/(?:\s|(?:\r\n))+/g, " ")
                 .replace(/\s?(<|>)\s?/g, "$1");
         // Promise to resolve when we want the response of the modify_image RPC.
-        const modifyImagePromise = new Deferred();
+        const modifyImagePromise = Promise.withResolvers();
         let writeCount = 0;
         let modifyImageCount = 0;
         // Valid base64 encoded image in its transitory modified state.
@@ -2376,7 +2343,7 @@ describe("save image", () => {
                 const { params } = await request.json();
                 expect(params.res_model).toBe("partner");
                 expect(params.res_id).toBe(1);
-                await modifyImagePromise;
+                await modifyImagePromise.promise;
                 modifyImageCount++;
                 const res = { original: newImageSrc };
                 return res;
@@ -2396,12 +2363,13 @@ describe("save image", () => {
         });
 
         // Simulate an urgent save without any image in the content.
-        sendBeaconDef = new Deferred();
+        sendBeaconDef = Promise.withResolvers();
         setSelectionInHtmlField(".test_target");
         await insertText(htmlEditor, "a");
         htmlEditor.shared.history.commit();
         await formController.beforeUnload();
-        await sendBeaconDef;
+        await sendBeaconDef.promise;
+        await microTick();
 
         // Replace the empty paragraph with a paragrah containing an unsaved
         // modified image
@@ -2412,19 +2380,19 @@ describe("save image", () => {
 
         // Simulate an urgent save before the end of the RPC roundtrip for the
         // image.
-        sendBeaconDef = new Deferred();
+        sendBeaconDef = Promise.withResolvers();
         await formController.beforeUnload();
-        await sendBeaconDef;
+        await sendBeaconDef.promise;
 
         // Resolve the image modification (simulate end of RPC roundtrip).
         modifyImagePromise.resolve();
-        await modifyImagePromise;
-        await animationFrame();
+        await modifyImagePromise.promise;
+        await waitFor(`img[src="${newImageSrc}"]`);
 
         // Simulate the last urgent save, with the modified image.
-        sendBeaconDef = new Deferred();
+        sendBeaconDef = Promise.withResolvers();
         await formController.beforeUnload();
-        await sendBeaconDef;
+        await sendBeaconDef.promise;
     });
 
     test("Pasted/dropped images are converted to attachments on save", async () => {
@@ -2483,12 +2451,12 @@ describe("save image", () => {
             },
         ];
 
-        const def = new Deferred();
+        const def = Promise.withResolvers();
         onRpc("/html_editor/attachment/add_data", async (request) => {
             const { params } = await request.json();
             const { res_id, res_model } = params;
             expect.step(`add_data-start: ${res_model} ${res_id}`);
-            await def;
+            await def.promise;
             expect.step(`add_data-end: ${res_model} ${res_id}`);
             return {
                 image_src: "/test_image_url.png",
@@ -2552,12 +2520,12 @@ describe("save image", () => {
             },
         ];
 
-        const def = new Deferred();
+        const def = Promise.withResolvers();
         onRpc("/html_editor/attachment/add_data", async (request) => {
             const { params } = await request.json();
             const { res_id, res_model } = params;
             expect.step(`add_data-start: ${res_model} ${res_id}`);
-            await def;
+            await def.promise;
             expect.step(`add_data-end: ${res_model} ${res_id}`);
             return {
                 image_src: "/test_image_url.png",

@@ -1,10 +1,9 @@
-import { onWillRender } from "@web/owl2/utils";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { registry } from "@web/core/registry";
 import { cookie } from "@web/core/browser/cookie";
 import { kanbanView } from "@web/views/kanban/kanban_view";
-import { onWillStart, proxy } from "@odoo/owl";
-import { KanbanRenderer } from "@web/views/kanban/kanban_renderer";
+import { onWillStart, useProps, proxy, t } from "@odoo/owl";
+import { KanbanRenderer, kanbanRendererProps } from "@web/views/kanban/kanban_renderer";
 import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
 import { useTrackedAsync } from "@point_of_sale/app/hooks/hooks";
@@ -12,7 +11,9 @@ import { _t } from "@web/core/l10n/translation";
 import { KanbanController } from "@web/views/kanban/kanban_controller";
 
 async function updatePosKanbanViewState(orm, stateObj) {
-    const result = await orm.call("pos.config", "get_pos_kanban_view_state");
+    const result = await orm
+        .cache({ type: "disk" })
+        .call("pos.config", "get_pos_kanban_view_state");
     Object.assign(stateObj, result);
 }
 
@@ -35,7 +36,7 @@ export class PosKanbanController extends KanbanController {
 
 export class PosKanbanRenderer extends KanbanRenderer {
     static template = "point_of_sale.PosKanbanRenderer";
-    static props = [...KanbanRenderer.props, "initialPosState"];
+    props = useProps({ ...kanbanRendererProps, initialPosState: t.object() });
 
     setup() {
         super.setup();
@@ -60,8 +61,6 @@ export class PosKanbanRenderer extends KanbanRenderer {
                     }
                 })
         );
-
-        onWillRender(() => this.checkDisplayedResult());
     }
 
     async clickLoadScenario(item) {
@@ -71,8 +70,8 @@ export class PosKanbanRenderer extends KanbanRenderer {
         }
     }
 
-    checkDisplayedResult() {
-        this.posState.show_predefined_scenarios = this.props.list.count === 0;
+    get showPredefinedScenarios() {
+        return this.props.list.count === 0;
     }
 
     get isDarkTheme() {

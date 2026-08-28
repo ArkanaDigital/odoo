@@ -14,7 +14,6 @@ import { makeRecordFieldLocalId } from "@mail/model/misc";
 import { toRawValue } from "@mail/utils/common/local_storage";
 import { Settings } from "@mail/core/common/settings_model";
 import { DiscussApp } from "@mail/core/public_web/discuss_app/discuss_app_model";
-import { DiscussAppCategory } from "@mail/discuss/core/public_web/discuss_app/discuss_app_category_model";
 import { getService, patchWithCleanup, serverState } from "@web/../tests/web_test_helpers";
 import { browser } from "@web/core/browser/browser";
 
@@ -140,41 +139,6 @@ test("member default open is 'off'", async () => {
     expect(localStorage.getItem(isMemberPanelOpenByDefaultKey)).toBe(null);
 });
 
-test("sidebar compact is 'on'", async () => {
-    localStorage.setItem("mail.user_setting.discuss_sidebar_compact", "true");
-    await start();
-    await openDiscuss();
-    await contains(".o-mail-DiscussSidebar.o-compact");
-    const isSidebarCompact = makeRecordFieldLocalId(DiscussApp.localId(), "isSidebarCompact");
-    expect(localStorage.getItem(isSidebarCompact)).toBe(toRawValue(true));
-    expect(localStorage.getItem("mail.user_setting.discuss_sidebar_compact")).toBe(null);
-});
-
-test("category 'Channels' is folded", async () => {
-    localStorage.setItem("discuss_sidebar_category_folded_channels", "true");
-    await start();
-    await openDiscuss();
-    await contains(".o-mail-DiscussSidebarCategory:contains('Channels') .oi.oi-chevron-right");
-    const channels_is_open = makeRecordFieldLocalId(
-        DiscussAppCategory.localId("channels"),
-        "is_open"
-    );
-    expect(localStorage.getItem(channels_is_open)).toBe(toRawValue(false));
-    expect(localStorage.getItem("discuss_sidebar_category_folded_channels")).toBe(null);
-});
-
-test("category 'Direct messages' is folded", async () => {
-    localStorage.setItem("discuss_sidebar_category_folded_chats", "true");
-    await start();
-    await openDiscuss();
-    await contains(
-        ".o-mail-DiscussSidebarCategory:contains('Direct messages') .oi.oi-chevron-right"
-    );
-    const chats_is_open = makeRecordFieldLocalId(DiscussAppCategory.localId("chats"), "is_open");
-    expect(localStorage.getItem(chats_is_open)).toBe(toRawValue(false));
-    expect(localStorage.getItem("discuss_sidebar_category_folded_chats")).toBe(null);
-});
-
 test("last active id of discuss app", async () => {
     const pyEnv = await startServer();
     const channelId = pyEnv["discuss.channel"].create({ name: "test" });
@@ -265,8 +229,8 @@ test("device input/output id", async () => {
     localStorage.setItem("mail_user_setting_audio_input_device_id", "audio_input_2_id");
     localStorage.setItem("mail_user_setting_audio_output_device_id", "audio_output_2_id");
     localStorage.setItem("mail_user_setting_camera_input_device_id", "video_input_2_id");
-    const env = await start();
-    const rtc = env.services["discuss.rtc"];
+    await start();
+    const rtc = getService("discuss.rtc");
     rtc.microphonePermission = "granted";
     rtc.cameraPermission = "granted";
     await openDiscuss(channelId);

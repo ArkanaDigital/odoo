@@ -7,6 +7,8 @@ from odoo.tests import tagged
 @tagged('post_install', '-at_install', 'post_install_l10n')
 class TestL10nInCompany(L10nInTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_l10n_in_journal_priority(self):
         """
         Ensure that when a branch company has its own journals,
@@ -71,3 +73,11 @@ class TestL10nInCompany(L10nInTestInvoicingCommon):
 
         # Audit Trail should remain True
         self.assertTrue(in_company.restrictive_audit_trail)
+
+    def test_l10n_in_cash_rounding_created_per_company(self):
+        """
+        Each IN company must have its own `Half Up` cash rounding record
+        Creating a new IN company must not reassign the existing record
+        """
+        in_company = self._create_company(country_code='IN')
+        self.assertTrue(self.env['account.chart.template'].with_company(in_company).ref('cash_rounding_in_half_up', raise_if_not_found=False))

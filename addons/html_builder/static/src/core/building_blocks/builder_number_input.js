@@ -1,51 +1,48 @@
-import { Component, useEffect, proxy } from "@odoo/owl";
+import { BuilderNumberInputBase } from "@html_builder/core/building_blocks/builder_number_input_base";
+import { Component, proxy, signal, t, useEffect, useProps } from "@odoo/owl";
 import {
     basicContainerBuilderComponentProps,
-    useInputBuilderComponent,
     useBuilderComponent,
     useBuilderNumberInputUnits,
+    useInputBuilderComponent,
     useInputDebouncedCommit,
 } from "../utils";
 import { BuilderComponent } from "./builder_component";
-import { BuilderNumberInputBase } from "@html_builder/core/building_blocks/builder_number_input_base";
 import { textInputBasePassthroughProps } from "./builder_input_base";
-import { useChildRef } from "@web/core/utils/hooks";
-import { pick } from "@web/core/utils/objects";
 
 export class BuilderNumberInput extends Component {
-    static template = "html_builder.BuilderNumberInput";
-    static props = {
-        ...basicContainerBuilderComponentProps,
-        ...textInputBasePassthroughProps,
-        default: { type: [Number, { value: null }], optional: true },
-        unit: { type: String, optional: true },
-        saveUnit: { type: String, optional: true },
-        step: { type: Number, optional: true },
-        min: { type: Number, optional: true },
-        max: { type: Number, optional: true },
-        composable: { type: Boolean, optional: true },
-        applyWithUnit: { type: Boolean, optional: true },
-    };
     static components = { BuilderComponent, BuilderNumberInputBase };
-    static defaultProps = {
-        composable: false,
-        applyWithUnit: true,
-        default: 0,
-    };
+    static template = "html_builder.BuilderNumberInput";
+
+    props = useProps({
+        ...basicContainerBuilderComponentProps,
+        default: t.or([t.number(), t.literal(null)]).optional(0),
+        unit: t.string().optional(),
+        saveUnit: t.string().optional(),
+        step: t.number().optional(),
+        min: t.number().optional(),
+        max: t.number().optional(),
+        composable: t.boolean().optional(false),
+        applyWithUnit: t.boolean().optional(true),
+    });
+    textInputBaseProps = useProps(textInputBasePassthroughProps);
+
+    inputRef = signal.ref(HTMLInputElement);
 
     setup() {
         if (this.props.saveUnit && !this.props.unit) {
             throw new Error("'unit' must be defined to use the 'saveUnit' props");
         }
 
-        const { formatRawValue, parseDisplayValue, clampValue } = useBuilderNumberInputUnits();
+        const { formatRawValue, parseDisplayValue, clampValue } = useBuilderNumberInputUnits(
+            this.props
+        );
         this.formatRawValue = formatRawValue;
         this.parseDisplayValue = parseDisplayValue;
         this.clampValue = clampValue;
 
-        useBuilderComponent();
-        const { state, commit, preview } = useInputBuilderComponent({
-            id: this.props.id,
+        useBuilderComponent(this.props);
+        const { state, commit, preview } = useInputBuilderComponent(this.props, {
             defaultValue: this.props.default === null ? null : this.props.default?.toString(),
             formatRawValue: this.formatRawValue.bind(this),
             parseDisplayValue: this.parseDisplayValue.bind(this),
@@ -57,8 +54,7 @@ export class BuilderNumberInput extends Component {
         useEffect(() => {
             this.state.showUnit = state.value?.length > 0;
         });
-        this.inputRef = useChildRef();
-        this.debouncedCommitValue = useInputDebouncedCommit(this.inputRef);
+        this.debouncedCommitValue = useInputDebouncedCommit(this.inputRef, commit);
     }
 
     get displayValue() {
@@ -84,9 +80,5 @@ export class BuilderNumberInput extends Component {
 
     onKeydownArrow(e) {
         this.debouncedCommitValue();
-    }
-
-    get textInputBaseProps() {
-        return pick(this.props, ...Object.keys(textInputBasePassthroughProps));
     }
 }

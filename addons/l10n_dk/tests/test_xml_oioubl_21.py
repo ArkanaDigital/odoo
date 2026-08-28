@@ -1,5 +1,4 @@
 from freezegun import freeze_time
-from requests import PreparedRequest, Response, Session
 from unittest.mock import patch
 
 from odoo import Command
@@ -12,6 +11,8 @@ from odoo.addons.l10n_account_edi_ubl_cii_tests.tests.common import TestUBLCommo
 
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestUBLDKOIOUBL21(TestUBLCommon, TestAccountMoveSendCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     @TestUBLCommon.setup_country('dk')
@@ -31,7 +32,7 @@ class TestUBLDKOIOUBL21(TestUBLCommon, TestAccountMoveSendCommon):
         })
 
         cls.company_data['company'].partner_id.update({
-            'peppol_endpoint': False,
+            'routing_identifier': False,
         })
 
         cls.partner_a.write({
@@ -67,7 +68,7 @@ class TestUBLDKOIOUBL21(TestUBLCommon, TestAccountMoveSendCommon):
             'country_id': cls.env.ref('base.fr').id,
             'phone': '+33 1 23 45 67 89',
             'vat': 'FR23334175221',
-            'company_registry': '123 568 941 00056',
+            'additional_identifiers': {'FR_SIRET': '40678483500521'},
             'invoice_edi_format': 'oioubl_21',
             'nemhandel_identifier_type': '0088',
             'nemhandel_identifier_value': '5798009811639',
@@ -129,28 +130,6 @@ class TestUBLDKOIOUBL21(TestUBLCommon, TestAccountMoveSendCommon):
              patch.object(cls.env.registry['account_edi_proxy_client.user'], '_call_nemhandel_proxy', return_value={}):
             wizard.action_send_and_print()
 
-    @classmethod
-    def _request_handler(cls, s: Session, r: PreparedRequest, /, **kw):
-        response = Response()
-        response.status_code = 200
-        if r.url.endswith('iso6523-actorid-upis%3A%3A0184%3A12345674'):
-            response._content = b"""<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<smp:ServiceGroup xmlns:wsa="http://www.w3.org/2005/08/addressing" xmlns:id="http://busdox.org/transport/identifiers/1.0/" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:smp="http://busdox.org/serviceMetadata/publishing/1.0/"><id:ParticipantIdentifier scheme="iso6523-actorid-upis">0208:0477472701</id:ParticipantIdentifier>'
-            '<smp:ServiceMetadataReferenceCollection><smp:ServiceMetadataReference href="http://smp.nemhandel.dk/iso6523-actorid-upis%3A%3A0184%3A12345674/services/busdox-docid-qns%3A%3Aurn%3Aoasis%3Anames%3Aspecification%3Aubl%3Aschema%3Axsd%3AInvoice-2%3A%3AInvoice%23%23urn%3Acen.eu%3Aen16931%3A2017%23compliant%23urn%3Afdc%3Apeppol.eu%3A2017%3Apoacc%3Abilling%3A3.0%3A%3A2.1"/>'
-            '</smp:ServiceMetadataReferenceCollection></smp:ServiceGroup>"""
-            return response
-        if r.url.endswith('iso6523-actorid-upis%3A%3A0208%3A5798009811639'):
-            response._content = b"""<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<smp:ServiceGroup xmlns:wsa="http://www.w3.org/2005/08/addressing" xmlns:id="http://busdox.org/transport/identifiers/1.0/" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:smp="http://busdox.org/serviceMetadata/publishing/1.0/"><id:ParticipantIdentifier scheme="iso6523-actorid-upis">0088:5798009811639</id:ParticipantIdentifier>
-            '<smp:ServiceMetadataReferenceCollection><smp:ServiceMetadataReference href="http://smp.nemhandel.dk/iso6523-actorid-upis%3A%3A0208%3A5798009811639/services/busdox-docid-qns%3A%3Aurn%3Aoasis%3Anames%3Aspecification%3Aubl%3Aschema%3Axsd%3AInvoice-2%3A%3AInvoice%23%23urn%3Acen.eu%3Aen16931%3A2017%23compliant%23urn%3Afdc%3Apeppol.eu%3A2017%3Apoacc%3Abilling%3A3.0%3A%3A2.1"/>'
-            '</smp:ServiceMetadataReferenceCollection></smp:ServiceGroup>"""
-            return response
-        if r.url.endswith('iso6523-actorid-upis%3A%3A0208%3A5798009811512'):
-            response._content = b"""<?xml version=\'1.0\' encoding=\'UTF-8\'?>\n<smp:ServiceGroup xmlns:wsa="http://www.w3.org/2005/08/addressing" xmlns:id="http://busdox.org/transport/identifiers/1.0/" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:smp="http://busdox.org/serviceMetadata/publishing/1.0/"><id:ParticipantIdentifier scheme="iso6523-actorid-upis">0088:5798009811512</id:ParticipantIdentifier>
-            '<smp:ServiceMetadataReferenceCollection><smp:ServiceMetadataReference href="http://smp.nemhandel.dk/iso6523-actorid-upis%3A%3A0088%3A5798009811512/services/busdox-docid-qns%3A%3Aurn%3Aoasis%3Anames%3Aspecification%3Aubl%3Aschema%3Axsd%3AInvoice-2%3A%3AInvoice%23%23urn%3Acen.eu%3Aen16931%3A2017%23compliant%23urn%3Afdc%3Apeppol.eu%3A2017%3Apoacc%3Abilling%3A3.0%3A%3A2.1"/>'
-            '</smp:ServiceMetadataReferenceCollection></smp:ServiceGroup>"""
-            return response
-
-        return super()._request_handler(s, r, **kw)
-
     #########
     # EXPORT
     #########
@@ -163,8 +142,8 @@ class TestUBLDKOIOUBL21(TestUBLCommon, TestAccountMoveSendCommon):
 
     @freeze_time('2017-01-01')
     def test_export_invoice_foreign_partner_be(self):
-        # Set peppol endpoint to have schemeID of 'GLN'
-        self.company_data['company'].partner_id.peppol_endpoint = '0239843188'
+        # Set routing endpoint to have schemeID of 'GLN' (ISO 6523 ICD 0088)
+        self.company_data['company'].partner_id.routing_identifier = '0088:5798009811639'
         invoice = self.create_post_and_send_invoice(partner=self.partner_b)
         self.assertTrue(invoice.ubl_cii_xml_id)
         self._assert_invoice_attachment(invoice.ubl_cii_xml_id, xpaths=None, expected_file_path="from_odoo/oioubl_out_invoice_foreign_partner_be.xml")
@@ -254,9 +233,9 @@ class TestUBLDKOIOUBL21(TestUBLCommon, TestAccountMoveSendCommon):
 
     @freeze_time('2017-01-01')
     def test_export_partner_fr_without_siret_should_raise_an_error(self):
-        self.partner_c.company_registry = False
+        self.partner_c.additional_identifiers = False
         self.partner_c.invoice_edi_format = 'oioubl_21'
-        with self.assertRaisesRegex(UserError, "The company registry is required for french partner:"):
+        with self.assertRaisesRegex(UserError, "A SIRET is required for the french partner:"):
             self.create_post_and_send_invoice(partner=self.partner_c)
 
     @freeze_time('2017-01-01')

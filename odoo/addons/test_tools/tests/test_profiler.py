@@ -3,11 +3,12 @@ import sys
 import time
 
 from unittest.mock import patch
+from psycopg2.errors import UndefinedTable
 
 from odoo.exceptions import AccessError
 from odoo.tests.common import BaseCase, TransactionCase, tagged, new_test_user, HttpCase
 from odoo.tests.result import stats_logger
-from odoo.tools import profiler
+from odoo.tools import profiler, mute_logger
 from odoo.tools.profiler import Profiler, ExecutionContext
 from odoo.tools.speedscope import Speedscope
 
@@ -460,6 +461,19 @@ class TestProfiling(TransactionCase):
         self.assertEqual(entries.pop(0)['exec_context'], ((stack_level, {'letter': 'a'}), (stack_level, {'letter': 'c'})))
         self.assertEqual(entries.pop(0)['exec_context'], ((stack_level, {'letter': 'a'}),))
 
+    @mute_logger('odoo.sql_db')
+    def test_failed_sql_query_duration_is_updated(self):
+        with Profiler(db=None, collectors=['sql']) as p:
+            with self.assertRaises(UndefinedTable):
+                with self.env.cr.savepoint():
+                    self.env.cr.execute('SELECT * FROM profiler_missing_table')
+
+        failed_query = next(
+            entry for entry in p.collectors[0].entries
+            if entry['query'] == 'SELECT * FROM profiler_missing_table'
+        )
+        self.assertLess(failed_query['time'], 10)
+
     def test_qweb_recorder(self):
         template = self.env['ir.ui.view'].create({
             'name': 'test',
@@ -555,7 +569,7 @@ class TestProfiling(TransactionCase):
         with Profiler(db=None) as p:
             queries_start = self.env.cr.sql_log_count
             for i in range(10):
-                self.env['res.partner'].create({'name': 'snail%s' % i})
+                self.env['test_tools.partner'].create({'name': 'snail%s' % i})
             self.env.flush_all()
             total_queries = self.env.cr.sql_log_count - queries_start
 
@@ -582,6 +596,25 @@ class TestProfiling(TransactionCase):
             self.env.cr.execute("SELECT 1")
         p.json()  # check we can call it
         self.assertEqual(p.collectors[0].entries[0]['query'], 'SELECT 1')
+
+    def test_profiler_proxy_ends_on_enter_error(self):
+        class FailingContextManager:
+            def __enter__(self):
+                raise RuntimeError("enter failed")
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                pass
+
+        self.enterContext(self.registry_test_mode())
+        self.startClassPatcher(patch('odoo.sql_db.db_connect', return_value=self.registry))
+
+        p = Profiler(collectors=['sql'], db=self.env.cr.dbname, description='failed enter profile')
+        with self.assertRaises(RuntimeError):
+            with p._get_cm_proxy(FailingContextManager()):
+                pass
+
+        self.assertTrue(p.done)
+        self.assertTrue(p.profile_id)
 
 
 def deep_call(func, depth):
@@ -687,7 +720,9 @@ class TestPerformance(BaseCase):
         Identical frames should be saved only once.
         We should only have a few entries on a 1 second sleep.
         """
-        with Profiler(collectors=['memory'], db=None, disable_gc=True) as res:
+        with Profiler(
+            collectors=['traces_async'], db=None, disable_gc=True, params={'memory_profile': True},
+        ) as res:
             time.sleep(1)
         entry_count = len(res.collectors[0].entries)
         self.assertLess(entry_count, 5)  # ~3
@@ -697,5 +732,24 @@ class TestPerformance(BaseCase):
 @tagged('at_install', '-post_install')  # LEGACY at_install
 class TestMemoryProfiler(HttpCase):
     def test_memory_profiler(self):
-        with Profiler(collectors=['memory'], db=None):
+        """Memory measurements are now embedded in each traces_async entry."""
+        with Profiler(collectors=['traces_async'], db=None, params={'memory_profile': True}) as p:
             self.env['base.module.update'].create({}).update_module()
+
+        entries = p.collectors[0].entries
+        self.assertTrue(entries, "Expected profiling entries")
+        # Each entry should carry a 'memory' key with a non-negative integer
+        for entry in entries:
+            if entry.get('stack'):  # skip the empty closing entry
+                self.assertIn('memory', entry)
+                self.assertIsInstance(entry['memory'], int)
+                self.assertGreaterEqual(entry['memory'], 0)
+
+        # Verify the speedscope memory output can be constructed from these entries
+        sp = Speedscope(init_stack_trace=[])
+        sp.add('frames', entries)
+        sp.add_memory_output(['frames'], display_name='Memory')
+        result = sp.make()
+        # If any positive memory diffs were found, a sampled memory profile is present
+        memory_profiles = [prof for prof in result['profiles'] if prof.get('type') == 'sampled']
+        self.assertTrue(memory_profiles, "Expected at least one sampled memory profile")

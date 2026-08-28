@@ -45,8 +45,8 @@ export class DropZoneSelectorPlugin extends Plugin {
                         .getResource("so_content_addition_selectors")
                         .join(", ")}, .s_card:not(${special_cards_selector})`;
                 },
-                excludeNearParent: so_snippet_addition_drop_in,
-                excludeAncestor: ".s_image_gallery",
+                excludeNearParent: `${so_snippet_addition_drop_in}, .o_no_direct_child_drop`,
+                excludeAncestor: ".s_image_gallery, .s_map, .s_google_map, .s_website_form_label",
             },
             {
                 selector: ".row > div",
@@ -60,7 +60,6 @@ export class DropZoneSelectorPlugin extends Plugin {
         so_content_addition_selectors: [
             "blockquote",
             ".s_text_highlight",
-            ".s_donation", // TODO: move to plugin
             ".o_snippet_drop_in_only",
         ],
     };

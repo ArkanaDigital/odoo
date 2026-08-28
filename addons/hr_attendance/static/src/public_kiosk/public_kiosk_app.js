@@ -1,23 +1,20 @@
-import { App, whenReady, Component, proxy } from "@odoo/owl";
 import { CardLayout } from "@hr_attendance/components/card_layout/card_layout";
-import { KioskManualSelection } from "@hr_attendance/components/manual_selection/manual_selection";
-import { makeEnv, startServices } from "@web/env";
-import { getTemplate } from "@web/core/templates";
-import { _t, appTranslateFn } from "@web/core/l10n/translation";
-import { MainComponentsContainer } from "@web/core/main_components_container";
-import { rpc } from "@web/core/network/rpc";
-import { useService, useBus } from "@web/core/utils/hooks";
-import { url } from "@web/core/utils/urls";
 import { KioskConfirmation } from "@hr_attendance/components/confirmation/confirmation";
 import { KioskGreetings } from "@hr_attendance/components/greetings/greetings";
-import { KioskPinCode } from "@hr_attendance/components/pin_code/pin_code";
 import { KioskBarcodeScanner } from "@hr_attendance/components/kiosk_barcode/kiosk_barcode";
-import { browser } from "@web/core/browser/browser";
-import { isIosApp } from "@web/core/browser/feature_detection";
-import { DocumentationLink } from "@web/views/widgets/documentation_link/documentation_link";
+import { KioskManualSelection } from "@hr_attendance/components/manual_selection/manual_selection";
 import { NewEmployeeDialog } from "@hr_attendance/components/new_employee_dialog/new_employee_dialog";
+import { KioskPinCode } from "@hr_attendance/components/pin_code/pin_code";
+import { Component, proxy, whenReady } from "@odoo/owl";
+import { browser } from "@web/core/browser/browser";
+import { _t } from "@web/core/l10n/translation";
+import { MainComponentsContainer } from "@web/core/main_components_container";
+import { rpc } from "@web/core/network/rpc";
+import { useBus, useService } from "@web/core/utils/hooks";
+import { url } from "@web/core/utils/urls";
+import { mountComponent } from "@web/env";
 import { session } from "@web/session";
-import { services } from "@web/core/services";
+import { DocumentationLink } from "@web/views/widgets/documentation_link/documentation_link";
 
 class kioskAttendanceApp extends Component {
     static template = "hr_attendance.public_kiosk_app";
@@ -55,16 +52,17 @@ class kioskAttendanceApp extends Component {
             active_display: "settings",
             displayDemoMessage:
                 browser.localStorage.getItem("hr_attendance.ShowDemoMessage") !== "false",
-            isStreamAvailable: false,
+            streamAvailable: false,
+            kioskMode: this.props.kioskMode,
         });
         this.lockScanner = false;
         this.cameraCapture = null;
-        if (this.props.kioskMode === "settings" || this.props.fromTrialMode) {
+        if (this.state.kioskMode === "settings" || this.props.fromTrialMode) {
             this.manualKioskMode = false;
             useBus(this.barcode.bus, "barcode_scanned", (ev) =>
                 this.onBarcodeScanned(ev.detail.barcode)
             );
-        } else if (this.props.kioskMode !== "manual") {
+        } else if (this.state.kioskMode !== "manual") {
             useBus(this.barcode.bus, "barcode_scanned", (ev) =>
                 this.onBarcodeScanned(ev.detail.barcode)
             );
@@ -94,15 +92,13 @@ class kioskAttendanceApp extends Component {
             token: this.props.token,
             mode: mode,
         });
-        this.props.kioskMode = mode;
+        this.state.kioskMode = mode;
         if (mode !== "manual") {
             this.manualKioskMode = false;
             this.state.active_display = "main";
-            this.props.kioskMode = mode;
         } else {
             this.manualKioskMode = true;
             this.state.active_display = "manual";
-            this.props.kioskMode = "manual";
         }
     }
 
@@ -134,16 +130,16 @@ class kioskAttendanceApp extends Component {
             history.back();
         } else if (["confirmation", "pin", "greet"].includes(this.state.active_display)) {
             this.switchDisplay(
-                ["barcode_manual", "barcode"].includes(this.props.kioskMode) ? "main" : "manual"
+                ["barcode_manual", "barcode"].includes(this.state.kioskMode) ? "main" : "manual"
             );
         } else if (
-            (["manual", "barcode"].includes(this.props.kioskMode) ||
-                (this.props.kioskMode === "barcode_manual" &&
+            (["manual", "barcode"].includes(this.state.kioskMode) ||
+                (this.state.kioskMode === "barcode_manual" &&
                     this.state.active_display === "main")) &&
             this.props.fromTrialMode
         ) {
             this.switchDisplay("settings");
-        } else if (this.props.kioskMode === "manual") {
+        } else if (this.state.kioskMode === "manual") {
             this.switchDisplay("manual");
         } else {
             this.switchDisplay("main");
@@ -164,8 +160,7 @@ class kioskAttendanceApp extends Component {
     }
 
     async makeRpcWithGeolocation(route, params) {
-        if (!this.props.deviceTrackingEnabled || !navigator.geolocation || isIosApp()) {
-            // iOS app lacks permissions or tracking disabled
+        if (!this.props.deviceTrackingEnabled || !navigator.geolocation) {
             return rpc(route, { ...params });
         }
 
@@ -219,7 +214,7 @@ class kioskAttendanceApp extends Component {
 
         let result;
         try {
-            result = await rpc("attendance_barcode_scanned", {
+            result = await this.makeRpcWithGeolocation('attendance_barcode_scanned',{
                 barcode: barcode,
                 token: this.props.token,
                 check_in_image: checkInImage,
@@ -259,18 +254,9 @@ class kioskAttendanceApp extends Component {
 
 export async function createPublicKioskAttendance(document, kiosk_backend_info) {
     await whenReady();
-    const env = makeEnv();
     session.server_version_info = kiosk_backend_info.server_version_info;
-    const app = new App({
-        getTemplate,
-        dev: env.debug,
-        translateFn: appTranslateFn,
-        translatableAttributes: ["data-tooltip"],
-        plugins: services,
-    });
-    await startServices(env, app);
-    const root = app.createRoot(kioskAttendanceApp, {
-        env: env,
+    await mountComponent(kioskAttendanceApp, document.body, {
+        name: "Kiosk Attendance",
         props: {
             token: kiosk_backend_info.token,
             companyId: kiosk_backend_info.company_id,
@@ -283,6 +269,5 @@ export async function createPublicKioskAttendance(document, kiosk_backend_info) 
             captureCheckInImage: kiosk_backend_info.capture_check_in_image,
         },
     });
-    return root.mount(document.body);
 }
 export default { kioskAttendanceApp, createPublicKioskAttendance };

@@ -1,6 +1,6 @@
 import { SearchState } from "@mail/utils/common/hooks";
 import { getInnerHtml } from "@mail/utils/common/html";
-import { effect, onMounted, onWillDestroy, onWillUnmount, proxy } from "@odoo/owl";
+import { proxy } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { createDocumentFragmentFromContent } from "@web/core/utils/html";
 import { escapeRegExp } from "@web/core/utils/strings";
@@ -16,7 +16,7 @@ export function searchHighlight(searchTerm, target) {
         return target;
     }
     const htmlDoc = createDocumentFragmentFromContent(target);
-    for (const term of searchTerm.split(" ")) {
+    for (const term of searchTerm.split(" ").filter(Boolean)) {
         const regexp = new RegExp(`(${escapeRegExp(term)})`, "gi");
         // Special handling for '
         // Note: browsers use XPath 1.0, so uses concat() rather than ||
@@ -76,6 +76,7 @@ export class MessageSearchState extends SearchState {
     loadMoreBeforeMessageId;
     /** @type {import("models").Store} */
     store;
+    searchId = 0;
 
     /** @param {import('models').Thread} [initialThread] */
     constructor(initialThread) {
@@ -83,18 +84,6 @@ export class MessageSearchState extends SearchState {
         this.store = useService("mail.store");
         this.thread = initialThread;
         this.fetch = this.fetchMessages.bind(this);
-        let disposeEffect = () => {};
-        onMounted(() => {
-            disposeEffect = effect(() => {
-                if (this.isActive) {
-                    this.run();
-                } else if (this.searched) {
-                    this.clear();
-                }
-            });
-        });
-        onWillDestroy(disposeEffect);
-        onWillUnmount(() => this.clear());
     }
 
     get isActive() {
@@ -109,14 +98,15 @@ export class MessageSearchState extends SearchState {
     async fetchMessages(term) {
         const before = this.loadMoreBeforeMessageId;
         this.loadMoreBeforeMessageId = undefined;
+        const currentSearchId = ++this.searchId;
         const data = await this.store.searchMessagesInThread(
             term,
             this.thread,
             before ?? false,
             this.is_notification
         );
-        if (!data) {
-            return;
+        if (!data || currentSearchId !== this.searchId) {
+            return; // Search was cleared or superseded during request.
         }
         this.searched = true;
         this.count = data.count;
@@ -137,13 +127,14 @@ export class MessageSearchState extends SearchState {
         this.run();
     }
 
-    clear() {
+    reset() {
+        this.searchId++;
+        super.reset();
         this.is_notification = undefined;
         this.messages = [];
         this.searched = false;
         this.count = 0;
         this.hasMore = false;
-        this.reset();
     }
 
     /**

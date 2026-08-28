@@ -54,6 +54,7 @@ __all__ = [
     'DEFAULT_SERVER_DATE_FORMAT',
     'DEFAULT_SERVER_TIME_FORMAT',
     'NON_BREAKING_SPACE',
+    'ROUNDING_UNIT_CHARS',
     'SKIPPED_ELEMENT_TYPES',
     'DotDict',
     'LastOrderedSet',
@@ -75,7 +76,6 @@ __all__ = [
     'format_duration',
     'format_time',
     'frozendict',
-    'get_iso_codes',
     'get_lang',
     'groupby',
     'hash_sign',
@@ -84,7 +84,6 @@ __all__ = [
     'human_size',
     'is_list_of',
     'merge_sequences',
-    'mod10r',
     'mute_logger',
     'parse_date',
     'partition',
@@ -95,7 +94,6 @@ __all__ = [
     'reverse_enumerate',
     'split_every',
     'str2bool',
-    'street_split',
     'topological_sort',
     'unique',
     'verify_hash_signed',
@@ -114,6 +112,11 @@ default_parser.set_element_class_lookup(objectify.ObjectifyElementClassLookup())
 objectify.set_default_parser(default_parser)
 
 NON_BREAKING_SPACE = u'\N{NO-BREAK SPACE}'
+ROUNDING_UNIT_CHARS = {
+    'thousands': 'k',
+    'lakhs': 'L',
+    'millions': 'M',
+}
 
 # ensure we have a non patched time for query times when using freezegun
 real_time = time.time.__call__  # type: ignore
@@ -431,30 +434,6 @@ def merge_sequences[T](*iterables: Iterable[T]) -> list[T]:
                 deps[item].append(prev)
             prev = item
     return topological_sort(deps)
-
-
-def get_iso_codes(lang: str) -> str:
-    if lang.find('_') != -1:
-        lang_items = lang.split('_')
-        if lang_items[0] == lang_items[1].lower():
-            lang = lang_items[0]
-    return lang
-
-
-def mod10r(number: str) -> str:
-    """
-    Input number : account or invoice number
-    Output return: the same number completed with the recursive mod10
-    key
-    """
-    codec=[0,9,4,6,8,2,7,1,3,5]
-    report = 0
-    result=""
-    for digit in number:
-        result += digit
-        if digit.isdigit():
-            report = codec[ (int(digit) + report) % 10 ]
-    return result + str((10 - report) % 10)
 
 
 def str2bool(s: str, default: bool | None = None) -> bool:
@@ -793,7 +772,7 @@ class MungedTracebackLogRecord(logging.LogRecord):
 
 def stripped_sys_argv(*strip_args):
     """Return sys.argv with some arguments stripped, suitable for reexecution or subprocesses"""
-    strip_args = sorted(set(strip_args) | set(['-s', '--save', '-u', '--update', '-i', '--init', '--i18n-overwrite']))
+    strip_args = sorted(set(strip_args) | {'--save', '-u', '--update', '-i', '--init', '--i18n-overwrite'})
     assert all(config.parser.has_option(s) for s in strip_args)
     takes_value = dict((s, config.parser.get_option(s).takes_value()) for s in strip_args)
 
@@ -1034,6 +1013,13 @@ class OrderedSet[T](MutableSet[T]):
 
     def __len__(self):
         return len(self._map)
+
+    def __and__(self, other):
+        # preserve order of this set
+        if not isinstance(other, Iterable):
+            return NotImplemented
+        other = set(other)
+        return self._from_iterable(value for value in self if value in other)
 
     def add(self, elem):
         self._map[elem] = None
@@ -1335,9 +1321,9 @@ def formatLang(
     :param rounding_unit: The rounding unit to be used:
         **decimals** will round to decimals with ``digits`` or ``dp`` precision,
         **units** will round to units without any decimals,
-        **thousands** will round to thousands without any decimals,
-        **lakhs** will round to lakhs without any decimals,
-        **millions** will round to millions without any decimals.
+        **thousands** will round to thousands without any decimals and append 'k',
+        **lakhs** will round to lakhs without any decimals and append 'L',
+        **millions** will round to millions without any decimals and append 'M'.
 
     :returns: The value formatted.
     """
@@ -1366,6 +1352,9 @@ def formatLang(
     rounded_value = float_round(value, precision_digits=digits, rounding_method=rounding_method)
     lang = env['res.lang'].browse(get_lang(env).id)
     formatted_value = lang.format(f'%.{digits}f', rounded_value, grouping=grouping)
+
+    if unit_char := ROUNDING_UNIT_CHARS.get(rounding_unit):
+        formatted_value = f'{formatted_value}{unit_char}'
 
     if currency_obj and currency_obj.symbol:
         arguments = (formatted_value, NON_BREAKING_SPACE, currency_obj.symbol)
@@ -1553,6 +1542,7 @@ def _format_time_ago(
     return babel.dates.format_timedelta(-time_delta, add_direction=add_direction, locale=locale)
 
 
+# expose
 def format_decimalized_number(number: float, decimal: int = 1) -> str:
     """Format a number to display to nearest metrics unit next to it.
 
@@ -1787,7 +1777,7 @@ def diff_zip(items1: list, items2: list):
         yield (None, items2[it])
 
 
-def hmac(env, scope, message, hash_function=hashlib.sha256):
+def hmac(env, scope, message, hash_function=hashlib.sha256, *, secret=None):
     """Compute HMAC with `database.secret` config parameter as key.
 
     :param env: sudo environment to use for retrieving config parameter
@@ -1795,20 +1785,30 @@ def hmac(env, scope, message, hash_function=hashlib.sha256):
     :param scope: scope of the authentication, to have different signature for the same
         message in different usage
     :param hash_function: hash function to use for HMAC (default: SHA-256)
+    :param secret: secret used for sign, falls back to database.secret when no explicit secret is provided
     """
     if not scope:
         raise ValueError('Non-empty scope required')
 
-    secret = env['ir.config_parameter'].get_str('database.secret')
+    if secret is None:
+        secret = env['ir.config_parameter'].get_str('database.secret')
+    if isinstance(secret, str):
+        secret = secret.encode()
+
+    if not isinstance(secret, bytes):
+        raise TypeError("secret must be a str or bytes")
+    if not secret:
+        raise ValueError("Non-empty secret required")
+
     message = repr((scope, message))
     return hmac_lib.new(
-        secret.encode(),
+        secret,
         message.encode(),
         hash_function,
     ).hexdigest()
 
 
-def hash_sign(env, scope, message_values, expiration=None, expiration_hours=None):
+def hash_sign(env, scope, message_values, expiration=None, expiration_hours=None, *, secret=None):
     """ Generate an urlsafe payload signed with the HMAC signature for an iterable set of data.
     This feature is very similar to JWT, but in a more generic implementation that is inline with out previous hmac implementation.
 
@@ -1818,6 +1818,7 @@ def hash_sign(env, scope, message_values, expiration=None, expiration_hours=None
     :param message_values: values to be encoded inside the payload
     :param expiration: optional, a datetime or timedelta
     :param expiration_hours: optional, a int representing a number of hours before expiration. Cannot be set at the same time as expiration
+    :param secret: secret used for sign, falls back to database.secret when no explicit secret is provided
     :return: the payload that can be used as a token
     """
     assert not (expiration and expiration_hours)
@@ -1830,18 +1831,19 @@ def hash_sign(env, scope, message_values, expiration=None, expiration_hours=None
             expiration = datetime.datetime.now() + expiration
     expiration_timestamp = 0 if not expiration else int(expiration.timestamp())
     message_strings = json.dumps(message_values)
-    hash_value = hmac(env, scope, f'1:{message_strings}:{expiration_timestamp}', hash_function=hashlib.sha256)
+    hash_value = hmac(env, scope, f'1:{message_strings}:{expiration_timestamp}', hash_function=hashlib.sha256, secret=secret)
     token = b"\x01" + expiration_timestamp.to_bytes(8, 'little') + bytes.fromhex(hash_value) + message_strings.encode()
     return base64.urlsafe_b64encode(token).decode().rstrip('=')
 
 
-def verify_hash_signed(env, scope, payload):
+def verify_hash_signed(env, scope, payload, *, secret=None):
     """ Verify and extract data from a given urlsafe  payload generated with hash_sign()
 
     :param env: sudo environment to use for retrieving config parameter
     :param scope: scope of the authentication, to have different signature for the same
         message in different usage
     :param payload: the token to verify
+    :param secret: secret used to verify signature, falls back to database.secret when no explicit secret is provided
     :return: The payload_values if the check was successful, None otherwise.
     """
 
@@ -1852,7 +1854,7 @@ def verify_hash_signed(env, scope, payload):
 
     expiration_value, hash_value, message = token[1:9], token[9:41].hex(), token[41:].decode()
     expiration_value = int.from_bytes(expiration_value, byteorder='little')
-    hash_value_expected = hmac(env, scope, f'1:{message}:{expiration_value}', hash_function=hashlib.sha256)
+    hash_value_expected = hmac(env, scope, f'1:{message}:{expiration_value}', hash_function=hashlib.sha256, secret=secret)
 
     if consteq(hash_value, hash_value_expected) and (expiration_value == 0 or datetime.datetime.now().timestamp() < expiration_value):
         message_values = json.loads(message)
@@ -1919,17 +1921,6 @@ def verify_limited_field_access_token(record, field_name, access_token, *, scope
     ) and datetime.datetime.now() < datetime.datetime.fromtimestamp(int(timestamp, 16))
 
 
-ADDRESS_REGEX = re.compile(r'^(.*?)(\s[0-9][0-9\S]*)?(?: - (.+))?$', flags=re.DOTALL)
-def street_split(street):
-    match = ADDRESS_REGEX.match(street or '')
-    results = match.groups('') if match else ('', '', '')
-    return {
-        'street_name': results[0].strip(),
-        'street_number': results[1].strip(),
-        'street_number2': results[2],
-    }
-
-
 def is_list_of(values, type_: type) -> bool:
     """Return True if the given values is a list / tuple of the given type.
 
@@ -1950,14 +1941,6 @@ def has_list_types(values, types: tuple[type, ...]) -> bool:
         isinstance(values, (list, tuple)) and len(values) == len(types)
         and all(itertools.starmap(isinstance, zip(values, types)))
     )
-
-
-def get_flag(country_code: str) -> str:
-    """Get the emoji representing the flag linked to the country code.
-
-    This emoji is composed of the two regional indicator emoji of the country code.
-    """
-    return "".join(chr(int(f"1f1{ord(c)+165:02x}", base=16)) for c in country_code)
 
 
 def named_to_positional_printf(string: str, args: Mapping) -> tuple[str, tuple]:

@@ -1,4 +1,4 @@
-import { Component } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { computeM2OProps, KanbanMany2One } from "@web/views/fields/many2one/many2one";
@@ -6,18 +6,18 @@ import {
     buildM2OFieldDescription,
     extractM2OFieldProps,
     m2oSupportedOptions,
-    Many2OneField,
+    many2OneFieldProps,
 } from "@web/views/fields/many2one/many2one_field";
 import { Avatar } from "../avatar/avatar";
 import { user } from "@web/core/user";
 
-export class KanbanMany2OneAvatarUserField extends Component {
-    static template = "mail.KanbanMany2OneAvatarUserField";
+export class CardMany2OneAvatarUserField extends Component {
+    static template = "mail.CardMany2OneAvatarUserField";
     static components = { Avatar, KanbanMany2One };
-    static props = {
-        ...Many2OneField.props,
-        displayAvatarName: { type: Boolean, optional: true },
-    };
+    props = useProps({
+        ...many2OneFieldProps,
+        displayAvatarName: t.boolean().optional(),
+    });
 
     get displayName() {
         return this.props.displayAvatarName && this.value ? this.value.display_name : "";
@@ -38,8 +38,8 @@ export class KanbanMany2OneAvatarUserField extends Component {
 
 /** @type {import("registries").FieldsRegistryItemShape} */
 const fieldDescr = {
-    ...buildM2OFieldDescription(KanbanMany2OneAvatarUserField),
-    additionalClasses: ["o_field_many2one_avatar_kanban", "o_field_many2one_avatar"],
+    ...buildM2OFieldDescription(CardMany2OneAvatarUserField),
+    additionalClasses: ["o_field_many2one_avatar"],
     relatedFields: user.isInternalUser ? [{ name: "write_date", type: "datetime" }] : [],
     extractProps(staticInfo, dynamicInfo) {
         return {
@@ -59,4 +59,4 @@ const fieldDescr = {
 };
 
 registry.category("fields").add("activity.many2one_avatar_user", fieldDescr);
-registry.category("fields").add("kanban.many2one_avatar_user", fieldDescr);
+registry.category("fields").add("card.many2one_avatar_user", fieldDescr);

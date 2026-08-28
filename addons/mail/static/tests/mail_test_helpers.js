@@ -1,4 +1,8 @@
-import { addBusMessageHandler, busModels } from "@bus/../tests/bus_test_helpers";
+import {
+    addBusMessageHandler,
+    busModels,
+    waitUntilSubscribe,
+} from "@bus/../tests/bus_test_helpers";
 import {
     after,
     before,
@@ -9,52 +13,48 @@ import {
     test,
 } from "@odoo/hoot";
 import { hover as hootHover, queryFirst, resize } from "@odoo/hoot-dom";
-import { microTick } from "@odoo/hoot-mock";
 import {
+    assignTestEnv,
     MockServer,
     authenticate,
     defineModels,
     defineParams,
     getMockEnv,
     getService,
-    makeMockEnv,
     makeMockServer,
+    makeTestApp,
     mountWithCleanup,
     onRpc,
     parseViewProps,
     patchWithCleanup,
-    restoreRegistry,
     serverState,
     webModels,
 } from "@web/../tests/web_test_helpers";
 
 import { CHAT_HUB_KEY } from "@mail/core/common/chat_hub_model";
-import { click, contains } from "./mail_test_helpers_contains";
+import { MENU_TABS } from "@mail/core/public_web/messaging_menu/messaging_menu_model";
+import { click, contains, TIMEOUT } from "./mail_test_helpers_contains";
 
 import { closeStream, mailGlobal } from "@mail/utils/common/misc";
 import { Component, onMounted, onPatched } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
 import { emojiLoader } from "@web/core/emoji_picker/emoji_loader";
 import { registry } from "@web/core/registry";
-import { MEDIAS_BREAKPOINTS, utils as uiUtils } from "@web/core/ui/ui_service";
-import { useServiceProtectMethodHandling } from "@web/core/utils/hooks";
+import { MEDIAS_BREAKPOINTS, utils as uiUtils } from "@web/core/ui/ui_utils";
+import { useService } from "@web/core/utils/hooks";
+import { IndexedDB } from "@web/core/utils/indexed_db";
+import { pick } from "@web/core/utils/objects";
 import { session } from "@web/session";
 import { WebClient } from "@web/webclient/webclient";
-export { SIZES } from "@web/core/ui/ui_service";
-import { IndexedDB } from "@web/core/utils/indexed_db";
+export { SIZES } from "@web/core/ui/ui_utils";
 
-import { SoundEffects } from "@mail/core/common/sound_effects_service";
+import { SoundEffectsPlugin } from "@mail/core/common/sound_effects_plugin";
+import { Store as StoreService } from "@mail/core/common/store_service";
 import { UPDATE_EVENT } from "@mail/discuss/call/common/peer_to_peer";
 import { Network, Rtc } from "@mail/discuss/call/common/rtc_service";
-import { DiscussAppCategory } from "@mail/discuss/core/public_web/discuss_app/discuss_app_category_model";
-import { makeRecordFieldLocalId } from "@mail/model/misc";
-import { LocalStorageEntry } from "@mail/utils/common/local_storage";
-import {
-    DISCUSS_ACTION_ID,
-    authenticateGuest,
-    mailDataHelpers,
-} from "./mock_server/mail_mock_server";
+import { DISCUSS_ACTION_ID, authenticateGuest } from "./mock_server/mail_mock_server";
 import { Base } from "./mock_server/mock_models/base";
+import { DiscussCallHistory } from "./mock_server/mock_models/discuss_call_history";
 import { DiscussCategory } from "./mock_server/mock_models/discuss_category";
 import { DiscussChannel } from "./mock_server/mock_models/discuss_channel";
 import { DiscussChannelMember } from "./mock_server/mock_models/discuss_channel_member";
@@ -67,6 +67,9 @@ import { M2xAvatarUser } from "./mock_server/mock_models/m2x_avatar_user";
 import { MailActivity } from "./mock_server/mock_models/mail_activity";
 import { MailActivitySchedule } from "./mock_server/mock_models/mail_activity_schedule";
 import { MailActivityType } from "./mock_server/mock_models/mail_activity_type";
+import { MailAlias } from "./mock_server/mock_models/mail_alias";
+import { MailAliasDomain } from "./mock_server/mock_models/mail_alias_domain";
+import { MailCallArtifact } from "./mock_server/mock_models/mail_call_artifact";
 import { MailCannedResponse } from "./mock_server/mock_models/mail_canned_response";
 import { MailComposeMessage } from "./mock_server/mock_models/mail_composer_message";
 import { MailFollowers } from "./mock_server/mock_models/mail_followers";
@@ -89,6 +92,7 @@ import { ResRole } from "./mock_server/mock_models/res_role";
 import { ResUsers } from "./mock_server/mock_models/res_users";
 import { ResUsersSettings } from "./mock_server/mock_models/res_users_settings";
 import { ResUsersSettingsVolumes } from "./mock_server/mock_models/res_users_settings_volumes";
+import { Store } from "./mock_server/store";
 
 export * from "./mail_test_helpers_contains";
 
@@ -97,7 +101,12 @@ export const registryNamesToCloneWithCleanup = [];
 registryNamesToCloneWithCleanup.push("mock_server_callbacks", "discuss.model");
 
 mailGlobal.isInTest = true;
-useServiceProtectMethodHandling.fn = useServiceProtectMethodHandling.mocked; // so that RPCs after tests do not throw error
+patchWithCleanup(useService, {
+    handleCallWhenDestroyed() {
+        // so that RPCs after tests do not throw error
+        return new Promise(() => {});
+    },
+});
 
 addBusMessageHandler("mail.record/insert", (_env, _id, payload) => {
     const recordsByModelName = Object.entries(payload);
@@ -128,6 +137,7 @@ export const mailModels = {
     ...webModels,
     ...busModels,
     Base,
+    DiscussCallHistory,
     DiscussChannel,
     DiscussCategory,
     DiscussChannelMember,
@@ -137,9 +147,12 @@ export const mailModels = {
     IrAttachment,
     IrWebSocket,
     M2xAvatarUser,
+    MailCallArtifact,
     MailActivity,
     MailActivitySchedule,
     MailActivityType,
+    MailAlias,
+    MailAliasDomain,
     MailComposeMessage,
     MailCannedResponse,
     MailFollowers,
@@ -218,14 +231,31 @@ export function onlineTest(...args) {
     }
 }
 
-export async function openDiscuss(activeId, { target } = {}) {
+/** @typedef {`discuss.tab_${import("menu_tabs").MenuTabs[keyof import("menu_tabs").MenuTabs]}`} MenuTabId */
+
+/** @type {{ [K in keyof import("menu_tabs").MenuTabs]: `discuss.tab_${import("menu_tabs").MenuTabs[K]}` }} */
+export const MENU_ACTIVE_IDS = Object.fromEntries(
+    Object.entries(MENU_TABS).map(([key, value]) => [key, `discuss.tab_${value}`])
+);
+
+/** @param {number|MenuTabId} [activeIdOrTabId] */
+export async function openDiscuss(activeIdOrTabId, { target } = {}) {
+    let tabId;
+    if (typeof activeIdOrTabId === "string" && activeIdOrTabId?.startsWith("discuss.tab_")) {
+        tabId = activeIdOrTabId.slice("discuss.tab_".length);
+        activeIdOrTabId = undefined;
+    }
     const actionService = target?.services.action ?? getService("action");
     await actionService.doAction({
-        context: { active_id: activeId },
+        context: { active_id: activeIdOrTabId },
         id: DISCUSS_ACTION_ID,
         tag: "mail.action_discuss",
         type: "ir.actions.client",
     });
+    if (tabId) {
+        await click(`.o-mail-Discuss .o-mail-MessagingMenu-tab[data-id=${tabId}]`);
+        await contains(`.o-mail-Discuss .o-mail-MessagingMenu-tab[data-id=${tabId}].active`);
+    }
 }
 
 export async function openFormView(resModel, resId, params) {
@@ -337,6 +367,7 @@ let discussAsTabId = 0;
  *  asTab?: boolean;
  *  authenticateAs?: any | { login: string; password: string; };
  *  env?: Partial<OdooEnv>;
+ *  waitUntilSubscribe?: boolean;
  * }} [options]
  */
 export async function start(options) {
@@ -373,17 +404,15 @@ export async function start(options) {
     if ("res.users" in pyEnv) {
         /** @type {import("mock_models").ResUsers} */
         const ResUsers = pyEnv["res.users"];
-        const store = new mailDataHelpers.Store();
+        const store = new Store();
         ResUsers._init_store_data(store);
         patchWithCleanup(session, {
-            storeData: store.get_result(),
+            storeData: store.as_dict(),
         });
         registerDebugInfo("session.storeData", session.storeData);
     }
-    let env;
     if (options?.asTab) {
         discussAsTabId++;
-        restoreRegistry(registry);
         const rootTarget = target;
         target = document.createElement("div");
         target.classList.add("o-mail-Discuss-asTabContainer");
@@ -391,26 +420,28 @@ export async function start(options) {
         rootTarget.appendChild(target);
         addSwitchTabDropdownItem(rootTarget, target);
         const selector = `.o-mail-Discuss-asTabContainer[data-as-tab-id="${target.dataset.asTabId}"]`;
-        env = await makeMockEnv({ discussAsTabId, selector }, { makeNew: true });
-    } else {
-        env = getMockEnv() || (await makeMockEnv({}));
+        assignTestEnv({ discussAsTabId, selector });
+        await makeTestApp({ forceNew: true });
     }
-    env.testEnv = true;
-    patchWithCleanup(SoundEffects.prototype, {
+    patchWithCleanup(SoundEffectsPlugin.prototype, {
         _setAudioSrc(audio, srcPath) {
             audio["data-src"] = srcPath;
         },
     });
+    await Promise.all([
+        options?.waitUntilSubscribe === false ? Promise.resolve() : waitUntilSubscribe(),
+        mountWithCleanup(WebClient, { target }),
+    ]);
     // Note that loading the emojis cannot be called before setting up the env because
     // it depends on translations being loaded.
-    await Promise.all([mountWithCleanup(WebClient, { env, target }), emojiLoader.load()]);
-    const storeService = env.services["mail.store"];
-    const popoutService = env.services["mail.popout"];
+    await emojiLoader.load();
+    const storeService = getService("mail.store");
+    const popoutService = getService("mail.popout");
     after(() => {
         storeService._runDisposeFns();
         popoutService.resetAll();
     });
-    return Object.assign(env, { ...options?.env, target });
+    return Object.assign(Object.create(getMockEnv()), { target });
 }
 
 export async function startServer() {
@@ -458,7 +489,7 @@ function getSizeFromWidth(width) {
 /**
  * Adjust ui size either from given size (mapped to window breakpoints) or
  * width. This will impact uiService.{isSmall/size}, (wowl/legacy)
- * browser.innerWidth, (wowl) env.isSmall and. When a size is given, the browser
+ * browser.innerWidth, (wowl) uiService.isSmall and. When a size is given, the browser
  * width is set according to the breakpoints that are used by the webClient.
  *
  * @param {Object} params parameters to configure the ui size.
@@ -540,6 +571,99 @@ export function mockGetMedia() {
 }
 
 /**
+ * Intercept the browser's native fullscreen API so tests can drive it without a real user
+ * gesture. `document.fullscreenElement` and the `fullscreenchange` event are simulated, letting
+ * the `mail.fullscreen` service derive its `isBrowserFullscreen` state from a controllable source.
+ *
+ * @param {Object} [param0]
+ * @param {boolean} [param0.grant=true] Whether fullscreen requests are granted. When `false`,
+ *  `requestFullscreen` resolves without entering fullscreen (as a browser does without a user
+ *  gesture), so callers fall back to the windowed overlay.
+ * @returns {{ isBrowserFullscreen: () => boolean, leaveBrowserFullscreen: () => void }}
+ *  `isBrowserFullscreen` reads the simulated state; `leaveBrowserFullscreen` simulates the user
+ *  leaving fullscreen externally (e.g. with the Escape key).
+ */
+export function mockBrowserFullscreen({ grant = true } = {}) {
+    let fullscreenElement = null;
+    function setFullscreenElement(element) {
+        if (fullscreenElement === element) {
+            return;
+        }
+        fullscreenElement = element;
+        window.dispatchEvent(new Event("fullscreenchange"));
+    }
+    Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        get: () => fullscreenElement,
+    });
+    after(() => delete document.fullscreenElement);
+    patchWithCleanup(document.body, {
+        async requestFullscreen() {
+            if (grant) {
+                setFullscreenElement(document.body);
+            }
+        },
+    });
+    patchWithCleanup(document, {
+        async exitFullscreen() {
+            setFullscreenElement(null);
+        },
+    });
+    return {
+        isBrowserFullscreen: () => Boolean(fullscreenElement),
+        leaveBrowserFullscreen: () => setFullscreenElement(null),
+    };
+}
+
+/**
+ * Simulate the popout window used for picture-in-picture by backing it with an in-DOM iframe.
+ * Forces the non-native popout path (`documentPictureInPicture` disabled) and makes `browser.open`
+ * return a fake window whose document is the iframe's, so the PiP content can be queried in tests
+ * through the returned `popoutIframe.contentDocument`.
+ *
+ * @returns {{ popoutWindow: Object, popoutIframe: HTMLIFrameElement }}
+ */
+export function mockPipWindow() {
+    const popoutIframe = document.createElement("iframe");
+    const outsideArea = document.createElement("div");
+    getFixture().appendChild(outsideArea);
+    const popoutWindow = {
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        closed: false,
+        get document() {
+            const doc = popoutIframe.contentDocument;
+            if (!doc) {
+                return undefined;
+            }
+            const originalWrite = doc.write;
+            doc.write = (content) => {
+                // This avoids duplicating the test script in the popoutWindow.
+                const sanitizedContent = content.replace(
+                    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+                    ""
+                );
+                originalWrite.call(doc, sanitizedContent);
+            };
+            return doc;
+        },
+        close() {
+            popoutWindow.closed = true;
+            popoutIframe.remove();
+        },
+    };
+    patchWithCleanup(window, { documentPictureInPicture: false });
+    patchWithCleanup(browser, {
+        open: () => {
+            popoutWindow.closed = false;
+            outsideArea.append(popoutIframe);
+            return popoutWindow;
+        },
+    });
+    return { popoutWindow, popoutIframe };
+}
+
+/**
  * A MockRemote represents the network API of a remote user, for example calling remote.updateUpload() behaves as if that remote user
  * had called this function on their own rtc_service.network
  *
@@ -605,6 +729,20 @@ export async function makeMockRtcNetwork({ env, channelId }) {
                 },
                 async updateInfo(info) {
                     await rtcServiceIsListening;
+                    // This helper calls the remote update functions directly, so it bypasses
+                    // the updateAndBroadcastDebounce() that a real participant goes through.
+                    // Write the values it would have stored, otherwise a store fetch brings the
+                    // outdated ones back and reverts them.
+                    const serverInfo = pick(
+                        info,
+                        "is_camera_on",
+                        "is_deaf",
+                        "is_muted",
+                        "is_screen_sharing_on"
+                    );
+                    if (Object.keys(serverInfo).length > 0) {
+                        pyEnv["discuss.channel.rtc.session"].write([sessionId], serverInfo);
+                    }
                     dispatchUpdate({
                         name: UPDATE_EVENT.INFO_CHANGE,
                         payload: { [sessionId]: info },
@@ -735,7 +873,7 @@ export async function isInViewportOf(childSelector, parentSelector) {
         reject: rejectInViewport,
         resolve: resolveInViewport,
     } = Promise.withResolvers();
-    const failTimeout = setTimeout(() => check({ crashOnFail: true }), 3000);
+    const failTimeout = setTimeout(() => check({ crashOnFail: true }), TIMEOUT);
     const check = ({ crashOnFail = false } = {}) => {
         const parent = queryFirst(parentSelector);
         const child = queryFirst(childSelector);
@@ -766,6 +904,20 @@ export async function isInViewportOf(childSelector, parentSelector) {
     return inViewportPromise;
 }
 
+/** @param {MenuTabId} [tabId] */
+export async function openMessagingMenu(tabId) {
+    if (!queryFirst(".o-mail-MessagingMenuInDropdown")) {
+        await click(".o_menu_systray i[aria-label='Messages']");
+    }
+    if (tabId) {
+        const id = tabId.slice("discuss.tab_".length);
+        await click(`.o-mail-MessagingMenuInDropdown .o-mail-MessagingMenu-tab[data-id='${id}']`);
+        await click(
+            `.o-mail-MessagingMenuInDropdown .o-mail-MessagingMenu-tab[data-id='${id}'].active`
+        );
+    }
+}
+
 export async function hover(selector) {
     await contains(selector);
     await hootHover(selector);
@@ -784,22 +936,6 @@ function convertChatHubParam(param) {
 
 export function setupChatHub({ opened = [], folded = [] } = {}) {
     browser.localStorage.setItem(CHAT_HUB_KEY, toChatHubData(opened, folded));
-}
-
-export function setDiscussSidebarCategoryFoldState(categoryId, val) {
-    const localId = DiscussAppCategory.localId(categoryId);
-    const lse = new LocalStorageEntry(makeRecordFieldLocalId(localId, "is_open"));
-    if (val) {
-        lse.set(!val);
-    } else {
-        lse.remove();
-    }
-}
-
-export function isDiscussSidebarCategoryFolded(categoryId) {
-    const localId = DiscussAppCategory.localId(categoryId);
-    const lse = new LocalStorageEntry(makeRecordFieldLocalId(localId, "is_open"));
-    return !(lse.get() ?? true);
 }
 
 export function assertChatHub({ opened = [], folded = [] }) {
@@ -821,40 +957,46 @@ export const STORE_FETCH_ROUTES = ["/mail/store"];
  *  and the specific params should be logged in expect.step. By default only the name is logged.
  */
 export function listenStoreFetch(nameOrNames = [], { logParams = [], onRpc: onRpcOverride } = {}) {
-    async function registerStep(request, name, params) {
-        const res = await onRpcOverride?.(request);
-        if (logParams.includes(name)) {
-            expect.step(`store fetch: ${name} - ${JSON.stringify(params)}`);
-        } else {
-            expect.step(`store fetch: ${name}`);
-        }
-        return res;
+    const namesToRegister = typeof nameOrNames === "string" ? [nameOrNames] : nameOrNames;
+    function isRegistered(name) {
+        return namesToRegister.length === 0 || namesToRegister.includes(name);
     }
-    async function registerSteps(request, fetchParams) {
-        const namesToRegister = typeof nameOrNames === "string" ? [nameOrNames] : nameOrNames;
+    patchWithCleanup(StoreService.prototype, {
+        async fetchStoreData(name, params) {
+            const res = await super.fetchStoreData(...arguments);
+            if (isRegistered(name)) {
+                if (logParams.includes(name)) {
+                    expect.step(`store fetch: ${name} - ${JSON.stringify(params)}`);
+                } else {
+                    expect.step(`store fetch: ${name}`);
+                }
+            }
+            return res;
+        },
+    });
+    if (!onRpcOverride) {
+        return;
+    }
+    async function callOverride(request, fetchParams) {
         let res;
         for (const fetchParam of fetchParams) {
             const name = typeof fetchParam === "string" ? fetchParam : fetchParam[0];
-            const params = typeof fetchParam === "string" ? undefined : fetchParam[1];
-            if (namesToRegister.length > 0) {
-                if (namesToRegister.some((namesToRegister) => namesToRegister === name)) {
-                    res = await registerStep(request, name, params);
-                }
-            } else {
-                res = await registerStep(request, name, params);
+            if (isRegistered(name)) {
+                res = await onRpcOverride(request);
             }
         }
         return res;
     }
     onRpc("/mail/store", async (request) => {
         const { params } = await request.json();
-        return registerSteps(request, params.fetch_params);
+        return callOverride(request, params.fetch_params);
     });
 }
 
 /**
- * Waits for the given name or names of store fetch parameters to have been fetched from the server,
- * in the given order. Expected names have to be registered with listenStoreFetch beforehand.
+ * Waits for the given name(s) of store fetch parameters to have been fetched
+ * and applied to the store, in the given order. Expected names have to be registered with
+ * listenStoreFetch beforehand.
  * If other expect.step are resolving in the same flow, they must be provided to stepsAfter (if they
  * are resolved after the fetch) or stepsBefore (if they are resolved before the fetch). The order
  * can be ignored with ignoreOrder option.
@@ -887,13 +1029,6 @@ export async function waitStoreFetch(
         ],
         { ignoreOrder, timeout }
     );
-    /**
-     * Extra tick necessary to ensure the RPC is fully processed before resolving.
-     * This is necessary because the expect.step in onRpc is not synchronous with the moment
-     * the RPC result is resolved and processed in the business code. Removing this tick
-     * won't make everything fail, but it might create subtle race conditions.
-     */
-    await microTick();
 }
 
 export function userContext() {
@@ -1045,11 +1180,11 @@ export async function assertChatBubbleAndWindowImStatus(conversationName, count)
 export function sendPresenceUpdate(modelName, id, newPresence) {
     const env = MockServer.env;
     env[modelName].write(id, { im_status: newPresence });
-    const store = new mailDataHelpers.Store().add(env[modelName].browse(id), {
+    const store = new Store().add(env[modelName].browse(id), {
         presence_status: newPresence,
         im_status: newPresence,
     });
-    env["bus.bus"]._sendone(serverState.userId, "mail.record/insert", store.get_result());
+    env["bus.bus"]._sendone(serverState.userId, "mail.record/insert", store.as_dict());
 }
 
 export async function setIndexedDB(table, key, value) {

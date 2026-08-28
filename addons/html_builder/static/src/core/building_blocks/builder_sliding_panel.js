@@ -1,39 +1,35 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, onMounted, onWillUnmount, proxy } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, proxy, signal, t, useProps } from "@odoo/owl";
+import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { BuilderComponent } from "./builder_component";
 import { BuilderRow } from "./builder_row";
-import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 
 import { basicContainerBuilderComponentProps, useBuilderComponent } from "../utils";
 
 export class BuilderSlidingPanel extends Component {
     static template = "html_builder.BuilderSlidingPanel";
     static components = { BuilderComponent, BuilderRow };
-    static props = {
+
+    props = useProps({
         ...basicContainerBuilderComponentProps,
-        label: { type: String, optional: false },
-        extraClasses: { type: String, optional: true },
-        fullHeight: { type: Boolean, optional: true },
-        darkBackground: { type: Boolean, optional: true },
-        openByDefault: { type: Boolean, optional: true },
-        slots: { type: Object, optional: true },
-    };
-    static defaultProps = {
-        extraClasses: "",
-        fullHeight: false,
-        darkBackground: false,
-        openByDefault: false,
-    };
+        label: t.string(),
+        extraClasses: t.string().optional(""),
+        icon: t.string().optional(),
+        fullHeight: t.boolean().optional(false),
+        darkBackground: t.boolean().optional(false),
+        openByDefault: t.boolean().optional(false),
+    });
+
+    slidingPanelRef = signal.ref();
+    openButtonRef = signal.ref();
 
     setup() {
-        useBuilderComponent();
-        this.slidingPanelRef = useRef("slidingPanel");
-        this.openButtonRef = useRef("openButton");
+        useBuilderComponent(this.props);
         this.state = proxy({
             optionContainerName: "",
+            contentRendered: this.props.openByDefault,
         });
         onMounted(() => {
-            const slidingPanelEl = this.slidingPanelRef.el;
+            const slidingPanelEl = this.slidingPanelRef();
             const optionsContainerEl = slidingPanelEl.closest("div.options-container");
             this.state.optionContainerName = optionsContainerEl.dataset.containerTitle;
             optionsContainerEl.parentElement.append(slidingPanelEl);
@@ -43,16 +39,16 @@ export class BuilderSlidingPanel extends Component {
             }
         });
         useHotkey("escape", this.hideSlidingPanel.bind(this), {
-            isAvailable: () => !this.slidingPanelRef.el.classList.contains("d-none"),
+            isAvailable: () => !this.slidingPanelRef().classList.contains("d-none"),
         });
         onWillUnmount(() => {
             clearTimeout(this.updateDisplayTimeout);
-            this.slidingPanelRef.el.remove();
+            this.slidingPanelRef().remove();
         });
     }
 
     updateDisplay(className) {
-        const slidingPanelEl = this.slidingPanelRef.el;
+        const slidingPanelEl = this.slidingPanelRef();
         if (!slidingPanelEl) {
             return;
         }
@@ -66,6 +62,7 @@ export class BuilderSlidingPanel extends Component {
     }
 
     showSlidingPanel() {
+        this.state.contentRendered = true;
         this.updateDisplay("hb-panel-slide-in");
         this.updateDisplayTimeout = setTimeout(() => this.updateDisplay("d-block"), 200);
     }
@@ -76,7 +73,7 @@ export class BuilderSlidingPanel extends Component {
         // happen otherwise.
         this.updateDisplayTimeout = setTimeout(() => {
             this.updateDisplay("d-none");
-            this.openButtonRef.el.focus();
+            this.openButtonRef().focus();
         }, 180);
     }
 

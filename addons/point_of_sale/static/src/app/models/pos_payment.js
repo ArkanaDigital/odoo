@@ -20,6 +20,21 @@ export class PosPayment extends Base {
         this.uiState = { qrCode: null, initStateDate: DateTime.now() };
     }
 
+    get config() {
+        return this.models["pos.config"].get(odoo.pos_config_id);
+    }
+
+    get currency() {
+        return this.foreign_currency_id || this.pos_order_id.currency;
+    }
+
+    get isDifferentCurrency() {
+        return (
+            this.foreign_currency_id &&
+            this.foreign_currency_id.id !== this.pos_order_id.currency.id
+        );
+    }
+
     getQrPopupProps(customerDisplay = false) {
         return customerDisplay
             ? {
@@ -31,7 +46,7 @@ export class PosPayment extends Base {
               }
             : {
                   qrCode: this.qr_code,
-                  amount: formatCurrency(this.getAmount(), this.pos_order_id.currency),
+                  amount: formatCurrency(this.getAmount(), this.currency),
                   provider: this.payment_provider,
               };
     }
@@ -74,9 +89,18 @@ export class PosPayment extends Base {
         return this.pos_order_id?.uiState?.selected_paymentline_uuid === this.uuid;
     }
 
-    setAmount(value) {
+    setAmount(value, currency = this.pos_order_id.currency) {
         this.pos_order_id.assertEditable();
-        this.amount = this.pos_order_id.currency.round(parseFloat(value) || 0);
+
+        if (currency != this.pos_order_id.currency) {
+            this.amount_currency = parseFloat(value) || 0;
+            this.amount = this.pos_order_id.currency.round(
+                this.currency.convertToDefaultCurrency(this.amount_currency)
+            );
+        } else {
+            this.amount = this.pos_order_id.currency.round(parseFloat(value) || 0);
+            this.amount_currency = this.currency.convert(this.amount);
+        }
     }
 
     getAmount() {
@@ -107,10 +131,6 @@ export class PosPayment extends Base {
 
     setCashierReceipt(value) {
         this.cashier_receipt = value;
-    }
-
-    setReceiptInfo(value) {
-        this.ticket += value;
     }
 
     isElectronic() {
@@ -180,7 +200,7 @@ export class PosPayment extends Base {
         if (this.payment_interface) {
             return this.payment_interface.canBeAdjusted(this.uuid);
         }
-        return !this.payment_method_id.is_cash_count && !this.useBankQrCode;
+        return this.payment_method_id.type !== "cash" && !this.useBankQrCode;
     }
 
     async adjustAmount(amount) {

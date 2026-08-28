@@ -1,10 +1,9 @@
-import { useExternalListener, useRef } from "@web/owl2/utils";
 import { useService } from "@web/core/utils/hooks";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { browser } from "@web/core/browser/browser";
 import { queryAll, queryFirst, queryOne } from "@odoo/hoot-dom";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, signal, useListener } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { x2ManyCommands } from "@web/core/orm_plugin";
 import { tourRecorderState } from "./tour_recorder_state";
@@ -129,6 +128,8 @@ export class TourRecorder extends Component {
         tourName: "",
     };
 
+    tourRecorderRef = signal.ref();
+
     setup() {
         this.originClickEvent = false;
         this.destClickEvent = false;
@@ -144,18 +145,17 @@ export class TourRecorder extends Component {
                 y: 0,
             },
         });
-        this.tourRecorderRef = useRef("tour_recorder");
         this.dropdownState = useDropdownState();
 
         this.state.steps = tourRecorderState.getCurrentTourRecorder();
         this.state.recording = tourRecorderState.isRecording() === "1";
-        useExternalListener(document, "pointerdown", this.setStartingEvent, { capture: true });
-        useExternalListener(document, "pointerup", this.onPointerUpEvent, { capture: true });
-        useExternalListener(document, "click", this.recordClickEvent, { capture: true });
-        useExternalListener(document, "keydown", this.recordConfirmationKeyboardEvent, {
+        useListener(document, "pointerdown", this.setStartingEvent.bind(this), { capture: true });
+        useListener(document, "pointerup", this.onPointerUpEvent.bind(this), { capture: true });
+        useListener(document, "click", this.recordClickEvent.bind(this), { capture: true });
+        useListener(document, "keydown", this.recordConfirmationKeyboardEvent.bind(this), {
             capture: true,
         });
-        useExternalListener(document, "keyup", this.recordKeyboardEvent, { capture: true });
+        useListener(document, "keyup", this.recordKeyboardEvent.bind(this), { capture: true });
 
         useTourRecorderDraggable({
             ref: this.tourRecorderRef,
@@ -242,7 +242,7 @@ export class TourRecorder extends Component {
                 root: this.state.editedElement.parentElement,
             });
             this.state.steps.push({
-                trigger: `.o-autocomplete--dropdown-item > a:contains('${selectedRow.textContent}'), .fa-circle-o-notch`,
+                trigger: `.o-autocomplete--dropdown-item > a:contains('${selectedRow.textContent}'), [data-icon='autorenew']`,
                 run: "click",
             });
             this.state.editedElement = undefined;

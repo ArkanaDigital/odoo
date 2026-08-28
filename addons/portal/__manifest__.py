@@ -16,7 +16,6 @@ of this module is to allow the display of a customer portal without having
 a dependency towards website editing and customization capabilities.""",
     'depends': ['web', 'html_editor', 'http_routing', 'mail', 'auth_signup'],
     'data': [
-        'security/ir.model.access.csv',
         'data/mail_templates.xml',
         'data/portal_entry_data.xml',
         'views/address_templates.xml',
@@ -25,6 +24,7 @@ a dependency towards website editing and customization capabilities.""",
         'views/res_config_settings_views.xml',
         'wizard/portal_share_views.xml',
         'wizard/portal_wizard_views.xml',
+        'security/ir.access.csv',
     ],
     'assets': {
         'web._assets_primary_variables': [
@@ -34,7 +34,14 @@ a dependency towards website editing and customization capabilities.""",
             ('prepend', 'portal/static/src/scss/bootstrap_overridden.scss'),
         ],
         'web.assets_backend': [
+            "portal/static/src/core/common/**/*",
             'portal/static/src/views/**/*',
+        ],
+        "mail.assets_public": [
+            "portal/static/src/core/common/**/*",
+        ],
+        "im_livechat.assets_embed_core": [
+            "portal/static/src/core/common/**/*",
         ],
         'web.assets_frontend': [
             'portal/static/src/interactions/**/*',
@@ -53,6 +60,7 @@ a dependency towards website editing and customization capabilities.""",
             'portal/static/tests/**/*',
         ],
         "portal.assets_chatter_helpers": [
+            "portal/static/src/core/common/**/*",
             "web/static/src/views/view_dialogs/form_view_dialog.js",
             "web/static/src/views/view_dialogs/export_data_dialog.js",
             "web/static/src/core/debug/*",
@@ -64,7 +72,6 @@ a dependency towards website editing and customization capabilities.""",
             "web/static/src/webclient/actions/action_dialog.js",
             "web/static/src/webclient/actions/reports/utils.js",
             "web/static/src/webclient/actions/reports/report_action.js",
-            "web/static/src/webclient/actions/reports/report_hook.js",
             "web/static/src/views/utils.js",
             "web/static/src/views/fields/formatters.js",
             "web/static/src/views/fields/file_handler.*",
@@ -74,6 +81,7 @@ a dependency towards website editing and customization capabilities.""",
             "mail/static/src/**/common/**/*",
             "mail/static/src/chatter/web_portal_project/**/*",
             ("remove", "mail/static/src/**/*.dark.scss"),
+            "portal/static/src/chatter/portal/portal_chatter_plugin.js",
         ],
         "portal.assets_chatter": [
             ("include", "web._assets_helpers"),
@@ -110,6 +118,7 @@ a dependency towards website editing and customization capabilities.""",
             "mail/static/src/chatter/web_portal_project/**/*.scss",
             ("remove", "mail/static/src/**/*.dark.scss"),
             "portal/static/src/chatter/portal/scss/shadow.scss",
+            "portal/static/src/chatter/portal/scss/portal_chatter.scss",
         ],
         'website.assets_inside_builder_iframe': [
             'portal/static/src/scss/portal.edit.*'

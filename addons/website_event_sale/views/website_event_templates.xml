@@ -33,8 +33,6 @@
                   t-field="ticket.total_price_reduce_taxinc"
                   class="fs-6"
                   t-options="{'widget': 'monetary', 'from_currency': event.company_id.sudo().currency_id, 'display_currency': website.currency_id}"/>
-            <span itemprop="price" class="d-none" t-out="ticket.total_price"/>
-            <span itemprop="priceCurrency" class="d-none" t-out="website.currency_id.name"/>
         </t>
         <span t-else="" class="badge text-bg-success p-2 px-3">Free</span>
     </xpath>
@@ -76,8 +74,6 @@
                       class="badge text-bg-secondary fs-6"
                       t-field="tickets.total_price_reduce_taxinc"
                       t-options="{'widget': 'monetary', 'from_currency': event.company_id.sudo().currency_id, 'display_currency': website.currency_id}"/>
-                <span itemprop="price" class="d-none" t-out="tickets.total_price"/>
-                <span itemprop="priceCurrency" class="d-none" t-out="website.currency_id.name"/>
             </t>
             <span t-else="" class="badge text-bg-secondary fs-6 text-uppercase">Free</span>
         </div>
@@ -91,7 +87,7 @@
             <t t-set="has_paying_ticket" t-value="any(ticket.get('price', 0) > 0 for ticket in tickets)"/>
             <button t-if="website.account_on_checkout == 'mandatory' and website.is_public_user() and has_paying_ticket" class="btn btn-primary" type="submit">
                 <span>Sign In</span>
-                <span class="fa fa-sign-in"/>
+                <span class="oi" data-icon="login"/>
             </button>
             <button t-else="" type="submit" class="btn btn-primary">
                 <span t-if="has_paying_ticket">Go to Payment</span>

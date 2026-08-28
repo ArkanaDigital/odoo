@@ -22,6 +22,12 @@
             <field name="active" eval="True"/>
         </record>
 
+        <!--
+            Note that the default website may change and the fields listed below
+            will not automatically move to the new default website. Add fields
+            to _get_settings_to_copy_onto_new_default_website() to copy
+            them when the default website changes.
+        -->
         <record model="website" id="base.default_website">
             <field name="salesteam_id" ref="sales_team.salesteam_website_sales"/>
             <field name="salesperson_id" ref="base.user_admin"/>
@@ -53,6 +59,16 @@
             'city', 'zip', 'street', 'street2', 'state_id', 'country_id',
             'vat', 'properties'
         ]"/>
+    </function>
+
+    <record id="model_withdrawal_request" model="ir.model">
+        <field name="website_form_key">request_withdrawal</field>
+        <field name="website_form_access">True</field>
+        <field name="website_form_label">Request Withdrawal</field>
+    </record>
+    <function model="ir.model.fields" name="formbuilder_whitelist">
+        <value>withdrawal.request</value>
+        <value eval="['email', 'order_reference']"/>
     </function>
 
 </odoo>

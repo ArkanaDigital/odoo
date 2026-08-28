@@ -1,8 +1,7 @@
 import { ActionList } from "@mail/core/common/action_list";
 import { ChatWindow } from "@mail/core/common/chat_window";
 import { useHover, useMovable } from "@mail/utils/common/hooks";
-import { useRef } from "@web/owl2/utils";
-import { Component, proxy, useListener } from "@odoo/owl";
+import { Component, computed, proxy, signal, useListener } from "@odoo/owl";
 
 import { Action } from "@mail/core/common/action";
 import { browser } from "@web/core/browser/browser";
@@ -18,6 +17,11 @@ export class ChatHub extends Component {
     static components = { ActionList, ChatBubble, ChatWindow, Dropdown };
     static template = "mail.ChatHub";
 
+    bubblesRef = signal.ref();
+    hiddenMenuRef = signal.ref();
+    root = signal.ref();
+    moreButtonRef = signal.ref();
+
     get chatHub() {
         return this.store.chatHub;
     }
@@ -27,15 +31,13 @@ export class ChatHub extends Component {
         this.store = useService("mail.store");
         this.ui = useService("ui");
         this.busMonitoring = useService("bus.monitoring_service");
-        this.bubblesHover = useHover("bubbles");
-        this.moreHover = useHover(["more-button", "more-menu"], {
+        this.bubblesHover = useHover(this.bubblesRef);
+        this.moreHover = useHover([this.moreButtonRef, this.hiddenMenuRef], {
             onHover: () => (this.more.isOpen = true),
             onAway: () => (this.more.isOpen = false),
         });
         this.options = useDropdownState();
         this.more = useDropdownState();
-        this.ref = useRef("bubbles");
-        this.root = useRef("root");
         this.position = proxy({
             dragged: false,
             isDragging: false,
@@ -49,7 +51,7 @@ export class ChatHub extends Component {
         useMovable({
             enable: () => this.chatHub.compact || !this.chatHub.opened.length,
             cursor: "grabbing",
-            ref: this.ref,
+            ref: this.bubblesRef,
             elements: ".o-mail-ChatHub-bubbles",
             onDragStart: () => {
                 this.more.close();
@@ -60,12 +62,12 @@ export class ChatHub extends Component {
             onDragEnd: () => (this.position.isDragging = false),
             onDrop: this.onDrop.bind(this),
         });
-        this.env.bus.addEventListener("ChatWindow:will-open", () => {
+        useListener(this.env.bus, "ChatWindow:will-open", () => {
             this.resetPosition();
         });
     }
 
-    get optionActions() {
+    optionActions = computed(() => {
         const actions = [];
         if (this.chatHub.showConversations && !this.chatHub.compact) {
             if (this.store.self_user?.share === false) {
@@ -75,7 +77,7 @@ export class ChatHub extends Component {
                         id: "hide-all",
                         definition: {
                             name: _t("Hide all conversations"),
-                            icon: "fa fa-eye-slash",
+                            icon: "visibility_off",
                             onSelected: () => this.chatHub.hideAll(),
                         },
                         store: this.store,
@@ -85,7 +87,7 @@ export class ChatHub extends Component {
                         id: "close-all",
                         definition: {
                             name: _t("Close all conversations"),
-                            icon: "oi oi-close",
+                            icon: "close_small",
                             onSelected: () => this.chatHub.closeAll(),
                         },
                         store: this.store,
@@ -100,7 +102,7 @@ export class ChatHub extends Component {
                     id: "reset-position",
                     definition: {
                         name: _t("Reset initial position"),
-                        icon: "fa fa-undo",
+                        icon: "undo",
                         onSelected: () => this.resetPosition(),
                     },
                     store: this.store,
@@ -108,7 +110,7 @@ export class ChatHub extends Component {
             );
         }
         return actions;
-    }
+    });
 
     get isMobileOS() {
         return isMobileOS();
@@ -157,6 +159,13 @@ export class ChatHub extends Component {
         if (this.chatHub.opened.length > 0) {
             this.resetPosition();
         }
+    }
+
+    get bubblesAttClass() {
+        return {
+            "o-liftUp": this.busMonitoring.isConnectionLost(),
+            "o-mobile": this.isMobileOS,
+        };
     }
 }
 

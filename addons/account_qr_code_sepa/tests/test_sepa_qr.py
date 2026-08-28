@@ -9,6 +9,7 @@ from odoo import fields
 class TestSEPAQRCode(AccountTestInvoicingCommon):
     """ Tests the generation of Swiss QR-codes on invoices
     """
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -103,7 +104,7 @@ class TestSEPAQRCode(AccountTestInvoicingCommon):
                 '',
                 'company_1_data',
                 'BE15001559627230',
-                'EUR100.0',
+                'EUR100.00',
                 '',
                 '',
                 'A free communication',
@@ -129,7 +130,7 @@ class TestSEPAQRCode(AccountTestInvoicingCommon):
                 '',
                 'company_1_data',
                 'BE15001559627230',
-                'EUR100.0',
+                'EUR100.00',
                 '',
                 '5000056789012345',
                 '',

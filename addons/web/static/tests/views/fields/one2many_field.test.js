@@ -1,4 +1,3 @@
-import { reactive } from "@web/owl2/utils";
 import { expect, getFixture, test } from "@odoo/hoot";
 import {
     click,
@@ -9,9 +8,9 @@ import {
     queryFirst,
     queryOne,
 } from "@odoo/hoot-dom";
-import { Deferred, animationFrame, mockTimeZone, runAllTimers } from "@odoo/hoot-mock";
+import { animationFrame, mockTimeZone, runAllTimers } from "@odoo/hoot-mock";
 
-import { Component, onWillDestroy, onWillStart, xml, proxy } from "@odoo/owl";
+import { Component, onWillDestroy, onWillStart, proxy, useProps, xml } from "@odoo/owl";
 import { getPickerCell } from "@web/../tests/core/datetime/datetime_test_helpers";
 import {
     clickFieldDropdown,
@@ -575,8 +574,8 @@ test("O2M modal buttons are disabled on click", async () => {
                 <field name="parent_id"/>
             </form>`,
     };
-    const def = new Deferred();
-    onRpc("web_save", () => def);
+    const def = Promise.withResolvers();
+    onRpc("web_save", () => def.promise);
     await mountView({
         type: "form",
         resModel: "partner",
@@ -618,12 +617,12 @@ test("clicking twice on a record in a one2many will open it once", async () => {
             </form>`,
     };
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     let firstRead = true;
     onRpc("turtle", "web_read", async ({ model }) => {
         expect.step("web_read turtle");
         if (!firstRead) {
-            await def;
+            await def.promise;
         }
         firstRead = false;
     });
@@ -700,7 +699,7 @@ test("resequence a x2m in a form view dialog from another x2m", async () => {
     expect(".modal").toHaveCount(1);
     expect(queryAllTexts(".modal [name='name']")).toEqual(["aaa", "second record"]);
     expect.verifySteps(["web_read"]);
-    await contains(".modal tr:eq(2) .o_handle_cell").dragAndDrop(".modal [name='name']:eq(0)");
+    await contains(".modal tr:eq(2) .o_handle_cell").dragAndDrop(".modal [name='name']:eq(1)");
     expect(queryAllTexts(".modal [name='name']")).toEqual(["second record", "aaa"]);
     expect.verifySteps([]);
 
@@ -766,9 +765,9 @@ test("one2many wait for the onchange of the resequenced finish before save", asy
             obj.p = [[1, 2, { qux: 99 }]];
         },
     };
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("onchange", async () => {
-        await def;
+        await def.promise;
         expect.step("onchange");
     });
     onRpc("web_save", (args) => {
@@ -2349,7 +2348,7 @@ test("embedded one2many (editable list) with handle widget", async () => {
     expect.verifySteps([]);
 
     // Drag and drop the second line in first position
-    await contains("tbody tr:eq(1) .o_handle_cell").dragAndDrop(".o_field_one2many tbody tr:eq(0)");
+    await contains("tbody tr:eq(2) .o_handle_cell").dragAndDrop(".o_field_one2many tbody tr:eq(1)");
 
     expect(queryAllTexts(".o_data_cell.o_list_char")).toEqual([
         "blip",
@@ -2572,7 +2571,7 @@ test("edition of one2many field with pager", async () => {
                         <templates>
                             <t t-name="card">
                                 <div>
-                                    <a type="delete" class="fa fa-times float-end delete_icon"/>
+                                    <a type="delete" class="oi float-end delete_icon" data-icon="close"/>
                                     <field name="name"/>
                                 </div>
                             </t>
@@ -2722,7 +2721,7 @@ test("edition of one2many field with pager on desktop", async () => {
                         <templates>
                             <t t-name="card">
                                 <div>
-                                    <a type="delete" class="fa fa-times float-end delete_icon"/>
+                                    <a type="delete" class="oi float-end delete_icon" data-icon="close"/>
                                     <field name="name"/>
                                 </div>
                             </t>
@@ -2932,11 +2931,11 @@ test("open a record in a one2many kanban with an x2m in the form", async () => {
             </form>`,
     };
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("web_read", async (args) => {
         if (args.args[0][0] === 2) {
             expect.step("web_read: 2");
-            await def;
+            await def.promise;
         }
     });
     await mountView({
@@ -3316,9 +3315,9 @@ test("one2many list field edition", async () => {
         resId: 2,
     });
 
-    expect(".o_field_one2many tbody td:eq(0)").toHaveText("relational record 1");
+    expect(".o_field_one2many tbody td:eq(1)").toHaveText("relational record 1");
 
-    await contains(".o_field_one2many tbody td").click();
+    await contains(".o_field_one2many tbody td:eq(1)").click();
     expect(".o_field_one2many tbody .o_data_row:eq(0)").toHaveClass("o_selected_row");
     await contains(".o_field_one2many tbody td input").edit("new value", { confirm: false });
     expect(".o_field_one2many tbody .o_data_row:eq(0)").toHaveClass("o_selected_row");
@@ -3331,15 +3330,15 @@ test("one2many list field edition", async () => {
     // discard changes
     await contains(".o_form_button_cancel").click();
     expect(".modal").toHaveCount(0);
-    expect(".o_field_one2many tbody td:eq(0)").toHaveText("relational record 1");
+    expect(".o_field_one2many tbody td:eq(1)").toHaveText("relational record 1");
 
     // edit again and save
-    await contains(".o_field_one2many tbody td").click();
+    await contains(".o_field_one2many tbody td:eq(1)").click();
     await contains(".o_field_one2many tbody td input").edit("new value");
     await contains(".o_form_view").click();
     await clickSave();
 
-    expect(".o_field_one2many tbody td:eq(0)").toHaveText("new value");
+    expect(".o_field_one2many tbody td:eq(1)").toHaveText("new value");
 });
 
 test("one2many list: create action disabled", async () => {
@@ -3559,7 +3558,7 @@ test("one2many kanban: edition", async () => {
                         <templates>
                             <t t-name="card">
                                 <div>
-                                    <a type="delete" class="fa fa-times float-end delete_icon"/>
+                                    <a type="delete" class="oi float-end delete_icon" data-icon="close"/>
                                     <field name="name"/>
                                     <field name="color"/>
                                 </div>
@@ -3664,7 +3663,7 @@ test("one2many kanban: create action disabled", async () => {
                         <templates>
                             <t t-name="card">
                                 <div>
-                                    <a type="delete" class="fa fa-times float-end delete_icon"/>
+                                    <a type="delete" class="oi float-end delete_icon" data-icon="close"/>
                                     <field name="name"/>
                                 </div>
                             </t>
@@ -4679,11 +4678,11 @@ test("onchange in a one2many", async () => {
         resId: 2,
     });
 
-    await contains(".o_field_one2many tbody td").click();
+    await contains(".o_field_one2many tbody td:eq(1)").click();
     await contains(".o_field_one2many tbody td input").edit("new value", { confirm: false });
     await clickSave();
 
-    expect(".o_field_one2many tbody td:eq(0)").toHaveText("from onchange");
+    expect(".o_field_one2many tbody td:eq(1)").toHaveText("from onchange");
 });
 
 test("one2many, default_get and onchange (basic)", async () => {
@@ -5123,8 +5122,8 @@ test("one2many list with a many2one", async () => {
             </form>`,
         resId: 1,
     });
-    expect(".o_data_cell[data-tooltip='xphone']").toHaveCount(1);
-    expect(".o_data_cell[data-tooltip='xpad']").toHaveCount(0);
+    expect(".o_data_cell:text('xphone')").toHaveCount(1);
+    expect(".o_data_cell:text('xpad')").toHaveCount(0);
 
     await contains(".o_field_x2many_list_row_add button").click();
 
@@ -5133,8 +5132,8 @@ test("one2many list with a many2one", async () => {
     await contains('div[name="product_id"] .o_input_dropdown li:eq(1)').click();
 
     await contains(".modal .modal-footer button").click();
-    expect(".o_data_cell[data-tooltip='xphone']").toHaveCount(1);
-    expect(".o_data_cell[data-tooltip='xpad']").toHaveCount(1);
+    expect(".o_data_cell:text('xphone')").toHaveCount(1);
+    expect(".o_data_cell:text('xpad')").toHaveCount(1);
 });
 
 test.tags("desktop");
@@ -5190,10 +5189,10 @@ test("one2many list with inline form view", async () => {
     // save and close
     await contains(".modal .o_form_button_save").click();
 
-    expect(".o_data_cell[data-tooltip='xphone']").toHaveCount(1);
+    expect(".o_data_cell:text('xphone')").toHaveCount(1);
 
     // reopen the record in form view
-    await contains(".o_data_cell[data-tooltip='xphone']").click();
+    await contains(".o_data_cell:text('xphone')").click();
     expect(".modal .modal-body input:eq(0)").toHaveValue("xphone");
 
     await contains('.modal .modal-body div[name="int_field"] input').edit("456", {
@@ -5204,7 +5203,7 @@ test("one2many list with inline form view", async () => {
     await contains(".modal .o_form_button_cancel").click();
 
     // reopen the record in form view
-    await contains(".o_data_cell[data-tooltip='xphone']").click();
+    await contains(".o_data_cell:text('xphone')").click();
 
     expect('.modal .modal-body div[name="int_field"] input').toHaveValue("123", {
         message: "should display 123 (previous change has been discarded)",
@@ -5217,7 +5216,7 @@ test("one2many list with inline form view", async () => {
     // save and close
     await contains(".modal .o_form_button_save").click();
 
-    expect(".o_data_cell[data-tooltip='xpad']").toHaveCount(1);
+    expect(".o_data_cell:text('xpad')").toHaveCount(1);
 
     // save the record
     await clickSave();
@@ -5298,7 +5297,7 @@ test("one2many list with inline form view with context with parent key", async (
     });
 
     // open a modal
-    await contains("tr.o_data_row td[data-tooltip='xphone']").click();
+    await contains("tr.o_data_row td:text('xphone')").click();
 
     // write in the many2one field
     await contains(".modal .o_field_many2one input").click();
@@ -5356,7 +5355,7 @@ test("one2many list, editable, with many2one and with context with parent key", 
         resId: 1,
     });
 
-    await contains("tr.o_data_row td[data-tooltip='xphone']").click();
+    await contains("tr.o_data_row td:text('xphone')").click();
 
     // trigger a name search
     await contains("table td input").click();
@@ -5969,7 +5968,7 @@ test("one2many list with action button", async () => {
                 <field name="p">
                     <list>
                         <field name="foo"/>
-                        <button name="method_name" type="object" icon="fa-plus"/>
+                        <button name="method_name" type="object" icon="add"/>
                     </list>
                 </field>
             </form>`,
@@ -6001,7 +6000,7 @@ test("one2many kanban with action button", async () => {
                         <templates>
                             <t t-name="card">
                                 <field name="foo"/>
-                                <button name="method_name" type="object" class="fa fa-plus"/>
+                                <button name="method_name" type="object" class="oi" data-icon="add"/>
                             </t>
                         </templates>
                     </kanban>
@@ -6094,7 +6093,7 @@ test("many2one and many2many in one2many", async () => {
     expect('.o_data_row td div[name="partner_ids"] .badge').toHaveCount(2);
 
     // edit the m2m of first row
-    await contains(".o_list_renderer tbody td").click();
+    await contains(".o_list_renderer tbody td:eq(1)").click();
 
     expect(queryAllTexts(".o_selected_row .o_field_many2many_tags .badge")).toEqual([
         "second record",
@@ -6443,6 +6442,62 @@ test("one2many with x2many in form view (but not in list view)", async () => {
 });
 
 test.tags("desktop");
+test("one2many with properties in form view but not in list view", async () => {
+    Partner._fields.definitions = fields.PropertiesDefinition();
+    Partner._records[0].definitions = [
+        {
+            name: "property_3",
+            string: "My Char 3",
+            type: "char",
+        },
+    ];
+    Turtle._fields.properties = fields.Properties({
+        string: "Properties",
+        searchable: false,
+        definition_record: "turtle_trululu",
+        definition_record_field: "definitions",
+    });
+    Turtle._records[1].turtle_trululu = 1;
+    Turtle._records[1].properties = {
+        property_3: "some property value",
+    };
+    Turtle._views.form = `
+        <form>
+            <field name="turtle_foo"/>
+            <field name="properties"/>
+            <field name="turtle_trululu"/>
+        </form>`;
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        arch: `
+            <form>
+                <group>
+                    <field name="turtles">
+                        <list>
+                            <field name="turtle_foo"/>
+                        </list>
+                    </field>
+                </group>
+            </form>`,
+        resId: 1,
+    });
+
+    // Open a record and close once.
+    await contains(".o_data_row td").click();
+    expect(".modal .o_field_widget[name=properties] input").toHaveValue("some property value");
+    await contains(".modal .modal-header .btn-close").click();
+    expect(".modal").toHaveCount(0);
+
+    // Open the same record and close again. This differs from the first time because the record has
+    // already been extended (extendRecord), and fake property fields have already been created.
+    await contains(".o_data_row td").click();
+    expect(".modal .o_field_widget[name=properties] input").toHaveValue("some property value");
+    await contains(".modal .modal-header .btn-close").click();
+    expect(".modal").toHaveCount(0);
+});
+
+test.tags("desktop");
 test("many2many list in a one2many opened by a many2one", async () => {
     expect.assertions(1);
 
@@ -6785,8 +6840,8 @@ test("one2many field with virtual ids with kanban button", async () => {
                         <templates>
                             <t t-name="card">
                                 <field name="foo"/>
-                                <button type="object" class="btn btn-link fa fa-shopping-cart" name="button_warn" string="button_warn" warn="warn" />
-                                <button type="object" class="btn btn-link fa fa-shopping-cart" name="button_disabled" string="button_disabled" />
+                                <button type="object" class="btn btn-link oi" data-icon="shopping_cart" name="button_warn" string="button_warn" warn="warn" />
+                                <button type="object" class="btn btn-link oi" data-icon="shopping_cart" name="button_disabled" string="button_disabled" />
                             </t>
                         </templates>
                     </kanban>
@@ -7038,7 +7093,7 @@ test("one2many list editable - should not allow tab navigation focus on the opti
             </form>`,
         resId: 1,
     });
-    expect(".o_optional_columns_dropdown .dropdown-toggle").toHaveProperty("tabIndex", -1);
+    expect(".o_optional_columns .dropdown-toggle").toHaveProperty("tabIndex", -1);
 });
 
 test('one2many list edition, no "Remove" button in modal', async () => {
@@ -7291,7 +7346,7 @@ test("one2many list editable: add new line before onchange returns", async () =>
     };
 
     let def;
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
     await mountView({
         type: "form",
         resModel: "partner",
@@ -7307,7 +7362,7 @@ test("one2many list editable: add new line before onchange returns", async () =>
 
     // add a first line but hold the onchange back
     await contains(".o_field_x2many_list_row_add button").click();
-    def = new Deferred();
+    def = Promise.withResolvers();
     expect(".o_data_row").toHaveCount(1);
     await clickFieldDropdown("turtle_trululu");
     await press("Enter");
@@ -7334,7 +7389,7 @@ test("editable list: multiple clicks on Add an item do not create invalid rows",
     };
 
     let def;
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
     await mountView({
         type: "form",
         resModel: "partner",
@@ -7347,7 +7402,7 @@ test("editable list: multiple clicks on Add an item do not create invalid rows",
                 </field>
             </form>`,
     });
-    def = new Deferred();
+    def = Promise.withResolvers();
     // click twice to add a new line
     await contains(".o_field_x2many_list_row_add button").click();
     await contains(".o_field_x2many_list_row_add button").click();
@@ -7380,7 +7435,7 @@ test("editable list: value reset by an onchange", async () => {
     };
 
     let def;
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
     await mountView({
         type: "form",
         resModel: "partner",
@@ -7398,7 +7453,7 @@ test("editable list: value reset by an onchange", async () => {
     // trigger the two _onChanges
     await contains(".o_field_x2many_list_row_add button").click();
     await contains(".o_data_row .o_field_widget input").edit("a name", { confirm: false });
-    def = new Deferred();
+    def = Promise.withResolvers();
     await contains(".o_field_datetime .o_input").edit("04/27/2022 14:08:52", { confirm: "blur" });
 
     // resolve the onchange promise
@@ -7466,7 +7521,6 @@ test("editable list: contexts are correctly sent", async () => {
             {
                 allowed_company_ids: [1],
                 active_field: 2,
-                bin_size: true,
                 someKey: "some value",
                 uid: 7,
                 lang: "en",
@@ -7540,7 +7594,6 @@ test("contexts of nested x2manys are correctly sent (add line)", async () => {
             {
                 allowed_company_ids: [1],
                 active_field: 2,
-                bin_size: true,
                 someKey: "some value",
                 uid: 7,
                 lang: "en",
@@ -7965,7 +8018,7 @@ test("one2many field: change value before pending onchange returns", async () =>
         int_field: function () {},
     };
     let def;
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
     await mountView({
         type: "form",
         resModel: "partner",
@@ -7981,7 +8034,7 @@ test("one2many field: change value before pending onchange returns", async () =>
     });
 
     await contains(".o_field_x2many_list_row_add button").click();
-    def = new Deferred();
+    def = Promise.withResolvers();
     await contains(".o_field_widget[name=int_field] input").edit("44", { confirm: false });
 
     // set trululu before onchange
@@ -8004,7 +8057,7 @@ test("focus is correctly reset after an onchange in an x2many", async () => {
     };
 
     let def;
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
     await mountView({
         type: "form",
         resModel: "partner",
@@ -8023,7 +8076,7 @@ test("focus is correctly reset after an onchange in an x2many", async () => {
 
     await contains(".o_field_x2many_list_row_add button").click();
 
-    def = new Deferred();
+    def = Promise.withResolvers();
 
     contains("[name=int_field] input").edit("44", { confirm: false });
 
@@ -9596,7 +9649,7 @@ test("one2many add a line should not crash if orderedResIDs is not set on mobile
             </form>`,
     });
 
-    await contains(`.o_cp_action_menus button:has(.fa-cog)`).click();
+    await contains(`.o_cp_action_menus button:has([data-icon="more_vert"])`).click();
     await contains('button[name="post"]').click();
     await contains(".o_field_x2many_list_row_add button").click();
     expect(".o_data_row.o_selected_row").toHaveCount(1);
@@ -9681,7 +9734,7 @@ test("one2many with onchange, required field, shortcut enter", async () => {
     };
 
     let def;
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
     onRpc((args) => {
         expect.step(args.method);
     });
@@ -9706,7 +9759,7 @@ test("one2many with onchange, required field, shortcut enter", async () => {
     expect.verifySteps(["onchange"]);
 
     // we want to add a delay to simulate an onchange
-    def = new Deferred();
+    def = Promise.withResolvers();
 
     // write something in the field, edit will confirm with enter
     await contains("[name=turtle_foo] input").edit("hello");
@@ -9735,7 +9788,7 @@ test("edit a field with a slow onchange in one2many", async () => {
     };
 
     let def;
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
     onRpc((args) => {
         expect.step(args.method);
     });
@@ -9760,7 +9813,7 @@ test("edit a field with a slow onchange in one2many", async () => {
     expect.verifySteps(["onchange"]);
 
     // we want to add a delay to simulate an onchange
-    def = new Deferred();
+    def = Promise.withResolvers();
 
     // write something in the field
     await contains("[name=turtle_foo] input").edit("hello", { confirm: false });
@@ -10219,11 +10272,11 @@ test("one2many reset by onchange (of another field) while being edited", async (
     // to the one2many. After a while, we unlock the name_create, which triggers the onchange
     // and resets the one2many. At the end, we want the row to be in edition.
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     Partner._onChanges = {
         trululu: () => {},
     };
-    onRpc("name_create", () => def);
+    onRpc("name_create", () => def.promise);
     await mountView({
         type: "form",
         resModel: "partner",
@@ -10446,7 +10499,7 @@ test("reorder one2many with many2many_tags in list and list in form", async () =
     expect(".modal").toHaveCount(1);
     expect(queryAllTexts(".modal [name='name']")).toEqual(["aaa", "first record"]);
 
-    await contains(".modal tr:eq(2) .o_handle_cell").dragAndDrop(".modal tr:eq(1)");
+    await contains(".modal tr:eq(3) .o_handle_cell").dragAndDrop(".modal tr:eq(2)");
     expect(queryAllTexts(".modal [name='name']")).toEqual(["first record", "aaa"]);
 });
 
@@ -11081,10 +11134,10 @@ test("onchange on unloaded record clearing posterious change", async () => {
 test("quickly switch between pages in one2many list", async () => {
     Partner._records[0].turtles = [1, 2, 3];
 
-    const readDefs = [null, new Deferred(), null];
+    const readDefs = [null, Promise.withResolvers(), null];
     onRpc("web_read", async (args) => {
         const recordID = args.args[0][0];
-        await readDefs[recordID - 1];
+        await readDefs[recordID - 1]?.promise;
     });
     await mountView({
         type: "form",
@@ -11216,7 +11269,7 @@ test("one2many field in edit mode with optional fields and trash icon", async ()
         resId: 1,
     });
 
-    expect(".o_field_one2many table .o_optional_columns_dropdown .dropdown-toggle").toHaveCount(1);
+    expect(".o_field_one2many table .o_optional_columns .dropdown-toggle").toHaveCount(1);
 
     // should have 2 columns 1 for foo and 1 for trash icon, dropdown is displayed
     // on trash icon cell, no separate cell created for trash icon and advanced field dropdown
@@ -11227,7 +11280,7 @@ test("one2many field in edit mode with optional fields and trash icon", async ()
         message: "should be 2 cells in the one2many in edit mode",
     });
 
-    await contains(".o_optional_columns_dropdown .dropdown-toggle").click();
+    await contains(".o_optional_columns .dropdown-toggle").click();
     expect(".o-dropdown--menu .dropdown-item").toHaveCount(2, {
         message: "dropdown have 2 advanced field foo with checked and bar with unchecked",
     });
@@ -11248,7 +11301,7 @@ test("one2many field in edit mode with optional fields and trash icon", async ()
     expect(".o-dropdown--menu").toHaveCount(0, { message: "dropdown is closed" });
     expect(".o_field_one2many tr.o_selected_row").toHaveCount(1);
 
-    await contains(".o_optional_columns_dropdown .dropdown-toggle").click();
+    await contains(".o_optional_columns .dropdown-toggle").click();
     await contains(".o-dropdown--menu .dropdown-item").click();
     expect(".o_field_one2many tr.o_selected_row").toHaveCount(1);
     expect(".o_field_one2many th").toHaveCount(3, {
@@ -11919,8 +11972,8 @@ test("open a one2many record with optional open record displayed", async () => {
     expect.verifySteps([["getItem", localStorageKey, null]]);
 
     expect(`td.o_list_record_open_form_view`).toHaveCount(0);
-    expect(".o_optional_columns_dropdown").toHaveCount(1);
-    await contains(".o_optional_columns_dropdown button").click();
+    expect(".o_optional_columns").toHaveCount(1);
+    await contains(".o_optional_columns button").click();
     expect(".o-dropdown-item:contains('View Button')").toHaveCount(1);
     await contains(".o-dropdown-item:contains('View Button')").click();
     expect.verifySteps([
@@ -12777,7 +12830,7 @@ test("field in list but not in fetched form", async () => {
 });
 
 test("pressing tab before an onchange is resolved", async () => {
-    const onchangeGetPromise = new Deferred();
+    const onchangeGetPromise = Promise.withResolvers();
 
     Partner._onChanges = {
         name: (obj) => {
@@ -12786,7 +12839,7 @@ test("pressing tab before an onchange is resolved", async () => {
     };
     onRpc("product", "onchange", async (args) => {
         if (args.args[2] === "name") {
-            await onchangeGetPromise;
+            await onchangeGetPromise.promise;
         }
     });
     await mountView({
@@ -12825,7 +12878,7 @@ test("add a row to an x2many and ask canBeRemoved twice", async () => {
     // removed after the save, and as a consequence they were saved twice (i.e. the row was
     // created twice).
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     Partner._views = {
         list: `<list><field name="int_field"/></list>`,
         form: `
@@ -12844,7 +12897,7 @@ test("add a row to an x2many and ask canBeRemoved twice", async () => {
             p: [[0, args.args[1].p[0][1], { name: "a name" }]],
         });
     });
-    onRpc("web_search_read", () => def);
+    onRpc("web_search_read", () => def.promise);
 
     const actions = [
         {
@@ -12897,10 +12950,10 @@ test("one2many: save a record before the onchange is complete in a form dialog",
             </form>`,
     };
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("onchange", async (args) => {
         if (args.args[2].length === 1 && args.args[2][0] === "name") {
-            await def;
+            await def.promise;
         }
     });
     await mountView({
@@ -13126,7 +13179,7 @@ test("modifiers based on x2many", async () => {
     expect("[name='name'].o_readonly_modifier").toHaveCount(1);
     expect("[name='int_field'].o_required_modifier").toHaveCount(1);
 
-    await contains("button.fa-trash-o").click();
+    await contains("button[data-icon='delete']").click();
     expect("button.my_button").toHaveCount(0);
     expect("[name='name'].o_readonly_modifier").toHaveCount(0);
     expect("[name='int_field'].o_required_modifier").toHaveCount(0);
@@ -13140,7 +13193,6 @@ test("add record in nested x2many with context depending on parent", async () =>
     onRpc("turtle", "web_read", (args) => {
         expect(args.kwargs.context).toEqual({
             allowed_company_ids: [1],
-            bin_size: true,
             lang: "en",
             tz: "taht",
             uid: 7,
@@ -13198,7 +13250,7 @@ test("one2many with default_order on id, but id not in view", async () => {
     expect(queryAllTexts(".o_data_cell.o_list_char")).toEqual(["yop", "blip", "kawa"]);
 
     // drag the third record to top of the list
-    await contains("tbody tr:eq(2) .o_handle_cell").dragAndDrop("tbody tr");
+    await contains("tbody tr:eq(3) .o_handle_cell").dragAndDrop("tbody tr:eq(1)");
     await clickSave();
 
     expect(queryAllTexts(".o_data_cell.o_list_char")).toEqual(["kawa", "yop", "blip"]);
@@ -13242,7 +13294,7 @@ test("one2many causes an onchange on the parent which fails", async () => {
 
 test.tags("desktop");
 test("one2many custom which can be edited in dialog or on the line", async () => {
-    const customState = reactive({ isEditable: false });
+    const customState = proxy({ isEditable: false });
     class CustomX2manyField extends X2ManyField {
         setup() {
             super.setup();
@@ -13531,6 +13583,33 @@ test("expand record in dialog", async () => {
     expect.verifySteps([[4, "turtle", "ir.actions.act_window", [[false, "form"]]]]);
 });
 
+test("expand with middleClick", async () => {
+    mockService("action", {
+        doAction(params, options) {
+            if (options?.newWindow) {
+                expect.step("opened in a new window");
+                return;
+            }
+            super.doAction(params);
+        },
+        loadState() {},
+    });
+    Turtle._views["form, false"] = `<form><field name="name"/></form>`;
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        arch: `<form><field name="turtles"><list><field name="name"/></list></field></form>`,
+        resId: 1,
+    });
+    expect(".o_field_widget[name=turtles] .o_data_row").toHaveCount(1);
+    expect(".o_data_cell").toHaveText("donatello");
+    await contains(queryFirst(".o_field_widget[name=turtles] .o_data_cell")).click();
+    expect(".o_dialog .modal-header .o_expand_button").toHaveCount(1);
+
+    await contains(".o_expand_button").middleClick();
+    expect.verifySteps(["opened in a new window"]);
+});
+
 test("one2many kanban: add button kanban's card only with no control", async () => {
     Partner._fields.control = fields.One2many({
         string: "one2many field",
@@ -13732,7 +13811,7 @@ test("one2many list with monetary aggregates and different currencies", async ()
 test.tags("desktop");
 test("one2many custom which can clear the relation", async () => {
     class ClearWidget extends Component {
-        static props = ["*"];
+        props = useProps();
         static template = xml`
             <div>
                 <span t-out="this.props.record.data[this.props.name].count"/>
@@ -13769,7 +13848,7 @@ test("one2many custom which can clear the relation", async () => {
 test.tags("desktop");
 test("one2many custom which can set the relation", async () => {
     class SetWidget extends Component {
-        static props = ["*"];
+        props = useProps();
         static template = xml`
             <div>
                 <span t-out="this.props.record.data[this.props.name].count"/>

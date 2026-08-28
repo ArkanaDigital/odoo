@@ -8,13 +8,13 @@ from freezegun import freeze_time
 
 from odoo import Command
 from odoo.http._facade import HTTPRequest
+from odoo.http.requestlib import Request
 from odoo.http.session import (
     DEVICE_ACTIVITY_UPDATE_FREQUENCY,
     SESSION_LIFETIME,
     session_store,
     update_device_fingerprint,
 )
-from odoo.http.requestlib import Request
 from odoo.tests import tagged
 from odoo.tools import config, mute_logger
 
@@ -65,7 +65,7 @@ class TestDevice(TestHttpBase):
                 'Host': '',
                 'X-Forwarded-For': ip,
                 'X-Forwarded-Host': 'odoo.com',
-                'X-Forwarded-Proto': 'https'
+                'X-Forwarded-Proto': 'https',
             }
         with freeze_time(time), \
             patch.dict(config.options, {'proxy_mode': bool(ip)}):
@@ -345,6 +345,15 @@ class TestDevice(TestHttpBase):
             "By default, devices should be found from the most recent to the least recent (according to their last activity).",
         )
 
+    def test_detection_device_collapse_ipv6(self):
+        self.authenticate(self.user_admin.login, self.user_admin.login)
+        res = self.hit('2024-01-01 08:00:00', '/test_http/greeting-public?readonly=0', ip='2001:db8:1234:5678:1111:2222:3333:4444')
+        self.assertEqual(len(res.session['_devices']), 1)
+        res = self.hit('2024-01-01 08:00:00', '/test_http/greeting-public?readonly=0', ip='2001:db8:1234:5678:aaaa:bbbb:cccc:dddd')
+        self.assertEqual(len(res.session['_devices']), 1)
+        collapsed_ip_address = next(iter(res.session['_devices'].values()))['ip_address']
+        self.assertEqual(collapsed_ip_address, '2001:db8:1234:5678::/64')
+
     # --------------------
     # DELETION
     # --------------------
@@ -614,11 +623,11 @@ class TestDevice(TestHttpBase):
                     # A field which must compute information from user_agent
                     'device_type': {},
                 },
-            }
+            },
         }
 
         with freeze_time(
-            datetime.now() + timedelta(seconds=DEVICE_ACTIVITY_UPDATE_FREQUENCY - 1)
+            datetime.now() + timedelta(seconds=DEVICE_ACTIVITY_UPDATE_FREQUENCY - 1),
         ):
             res = self.url_open(url='/web/dataset/call_kw',
                 json={

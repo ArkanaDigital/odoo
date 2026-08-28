@@ -14,7 +14,7 @@
                     autocomplete="off"
                     t-att-placeholder="this.props.placeholder"
                     t-att-required="this.props.required"
-                    t-custom-ref="input"
+                    t-ref="this.inputRef"
                 />
             </div>
         </t>
@@ -28,7 +28,7 @@
                 class="ms-3 d-inline-flex align-items-center"
                 target="_blank"
             >
-                <i class="fa fa-globe" data-tooltip="Go to URL" aria-label="Go to URL"></i>
+                <i class="oi" data-icon="public" data-tooltip="Go to URL" aria-label="Go to URL"></i>
             </a>
         </xpath>
     </t>

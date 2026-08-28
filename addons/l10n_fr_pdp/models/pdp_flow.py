@@ -3,7 +3,7 @@ import logging
 from markupsafe import Markup
 
 from odoo import api, fields, models
-from odoo.exceptions import UserError, RedirectWarning
+from odoo.exceptions import UserError
 from odoo.fields import Domain
 from odoo.tools import BinaryBytes
 
@@ -216,7 +216,7 @@ class PdpFlow(models.Model):
                 moves = flow._get_moves()
             valid_moves = moves.filtered(lambda move: move.l10n_fr_pdp_status not in invalid_move_states)
 
-            if not valid_moves:
+            if not flow.initial_flow_id and not valid_moves:
                 flow._message_post_once(self.env._("Payload build failed: no valid invoices."))
                 continue
 
@@ -262,23 +262,8 @@ class PdpFlow(models.Model):
     # Business Methods - Sending
     # -------------------------------------------------------------------------
 
-    def action_send(self, check_totp=True):
+    def action_send(self):
         """Send flow payload to transport gateway."""
-        auth_totp_disabled = (
-            not self.env.user.totp_enabled
-            and not bool(self.env['ir.config_parameter'].sudo().get_str('auth_totp.policy'))
-            and self.env.company._get_peppol_edi_mode() != 'demo'
-        )
-        if check_totp and auth_totp_disabled:
-            raise RedirectWarning(
-                message=self.env._("To be able to send the report, you need to enable the two-factor authentication."),
-                action=self.env.user._get_records_action(
-                    target='new',
-                    views=[(self.env.ref('base.view_users_form_simple_modif').id, "form")],
-                ),
-                button_text=self.env._("Go to the Preferences panel"),
-            )
-
         for flow in self:
             if flow.state != 'ready':
                 continue
@@ -328,7 +313,7 @@ class PdpFlow(models.Model):
             flow._message_post_once(self.env._(
                 "Flow sent: status %(status)s, (message uuid %(transport)s).",
                 status=flow.state,
-                transport=response['uid'],
+                transport=response['uuid'],
             ))
 
             # create rectificative flow for error moves that must still be send
@@ -364,7 +349,7 @@ class PdpFlow(models.Model):
         payload_doc = {
             'flow_number': 10,
             'filename': self.payload_id.name,
-            'ubl': self.payload_id.raw,
+            'ubl': self.payload_id.raw.to_base64(),
             'external_ref': self._get_tracking_id(),
         }
 
@@ -445,7 +430,7 @@ class PdpFlow(models.Model):
                     due_period_start = due_period_end = date.replace(day=last_month_day)
                 else:
                     period_start, period_end = date.replace(day=21), date.replace(day=last_month_day)
-                    due_period_start = due_period_end = date.replace(day=10, month=(date.month + 1) % 12, year=date.year + (date.month // 12))
+                    due_period_start = due_period_end = date.replace(day=10, month=date.month % 12 + 1, year=date.year + (date.month // 12))
             else:
                 period_start, period_end = get_monthly_period(date)
                 due_period_start = due_period_end = get_next_10th_due(date)
@@ -491,7 +476,7 @@ class PdpFlow(models.Model):
         self.ensure_one()
         if self.state in FLOW_SENT_STATES_SELECTION:
             return self.sent_move_ids
-        return self.env['account.move'].search_fetch(
+        moves = self.env['account.move'].search_fetch(
                 domain=[
                     ('company_id', '=', self.company_id.id),
                     ('date', '>=', self.period_start),
@@ -503,6 +488,11 @@ class PdpFlow(models.Model):
                 field_names=['l10n_fr_pdp_status'],
                 order='id',
             )
+        # To prevent computing all moves linked to a partner when a change is made to a partner,
+        # the l10n_fr_pdp_has_error compute does not depends on all fields that might influance it's value.
+        # This triggers a compute on moves that matter.
+        moves._compute_l10n_fr_pdp_has_error()
+        return moves
 
     # -------------------------------------------------------------------------
     # Actions
@@ -551,8 +541,11 @@ class PdpFlow(models.Model):
 
     def action_view_moves(self):
         """Open list view of related invoices."""
+        ereporting_view = self.env.ref("l10n_fr_pdp.l10n_fr_pdp_list_view_move_ereporting", raise_if_not_found=False)
+        view = ereporting_view.id if ereporting_view else False
         return self._get_moves()._get_records_action(
             name=self.env._("Related Invoices"),
+            views=[(view, 'list'), (False, 'form')],
             context={'create': False, 'group_by': ['move_type']},
         )
 
@@ -595,7 +588,7 @@ class PdpFlow(models.Model):
                     # RE flows: send immediately when ready (no deadline constraint)
                     if flow.state != 'ready' or flow.error_moves_count:
                         continue
-                flow.with_company(flow.company_id).sudo().action_send(check_totp=False)
+                flow.with_company(flow.company_id).sudo().action_send()
                 flow._log_cron_event(
                     self.env._("Flow automatically sent by cron (status: %(status)s). %(extra)s",
                       status=flow.transport_status or flow.state,

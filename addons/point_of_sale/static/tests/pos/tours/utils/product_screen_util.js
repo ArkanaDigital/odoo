@@ -9,6 +9,7 @@ import * as ChoseComboPopup from "@point_of_sale/../tests/pos/tours/utils/chose_
 import { LONG_PRESS_DURATION } from "@point_of_sale/utils";
 import * as PaymentScreen from "@point_of_sale/../tests/pos/tours/utils/payment_screen_util";
 import * as FeedbackScreen from "@point_of_sale/../tests/pos/tours/utils/feedback_screen_util";
+import { negateStep } from "@point_of_sale/../tests/generic_helpers/utils";
 
 export function firstProductIsFavorite(name) {
     return [
@@ -53,7 +54,7 @@ export function selectFloatingOrder(index) {
     return [
         {
             isActive: ["mobile"],
-            trigger: ".fa-caret-down",
+            trigger: "[data-icon='arrow_drop_down']",
             run: "click",
         },
         {
@@ -80,7 +81,7 @@ export function checkFloatingOrderCount(expectedCount) {
     return [
         {
             isActive: ["mobile"],
-            trigger: ".fa-caret-down",
+            trigger: "[data-icon='arrow_drop_down']",
             run: "click",
         },
         {
@@ -95,7 +96,7 @@ export function checkFloatingOrderCount(expectedCount) {
         },
         {
             isActive: ["mobile"],
-            trigger: ".modal-header .oi-arrow-left",
+            trigger: ".modal-header [data-icon='west']",
             run: "click",
         },
     ];
@@ -459,7 +460,6 @@ export function checkFiscalPosition(name) {
         {
             content: `check fiscal position '${name}' is selected`,
             trigger: `.o_fiscal_position_button:contains("${name}")`,
-            run: () => {},
         },
         Dialog.cancel(),
     ];
@@ -547,7 +547,7 @@ export function searchProduct(string) {
         {
             isActive: ["mobile"],
             content: `Click search field`,
-            trigger: `.fa-search`,
+            trigger: `[data-icon="search"]`,
             run: `click`,
         },
         {
@@ -690,6 +690,12 @@ export function checkTaxAmount(amount) {
     };
 }
 
+export function hasNoTax() {
+    return negateStep({
+        trigger: `.order-summary .tax-info`,
+    });
+}
+
 export function checkRoundingAmountIsNotThere() {
     return [
         {
@@ -816,13 +822,19 @@ export function ensureTaxesInputIsReadonly() {
 }
 
 export function createProductFromFrontend(name, barcode, list_price, category) {
-    return [
+    const steps = [
         ...productInputSteps(name, barcode, list_price),
         {
             content: "Remove default tax 15%.",
             trigger: 'div[name="taxes_id"] .o_delete',
             run: "click",
         },
+    ];
+    if (!category) {
+        return steps;
+    }
+    return [
+        ...steps,
         {
             content: "Open category selector.",
             trigger: 'div[name="pos_categ_ids"] input',
@@ -1009,7 +1021,7 @@ export function saveOrder() {
         clickReview(),
         {
             content: "save order",
-            trigger: ".pads .fa-upload",
+            trigger: ".pads [data-icon='upload']",
             run: "click",
         },
     ];

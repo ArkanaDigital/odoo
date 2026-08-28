@@ -33,6 +33,7 @@ class PaymentTransaction(models.Model):
         return {
             "rounded_amount": self._get_rounded_amount(),
             "access_token": payment_utils.generate_access_token(self.reference),
+            "currency": self.currency_id.name,
         }
 
     def _get_specific_rendering_values(self, processing_values):
@@ -175,7 +176,7 @@ class PaymentTransaction(models.Model):
         if payment_method_code in const.FPX_METHODS:
             payment_method_code = "fpx"
 
-        payment_method = self.env["payment.method"]._get_from_code(
+        payment_method = self.provider_id._get_pm_from_code(
             payment_method_code, mapping=const.PAYMENT_METHODS_MAPPING
         )
         self.payment_method_id = payment_method or self.payment_method_id
@@ -189,14 +190,8 @@ class PaymentTransaction(models.Model):
         elif payment_status in const.PAYMENT_STATUS_MAPPING["cancel"]:
             self._set_canceled()
         elif payment_status in const.PAYMENT_STATUS_MAPPING["error"]:
-            failure_reason = payment_data.get("failure_reason")
-            self._set_error(
-                self.env._(
-                    "An error occurred during the processing of your payment (%s). Please try"
-                    " again.",
-                    failure_reason,
-                )
-            )
+            failure_reason = payment_data.get("failure_reason", "")
+            self._set_error(self.env._("Reason: %s", failure_reason))
 
     def _extract_amount_data(self, payment_data):
         """Override of payment to extract the amount and currency from the payment data."""

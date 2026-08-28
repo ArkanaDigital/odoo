@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import babel
 import typing
 
 from datetime import datetime
 
 from odoo import _, api, fields, models
 from odoo.exceptions import MissingError
-from odoo.tools import clean_context, format_datetime, format_date, format_amount, formatLang
+from odoo.tools import babel_locale_parse, clean_context, format_datetime, format_date, format_amount, formatLang
 
 if typing.TYPE_CHECKING:
     from odoo.api import ValuesType
     from odoo.models import BaseModel
-    from collections.abc import Iterable
+    from collections.abc import Collection, Iterable
     from markupsafe import Markup
 
 
@@ -25,6 +26,11 @@ class MailTrackMixin(models.AbstractModel):
     # model / crud helpers
     # ------------------------------------------------------
 
+    def write(self, vals):
+        if not self._track_disabled():
+            self._track_prepare(self._fields)
+        return super().write(vals)
+
     def _fallback_lang(self) -> BaseModel:
         if not self.env.context.get("lang"):
             return self.with_context(lang=self.env.user.lang)
@@ -33,6 +39,16 @@ class MailTrackMixin(models.AbstractModel):
     def _valid_field_parameter(self, field, name):
         # allow tracking on models inheriting from 'mail.thread'
         return name == 'tracking' or super()._valid_field_parameter(field, name)
+
+    @api.model
+    def fields_get(self, allfields: Collection[str] | None = None, attributes: Collection[str] | None = None) -> dict[str, ValuesType]:
+        # add tracking information at fields_get level
+        fields_get_dict = super().fields_get(allfields, attributes)
+        if attributes is None or 'tracking' in attributes:
+            for fname, field_values in fields_get_dict.items():  # do not iterate on _fields, to rely on access checks already done
+                field_values['tracking'] = getattr(self._fields[fname], 'tracking', False) is not False
+                field_values['tracking_sequence'] = self._mail_track_get_field_sequence(fname)
+        return fields_get_dict
 
     # track data storage / manipulation
     # ------------------------------------------------------
@@ -193,10 +209,20 @@ class MailTrackMixin(models.AbstractModel):
             for name, field in self._fields.items()
             if getattr(field, 'tracking', None)
         }
-        # track the properties changes ONLY if the parent changed
+
+        # track properties if any property definition contains a tracking = True
+        for fname, f in self._fields.items():
+            if f.type == "properties":
+                properties = self.sudo()[f.definition_record].mapped(f.definition_record_field)
+                tracking_properties = [any(x.get('tracking') for x in p) for p in properties]
+                if any(tracking_properties):
+                    model_fields.add(fname)
+
+        # track the properties changes if the parent changed
         model_fields |= {
             fname for fname, f in self._fields.items()
             if f.type == "properties"
+            and fname not in model_fields
             and f.definition_record in model_fields
             and getattr(f, "tracking", None) is not False
         }
@@ -206,7 +232,14 @@ class MailTrackMixin(models.AbstractModel):
     def _track_get_fields_info(self, tracked_fields: Iterable[str]) -> ValuesType:
         tracked_fields_get = self.fields_get(
             tracked_fields,
-            attributes=('company_dependent', 'string', 'type', 'selection', 'currency_field')
+            attributes=(
+                'company_dependent',
+                'selection',
+                'string',
+                'tracking',  # includes tracking_sequence
+                'type',
+                'currency_field',
+            )
         )
         if set(tracked_fields_get.keys()) < set(tracked_fields):
             current_fields_info = self.env.cr.precommit.data.get(f'mail.tracking.fields_info.{self._name}', {})
@@ -337,8 +370,7 @@ class MailTrackMixin(models.AbstractModel):
         end_values = self.env.cr.precommit.data.get(f'mail.tracking.end_values.{self._name}', {})
         tracking_values = []
 
-        fields_track_info = self._mail_track_order_fields(tracked_fields_get)
-        for col_name, _sequence in fields_track_info:
+        for col_name, fields_get_info in self._mail_track_order_fields(tracked_fields_get):
             if col_name not in initial_values:
                 continue
             initial_value = initial_values[col_name]
@@ -354,24 +386,22 @@ class MailTrackMixin(models.AbstractModel):
                 continue
 
             if col_name in self and self._fields[col_name].type == "properties":
-                definition_record_field = self._fields[col_name].definition_record
-                if self[definition_record_field] == initial_values[definition_record_field]:
-                    # track the change only if the parent changed
-                    continue
-
                 updated.add(col_name)
+                properties = {p['name']: p.get('value') for p in self._fields[col_name].convert_to_read(self[col_name], self)}
                 tracking_values.extend(
-                    self._create_mail_tracking_values_property(property_, col_name, tracked_fields_get[col_name])
+                    self._create_mail_tracking_values_property(property_, col_name, fields_get_info)
                     # Show the properties in the same order as in the definition
                     for property_ in initial_value[::-1]
-                    if property_['type'] not in ('separator', 'html', 'signature') and property_.get('value')
+                    if property_['type'] not in ('separator', 'html', 'signature', 'many2many', 'tags') and
+                        property_.get('value') != properties.get(property_.get('name')) and
+                        property_.get('tracking')
                 )
                 continue
 
             updated.add(col_name)
             tracking_values.append(self._create_mail_tracking_values(
                 initial_value, new_value,
-                col_name, tracked_fields_get[col_name],
+                col_name, fields_get_info,
             ))
 
         return updated, tracking_values
@@ -383,18 +413,15 @@ class MailTrackMixin(models.AbstractModel):
         """ Order tracking, based on sequence found on field definition. When
         having several identical sequences, properties are added after,
         and then field name is used. """
-        fields_track_info = [
-            (col_name, self._mail_track_get_field_sequence(col_name))
-            for col_name in tracked_fields_get
-        ]
+        fields_track_info = list(tracked_fields_get.items())
         # sorting: sequence ASC, name ASC (higher sequence -> displayed last, then
         # order by name). Model order being id DESC (aka: first insert -> last
         # displayed) insert should be done by descending sequence then descending
         # name.
         fields_track_info.sort(key=lambda item: (
-            item[1],
-            tracked_fields_get[item[0]]['type'] != 'properties',
-            item[0],
+            item[1].get('tracking_sequence', 100),  # fields_get data
+            tracked_fields_get[item[0]]['type'] == 'properties',  # properties after regular fields
+            item[0],  # name
         ), reverse=True)
         return fields_track_info
 
@@ -410,21 +437,17 @@ class MailTrackMixin(models.AbstractModel):
     def _mail_track_get_field_sequence(self, fname: str) -> int:
         """ Find tracking sequence of a given field, given their name. Current
         parameter 'tracking' should be an integer, but attributes with True
-        are still supported; old naming 'track_sequence' also. """
+        are still supported. """
         if fname not in self._fields:
             return 100
 
         def get_field_sequence(fname):
-            return getattr(
-                self._fields[fname], 'tracking',
-                getattr(self._fields[fname], 'track_sequence', True)
-            )
+            return getattr(self._fields[fname], 'tracking', True)
 
         sequence = get_field_sequence(fname)
         if self._fields[fname].type == 'properties' and sequence is True:
             # default properties sequence is after the definition record
-            parent_sequence = get_field_sequence(self._fields[fname].definition_record)
-            return 100 if parent_sequence is True else parent_sequence
+            sequence = get_field_sequence(self._fields[fname].definition_record)
         return 100 if sequence is True else sequence
 
     # track value management
@@ -507,15 +530,15 @@ class MailTrackMixin(models.AbstractModel):
             values.update({
                 'old_value_datetime': initial_value,
                 'new_value_datetime': new_value,
-                'old_value': format_datetime(self.env, initial_value, tz=self.env.tz) if initial_value else 'None',
-                'new_value': format_datetime(self.env, new_value, tz=self.env.tz) if new_value else 'None',
+                'old_value': self._format_tracking_datetime(initial_value) if initial_value else 'None',
+                'new_value': self._format_tracking_datetime(new_value) if new_value else 'None',
             })
         elif col_info['type'] == 'date':
             values.update({
                 'old_value_datetime': initial_value and fields.Datetime.to_string(datetime.combine(fields.Date.from_string(initial_value), datetime.min.time())) or False,
                 'new_value_datetime': new_value and fields.Datetime.to_string(datetime.combine(fields.Date.from_string(new_value), datetime.min.time())) or False,
-                'old_value': format_date(self.env, initial_value) if initial_value else 'None',
-                'new_value': format_date(self.env, new_value) if new_value else 'None',
+                'old_value': self._format_tracking_date(initial_value) if initial_value else 'None',
+                'new_value': self._format_tracking_date(new_value) if new_value else 'None',
             })
         elif col_info['type'] == 'boolean':
             values.update({
@@ -599,6 +622,23 @@ class MailTrackMixin(models.AbstractModel):
 
         return values
 
+    def _format_tracking_date(self, value):
+        """Format a tracked date with locale formatting."""
+        date_format = babel.dates.get_date_format(locale=babel_locale_parse(self.env.lang))
+        # must be done manually as format_datetime forces lang format which is usually very different
+        return format_date(self.env, value, date_format=date_format)
+
+    def _format_tracking_datetime(self, value):
+        """Format a tracked datetime with locale formatting and timezone."""
+        tz_name = str(self.env.tz)
+        locale = babel_locale_parse(self.env.lang)
+        # must be done manually as format_datetime forces lang format which is usually very different
+        dt_format = babel.dates.get_datetime_format(locale=locale)
+        date_format = babel.dates.get_date_format(locale=locale)
+        time_format = babel.dates.get_time_format(format="short", locale=locale)
+        tracking_format = f"{dt_format.format(time_format, date_format)} (ZZZZ)"
+        return format_datetime(self.env, value, tz=tz_name, dt_format=tracking_format)
+
     def _create_mail_tracking_values_property(
         self, initial_value: typing.Any, col_name: str, col_info: ValuesType,
     ) -> ValuesType:
@@ -615,8 +655,9 @@ class MailTrackMixin(models.AbstractModel):
             value = [t for t in initial_value.get('tags', []) if t[0] in value]
 
         tracking_values = self._create_mail_tracking_values(
-            value, False, col_name, col_info,
+            value, self[col_name].get(initial_value.get('name')), col_name, col_info,
         )
+
         field_info = {
             **(tracking_values.get('field_info') or {}),
             'desc': f"{col_info['string']}: {initial_value['string']}",

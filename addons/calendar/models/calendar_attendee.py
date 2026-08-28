@@ -95,6 +95,7 @@ class CalendarAttendee(models.Model):
             "email_from": "{{ (object.event_id.user_id.email_formatted or user.email_formatted or '') }}",
             "email_to": False,
             "partner_to": False,
+            "partner_cc": False,
             "lang": "{{ object.partner_id.lang }}",
             "use_default_to": True,
         }
@@ -113,7 +114,8 @@ class CalendarAttendee(models.Model):
     def _send_invitation_emails(self):
         """ Hook to be able to override the invitation email sending process.
          Notably inside appointment to use a different mail template from the appointment type. """
-        self._notify_attendees(
+        now = fields.Datetime.now()
+        self.filtered(lambda attendee: attendee.event_id.start > now)._notify_attendees(
             self.env.ref('calendar.calendar_template_meeting_invitation', raise_if_not_found=False),
             force_send=True,
         )
@@ -160,7 +162,7 @@ class CalendarAttendee(models.Model):
         mail_messages = self.env['mail.message']
         events_to_notify = self.env['calendar.event']
         for attendee in notified_attendees:
-            if attendee.email and attendee._should_notify_attendee(notify_author=notify_author):
+            if attendee.email and (notify_author or attendee.partner_id != self.env.user.partner_id):
                 event_id = attendee.event_id.id
                 ics_file = ics_files.get(event_id)
 
@@ -210,16 +212,6 @@ class CalendarAttendee(models.Model):
         if force_send and len(notified_attendees) < force_send_limit:
             mail_messages.sudo().mail_ids.send_after_commit()
             events_to_notify._message_log_batch(bodies={event.id: completion_log_message for event in events_to_notify})
-
-    def _should_notify_attendee(self, notify_author=False):
-        """ Utility method that determines if the attendee should be notified.
-            By default, we do not want to notify (aka no message and no mail) the current user
-            if he is part of the attendees. But for reminders, mail_notify_author could be forced
-            (Override in appointment to ignore that rule and notify all attendees if it's an appointment)
-        """
-        self.ensure_one()
-        partner_not_sender = self.partner_id != self.env.user.partner_id
-        return partner_not_sender or notify_author
 
     # ------------------------------------------------------------
     # STATE MANAGEMENT

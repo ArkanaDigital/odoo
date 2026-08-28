@@ -5,13 +5,14 @@
             <t t-set-slot="buttons">
                 <div class="o_datetime_buttons d-flex gap-2">
                     <button
+                        t-if="this.props.showResetButton"
                         class="btn btn-sm btn-secondary"
                         title="Clear"
                         tabindex="-1"
                         t-on-click="this.props.pickerProps.onReset"
                         data-available-offline=""
                     >
-                        <i class="fa fa-eraser" />
+                        <i class="oi" data-icon="ink_eraser" />
                     </button>
                     <button
                         class="btn btn-sm btn-primary"

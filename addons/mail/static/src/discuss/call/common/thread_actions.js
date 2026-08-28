@@ -6,19 +6,25 @@ import { _t } from "@web/core/l10n/translation";
 
 registerThreadAction("call", {
     condition: ({ channel, store }) => channel?.allowCalls && !channel?.eq(store.rtc.channel),
-    icon: "fa fa-fw fa-phone",
+    icon: "phone",
+    iconClass: "oi-filled",
     name: ({ channel }) => (channel?.hasRtcSessionActive ? _t("Join the Call") : _t("Start Call")),
-    onSelected: ({ channel, store }) => store.rtc.toggleCall(channel),
+    onSelected: ({ channel, store }) => store.rtc.requestToggleCall(channel),
     sequence: 10,
     sequenceQuick: 30,
     tags: [ACTION_TAGS.SUCCESS, ACTION_TAGS.JOIN_LEAVE_CALL],
 });
 registerThreadAction("camera-call", {
     condition: ({ channel, store }) => channel?.allowCalls && !channel?.eq(store.rtc.channel),
-    icon: "fa fa-fw fa-video-camera",
+    icon: "videocam",
+    iconClass: "oi-filled",
     name: ({ channel }) =>
         channel?.hasRtcSessionActive ? _t("Join the Call with Camera") : _t("Start Video Call"),
-    onSelected: ({ channel, store }) => store.rtc.toggleCall(channel, { camera: true }),
+    onSelected: ({ channel, store }) =>
+        store.rtc.requestToggleCall(channel, {
+            camera: true,
+            fullscreen: !store.inPublicPage,
+        }),
     sequence: 5,
     sequenceQuick: ({ owner }) => (owner.env.inDiscussApp ? 25 : 35),
     tags: [ACTION_TAGS.SUCCESS, ACTION_TAGS.JOIN_LEAVE_CALL],
@@ -31,7 +37,8 @@ registerThreadAction("call-settings", {
         store.self_user &&
         (owner.props.chatWindow?.isOpen || store.inPublicPage) &&
         !owner.isDiscussSidebarChannelActions,
-    icon: "fa fa-fw fa-gear",
+    icon: "settings",
+    iconClass: "oi-filled oi-fw",
     name: _t("Voice & Video Settings"),
     sequence: 5,
     sequenceGroup: 30,
@@ -40,7 +47,8 @@ registerThreadAction("disconnect", {
     condition: ({ channel, owner, store }) =>
         store.rtc.selfSession?.in(channel?.rtc_session_ids) && owner.isDiscussSidebarChannelActions,
     onSelected: ({ channel, store }) => store.rtc.toggleCall(channel),
-    icon: "fa fa-fw fa-phone",
+    icon: "phone",
+    iconClass: "oi-filled",
     name: _t("Disconnect"),
     sequence: 30,
     sequenceGroup: 10,

@@ -7,7 +7,7 @@
             <header class="o_self_event_page_header text-bg-primary" t-att-class="{'o_self_shadow_top': this.scrollShadow.top}">
                 <div class="container o_self_container py-3 d-flex align-items-center position-relative">
                     <button type="button" class="btn btn-link btn-lg d-inline-flex align-items-center gap-2 p-0" t-on-click="this.goBack" aria-label="Discard">
-                        <i class="oi oi-close fa-fw"/>
+                        <i class="oi oi-fw" data-icon="close_small"/>
                         <span t-att-class="{'invisible': this.state.showStickyTitle}">Discard</span>
                     </button>
                     <h2 class="o_self_event_name position-absolute mb-0 text-truncate text-center" t-att-class="{'d-none': !this.state.showStickyTitle}" t-out="this.event.name"/>
@@ -15,12 +15,12 @@
             </header>
 
             <!-- Main Content -->
-            <main class="d-flex flex-column overflow-y-auto h-100 position-relative" t-custom-ref="scrollContainer">
+            <main class="d-flex flex-column overflow-y-auto h-100 position-relative" t-ref="this.scrollContainerRef">
                 <div class="flex-grow-1 pb-4">
                     <!-- Title & Image -->
                     <section class="py-3 text-bg-primary">
                         <div class="container o_self_container d-flex flex-column align-items-center">
-                            <h1 class="mt-kiosk-p-3 mb-3" t-out="this.event.name" t-custom-ref="eventName"/>
+                            <h1 class="mt-kiosk-p-3 mb-3" t-out="this.event.name" t-ref="this.eventNameRef"/>
                             <div class="o_self_event_image ratio ratio-1x1 rounded-4 w-70 w-m-50">
                                 <img class="rounded-4" t-att-src="this.selfOrder.eventImageUrl(this.event)" loading="lazy" alt="Event Image"/>
                             </div>
@@ -96,7 +96,7 @@
                                                             class="btn btn-secondary py-1 px-2"
                                                             t-on-click="() => this.changeQuantity(ticket.id, false)"
                                                             t-att-disabled="(this.state.ticketQuantities[ticket.id] || 0) &lt;= 0">
-                                                        <i class="oi oi-minus fa-fw"/>
+                                                        <i class="oi oi-fw" data-icon="remove"/>
                                                     </button>
                                                     <div class="o-so-tabular-nums fs-4 d-flex align-items-center m-0 px-4 py-2 text-bg-secondary fw-bolder">
                                                         <t t-out="this.state.ticketQuantities[ticket.id] || 0"/>
@@ -105,7 +105,7 @@
                                                             class="btn btn-secondary py-1 px-2"
                                                             t-on-click="() => this.changeQuantity(ticket.id, true)"
                                                             >
-                                                        <i class="oi oi-plus fa-fw"/>
+                                                        <i class="oi oi-fw" data-icon="add"/>
                                                     </button>
                                                 </div>
                                             </div>
@@ -199,7 +199,7 @@
                 <div class="container o_self_container ">
                     <div class="d-flex justify-content-between align-items-center gap-2 gap-md-5">
                         <button t-if="this.isBackVisible()" class="btn btn-lg btn-secondary" t-on-click="this.back">
-                            <i class="oi oi-chevron-left d-md-none" />
+                            <i class="oi d-md-none" data-icon="chevron_backward"/>
                             <span class="d-none d-md-inline">Back</span>
                         </button>
                         <div t-else=""/>

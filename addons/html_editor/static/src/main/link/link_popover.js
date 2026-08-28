@@ -1,8 +1,16 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { useCrossDocumentListener } from "../../utils/hooks";
 import { session } from "@web/session";
 import { _t } from "@web/core/l10n/translation";
-import { Component, proxy } from "@odoo/owl";
+import {
+    Component,
+    useProps,
+    proxy,
+    signal,
+    t,
+    useEffect,
+    onMounted,
+    onWillUnmount,
+} from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { cleanZWChars, deduceURLfromText } from "./utils";
 import { CheckBox } from "@web/core/checkbox/checkbox";
@@ -20,45 +28,54 @@ import {
 } from "@html_editor/utils/button_style";
 import { trapFocus } from "@html_editor/utils/dom_traversal";
 
+export const linkPopoverProps = {
+    document: t.customValidator(t.any(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+    linkElement: t.customValidator(t.any(), (el) => el.nodeType === Node.ELEMENT_NODE),
+    containerElement: t.customValidator(t.any(), (el) => el.nodeType === Node.ELEMENT_NODE),
+    onApply: t.function(),
+    onChange: t.function(),
+    onDiscard: t.function(),
+    onRemove: t.function(),
+    onCopy: t.function(),
+    onEdit: t.function(),
+    getInternalMetaData: t.function(),
+    getExternalMetaData: t.function(),
+    getAttachmentMetadata: t.function(),
+    isImage: t.boolean(),
+    showReplaceTitleBanner: t.boolean(),
+    type: t.string(),
+    LinkPopoverState: t.object(),
+    recordInfo: t.object(),
+    canEdit: t.boolean().optional(true),
+    canRemove: t.boolean().optional(true),
+    canUpload: t.boolean().optional(),
+    onUpload: t.function().optional(),
+    includeStyling: t.boolean().optional(true),
+    allowTargetBlank: t.boolean().optional(),
+    allowStripDomain: t.boolean().optional(),
+    publicAttachments: t.boolean().optional(),
+    advancedAttributeOptions: t.array().optional(),
+};
+
+function useContentChange(el, callback) {
+    onMounted(() => {
+        el.addEventListener("keyup", callback);
+    });
+    onWillUnmount(() => {
+        el.removeEventListener("keyup", callback);
+    });
+}
+
 export class LinkPopover extends Component {
     static template = "html_editor.linkPopover";
-    static props = {
-        document: { validate: (p) => p.nodeType === Node.DOCUMENT_NODE },
-        linkElement: { validate: (el) => el.nodeType === Node.ELEMENT_NODE },
-        containerElement: { validate: (el) => el.nodeType === Node.ELEMENT_NODE },
-        onApply: Function,
-        onChange: Function,
-        onDiscard: Function,
-        onRemove: Function,
-        onCopy: Function,
-        onEdit: Function,
-        getInternalMetaData: Function,
-        getExternalMetaData: Function,
-        getAttachmentMetadata: Function,
-        isImage: Boolean,
-        showReplaceTitleBanner: Boolean,
-        type: String,
-        LinkPopoverState: Object,
-        recordInfo: Object,
-        canEdit: { type: Boolean, optional: true },
-        canRemove: { type: Boolean, optional: true },
-        canUpload: { type: Boolean, optional: true },
-        onUpload: { type: Function, optional: true },
-        includeStyling: { type: Boolean, optional: true },
-        allowTargetBlank: { type: Boolean, optional: true },
-        allowStripDomain: { type: Boolean, optional: true },
-        publicAttachments: { type: Boolean, optional: true },
-        advancedAttributeOptions: { type: Array, optional: true },
-    };
-    static defaultProps = {
-        canEdit: true,
-        canRemove: true,
-        includeStyling: true,
-    };
+    props = useProps(linkPopoverProps);
     static components = { CheckBox, Dropdown, DropdownItem };
     buttonSizesData = BUTTON_SIZES;
     buttonShapesData = BUTTON_SHAPES;
     buttonTypesData = BUTTON_TYPES;
+    editingWrapper = signal.ref();
+    urlRef = signal.ref();
+    labelRef = signal.ref();
 
     setup() {
         this.ui = useService("ui");
@@ -92,9 +109,9 @@ export class LinkPopover extends Component {
             url: linkElement.getAttribute("href") || this.deduceUrl(textContent),
             label: labelEqualsUrl ? "" : textContent,
             previewIcon: {
-                /** @type {'fa'|'imgSrc'|'mimetype'} */
-                type: "fa",
-                value: "fa-globe",
+                /** @type {'oi'|'imgSrc'|'mimetype'} */
+                type: "oi",
+                value: "public",
             },
             urlTitle: "",
             urlDescription: "",
@@ -114,18 +131,15 @@ export class LinkPopover extends Component {
         });
 
         this.updateDocumentState();
-        this.editingWrapper = useRef("editing-wrapper");
-        this.inputRef = useRef(
-            this.state.isImage || (this.state.label && !this.state.url) ? "url" : "label"
-        );
-        useLayoutEffect(
-            (el) => {
-                if (el) {
-                    el.focus();
-                }
-            },
-            () => [this.inputRef.el]
-        );
+        // The focused input is chosen once: the URL field for images or when
+        // only a label is set, otherwise the label field.
+        this.inputRef =
+            this.state.isImage || (this.state.label && !this.state.url)
+                ? this.urlRef
+                : this.labelRef;
+        useEffect(() => {
+            this.inputRef()?.focus();
+        });
         if (!this.state.editing) {
             this.loadAsyncLinkPreview();
         }
@@ -134,11 +148,14 @@ export class LinkPopover extends Component {
                 return;
             }
             this.state.url ||= "#";
-            if (this.editingWrapper?.el && !this.editingWrapper.el.contains(ev.target)) {
+            if (this.editingWrapper() && !this.editingWrapper().contains(ev.target)) {
                 this.onClickApply();
             }
         };
         useCrossDocumentListener(this.props.document, "pointerdown", onPointerDown);
+        useContentChange(this.props.linkElement, () => {
+            this.state.urlTitle = this.props.linkElement.textContent;
+        });
     }
 
     toggleAdvancedOptions() {
@@ -245,13 +262,16 @@ export class LinkPopover extends Component {
     }
 
     onKeydown(ev) {
+        if (!this.editingWrapper()) {
+            return;
+        }
         if (ev.key === "Escape") {
             ev.preventDefault();
             ev.stopImmediatePropagation();
             this.onClickApply();
         } else if (ev.key == "Tab") {
             ev.preventDefault();
-            const focusableElements = this.editingWrapper.el.querySelectorAll(
+            const focusableElements = this.editingWrapper().querySelectorAll(
                 "input, select, button:not([disabled])"
             );
             trapFocus(focusableElements, ev.shiftKey);
@@ -341,7 +361,7 @@ export class LinkPopover extends Component {
      * link preview in the popover
      */
     resetPreview() {
-        this.state.previewIcon = { type: "fa", value: "fa-globe" };
+        this.state.previewIcon = { type: "oi", value: "public" };
         this.state.urlTitle = this.state.url || _t("No URL specified");
         this.state.urlDescription = "";
         this.state.linkPreviewName = "";
@@ -350,20 +370,13 @@ export class LinkPopover extends Component {
         let url;
         if (this.state.url === "") {
             this.resetPreview();
-            this.state.previewIcon.value = "fa-question-circle-o";
-            return;
-        }
-        if (this.isLogoutUrl()) {
-            // The session ends if we fetch this url, so the preview is hardcoded
-            this.resetPreview();
-            this.state.urlTitle = _t("Logout");
-            this.state.previewIcon.value = "fa-sign-out";
+            this.state.previewIcon.value = "help_outline";
             return;
         }
         if (this.isAttachmentUrl()) {
-            const { name, mimetype } = await this.props.getAttachmentMetadata(this.state.url);
+            const { mimetype } = await this.props.getAttachmentMetadata(this.state.url);
             this.resetPreview();
-            this.state.urlTitle = name;
+            this.state.urlTitle = this.props.linkElement.textContent;
             this.state.previewIcon = { type: "mimetype", value: mimetype };
             return;
         }
@@ -380,10 +393,11 @@ export class LinkPopover extends Component {
         this.resetPreview();
         const protocol = url.protocol;
         if (!protocol.startsWith("http")) {
-            const faMap = { "mailto:": "fa-envelope-o", "tel:": "fa-phone" };
+            const faMap = { "mailto:": "mail", "tel:": "phone" };
             const icon = faMap[protocol];
             if (icon) {
                 this.state.previewIcon.value = icon;
+                this.state.previewIcon.class = icon === "phone" ? "oi-filled" : undefined;
             }
         } else if (
             window.location.hostname !== url.hostname &&
@@ -465,8 +479,8 @@ export class LinkPopover extends Component {
             if (internalMetadata.imgSrc) {
                 this.state.imgSrc = internalMetadata.imgSrc;
                 this.state.previewIcon = {
-                    type: "fa",
-                    value: "fa-picture-o",
+                    type: "oi",
+                    value: "image",
                 };
             }
         }
@@ -506,9 +520,6 @@ export class LinkPopover extends Component {
         this.onChange();
     }
 
-    isLogoutUrl() {
-        return !!this.state.url.match(/\/web\/session\/logout\b/);
-    }
     isAttachmentUrl() {
         return !!this.state.url.match(/\/web\/content\/\d+/);
     }

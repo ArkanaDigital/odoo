@@ -11,6 +11,8 @@ from odoo.exceptions import UserError, ValidationError
 @tagged('post_install', '-at_install', 'mail_track')
 class TestAccountTax(AccountTestInvoicingCommon, MailCase):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -173,7 +175,7 @@ class TestAccountTax(AccountTestInvoicingCommon, MailCase):
                 "invoice_repartition_line_ids": [
                     Command.update(last_invoice_rep_line.id, {
                         'factor_percent': -100,
-                        'tag_ids': [Command.create({'name': 'TaxTag12345'})]
+                        'tag_ids': [Command.create({'name': 'TaxTag12345', 'applicability': 'taxes'})]
                     }),
                 ],
                 "refund_repartition_line_ids": [
@@ -373,7 +375,6 @@ class TestAccountTax(AccountTestInvoicingCommon, MailCase):
                 }),
             ],
         })
-        tax_invoice.invalidate_model(fnames=['is_used'])
         self.assertTrue(tax_invoice.is_used)
 
         # Account.reconcile is another of transaction
@@ -388,7 +389,6 @@ class TestAccountTax(AccountTestInvoicingCommon, MailCase):
                 'tax_ids': [Command.set(tax_reconciliation.ids)],
             })],
         })
-        tax_reconciliation.invalidate_model(fnames=['is_used'])
         self.assertTrue(tax_reconciliation.is_used)
 
     def test_tax_no_duplicate_in_repartition_line(self):

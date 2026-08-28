@@ -3,6 +3,7 @@ import { animationFrame, click } from "@odoo/hoot-dom";
 import { xml } from "@odoo/owl";
 import { addBuilderOption, waitForEndOfOperation } from "@html_builder/../tests/helpers";
 import { contains } from "@web/../tests/web_test_helpers";
+import { getIframeInput } from "@html_editor/../tests/_helpers/iframe_input";
 import {
     defineWebsiteModels,
     setupWebsiteBuilder,
@@ -33,7 +34,7 @@ test("should remove o_cc color on reset", async () => {
     await contains(":iframe .test-options-target").click();
     expect(".options-container").toBeDisplayed();
     await contains(".we-bg-options-container .o_we_color_preview").click();
-    await click(".o-overlay-item .fa-trash");
+    await click(".o-overlay-item [data-icon='delete'].oi-filled");
     await animationFrame();
     expect(":iframe .test-options-target").toHaveClass("test-options-target");
     expect(":iframe .test-options-target").not.toHaveClass("o_cc o_cc3");
@@ -71,7 +72,11 @@ test("should work with color transition", async () => {
 
     await contains(":iframe .test-options-target").click();
     await contains(".we-bg-options-container .o_we_color_preview").click();
-    await contains(".o_colorpicker_widget .o_hex_input").edit("#0000FF");
+    const hexInputEl = await getIframeInput(
+        ".o_font_color_selector .o_color_picker_inputs iframe.o_hex_iframe",
+        "input[name='hex_input']"
+    );
+    await contains(hexInputEl).edit("#0000FF");
     await waitForEndOfOperation();
     expect(":iframe .test-options-target").toHaveStyle("color: rgb(0, 0, 255)");
     await contains(".we-bg-options-container .o_we_color_preview").click();

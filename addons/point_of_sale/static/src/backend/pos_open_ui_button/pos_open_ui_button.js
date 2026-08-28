@@ -1,4 +1,4 @@
-import { Component } from "@odoo/owl";
+import { Component, useProps, t } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
@@ -6,10 +6,10 @@ import { standardWidgetProps } from "@web/views/widgets/standard_widget_props";
 
 export class PosOpenUIButton extends Component {
     static template = "point_of_sale.PosOpenUIButton";
-    static props = {
+    props = useProps({
         ...standardWidgetProps,
-        action: { type: String },
-    };
+        action: t.string(),
+    });
 
     setup() {
         this.orm = useService("orm");
@@ -31,7 +31,7 @@ export class PosOpenUIButton extends Component {
             return data.current_session_state === "opened";
         }
 
-        return ["opening_control", "opened"].includes(data.state || data.rescue);
+        return ["opening_control", "opened"].includes(data.state);
     }
 
     get label() {

@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import { useCrossDocumentListener } from "../../utils/hooks";
 import {
     getIframeAdjustedBoundingRect,
@@ -6,7 +5,7 @@ import {
 } from "@html_editor/utils/dom_info";
 import { closestElement } from "@html_editor/utils/dom_traversal";
 import { getColumnIndex, getRowIndex } from "@html_editor/utils/table";
-import { Component, onMounted, onWillUnmount } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, signal, useScope } from "@odoo/owl";
 
 const OVERLAY_CLAMP_OFFSET = 5;
 
@@ -21,11 +20,13 @@ export class TableDragDrop extends Component {
         close: Function,
         moveRow: Function,
         moveColumn: Function,
+        commit: Function,
         tableGrid: Object,
     };
 
+    overlayRef = signal.ref();
+
     setup() {
-        this.overlayRef = useRef("dragOverlay");
         this.pointerPos = { ...this.props.pointerPos };
         this.tableElement = closestElement(this.props.target, "table");
         this.tableRect = getIframeAdjustedBoundingRect(this.tableElement);
@@ -45,13 +46,23 @@ export class TableDragDrop extends Component {
                 ? [...this.tableElement.rows].map((r) => getIframeAdjustedBoundingRect(r))
                 : [...this.props.tableGrid[0]].map((c) => getIframeAdjustedBoundingRect(c));
 
-        useCrossDocumentListener(this.props.document, "pointermove", this.onPointerMove);
-        useCrossDocumentListener(this.props.document, "pointerup", this.onPointerUp);
-
+        const scope = useScope();
         onMounted(() => {
+            scope.run(() => {
+                useCrossDocumentListener(
+                    this.props.document,
+                    "pointermove",
+                    this.onPointerMove.bind(this)
+                );
+                useCrossDocumentListener(
+                    this.props.document,
+                    "pointerup",
+                    this.onPointerUp.bind(this)
+                );
+            });
             this.props.editable.classList.add("o-we-table-dragging");
-            if (this.overlayRef.el) {
-                Object.assign(this.overlayRef.el.style, {
+            if (this.overlayRef()) {
+                Object.assign(this.overlayRef().style, {
                     top: `${this.overlayRect.top}px`,
                     left: `${this.overlayRect.left}px`,
                     width: `${this.overlayRect.width}px`,
@@ -176,7 +187,7 @@ export class TableDragDrop extends Component {
             }
         }
         // Apply updated overlay position to the overlay element
-        const overlayStyle = this.overlayRef.el.style;
+        const overlayStyle = this.overlayRef().style;
         overlayStyle.top = `${this.overlayRect.top}px`;
         overlayStyle.left = `${this.overlayRect.left}px`;
         // Update stored pointer position for next move
@@ -205,6 +216,7 @@ export class TableDragDrop extends Component {
             } else {
                 this.props.moveColumn(targetIndex, this.props.target);
             }
+            this.props.commit();
         }
         // Close overlay after drop
         this.props.close();

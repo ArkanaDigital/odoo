@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 from odoo.tools import consteq, get_lang
 from odoo import _, api, fields, models
 from odoo.http import request
+from odoo.addons.base.models.avatar_mixin import generate_text_avatar_svg
 from odoo.addons.base.models.res_partner import _tz_get
+from odoo.addons.mail.models.discuss.discuss_channel import avatar_initials
 from odoo.exceptions import UserError
 from odoo.tools.date_utils import all_timezones
 from odoo.tools.misc import limited_field_access_token
@@ -55,6 +57,25 @@ class MailGuest(models.Model):
                 if guest.im_status == "offline"
                 else None
             )
+
+    @api.depends("name")
+    @api.depends_context("display_email", "formatted_display_name")
+    def _compute_display_name(self):
+        if not self.env.context.get("display_email"):
+            super()._compute_display_name()
+            return
+        for guest in self:
+            if self.env.context.get("formatted_display_name"):
+                guest.display_name = self.env._(
+                    "%(guest_name)s --%(guest_indicator)s--",
+                    guest_name=guest.name,
+                    guest_indicator="(External)",
+                )
+            else:
+                guest.display_name = self.env._(
+                    "%(guest_name)s (External)",
+                    guest_name=guest.name,
+                )
 
     def _get_guest_from_token(self, token=""):
         """Returns the guest record for the given token, if applicable."""
@@ -124,6 +145,14 @@ class MailGuest(models.Model):
         """
         self.ensure_one()
         return limited_field_access_token(self, "im_status", scope="mail.presence")
+
+    def _avatar_generate_svg(self):
+        """Generate an ``id``-stable avatar showing the guest initials.
+
+        Overrides the single-initial default from ``avatar.mixin`` so guest
+        avatars show the full initials like channel avatars.
+        """
+        return generate_text_avatar_svg(avatar_initials(self.name), str(self.id))
 
     def _store_avatar_fields(self, res: Store.FieldList):
         res.attr("avatar_128_access_token", lambda g: g._get_avatar_128_access_token())

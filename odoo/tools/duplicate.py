@@ -61,7 +61,7 @@ def get_field_variation_date(model: Model, field: Field, factor: int, series_ali
     setting duplicated records too far back in the past.
     """
     total_days = min((MAX_DATETIME - MIN_DATETIME).days, factor)
-    cast_type = SQL(field._column_type[1])
+    cast_type = field.sql_column_type
 
     def redistribute(value):
         return SQL(
@@ -135,7 +135,8 @@ class DuplicateContext:
             yield
             _logger.info('Adding indexes back on table %s...', model._table)
             for index in indexes:
-                model.env.cr.execute(index['definition'])
+                # definition comes from the database
+                model.env.cr.execute(index['definition'])  # pylint: disable=sql-injection
         else:
             yield
 
@@ -189,7 +190,7 @@ def field_needs_variation(model: Model, field: Field) -> bool:
         return model_.env.execute_query(query)[0][0]
 
     # Many2one fields are not considered, as a name_search would resolve it to the _rec_names_search of the related model
-    in_names_search = model._rec_names_search and field.name in model._rec_names_search
+    in_names_search = field.name in model._rec_names_search
     in_name = model._rec_name and field.name == model._rec_name
     if (in_name or in_names_search) and field.type != 'many2one':
         return True
@@ -350,8 +351,8 @@ class Many2manyModelWrapper:
         self._table = field.relation
         self._inherits = {}
         self.env = env
-        self._rec_name = None
-        self._rec_names_search = []
+        self._rec_name = ''
+        self._rec_names_search = ()
         # if the field is inherited, the column attributes are defined on the base_field
         column1 = field.column1 or field.base_field.column1
         column2 = field.column2 or field.base_field.column2

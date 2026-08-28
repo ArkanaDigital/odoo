@@ -66,7 +66,7 @@ class ProductRibbon(models.Model):
                     raise ValidationError(
                         ribbon.env._(
                             "Only one ribbon with the assign %s is allowed.",
-                            dict(self._fields["assign"].selection).get(ribbon.assign),
+                            dict(self._fields["assign"]._description_selection(self.env)).get(ribbon.assign),
                         )
                     )
 
@@ -125,7 +125,8 @@ class ProductRibbon(models.Model):
         # Check if the product is published within the ribbon's new period.
         if (  # noqa: SIM103
             self.assign == "new"
-            and self.new_period >= (fields.Datetime.today() - product.publish_date).days
+            and (pub_date := product.publish_date)
+            and self.new_period >= (fields.Datetime.today() - pub_date).days
         ):
             return True
         # Check if the product is out of stock

@@ -174,11 +174,11 @@ export function getLocalYearAndWeek(date) {
     let diffDays, year;
     if (date < jan4) {
         // count from previous year if week falls before Jan 4
-        diffDays = date.diff(jan4.minus({ years: 1 }), "day").days
-        year = date.year - 1
+        diffDays = date.diff(jan4.minus({ years: 1 }), "day").days;
+        year = date.year - 1;
     } else {
         diffDays = date.diff(jan4, "day").days;
-        year = date.year
+        year = date.year;
     }
     return {
         year: year,
@@ -219,6 +219,40 @@ export function getStartOfLocalWeek(date) {
  */
 export function getEndOfLocalWeek(date) {
     return getStartOfLocalWeek(date).plus({ days: 6 }).endOf("day");
+}
+
+/**
+ * Formats a bare number with the digits of the active numbering system, so that
+ * values interpolated by hand sit correctly next to the ones luxon renders.
+ *
+ * @param {number} value
+ * @returns {string}
+ */
+function formatLocalNumber(value) {
+    // both settings are null until the localization service has run
+    return new Intl.NumberFormat(Settings.defaultLocale ?? undefined, {
+        numberingSystem: Settings.defaultNumberingSystem ?? undefined,
+        useGrouping: false,
+    }).format(value);
+}
+
+/**
+ * Formats the week the given date belongs to, as its number followed by the
+ * days it spans, e.g.: Week 32, Aug 2 - Aug 8
+ * As in toLocaleDateString, the year is left out while it is the current one.
+ *
+ * @param {Date | luxon.DateTime} date
+ * @returns {string}
+ */
+export function formatLocalWeekRange(date) {
+    const { year, week, startDate } = getLocalYearAndWeek(date);
+    const format = { month: "short", day: "numeric" };
+    const result = _t("Week %(week)s, %(startDate)s - %(endDate)s", {
+        week: formatLocalNumber(week),
+        startDate: startDate.toLocaleString(format),
+        endDate: startDate.plus({ days: 6 }).toLocaleString(format),
+    });
+    return today().year === year ? result : `${result} ${formatLocalNumber(year)}`;
 }
 
 /**

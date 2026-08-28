@@ -1,15 +1,11 @@
 import { patch } from "@web/core/utils/patch";
 import { Message } from "@mail/core/common/message";
-import { onWillUnmount } from "@odoo/owl";
 
 patch(Message.prototype, {
     setup() {
         super.setup(...arguments);
         this.state.lastReadMoreIndex = 0;
         this.state.isReadMoreByIndex = new Map();
-        onWillUnmount(() => {
-            this.messageBody.el?.querySelector(".o-mail-ellipsis")?.remove();
-        });
     },
 
     /**
@@ -131,7 +127,8 @@ patch(Message.prototype, {
             const ellipsisbtnEl = document.createElement("button");
             ellipsisbtnEl.className = "o-mail-ellipsis badge rounded-pill border-0 py-0 px-1";
             const iconellipsisEl = document.createElement("i");
-            iconellipsisEl.className = "oi oi-ellipsis-h oi-large";
+            iconellipsisEl.className = "oi oi-lg";
+            iconellipsisEl.dataset.icon = "more_horiz";
             ellipsisbtnEl.append(iconellipsisEl);
             group[0].parentNode.insertBefore(ellipsisbtnEl, group[0]);
             // Toggle All next nodes

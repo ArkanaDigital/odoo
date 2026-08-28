@@ -2,7 +2,6 @@
 
 from . import common
 from . import test_avatar_mixin
-from . import test_ir_access_token
 from . import test_ir_actions
 from . import test_ir_actions_report
 from . import test_ir_asset
@@ -22,6 +21,7 @@ from . import test_ir_qweb_fields
 from . import test_ir_sequence
 from . import test_ir_ui_menu
 from . import test_ir_ui_view
+from . import test_partner_identifiers
 from . import test_res_company
 from . import test_res_config
 from . import test_res_country
@@ -34,4 +34,5 @@ from . import test_res_partner_addresses
 from . import test_res_partner_bank
 from . import test_res_users
 from . import test_res_users_has_group
+from . import test_vat_numbers
 from . import test_wizard_base_partner_merge

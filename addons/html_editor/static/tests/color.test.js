@@ -1,11 +1,11 @@
 import { after, before, describe, expect, test } from "@odoo/hoot";
 import { setupEditor, testEditor } from "./_helpers/editor";
 import { unformat } from "./_helpers/format";
-import { setColor } from "./_helpers/user_actions";
+import { insertText, setColor } from "./_helpers/user_actions";
+import { execCommand } from "./_helpers/userCommands";
 import { getContent } from "./_helpers/selection";
 import { animationFrame, press } from "@odoo/hoot-dom";
 import { QWebPlugin } from "@html_editor/others/qweb_plugin";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 
 const redToBlueGradient = "linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))";
 const greenToBlueGradient = "linear-gradient(rgb(0, 255, 0), rgb(0, 0, 255))";
@@ -24,7 +24,7 @@ test("should apply a color to the qweb tag (1)", async () => {
         contentBefore: `<div><p t-out="'Test'" contenteditable="false">[Test]</p></div>`,
         stepFunction: setColor("rgb(255, 0, 0)", "color"),
         contentAfter: `<div>[<p t-out="'Test'" style="color: rgb(255, 0, 0);">Test</p>]</div>`,
-        config: { Plugins: [...MAIN_PLUGINS, QWebPlugin] },
+        config: { includePlugins: [QWebPlugin] },
     });
 });
 
@@ -33,7 +33,7 @@ test("should apply a color to the qweb tag (2)", async () => {
         contentBefore: `<div><p t-field="record.display_name" contenteditable="false">[Test]</p></div>`,
         stepFunction: setColor("rgb(255, 0, 0)", "color"),
         contentAfter: `<div>[<p t-field="record.display_name" style="color: rgb(255, 0, 0);">Test</p>]</div>`,
-        config: { Plugins: [...MAIN_PLUGINS, QWebPlugin] },
+        config: { includePlugins: [QWebPlugin] },
     });
 });
 
@@ -47,18 +47,52 @@ test("should apply a background color to a slice of text in a span in a font", a
 });
 
 test("should get ready to type with a different color", async () => {
-    await testEditor({
-        contentBefore: "<p>ab[]cd</p>",
-        stepFunction: setColor("rgb(255, 0, 0)", "color"),
-        contentAfter: '<p>ab<font style="color: rgb(255, 0, 0);">\u200B[]</font>cd</p>',
-    });
+    const { el, editor } = await setupEditor("<p>ab[]cd</p>");
+    await setColor("rgb(255, 0, 0)", "color")(editor);
+    expect(getContent(el)).toBe("<p>ab[]cd</p>");
+    await insertText(editor, "x");
+    expect(getContent(el)).toBe('<p>ab<font style="color: rgb(255, 0, 0);">x[]</font>cd</p>');
 });
 
 test("should get ready to type with a different background color", async () => {
+    const { el, editor } = await setupEditor("<p>ab[]cd</p>");
+    await setColor("rgb(255, 0, 0)", "backgroundColor")(editor);
+    expect(getContent(el)).toBe("<p>ab[]cd</p>");
+    await insertText(editor, "x");
+    expect(getContent(el)).toBe(
+        '<p>ab<font style="background-color: rgb(255, 0, 0);">x[]</font>cd</p>'
+    );
+});
+
+test("should get ready to type without color after removing format on a collapsed selection", async () => {
+    const { el, editor } = await setupEditor(
+        '<p>ab<font style="color: rgb(255, 0, 0);">cd[]ef</font>gh</p>'
+    );
+    execCommand(editor, "removeFormat");
+    expect(getContent(el)).toBe('<p>ab<font style="color: rgb(255, 0, 0);">cd[]ef</font>gh</p>');
+    await insertText(editor, "x");
+    expect(getContent(el)).toBe(
+        '<p>ab<font style="color: rgb(255, 0, 0);">cd</font>x[]<font style="color: rgb(255, 0, 0);">ef</font>gh</p>'
+    );
+});
+
+test("collapsed remove-format defers color removal when the color is on an ancestor", async () => {
+    const { el, editor } = await setupEditor(
+        '<p><font style="color: rgb(255, 0, 0);"><strong>ab[]cd</strong></font></p>'
+    );
+    execCommand(editor, "removeFormat");
+    await insertText(editor, "x");
+    expect(getContent(el)).toBe(
+        `<p><font style="color: rgb(255, 0, 0);"><strong>ab</strong></font>x[]<font style="color: rgb(255, 0, 0);"><strong>cd</strong></font></p>`
+    );
+});
+
+test("should not wrap br in font tag in non-empty block", async () => {
     await testEditor({
-        contentBefore: "<p>ab[]cd</p>",
-        stepFunction: setColor("rgb(255, 0, 0)", "backgroundColor"),
-        contentAfter: '<p>ab<font style="background-color: rgb(255, 0, 0);">\u200B[]</font>cd</p>',
+        contentBefore: "<p>[abc<br>def]</p>",
+        stepFunction: setColor("rgb(255, 0, 0)", "color"),
+        contentAfter:
+            '<p><font style="color: rgb(255, 0, 0);">[abc</font><br><font style="color: rgb(255, 0, 0);">def]</font></p>',
     });
 });
 
@@ -67,10 +101,13 @@ test("should apply a color on empty selection", async () => {
         contentBefore: "<p>[<br></p><p><br></p><p>]<br></p>",
         stepFunction: setColor("rgb(255, 0, 0)", "color"),
         contentAfterEdit:
-            '<p>[<font data-oe-zws-empty-inline="" style="color: rgb(255, 0, 0);">\u200B</font></p>' +
-            '<p><font data-oe-zws-empty-inline="" style="color: rgb(255, 0, 0);">\u200B</font></p>' +
-            '<p>]<font data-oe-zws-empty-inline="" style="color: rgb(255, 0, 0);">\u200B</font></p>',
-        contentAfter: "<p>[<br></p><p><br></p><p>]<br></p>",
+            '<p><font style="color: rgb(255, 0, 0);">[<br></font></p>' +
+            '<p><font style="color: rgb(255, 0, 0);"><br></font></p>' +
+            '<p><font style="color: rgb(255, 0, 0);">]<br></font></p>',
+        contentAfter:
+            '<p><font style="color: rgb(255, 0, 0);">[<br></font></p>' +
+            '<p><font style="color: rgb(255, 0, 0);"><br></font></p>' +
+            '<p><font style="color: rgb(255, 0, 0);">]<br></font></p>',
     });
 });
 
@@ -79,10 +116,13 @@ test("should apply a background color on empty selection", async () => {
         contentBefore: "<p>[<br></p><p><br></p><p>]<br></p>",
         stepFunction: setColor("rgb(255, 0, 0)", "backgroundColor"),
         contentAfterEdit:
-            '<p>[<font data-oe-zws-empty-inline="" style="background-color: rgb(255, 0, 0);">\u200B</font></p>' +
-            '<p><font data-oe-zws-empty-inline="" style="background-color: rgb(255, 0, 0);">\u200B</font></p>' +
-            '<p>]<font data-oe-zws-empty-inline="" style="background-color: rgb(255, 0, 0);">\u200B</font></p>',
-        contentAfter: "<p>[<br></p><p><br></p><p>]<br></p>",
+            '<p><font style="background-color: rgb(255, 0, 0);">[<br></font></p>' +
+            '<p><font style="background-color: rgb(255, 0, 0);"><br></font></p>' +
+            '<p><font style="background-color: rgb(255, 0, 0);">]<br></font></p>',
+        contentAfter:
+            '<p><font style="background-color: rgb(255, 0, 0);">[<br></font></p>' +
+            '<p><font style="background-color: rgb(255, 0, 0);"><br></font></p>' +
+            '<p><font style="background-color: rgb(255, 0, 0);">]<br></font></p>',
     });
 });
 
@@ -210,7 +250,7 @@ test("should not apply font tag to t nodes (protects if else nodes separation)",
                 </t>
             </p>
         ]`),
-        config: { Plugins: [...MAIN_PLUGINS, QWebPlugin] },
+        config: { includePlugins: [QWebPlugin] },
     });
 });
 
@@ -690,7 +730,7 @@ describe("colorElement", () => {
                     "backgroundColor"
                 );
             },
-            contentAfter: `<div style='background-image: url("https://example.com/image.png");' class="o_cc o_cc1">a</div>`,
+            contentAfter: `<div class="o_cc o_cc1" style='background-image: url("https://example.com/image.png");'>a</div>`,
         });
     });
     test("should not keep custom gradient when switching o_cc class", async () => {
@@ -765,7 +805,7 @@ describe("colorElement", () => {
                         "backgroundColor"
                     );
                 },
-                contentAfter: `<div style='background-image: url("https://example.com/image.png"), ${redToBlueGradient};' class="o_cc o_cc1">a</div>`,
+                contentAfter: `<div class="o_cc o_cc1" style='background-image: url("https://example.com/image.png"), ${redToBlueGradient};'>a</div>`,
             });
         });
         test("change o_cc1 (with gradient) with o_cc2 (without gradient)", async () => {
@@ -793,7 +833,7 @@ describe("colorElement", () => {
                             "backgroundColor"
                         );
                     },
-                    contentAfter: `<div style="background-image: ${redToBlueGradient};" class="o_cc o_cc1">a</div>`,
+                    contentAfter: `<div class="o_cc o_cc1" style="background-image: ${redToBlueGradient};">a</div>`,
                 });
             });
             test("should write o_cc1 gradient when bg-900 is already present", async () => {
@@ -819,7 +859,7 @@ describe("colorElement", () => {
                             "backgroundColor"
                         );
                     },
-                    contentAfter: `<div style="background-image: ${redToBlueGradient};" class="o_cc o_cc1">a</div>`,
+                    contentAfter: `<div class="o_cc o_cc1" style="background-image: ${redToBlueGradient};">a</div>`,
                 });
             });
         });
@@ -896,35 +936,35 @@ test("should not split unsplittable element when applying color (3)", async () =
 test("should be able to apply color on icon along with text", async () => {
     await testEditor({
         contentBefore:
-            '<p>a[bc\ufeff<span class="fa fa-glass" contenteditable="false">\u200b</span>\ufeffde]f</p>',
+            '<p>a[bc\ufeff<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>\ufeffde]f</p>',
         stepFunction: setColor("rgb(255, 0, 0)", "color"),
         contentAfterEdit:
-            '<p>a<font style="color: rgb(255, 0, 0);">[bc\ufeff<span class="fa fa-glass" contenteditable="false">\u200b</span>\ufeffde]</font>f</p>',
+            '<p>a<font style="color: rgb(255, 0, 0);">[bc\ufeff<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>\ufeffde]</font>f</p>',
         contentAfter:
-            '<p>a<font style="color: rgb(255, 0, 0);">[bc<span class="fa fa-glass"></span>de]</font>f</p>',
+            '<p>a<font style="color: rgb(255, 0, 0);">[bc<span class="oi" data-icon="local_bar"></span>de]</font>f</p>',
     });
 });
 
 test("should be able to change color of an icon", async () => {
     await testEditor({
         contentBefore:
-            '<p><font style="color: rgb(255, 0, 0);">\ufeff<span class="fa fa-glass" contenteditable="false">[]\u200b</span>\ufeff</font></p>',
+            '<p><font style="color: rgb(255, 0, 0);">\ufeff<span class="oi" data-icon="local_bar" contenteditable="false">[]\u200b</span>\ufeff</font></p>',
         stepFunction: setColor("rgb(255, 255, 0)", "color"),
         contentAfterEdit:
-            '<p>[<font style="color: rgb(255, 255, 0);">\ufeff<span class="fa fa-glass" contenteditable="false">\u200b</span>\ufeff</font>]</p>',
+            '<p>[<font style="color: rgb(255, 255, 0);">\ufeff<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>\ufeff</font>]</p>',
         contentAfter:
-            '<p>[<font style="color: rgb(255, 255, 0);"><span class="fa fa-glass"></span></font>]</p>',
+            '<p>[<font style="color: rgb(255, 255, 0);"><span class="oi" data-icon="local_bar"></span></font>]</p>',
     });
 });
 
 test("should be able to remove color of an icon", async () => {
     await testEditor({
         contentBefore:
-            '<p><font style="color: rgb(255, 0, 0);">\ufeff<span class="fa fa-glass" contenteditable="false">[]\u200b</span>\ufeff</font></p>',
+            '<p><font style="color: rgb(255, 0, 0);">\ufeff<span class="oi" data-icon="local_bar" contenteditable="false">[]\u200b</span>\ufeff</font></p>',
         stepFunction: setColor("", "color"),
         contentAfterEdit:
-            '<p>\ufeff[<span class="fa fa-glass" contenteditable="false">\u200b</span>\ufeff]</p>',
-        contentAfter: '<p>[<span class="fa fa-glass"></span>]</p>',
+            '<p>\ufeff[<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>\ufeff]</p>',
+        contentAfter: '<p>[<span class="oi" data-icon="local_bar"></span>]</p>',
     });
 });
 
@@ -933,18 +973,18 @@ test("doesn't change the color of the whole section when there's an icon next to
         contentBefore: `
         <section style="color: rgb(255, 0, 0);">
             <p>a[bc]d</p>
-            <span class="fa fa-glass" contenteditable="false">\u200b</span>
+            <span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>
         </section>`,
         stepFunction: setColor("rgb(0, 0, 255)", "color"),
         contentAfterEdit: `
         <p data-selection-placeholder=""><br></p><section style="color: rgb(255, 0, 0);">
             <p>a<font style="color: rgb(0, 0, 255);">[bc]</font>d</p>
-            <span class="fa fa-glass" contenteditable="false">\u200b</span>
+            <span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>
         </section><p data-selection-placeholder=""><br></p>`,
         contentAfter: `
         <section style="color: rgb(255, 0, 0);">
             <p>a<font style="color: rgb(0, 0, 255);">[bc]</font>d</p>
-            <span class="fa fa-glass"></span>
+            <span class="oi" data-icon="local_bar"></span>
         </section>`,
     });
 });

@@ -1,19 +1,16 @@
-import { Dialog } from "@web/core/dialog/dialog";
+import { t } from "@odoo/owl";
+import { Dialog, dialogProps } from "@web/core/dialog/dialog";
 import { patch } from "@web/core/utils/patch";
 
-patch(Dialog, {
-    props: {
-        ...Dialog.props,
-        backdrop: { type: Boolean, optional: true },
-        closeOnBodyButtonClick: { type: Boolean, optional: true },
-    },
-    defaultProps: { ...Dialog.defaultProps, backdrop: false, closeOnBodyButtonClick: false },
+Object.assign(dialogProps, {
+    backdrop: t.boolean().optional(true),
+    closeOnBodyButtonClick: t.boolean().optional(false),
 });
 
 patch(Dialog.prototype, {
     onClick(event) {
         // Click outside the modal content
-        if (this.props.backdrop && event.target === this.modalRef.el) {
+        if (this.props.backdrop && event.target === this.modalRef()) {
             this.dismiss();
         }
         // Click on a button inside the modal body or on an element with the 'close-dialog' class

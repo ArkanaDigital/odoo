@@ -1,37 +1,32 @@
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { keyDown, press, queryAllTexts } from "@odoo/hoot-dom";
-import {
-    Deferred,
-    advanceFrame,
-    advanceTime,
-    animationFrame,
-    mockUserAgent,
-} from "@odoo/hoot-mock";
+import { advanceFrame, advanceTime, animationFrame, mockUserAgent } from "@odoo/hoot-mock";
 import {
     contains,
     getService,
-    makeMockEnv,
+    makeTestApp,
     mountWithCleanup,
     patchWithCleanup,
 } from "@web/../tests/web_test_helpers";
 
-import { Component, xml, proxy } from "@odoo/owl";
+import { Component, proxy, signal, useProps, xml } from "@odoo/owl";
 
 import { useCommand } from "@web/core/commands/command_hook";
 import { HotkeyCommandItem } from "@web/core/commands/default_providers";
+import { HotkeyPlugin } from "@web/core/hotkeys/hotkey_plugin";
 import { registry } from "@web/core/registry";
-import { useActiveElement } from "@web/core/ui/ui_service";
+import { useActiveElement } from "@web/core/ui/ui_plugin";
 
 class TestComponent extends Component {
     static template = xml`<div />`;
-    static props = ["*"];
+    props = useProps();
 }
 
 class Parent extends Component {
     static template = xml`
       <t t-component="this.props.componentInfo.Component" t-if="this.props.componentInfo.Component" />
     `;
-    static props = ["*"];
+    props = useProps();
 }
 
 const commandProviderRegistry = registry.category("command_provider");
@@ -50,7 +45,7 @@ beforeEach(async () => {
             commandSetupRegistry.remove(key);
         }
     });
-    await makeMockEnv();
+    await makeTestApp();
     const commandCategoryRegistry = registry.category("command_categories");
     // Adding default last. The order of insertion of categories matters
     commandCategoryRegistry.remove("default");
@@ -111,10 +106,11 @@ test("useCommand hook when the activeElement change", async () => {
     }
 
     class OtherComponent extends Component {
-        static template = xml`<div t-custom-ref="active"><div tabindex="1">visible</div></div>`;
-        static props = ["*"];
+        static template = xml`<div t-ref="this.activeRef"><div tabindex="1">visible</div></div>`;
+        props = useProps();
+        activeRef = signal.ref();
         setup() {
-            useActiveElement("active");
+            useActiveElement(this.activeRef);
             useCommand("I'm taking the throne", () => {});
         }
     }
@@ -188,10 +184,11 @@ test("global command with hotkey", async () => {
     expect.verifySteps([hotkey]);
 
     class MyComponent extends Component {
-        static template = xml`<div t-custom-ref="active"><button>visible</button></div>`;
-        static props = ["*"];
+        static template = xml`<div t-ref="this.activeRef"><button>visible</button></div>`;
+        props = useProps();
+        activeRef = signal.ref();
         setup() {
-            useActiveElement("active");
+            useActiveElement(this.activeRef);
         }
     }
     await mountWithCleanup(MyComponent);
@@ -361,7 +358,7 @@ test("data-hotkey added to command palette", async () => {
                 <TestComponent />
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
         onClick() {
             expect.step("Hodor");
         }
@@ -408,7 +405,7 @@ test("access to hotkeys from the command palette", async () => {
                 <TestComponent />
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
         onClickB() {
             expect.step("B");
         }
@@ -865,7 +862,7 @@ test("data-command-category", async () => {
             <TestComponent />
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
     await mountWithCleanup(MyComponent);
 
@@ -891,7 +888,7 @@ test("display shortcuts correctly for non-MacOS ", async () => {
                 <TestComponent />
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -934,7 +931,7 @@ test("display shortcuts correctly for MacOS ", async () => {
             <TestComponent />
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -967,11 +964,6 @@ test("display shortcuts correctly for MacOS ", async () => {
 });
 
 test("display shortcuts correctly for non-MacOS with a new overlayModifier", async () => {
-    const hotkeyService = registry.category("services").get("hotkey");
-    patchWithCleanup(hotkeyService, {
-        overlayModifier: "alt+control",
-    });
-
     class MyComponent extends Component {
         static components = { TestComponent };
         static template = xml`
@@ -980,10 +972,13 @@ test("display shortcuts correctly for non-MacOS with a new overlayModifier", asy
                 <TestComponent />
                 </div>
             `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
+    patchWithCleanup(getService(HotkeyPlugin), {
+        overlayModifier: "alt+control",
+    });
     // Open palette
     await press(["Control", "k"]);
     await animationFrame();
@@ -994,11 +989,6 @@ test("display shortcuts correctly for non-MacOS with a new overlayModifier", asy
 test("display shortcuts correctly for MacOS with a new overlayModifier", async () => {
     mockUserAgent("mac");
 
-    const hotkeyService = registry.category("services").get("hotkey");
-    patchWithCleanup(hotkeyService, {
-        overlayModifier: "alt+control",
-    });
-
     class MyComponent extends Component {
         static components = { TestComponent };
         static template = xml`
@@ -1007,10 +997,13 @@ test("display shortcuts correctly for MacOS with a new overlayModifier", async (
             <TestComponent />
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
+    patchWithCleanup(getService(HotkeyPlugin), {
+        overlayModifier: "alt+control",
+    });
     // Open palette
     await press(["meta", "k"]);
     await animationFrame();
@@ -1064,15 +1057,15 @@ test("uses openPalette to modify the config used by the command palette", async 
 });
 
 test("ensure that calling openPalette multiple times successfully loads the last config for the command palette", async () => {
-    const providePromise1 = new Deferred();
-    const providePromise2 = new Deferred();
+    const providePromise1 = Promise.withResolvers();
+    const providePromise2 = Promise.withResolvers();
     const action = () => {};
 
     await mountWithCleanup(TestComponent);
 
     const provide = [
         async () => {
-            await providePromise1;
+            await providePromise1.promise;
             return [
                 {
                     name: "Command1",
@@ -1081,7 +1074,7 @@ test("ensure that calling openPalette multiple times successfully loads the last
             ];
         },
         async () => {
-            await providePromise2;
+            await providePromise2.promise;
             return [
                 {
                     name: "Command2",

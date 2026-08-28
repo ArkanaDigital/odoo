@@ -21,7 +21,9 @@ import {
 import { getOrderLineValues } from "./card_utils";
 import { initLNA } from "@point_of_sale/app/utils/init_lna";
 import { GeneratePrinterData } from "@point_of_sale/app/utils/printer/generate_printer_data";
-import { SnoozedProductTracker } from "@point_of_sale/app/models/utils/snooze_tracker";
+import { SnoozeTracker } from "@point_of_sale/app/models/utils/snooze_tracker";
+import { InfoPopup } from "@pos_self_order/app/components/info_popup/info_popup";
+import { ComboSuggestion } from "@point_of_sale/app/models/utils/combo_suggestion";
 import { session } from "@web/session";
 
 const { DateTime } = luxon;
@@ -58,8 +60,8 @@ export class SelfOrder extends Reactive {
 
         // data
         this.models = this.data.models;
-        this.session = this.models["pos.session"].getFirst();
-        this.config = this.models["pos.config"].getFirst();
+        this.session = this.models["pos.session"].get(odoo.pos_session_id);
+        this.config = this.models["pos.config"].get(odoo.pos_config_id);
         this.company = this.config.company_id;
         this.currency = this.config.currency_id;
 
@@ -78,7 +80,8 @@ export class SelfOrder extends Reactive {
         this.currentCategory = null;
         this.productByCategIds = {};
         this.availableCategories = [];
-        this.snoozedProductTracker = new SnoozedProductTracker();
+        this.snoozeTracker = new SnoozeTracker();
+        this.pendingComboConversion = null;
 
         this.env.utils = {
             roundCurrency: (amount) => this.currency.round(amount),
@@ -101,15 +104,15 @@ export class SelfOrder extends Reactive {
         this.data.connectWebSocket("SNOOZE_CHANGED", async (payload) => {
             const { deleted_ids, records } = payload;
             if (deleted_ids) {
-                const snoozeModel = this.models["pos.product.template.snooze"];
+                const snoozeModel = this.models["pos.snooze"];
                 snoozeModel.deleteMany(
                     deleted_ids.map((id) => snoozeModel.get(id)).filter(Boolean)
                 );
             }
             if (records.length > 0) {
-                await this.models.connectNewData({ "pos.product.template.snooze": records });
+                await this.models.connectNewData({ "pos.snooze": records });
             }
-            this.snoozedProductTracker.setSnoozes(this.config.pos_snooze_ids);
+            this.snoozeTracker.setSnoozes(this.config.pos_snooze_ids);
         });
         this.data.connectWebSocket("PRODUCT_CHANGED", (payload) => {
             const productTemplateIds = payload["product.template"].map((tmpl) => tmpl.id);
@@ -125,7 +128,6 @@ export class SelfOrder extends Reactive {
         if (this.config.self_ordering_mode === "kiosk") {
             this.data.connectWebSocket("STATUS", ({ status }) => {
                 if (status === "closed") {
-                    this.pos_session = [];
                     this.ordering = false;
                 } else {
                     // reload to get potential new settings
@@ -153,11 +155,6 @@ export class SelfOrder extends Reactive {
                     this.paymentError = true;
                 }
             });
-
-            this.data.connectWebSocket(
-                "FINALIZE_KIOSK_PAYMENT",
-                this._onFinalizeKiokPayment.bind(this)
-            );
         }
         this.data.connectWebSocket("REMOVE_ORDERS", (data) => {
             this.removeOrdersByAccessTokens(data.deleted_order_tokens);
@@ -185,43 +182,13 @@ export class SelfOrder extends Reactive {
                 return;
             }
             const productTemplate = product.product_tmpl_id;
-            if (this.isProductConfigurable(productTemplate)) {
+            if (productTemplate.isConfigurableForSelfOrder) {
                 this.router.navigate("product", { id: productTemplate.id });
                 return;
             }
             this.addToCart(productTemplate, 1, "", {}, {});
             this.router.navigate("cart");
         });
-    }
-
-    _onFinalizeKiokPayment(args) {
-        const payment = this.currentOrder?.payment_ids.at(-1);
-        const order_id = args.order_id || payment?.pos_order_id?.id;
-        if (
-            !this.currentOrder ||
-            this.currentOrder.id !== order_id ||
-            payment?.pos_order_id?.id !== order_id
-        ) {
-            return;
-        }
-
-        if (args.status === "success" && payment) {
-            payment.setPaymentStatus("done");
-            rpc(`/kiosk/payment/${this.config.id}/kiosk`, {
-                order: this.currentOrder.serializeForORM(),
-                access_token: this.access_token,
-                payment_method_id: payment.payment_method_id.id,
-            });
-        } else {
-            for (const p of this.currentOrder.payment_ids) {
-                this.currentOrder.removePaymentline(p);
-            }
-            this.paymentError = true;
-            this.notification.add(_t("Please try again or select another payment method"), {
-                title: args.error || _t("Payment failed"),
-                type: "danger",
-            });
-        }
     }
 
     /**
@@ -241,6 +208,10 @@ export class SelfOrder extends Reactive {
         return this.config.use_presets && presets.length > 0
             ? this.currentOrder?.preset_id?.service_at
             : this.config.self_ordering_service_mode;
+    }
+
+    get isSessionOpened() {
+        return this.session?.state === "opened";
     }
 
     getAvailableCategories() {
@@ -332,7 +303,6 @@ export class SelfOrder extends Reactive {
         for (const [date, slots] of Object.entries(availabilities)) {
             options.categories[date] = {
                 id: date,
-                name: luxon.DateTime.fromISO(date).toLocaleString(luxon.DateTime.DATE_SHORT),
                 subCategories: {},
             };
             for (const slot of Object.values(slots)) {
@@ -387,37 +357,18 @@ export class SelfOrder extends Reactive {
         }
     }
 
-    showComboSelectionPage(product) {
-        const selectedCombos = [];
-        for (const combo of product.combo_ids) {
-            const { combo_item_ids } = combo;
-            if (
-                combo_item_ids.length > 1 ||
-                combo.qty_max > 1 ||
-                this.isProductConfigurable(combo_item_ids[0]?.product_id)
-            ) {
-                return { show: true, selectedCombos: [] };
-            }
-            selectedCombos.push({
-                combo_item_id: this.models["product.combo.item"].get(combo_item_ids[0].id),
-                configuration: {
-                    attribute_custom_values: [],
-                    attribute_value_ids: [],
-                    price_extra: 0,
-                },
-            });
+    resetTip() {
+        const tipLine = this.currentOrder.lines.find((l) => l.isTipLine());
+        if (!tipLine) {
+            return;
         }
-        return { show: false, selectedCombos };
-    }
-
-    isProductConfigurable(product) {
-        if (!product) {
-            return false;
+        // Synced tip lines are zeroed instead of deleted to avoid server-side issues (especially in pay-after-meal mode).
+        if (tipLine.isSynced) {
+            tipLine.setUnitPrice(0);
+        } else {
+            tipLine.delete();
         }
-        if (!this.kioskMode) {
-            return product.isConfigurable();
-        }
-        return product.attribute_line_ids.some((a) => a.product_template_value_ids.length > 1);
+        this.currentOrder.setTip(false);
     }
 
     async addToCart(
@@ -429,6 +380,7 @@ export class SelfOrder extends Reactive {
         comboValues = {}
     ) {
         const product = productTemplate.product_variant_ids[0];
+        this.resetTip();
         const values = getOrderLineValues(
             this,
             productTemplate,
@@ -475,7 +427,7 @@ export class SelfOrder extends Reactive {
     hasPaymentMethod() {
         return (
             this.config.self_ordering_mode === "kiosk" &&
-            this.models["pos.payment.method"].getAll().length > 0
+            this.models["pos.payment.method"].filter((pm) => pm.type !== "cash").length > 0
         );
     }
 
@@ -606,8 +558,9 @@ export class SelfOrder extends Reactive {
         this.productByCategIds = this.models["product.template"].getAllBy("pos_categ_ids");
 
         const excludedProductTemplateIds = new Set(
-            this.config._pos_special_products_ids
-                .map((id) => this.models["product.product"].get(id)?.product_tmpl_id?.id)
+            this.models["product.product"]
+                .filter((p) => p._is_pos_special_product)
+                .map((p) => p.product_tmpl_id?.id)
                 .filter(Boolean)
         );
 
@@ -629,11 +582,17 @@ export class SelfOrder extends Reactive {
             });
             this.productByCategIds["0"] = productWoCat;
         }
+
+        this.comboSuggestion = new ComboSuggestion(
+            this.models,
+            this.currency,
+            this.company,
+            this.config
+        );
     }
 
     initHardware() {
-        const orderingMode = this.config.self_ordering_mode;
-        if (!["kiosk", "mobile"].includes(orderingMode)) {
+        if (this.config.self_ordering_mode !== "kiosk") {
             return;
         }
 
@@ -651,7 +610,7 @@ export class SelfOrder extends Reactive {
     }
 
     initData() {
-        this.snoozedProductTracker.setSnoozes(this.config.pos_snooze_ids);
+        this.snoozeTracker.setSnoozes(this.config.pos_snooze_ids);
         this.initProducts();
         this._initLanguages();
         this.initHardware();
@@ -671,7 +630,18 @@ export class SelfOrder extends Reactive {
     }
 
     isProductSnoozed(product) {
-        return this.snoozedProductTracker.isProductSnoozed(product);
+        return this.snoozeTracker.isProductSnoozed(product);
+    }
+
+    get isSelfSnoozed() {
+        return this.snoozeTracker.getActiveSnooze("self-ordering");
+    }
+
+    isProductAvailable(product) {
+        return (
+            !product.pos_categ_ids.length ||
+            product.pos_categ_ids.some((categ) => this.isCategoryAvailable(categ.id))
+        );
     }
 
     async initKioskData() {
@@ -696,18 +666,28 @@ export class SelfOrder extends Reactive {
     }
 
     async initMobileData() {
-        if (this.config.self_ordering_mode !== "qr_code") {
-            if (
-                this.session &&
-                this.access_token &&
-                this.config.self_ordering_mode !== "consultation"
-            ) {
-                await this.getUserDataFromServer();
-                this.ordering = true;
-            }
-
-            if (!this.ordering) {
-                return;
+        if (
+            this.access_token &&
+            !this.isSelfSnoozed &&
+            this.config.self_ordering_mode !== "consultation" &&
+            (this.session || this.models["pos.preset"].filter((p) => p.use_timing).length > 0)
+        ) {
+            await this.getUserDataFromServer();
+            this.ordering = true;
+            if (!this.isSessionOpened) {
+                this.dialog.add(InfoPopup, {
+                    text: _t(
+                        "The shop is currently closed but you can still place an order for later."
+                    ),
+                    buttons: [
+                        {
+                            text: _t("Close"),
+                            onClick: () => {
+                                this.dialog.closeAll();
+                            },
+                        },
+                    ],
+                });
             }
         }
     }
@@ -722,7 +702,10 @@ export class SelfOrder extends Reactive {
     isValidSelection(slot, partner) {
         const preset = this.currentOrder.preset_id || {};
         const { id, name, email, phone, street, city, country_id, zip } = partner || {};
-        const partnerInfo = name && phone && street && city && country_id && zip;
+        const partnerInfo = this.config._has_google_places_api_key
+            ? name && phone && street && city && country_id && zip
+            : name && phone && street;
+
         const selectedPartner = typeof id === "number" && !isNaN(id);
         const validPartnerInfos = partnerInfo || selectedPartner;
 
@@ -731,7 +714,7 @@ export class SelfOrder extends Reactive {
             (!preset.needsName || name) &&
             (!preset.needsEmail || selectedPartner || isValidEmail(email)) &&
             (!preset.needsPartner || validPartnerInfos) &&
-            (!phone || selectedPartner || isValidPhone(phone))
+            (!preset.needsPhone || selectedPartner || isValidPhone(phone))
         );
     }
 
@@ -749,11 +732,12 @@ export class SelfOrder extends Reactive {
         for (const line of this.currentOrder.lines) {
             const changes = line.changes;
             if (Object.values(changes).some((v) => v)) {
-                if (line.qty <= changes.qty) {
+                const lastChange = this.currentOrder.uiState.lineChanges[line.uuid];
+                if (!lastChange) {
                     lineToDelete.push(line);
                 } else {
                     line.update({
-                        qty: changes["qty"],
+                        qty: lastChange.qty,
                         customer_note: changes["customer_note"],
                         attribute_value_ids: changes["attribute_value_ids"]
                             ? JSON.parse(changes["attribute_value_ids"]).map((a) => [
@@ -803,11 +787,11 @@ export class SelfOrder extends Reactive {
     }
 
     async sendDraftOrderToServer() {
-        if (
-            Object.keys(this.currentOrder.changes).length === 0 ||
-            this.currentOrder.lines.length === 0
-        ) {
-            return this.currentOrder;
+        const order = this.currentOrder;
+        const hasTipLine = this.config.tip_product_id && order.lines.some((l) => l.isTipLine());
+        // tip is excluded from `changes`, so a tip-only update still needs a sync
+        if ((Object.keys(order.changes).length === 0 && !hasTipLine) || order.lines.length === 0) {
+            return order;
         }
 
         try {
@@ -932,6 +916,8 @@ export class SelfOrder extends Reactive {
                 access_token: this.access_token,
             });
             return;
+        } else if (typeof error === "string") {
+            message = error;
         }
 
         this.notification.add(message, {
@@ -1011,19 +997,14 @@ export class SelfOrder extends Reactive {
     }
 
     getProductPriceInfo(productTemplate, product) {
-        const pricelist = this.currentOrder.preset_id?.pricelist_id || this.config.pricelist_id;
-        const price = productTemplate.getPrice(pricelist, 1, 0, false, product);
-
-        if (!product) {
-            product = productTemplate;
-        }
-
-        // Taxes computation.
         const order = this.currentOrder;
-        const taxesData = product.getTaxDetails({
+        const pricelist = order.preset_id?.pricelist_id || this.config.pricelist_id;
+        const productVariant = product || productTemplate.product_variant_ids[0];
+        const price = productTemplate.getPrice(pricelist, 1, 0, false, productVariant);
+        const taxesData = (productVariant || productTemplate).getTaxDetails({
             overridedValues: {
                 price,
-                fiscalPosition: order?.fiscal_position_id || false,
+                fiscalPosition: order.fiscal_position_id || false,
             },
         });
         return { pricelist_price: price, ...taxesData };
@@ -1039,6 +1020,31 @@ export class SelfOrder extends Reactive {
 
     isTaxesIncludedInPrice() {
         return this.config.iface_tax_included === "total";
+    }
+
+    /**
+     * Removes or decrements the standalone lines that were converted into a combo line.
+     */
+    applyPendingComboConversion() {
+        const conversion = this.pendingComboConversion;
+        if (!conversion) {
+            return;
+        }
+        for (const [lineUuid, qty] of Object.entries(conversion.concernedLinesQty)) {
+            const line = this.models["pos.order.line"].getBy("uuid", lineUuid);
+            if (!line) {
+                continue;
+            }
+            const newQty = line.qty - qty;
+            if (newQty > 0) {
+                line.setQuantity(newQty);
+            } else {
+                // Remove fully consumed source lines so the cart only keeps the new combo parent.
+                line.order_id.removeOrderline(line);
+            }
+        }
+
+        this.pendingComboConversion = null;
     }
     showDownloadButton(order) {
         return this.config.self_ordering_mode === "mobile" && order.state === "paid";
@@ -1061,8 +1067,20 @@ export class SelfOrder extends Reactive {
         link.click();
     }
 
+    get availablePresets() {
+        let presets = this.models["pos.preset"].getAll();
+
+        if (!this.isSessionOpened && this.ordering) {
+            presets = presets.filter((preset) => preset.use_timing);
+        }
+
+        return this.router.getTableIdentifier() != null || this.kioskMode
+            ? presets
+            : presets.filter((preset) => preset.service_at !== "table");
+    }
+
     hasPresets() {
-        return this.config.use_presets && this.models["pos.preset"].length > 1;
+        return this.config.use_presets && this.availablePresets.length > 1;
     }
     getTime(date) {
         return getTimeUtil(date);
@@ -1075,23 +1093,34 @@ export class SelfOrder extends Reactive {
             : null;
     }
 
-    get orderLineNotSend() {
-        return Object.entries(this.currentOrder.changes).reduce(
+    calculateOrderLineTotals(changes) {
+        return Object.entries(changes).reduce(
             (acc, [key, { qty }]) => {
-                if (qty && qty > 0) {
-                    const line = this.models["pos.order.line"].getBy("uuid", key);
+                const line = this.models["pos.order.line"].getBy("uuid", key);
+                if (line && qty && qty > 0) {
+                    if (line.isTipLine()) {
+                        return acc;
+                    }
                     if (!line.combo_parent_id) {
                         acc.count += qty;
                     }
-                    const prices = line.prices;
+                    const prices = line.getPriceDetailsWithQty(qty);
                     acc.priceWithTax += prices.total_included;
                     acc.priceWithoutTax += prices.total_excluded;
-                    acc.tax += prices.taxes_data.reduce((acc, tax) => (acc += tax.tax_amount), 0);
+                    acc.tax += prices.taxes_data.reduce((acc, tax) => acc + tax.tax_amount, 0);
                 }
                 return acc;
             },
             { priceWithTax: 0, priceWithoutTax: 0, count: 0, tax: 0 }
         );
+    }
+
+    get orderLineNotSend() {
+        return this.calculateOrderLineTotals(this.currentOrder.changes);
+    }
+
+    get orderLineSent() {
+        return this.calculateOrderLineTotals(this.currentOrder.uiState.lineChanges);
     }
 
     get kioskBackgroundImageUrl() {

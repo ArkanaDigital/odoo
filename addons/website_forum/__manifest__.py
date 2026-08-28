@@ -44,13 +44,11 @@ Ask questions, get answers, no distractions
         'views/forum_forum_templates_tools.xml',
         'views/website_profile_templates.xml',
 
-        'security/ir.model.access.csv',
-        'security/ir_rule_data.xml',
-
         'data/gamification_badge_data_question.xml',
         'data/gamification_badge_data_answer.xml',
         'data/gamification_badge_data_participation.xml',
         'data/gamification_badge_data_moderation.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'data/forum_tag_demo.xml',
@@ -71,6 +69,7 @@ Ask questions, get answers, no distractions
             'website_forum/static/src/interactions/**/*',
             'website_forum/static/src/js/tours/website_forum.js',
             'website_forum/static/src/scss/website_forum.scss',
+            'website_forum/static/src/scss/website_forum_wysiwyg.scss',
             'website_forum/static/src/xml/public_templates.xml',
             'website_forum/static/src/xml/website_forum_tags_wrapper.xml',
             'website_forum/static/src/components/**/*',

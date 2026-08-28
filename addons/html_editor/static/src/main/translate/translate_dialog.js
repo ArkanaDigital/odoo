@@ -1,14 +1,15 @@
 import { _t } from "@web/core/l10n/translation";
 import { Dialog } from "@web/core/dialog/dialog";
 import { useService } from "@web/core/utils/hooks";
-import { Component, onWillDestroy, markup, proxy } from "@odoo/owl";
+import { Component, onWillDestroy, markup, useProps, proxy, t, usePlugin } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { GoogleTranslator, ChatGPTTranslator } from "./translator";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 const RTL_LANGUAGES = new Set(["ar", "he", "fa", "ur", "yi", "ps", "ku", "sd", "ug", "dv", "ha"]);
 
-const POSTPROCESS_GENERATED_CONTENT = (content, baseContainer) => {
+const POSTPROCESS_GENERATED_CONTENT = (content, baseContainer, document) => {
     let lines = content.split("\n");
     if (baseContainer.toUpperCase() === "P") {
         // P has a margin bottom which is used as an interline, no need to
@@ -58,23 +59,26 @@ const POSTPROCESS_GENERATED_CONTENT = (content, baseContainer) => {
 export class TranslateDialog extends Component {
     static template = "html_editor.TranslateDialog";
     static components = { Dialog, Dropdown, DropdownItem };
-    static props = {
-        insert: { type: Function },
-        close: { type: Function },
-        sanitize: { type: Function },
-        baseContainer: { type: String, optional: true },
-        originalText: String,
-        targetLang: { type: Object, shape: { languageCode: String, languageName: String } },
-    };
-    static defaultProps = {
-        baseContainer: "DIV",
-    };
+    props = useProps({
+        insert: t.function(),
+        close: t.function(),
+        sanitize: t.function(),
+        baseContainer: t.string().optional("DIV"),
+        originalText: t.string(),
+        targetLang: t.object({
+            languageCode: t.string(),
+            languageName: t.string(),
+        }),
+        document: t.customValidator(t.any(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+    });
+
+    debugMode = usePlugin(DebugModePlugin);
 
     setup() {
         const google_translate = new GoogleTranslator("translate_google", "Google Translate");
         this.translators = [google_translate];
 
-        if (this.env.debug) {
+        if (this.debugMode.isActive()) {
             const chatgpt_translate = new ChatGPTTranslator("translate_gpt", "ChatGPT");
             this.translators.push(chatgpt_translate);
         }
@@ -103,10 +107,14 @@ export class TranslateDialog extends Component {
     }
 
     formatContent(content) {
-        const fragment = POSTPROCESS_GENERATED_CONTENT(content, this.props.baseContainer);
+        const fragment = POSTPROCESS_GENERATED_CONTENT(
+            content,
+            this.props.baseContainer,
+            this.props.document
+        );
         let result = "";
         for (const child of fragment.children) {
-            this.props.sanitize(child, { IN_PLACE: true });
+            this.props.sanitize(child);
             result += child.outerHTML;
         }
         return markup(result);
@@ -149,8 +157,8 @@ export class TranslateDialog extends Component {
             translatedText: translateResult.translatedText,
             isError: translateResult.isError,
         });
-        // only select the new translation if there was no error
-        if (!translateResult.isError) {
+        // only select the new translation if there was no error and under non-debug mode
+        if (!translateResult.isError && !this.debugMode.isActive()) {
             this.state.selectedMessageId = messageId;
         }
     }
@@ -171,9 +179,10 @@ export class TranslateDialog extends Component {
             });
             const fragment = POSTPROCESS_GENERATED_CONTENT(
                 translatedText || "",
-                this.props.baseContainer
+                this.props.baseContainer,
+                this.props.document
             );
-            this.props.sanitize(fragment, { IN_PLACE: true });
+            this.props.sanitize(fragment);
             this.props.insert(fragment);
         } catch (e) {
             this.props.close();

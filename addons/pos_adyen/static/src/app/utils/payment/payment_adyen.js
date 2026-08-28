@@ -237,19 +237,6 @@ export class PaymentAdyen extends PaymentInterface {
         return this._callAdyen(data, "payment_status");
     }
 
-    _convertReceiptInfo(output_text) {
-        return output_text.reduce((acc, entry) => {
-            var params = new URLSearchParams(entry.Text);
-            if (params.get("name") && !params.get("value")) {
-                return acc + "\n" + params.get("name");
-            } else if (params.get("name") && params.get("value")) {
-                return `${acc}\n${params.get("name")}: ${params.get("value")}`;
-            }
-
-            return acc;
-        }, "");
-    }
-
     /**
      * This method handles the response that comes from Adyen
      * when we first make a request to pay.
@@ -259,7 +246,9 @@ export class PaymentAdyen extends PaymentInterface {
 
         if (!response || (response.error && response.error.status_code == 401)) {
             this._show_error(_t("Authentication failed. Please check your Adyen credentials."));
-            line.setPaymentStatus("force_done");
+            if (line) {
+                line.setPaymentStatus("force_done");
+            }
             return false;
         }
 
@@ -281,6 +270,9 @@ export class PaymentAdyen extends PaymentInterface {
             }
             return false;
         } else {
+            if (!line) {
+                return false;
+            }
             line.setPaymentStatus("waitingCard");
             return this.waitForPaymentConfirmation();
         }
@@ -366,6 +358,10 @@ export class PaymentAdyen extends PaymentInterface {
             return;
         }
         const line = this.pendingAdyenline();
+        if (!line) {
+            return;
+        }
+
         const response = notification.SaleToPOIResponse;
         const header = notification.SaleToPOIResponse.MessageHeader;
 
@@ -380,26 +376,6 @@ export class PaymentAdyen extends PaymentInterface {
     handleSuccessResponse(line, payment_response, additional_response) {
         const config = this.pos.config;
         const payment_result = payment_response.PaymentResult;
-
-        const cashier_receipt = payment_response.PaymentReceipt.find(
-            (receipt) => receipt.DocumentQualifier == "CashierReceipt"
-        );
-
-        if (cashier_receipt) {
-            line.setCashierReceipt(
-                this._convertReceiptInfo(cashier_receipt.OutputContent.OutputText)
-            );
-        }
-
-        const customer_receipt = payment_response.PaymentReceipt.find(
-            (receipt) => receipt.DocumentQualifier == "CustomerReceipt"
-        );
-
-        if (customer_receipt) {
-            line.setReceiptInfo(
-                this._convertReceiptInfo(customer_receipt.OutputContent.OutputText)
-            );
-        }
 
         const tip_amount = payment_result?.AmountsResp?.TipAmount ?? 0;
         if (config.adyen_ask_customer_for_tip && tip_amount > 0) {

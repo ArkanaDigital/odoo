@@ -184,7 +184,7 @@ class TestXMLID(TransactionCase):
             self.assertEqual((value._name, value.id), self.env.cr.fetchone(), message)
 
         xmlid = 'base.test_xmlid'
-        records = self.env['ir.model.data'].search([], limit=6)
+        records = self.env['ir.model.data'].search([], limit=7)
         with self.assertQueryCount(1):
             self.env['ir.model.data']._update_xmlids([
                 {'xml_id': xmlid, 'record': records[0]},
@@ -202,6 +202,15 @@ class TestXMLID(TransactionCase):
                 {'xml_id': xmlid, 'record': records[2]},
             ])
         assert_xmlid(xmlid, records[2], f'The xmlid {xmlid} should have been updated with record {records[1]}')
+
+        # _update_xmlids should invalidate ir.model.data
+        xmlid_split = xmlid.split('.')
+        xmlid_record = records.search([('module', '=', xmlid_split[0]), ('name', '=', xmlid_split[1])]).ensure_one()
+        self.assertEqual(xmlid_record.res_id, records[2].id)
+        self.env['ir.model.data']._update_xmlids([
+            {'xml_id': xmlid, 'record': records[6]},
+        ])
+        self.assertEqual(xmlid_record.res_id, records[6].id)
 
         # noupdate case
         # note: this part is mainly there to avoid breaking the current behaviour, not asserting that it makes sence
@@ -224,6 +233,27 @@ class TestXMLID(TransactionCase):
                 {'xml_id': xmlid, 'record': records[5]},
             ])
         assert_xmlid(xmlid, records[5], f'The xmlid {xmlid} should have been updated with record (not an update) {records[1]}')
+
+    def test_reflect_constraint_xmlids(self):
+        xmlid = 'base.constraint_ir_model_data_name_nospaces'
+        constraint = self.env.ref(xmlid)
+        model_data = self.get_data(xmlid)
+
+        other_constraint = self.env['ir.model.constraint'].search([('id', '!=', constraint.id)], limit=1)
+        model_data.res_id = other_constraint.id
+        constraint_count = sum(
+            bool(name and table_object._module)
+            for name, table_object in self.env['ir.model.data']._table_objects.items()
+        )
+        xmlids_update_count = 1
+        with self.assertQueryCount(constraint_count + xmlids_update_count):
+            self.env['ir.model.constraint']._reflect_constraints(['ir.model.data'])
+        self.assertEqual(self.env.ref(xmlid), constraint)
+
+        # Missing xmlid for an existing constraint should be recreated
+        self.get_data(xmlid).unlink()
+        self.env['ir.model.constraint']._reflect_constraints(['ir.model.data'])
+        self.assertEqual(self.env.ref(xmlid), constraint)
 
 
 @tagged('-at_install', 'post_install')
@@ -353,12 +383,6 @@ class TestEvalContext(TransactionCase):
 @tagged('-at_install', 'post_install')
 class TestIrModelFieldsTranslation(HttpCase):
     def test_ir_model_fields_translation(self):
-        # If not enabled (like in demo data), landing on res.config will try
-        # to disable module_sale_quotation_builder and raise an warning
-        group_order_template = self.env.ref('sale_management.group_sale_order_template', raise_if_not_found=False)
-        if group_order_template:
-            self.env.ref('base.group_user').write({"implied_ids": [(4, group_order_template.id)]})
-
         # modify en_US translation
         field = self.env['ir.model.fields'].search([('model_id.model', '=', 'res.users'), ('name', '=', 'login')])
         self.assertEqual(field.with_context(lang='en_US').field_description, 'Login')

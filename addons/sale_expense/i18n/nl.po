@@ -8,26 +8,56 @@
 # Erwin van der Ploeg <erwin@odooexperts.nl>, 2023
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
 # Bren Driesen <brdri@odoo.com>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:37+0000\n"
-"PO-Revision-Date: 2025-12-02 14:48+0000\n"
-"Last-Translator: Bren Driesen <brdri@odoo.com>\n"
-"Language-Team: Dutch <https://translate.odoo.com/projects/odoo-19/"
+"POT-Creation-Date: 2026-07-10 17:38+0000\n"
+"PO-Revision-Date: 2026-06-21 19:59+0000\n"
+"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
+"Language-Team: Dutch <https://translate.odoo.com/projects/odoo-master/"
 "sale_expense/nl/>\n"
 "Language: nl\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.14.3\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: sale_expense
 #: model:ir.model.fields,field_description:sale_expense.field_sale_order__expense_count
 msgid "# of Expenses"
 msgstr "# onkosten"
+
+#. module: sale_expense
+#. odoo-python
+#: code:addons/sale_expense/models/account_move.py:0
+msgid "%(count)s expense receipts attached from reinvoiced expenses."
+msgstr ""
+
+#. module: sale_expense
+#. odoo-python
+#: code:addons/sale_expense/models/account_move.py:0
+msgid "1 expense receipt attached from reinvoiced expenses."
+msgstr ""
+
+#. module: sale_expense
+#: model:ir.model.fields,field_description:sale_expense.field_hr_expense__attach_receipts_to_invoice
+msgid "Attach receipts to future customer invoices"
+msgstr ""
+
+#. module: sale_expense
+#: model:ir.model.fields,field_description:sale_expense.field_hr_expense_post_wizard__attach_receipts_to_invoice
+msgid "Attach receipts to future related invoices"
+msgstr ""
+
+#. module: sale_expense
+#: model:ir.model.fields,help:sale_expense.field_hr_expense__attach_receipts_to_invoice
+msgid ""
+"Attach the expense receipts to customer invoices generated later from the "
+"related sales order"
+msgstr ""
 
 #. module: sale_expense
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense__can_be_reinvoiced
@@ -39,6 +69,7 @@ msgstr "Kan opnieuw gefactureerd worden"
 #: model:ir.model.fields,field_description:sale_expense.field_account_move__display_name
 #: model:ir.model.fields,field_description:sale_expense.field_account_move_line__display_name
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense__display_name
+#: model:ir.model.fields,field_description:sale_expense.field_hr_expense_post_wizard__display_name
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense_split__display_name
 #: model:ir.model.fields,field_description:sale_expense.field_product_template__display_name
 #: model:ir.model.fields,field_description:sale_expense.field_sale_order__display_name
@@ -58,6 +89,11 @@ msgid "Expense Policy Tooltip"
 msgstr "Tooltip onkostenbeleid"
 
 #. module: sale_expense
+#: model:ir.model,name:sale_expense.model_hr_expense_post_wizard
+msgid "Expense Posting Wizard"
+msgstr ""
+
+#. module: sale_expense
 #: model:ir.model,name:sale_expense.model_hr_expense_split
 msgid "Expense Split"
 msgstr "Onkost splitsen"
@@ -73,8 +109,10 @@ msgstr "Onkosten"
 #. module: sale_expense
 #. odoo-python
 #: code:addons/sale_expense/models/product_template.py:0
+#, fuzzy
 msgid "Expenses of this product may not be added to a Sales Order."
 msgstr ""
+"Uitgaven bij dit product mogen niet worden toegevoegd aan een verkooporder."
 
 #. module: sale_expense
 #. odoo-python
@@ -99,6 +137,7 @@ msgstr ""
 #: model:ir.model.fields,field_description:sale_expense.field_account_move__id
 #: model:ir.model.fields,field_description:sale_expense.field_account_move_line__id
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense__id
+#: model:ir.model.fields,field_description:sale_expense.field_hr_expense_post_wizard__id
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense_split__id
 #: model:ir.model.fields,field_description:sale_expense.field_product_template__id
 #: model:ir.model.fields,field_description:sale_expense.field_sale_order__id
@@ -138,8 +177,9 @@ msgstr "Product"
 #. module: sale_expense
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense__sale_order_id
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense_split__sale_order_id
+#, fuzzy
 msgid "Reinvoice to"
-msgstr ""
+msgstr "Doorfactureren aan"
 
 #. module: sale_expense
 #: model:ir.model.fields,field_description:sale_expense.field_hr_expense__sale_order_line_id
@@ -156,3 +196,8 @@ msgstr "Verkooporder"
 #: model:ir.model,name:sale_expense.model_sale_order_line
 msgid "Sales Order Line"
 msgstr "Verkooporderregel"
+
+#. module: sale_expense
+#: model:ir.model.fields,field_description:sale_expense.field_hr_expense_post_wizard__show_attach_receipts_to_invoice
+msgid "Show Attach Receipts To Invoice"
+msgstr ""

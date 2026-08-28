@@ -39,7 +39,7 @@ export class DynamicFieldPlugin extends Plugin {
                 id: "insertField",
                 title: _t("Field"),
                 description: _t("Insert a field"),
-                icon: "fa-database",
+                icon: "database",
                 run: this.insertField.bind(this),
                 isAvailable: (selection) => isHtmlContentSupported(selection),
             },
@@ -47,7 +47,7 @@ export class DynamicFieldPlugin extends Plugin {
                 id: "editDynamicField",
                 title: _t("Edit field"),
                 description: _t("Change the placeholder or the expression for an existing field"),
-                icon: "fa-pencil",
+                icon: "edit",
                 run: this.editField.bind(this),
                 isAvailable: () => !!this.getPopoverTarget(true),
             },
@@ -60,7 +60,7 @@ export class DynamicFieldPlugin extends Plugin {
             withSequence(20, {
                 categoryId: "dynamic_field_tools",
                 commandId: "insertField",
-                keywords: [_t("dynamic placeholder")],
+                keywords: [_t("dynamic"), _t("placeholder"), _t("personalize")],
             }),
         ],
         on_selectionchange_handlers: withSequence(9, this.onSelectionChanged.bind(this)),
@@ -131,6 +131,13 @@ export class DynamicFieldPlugin extends Plugin {
     }
 
     async editField() {
+        if (!this.resModel) {
+            return this.services.notification.add(
+                _t("Oops! Select a model for this template before editing fields."),
+                { type: "danger" }
+            );
+        }
+
         const target = this.getPopoverTarget(true);
         if (!target) {
             return;
@@ -196,6 +203,13 @@ export class DynamicFieldPlugin extends Plugin {
     }
 
     async insertField() {
+        if (!this.resModel) {
+            return this.services.notification.add(
+                _t("Oops! Select a model for this template before inserting fields."),
+                { type: "danger" }
+            );
+        }
+
         await this.config.dynamicFieldPreprocess?.({
             resModel: this.resModel,
             element: null,
@@ -312,6 +326,7 @@ export class DynamicFieldPlugin extends Plugin {
             }
             return false;
         });
+        return node;
     }
 
     cleanQwebExpressionsForCopy(node) {
@@ -322,6 +337,7 @@ export class DynamicFieldPlugin extends Plugin {
                 }
             }
         );
+        return node;
     }
 
     cleanQwebExpressionsForSave(root) {
@@ -337,6 +353,7 @@ export class DynamicFieldPlugin extends Plugin {
             }
             return doChildren;
         });
+        return root;
     }
 }
 

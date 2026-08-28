@@ -4,7 +4,7 @@ import { defineMailModels, start as start2 } from "@mail/../tests/mail_test_help
 import { afterEach, beforeEach, expect, test } from "@odoo/hoot";
 
 import { registry } from "@web/core/registry";
-import { mockService } from "@web/../tests/web_test_helpers";
+import { getService, mockService } from "@web/../tests/web_test_helpers";
 
 function xipToBitmap(xmin, xmax, xip) {
     const bitCount = Number(xmax - xmin);
@@ -39,8 +39,8 @@ afterEach(() => {
 });
 
 async function start() {
-    const env = await start2();
-    return env.services.store;
+    await start2();
+    return getService("store");
 }
 
 const SINGLE_FIELD_CASES = [
@@ -423,6 +423,60 @@ for (const testCase of MANY_FIELD_CASES) {
         }
     });
 }
+
+test("out-of-order delete does not pile up inverse echoes", async () => {
+    (class Message extends Record {
+        static id = "id";
+        thread = fields.One("Thread", { inverse: "messages" });
+    }).register(localRegistry);
+
+    (class Thread extends Record {
+        static id = "id";
+        messages = fields.Many("Message", { inverse: "thread" });
+    }).register(localRegistry);
+
+    const store = await start();
+    store.insert({
+        Thread: { id: 1, messages: [["REPLACE", [1, 2, 3, 4, 5]]] },
+        __store_version__: { snapshot: { xmin: 10, xmax: 10, xip_bitmap: "" } },
+    });
+    store.insert({
+        Thread: { id: 1, messages: [["ADD", [6]]] },
+        __store_version__: { snapshot: { xmin: 30, xmax: 30, xip_bitmap: "" } },
+    });
+    store.insert({
+        Thread: { id: 1, messages: [["DELETE", [1]]] },
+        __store_version__: { snapshot: { xmin: 20, xmax: 20, xip_bitmap: "" } },
+    });
+    // Echoes are kept in history as they are required to correctly compute an equivalent replace command.
+    expect(store.Thread.get(1)._.fieldsVersion.get("messages").history.length).toBe(6);
+    expect(store.Thread.get(1).messages.map((m) => m.id)).toEqual([2, 3, 4, 5, 6]);
+    expect(store.Message.get(1).thread).toBe(undefined);
+});
+
+test("inverse echo follows the field it mirrors", async () => {
+    (class Message extends Record {
+        static id = "id";
+        thread = fields.One("Thread", { inverse: "messages" });
+    }).register(localRegistry);
+
+    (class Thread extends Record {
+        static id = "id";
+        messages = fields.Many("Message", { inverse: "thread" });
+    }).register(localRegistry);
+
+    const store = await start();
+    store.insert({
+        Message: { id: 1, thread: 9 },
+        __store_version__: { snapshot: { xmin: 30, xmax: 30, xip_bitmap: "" } },
+    });
+    store.insert({
+        Thread: { id: 1, messages: [["REPLACE", [1]]] },
+        __store_version__: { snapshot: { xmin: 20, xmax: 20, xip_bitmap: "" } },
+    });
+    expect(store.Thread.get(1).messages.map((m) => m.id)).toEqual([1]);
+    expect(store.Message.get(1).thread.id).toBe(1);
+});
 
 test("Inverse of relations are properly versioned", async () => {
     (class Message extends Record {

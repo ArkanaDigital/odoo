@@ -40,6 +40,7 @@ DEFAULT_COLOR_SPEC = {
     'http_response_body': 'auto',
     'perf': 'auto',
     'cursor_mode': 'auto',
+    'sql': 'auto',
 }
 
 
@@ -244,7 +245,7 @@ class configmanager:
         group = optparse.OptionGroup(parser, "Common options")
         group.add_option("-c", "--config", dest="config", type='path', file_loadable=False, env_name='ODOO_RC',
                          help="specify alternate config file")
-        group.add_option("-s", "--save", action="store_true", dest="save", my_default=False, file_loadable=False,
+        group.add_option("--save", action="store_true", dest="save", my_default=False, file_loadable=False,
                          help="save configuration to ~/.odoorc (or to ~/.openerp_serverrc if it exists)")
         group.add_option("-i", "--init", dest="init", type='comma', metavar="MODULE,...", my_default=[], file_loadable=False,
                          help="install one or more modules (comma-separated list, use \"all\" for all modules), requires -d")
@@ -351,7 +352,7 @@ class configmanager:
         group.add_option("--logfile", dest="logfile", type='path', my_default='',
                          help="file where the server log will be stored")
         group.add_option("--syslog", action="store_true", dest="syslog", my_default=False,
-                         help="Send the log to the syslog server")
+                         help="Send the log to the syslog server (deprecated)")
         group.add_option('--log-handler', action="append", type='comma', my_default=[':INFO'], metavar="MODULE:LEVEL",
                          help='setup a handler at LEVEL for a given MODULE. An empty MODULE indicates the root logger. '
                               'This option can be repeated. Example: "odoo.orm:DEBUG" or "werkzeug:CRITICAL" (default: ":INFO")')
@@ -361,6 +362,9 @@ class configmanager:
                          help='shortcut for --log-handler=odoo.sql_db:DEBUG')
         group.add_option('--log-db', dest='log_db', help="Logging database", my_default='')
         group.add_option('--log-db-level', dest='log_db_level', my_default='warning', help="Logging database level")
+        group.add_option('--log-config', dest='log_config', type='path', my_default='',
+                         help="JSON logging configuration file, in dictconfig format ("
+                              "https://docs.python.org/3/library/logging.config.html#logging-config-dictschema).")
         # For backward-compatibility, map the old log levels to something
         # quite close.
         levels = [
@@ -641,7 +645,7 @@ class configmanager:
             self.parser.error(f"unrecognized parameters: {' '.join(unknown_args)}")
 
         if not opt.save and opt.config and not os.access(opt.config, os.R_OK):
-            self.parser.error(f"the config file {opt.config!r} selected with -c/--config doesn't exist or is not readable, use -s/--save if you want to generate it")
+            self.parser.error(f"the config file {opt.config!r} selected with -c/--config doesn't exist or is not readable, use --save if you want to generate it")
 
         # Even if they are not exposed on the CLI, cli un-loadable variables still show up in the opt, remove them
         for option_name in list(vars(opt).keys()):
@@ -1038,8 +1042,19 @@ class configmanager:
             option = self.options_index.get(opt)
             if keys is not None and opt not in keys:
                 continue
-            if opt == 'version' or (option and not option.file_exportable):
+            if opt == 'version':
                 continue
+            if option:
+                if option.file_exportable:
+                    pass
+                elif option.file_loadable and self.options[opt] != self._default_options[opt]:
+                    # Persist the option if we can load it from the file
+                    # and that it is different from the default value.
+                    # Even if it was marked "file_exportable=False", we
+                    # just don't want to export the default value.
+                    pass
+                else:
+                    continue
             if option:
                 p.set('options', opt, self.format(opt, self.options[opt]))
             else:

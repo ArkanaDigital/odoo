@@ -1,6 +1,6 @@
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 
-import { Component, props, types } from "@odoo/owl";
+import { Component, types, useProps } from "@odoo/owl";
 
 import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
@@ -13,9 +13,9 @@ export class DeleteThreadDialog extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props({
-            channel: types.instanceOf(this.store["discuss.channel"].Class),
-            close: types.function([]),
+        this.props = useProps({
+            channel: types.instanceOf(this.store["discuss.channel"]),
+            close: types.function([types.instanceOf(MouseEvent)]),
         });
     }
 

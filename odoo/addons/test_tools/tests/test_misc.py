@@ -528,14 +528,14 @@ class TestFormatLang(TransactionCase):
     def test_rounding_unit(self):
         self.assertEqual(misc.formatLang(self.env, 1000000.00), '1,000,000.00')
         self.assertEqual(misc.formatLang(self.env, 1000000.00, rounding_unit='units'), '1,000,000')
-        self.assertEqual(misc.formatLang(self.env, 1000000.00, rounding_unit='thousands'), '1,000')
-        self.assertEqual(misc.formatLang(self.env, 1000000.00, rounding_unit='lakhs'), '10')
-        self.assertEqual(misc.formatLang(self.env, 1000000.00, rounding_unit="millions"), '1')
+        self.assertEqual(misc.formatLang(self.env, 1000000.00, rounding_unit='thousands'), '1,000k')
+        self.assertEqual(misc.formatLang(self.env, 1000000.00, rounding_unit='lakhs'), '10L')
+        self.assertEqual(misc.formatLang(self.env, 1000000.00, rounding_unit="millions"), '1M')
 
     def test_rounding_method_and_rounding_unit(self):
-        self.assertEqual(misc.formatLang(self.env, 1822060000, rounding_method='HALF-UP', rounding_unit='lakhs'), '18,221')
-        self.assertEqual(misc.formatLang(self.env, 1822050000, rounding_method='HALF-UP', rounding_unit='lakhs'), '18,221')
-        self.assertEqual(misc.formatLang(self.env, 1822049900, rounding_method='HALF-UP', rounding_unit='lakhs'), '18,220')
+        self.assertEqual(misc.formatLang(self.env, 1822060000, rounding_method='HALF-UP', rounding_unit='lakhs'), '18,221L')
+        self.assertEqual(misc.formatLang(self.env, 1822050000, rounding_method='HALF-UP', rounding_unit='lakhs'), '18,221L')
+        self.assertEqual(misc.formatLang(self.env, 1822049900, rounding_method='HALF-UP', rounding_unit='lakhs'), '18,220L')
 
     def test_format_decimal_point_without_grouping(self):
         lang = self.env['res.lang'].browse(misc.get_lang(self.env).id)
@@ -720,6 +720,26 @@ class TestMiscToken(TransactionCase):
         new_timestamp = new_timestamp.to_bytes(8, byteorder='little')
         token = base64.urlsafe_b64encode(token[:1] + new_timestamp + token[9:]).decode()
         self.assertIsNone(misc.verify_hash_signed(self.env, 'test', token))
+
+    def test_custom_secret(self):
+        payload = {'value': 123456, 'name': 'bob'}
+        token = misc.hash_sign(self.env, 'test', payload, expiration_hours=24, secret='very_secret')
+
+        self.assertEqual(misc.verify_hash_signed(self.env, 'test', token, secret='very_secret'), payload)
+        self.assertEqual(misc.verify_hash_signed(self.env, 'test', token, secret=b'very_secret'), payload)
+        self.assertIsNone(misc.verify_hash_signed(self.env, 'test', token, secret='other'))
+        self.assertIsNone(misc.verify_hash_signed(self.env, 'test', token))
+
+    def test_default_secret(self):
+        payload = ["str1", "str2", "str3", 4, 5]
+        db_secret = self.env['ir.config_parameter'].sudo().get_str('database.secret')
+
+        token_default = misc.hash_sign(self.env, 'test', payload, expiration_hours=24)
+        token_explicit = misc.hash_sign(self.env, 'test', payload, expiration_hours=24, secret=db_secret)
+
+        self.assertEqual(misc.verify_hash_signed(self.env, 'test', token_default), payload)
+        self.assertEqual(misc.verify_hash_signed(self.env, 'test', token_explicit), payload)
+        self.assertEqual(misc.verify_hash_signed(self.env, 'test', token_default, secret=db_secret), payload)
 
 
 @tagged('at_install', '-post_install')  # LEGACY at_install

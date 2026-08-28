@@ -6,9 +6,8 @@ import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { deserializeDateTime } from "@web/core/l10n/dates";
 import { rpc, ConnectionLostError } from "@web/core/network/rpc";
 import { registry } from "@web/core/registry";
-import { formatFloatTime } from "@web/views/fields/formatters";
+import { formatFloatTime, formatDateTime } from "@web/views/fields/formatters";
 import { useService } from "@web/core/utils/hooks";
-import { isIosApp } from "@web/core/browser/feature_detection";
 import { _t } from "@web/core/l10n/translation";
 import { AttendanceVideoStream } from "@hr_attendance/components/attendance_video_stream/attendance_video_stream";
 
@@ -35,15 +34,11 @@ export class ActivityMenu extends Component {
             this.lazySession.getValue("attendance_user_data", (employee) => {
                 if (employee) {
                     this.employee = employee;
+                    this.attendanceCheckInPermission = employee.has_attendance_check_in_ability;
                     this._searchReadEmployeeFill();
                 }
             });
         });
-    }
-
-    async searchReadEmployee() {
-        this.employee = await rpc("/hr_attendance/attendance_user_data");
-        this._searchReadEmployeeFill();
     }
 
     _searchReadEmployeeFill() {
@@ -53,7 +48,7 @@ export class ActivityMenu extends Component {
         }
 
         this.employeeName = this.employee.name;
-        this.state.isDisplayed = this.employee.display_systray;
+        this.state.isDisplayed = this.attendanceCheckInPermission;
         this.state.checkedIn = this.employee.attendance_state === "checked_in";
         this.state.captureCheckInImage =
             this.employee.capture_check_in_image && !this.state.checkedIn;
@@ -61,15 +56,15 @@ export class ActivityMenu extends Component {
         this.hoursToday = formatFloatTime(this.employee.hours_today, { numeric: true });
 
         this.attendancesToday = (this.employee.today_attendance_ids || []).map((att) => {
-            const checkIn = deserializeDateTime(att.check_in).toLocaleString({
-                hour: "2-digit",
-                minute: "2-digit",
-            });
+            const checkIn = formatDateTime(
+                deserializeDateTime(att.check_in),
+                { showDate: false }
+            );
             const checkOut = att.check_out
-                ? deserializeDateTime(att.check_out).toLocaleString({
-                      hour: "2-digit",
-                      minute: "2-digit",
-                  })
+                ? formatDateTime(
+                    deserializeDateTime(att.check_out),
+                    { showDate: false }
+                )
                 : null;
             const duration = att.check_out
                 ? att.worked_hours
@@ -103,7 +98,6 @@ export class ActivityMenu extends Component {
 
     beforeDropdownOpen() {
         this.setStreamAvailable(null);
-        this.searchReadEmployee();
     }
 
     async checking({ latitude = false, longitude = false, checkInImage = null } = {}) {
@@ -141,7 +135,7 @@ export class ActivityMenu extends Component {
             ),
             confirmLabel: _t("Proceed Anyway"),
             confirm: async () => await this.checking({ checkInImage }),
-            cancel: () => (this._attendanceInProgress = false),
+            cancel: () => { this._attendanceInProgress = false; },
         });
     }
 
@@ -160,8 +154,7 @@ export class ActivityMenu extends Component {
         this._attendanceInProgress = true;
 
         const trackingEnabled = this.employee && this.employee.device_tracking_enabled;
-        if (trackingEnabled && !isIosApp() && navigator.geolocation && navigator.onLine) {
-            // iOS app lacks permissions to call `getCurrentPosition`
+        if (trackingEnabled && navigator.geolocation && navigator.onLine) {
             navigator.geolocation.getCurrentPosition(
                 async ({ coords: { latitude, longitude } }) => {
                     await this.checking({ latitude, longitude, checkInImage });

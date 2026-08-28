@@ -48,19 +48,12 @@ class ResPartner(models.Model):
             # Add the events linked to the children of the partner
             for p in self.browse(meetings.keys()):
                 partner = p
-                while partner.parent_id:
+                while partner.parent_id and partner.parent_id in all_partners:
                     partner = partner.parent_id
                     if partner in self:
                         meetings[partner.id] = meetings.get(partner.id, set()) | meetings[p.id]
             return {p_id: list(meetings.get(p_id, set())) for p_id in self.ids}
         return {}
-
-    def _compute_application_statistics_hook(self):
-        data_list = super()._compute_application_statistics_hook()
-        for partner in self.filtered('meeting_count'):
-            stat_info = {'iconClass': 'fa-calendar', 'value': partner.meeting_count, 'label': _('Meetings')}
-            data_list[partner.id].append(stat_info)
-        return data_list
 
     def get_attendee_detail(self, meeting_ids):
         """ Return a list of dict of the given meetings with the attendees details

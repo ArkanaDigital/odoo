@@ -7,12 +7,12 @@ import {
     onRpc,
 } from "@web/../tests/web_test_helpers";
 
-import { Deferred, animationFrame } from "@odoo/hoot-mock";
+import { animationFrame } from "@odoo/hoot-mock";
 import { FileUploadProgressContainer } from "@web/core/file_upload/file_upload_progress_container";
 import { FileUploadProgressRecord } from "@web/core/file_upload/file_upload_progress_record";
 import { useService } from "@web/core/utils/hooks";
 
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 
 class FileUploadProgressTestRecord extends FileUploadProgressRecord {
     static template = xml`
@@ -33,14 +33,14 @@ class Parent extends Component {
             <FileUploadProgressContainer fileUploads="this.fileUploadService.uploads" shouldDisplay="this.props.shouldDisplay" Component="this.FileUploadProgressTestRecord"/>
         </div>
     `;
-    static props = ["*"];
+    props = useProps();
     setup() {
         this.fileUploadService = useService("file_upload");
         this.FileUploadProgressTestRecord = FileUploadProgressTestRecord;
     }
 }
 
-onRpc("/test/", () => new Deferred());
+onRpc("/test/", () => new Promise(() => {}));
 
 test("can be rendered", async () => {
     await mountWithCleanup(Parent);

@@ -49,7 +49,7 @@
                         <button class="oe_stat_button"
                                 name="action_open_documents"
                                 type="object"
-                                icon="fa-file-text-o">
+                                icon="article">
                             <field string="Documents" name="product_document_count" widget="statinfo"/>
                         </button>
                     </div>
@@ -138,15 +138,20 @@
                                             options="{'no_quick_create': True}"
                                         />
                                     </div>
-                                    <div colspan="2" class="d-flex align-items-baseline gap-2" name="standard_price_uom" invisible="type == 'combo'
+
+                                    <label for="standard_price" class="o_form_label" invisible="type == 'combo'
+                                        or (not is_product_variant and (
+                                            product_variant_count &gt; 1
+                                            or (product_variant_count == 0 and is_dynamically_created)
+                                        ))"/>
+                                    <div class="d-flex align-items-baseline gap-2" name="standard_price_uom" invisible="type == 'combo'
                                         or (not is_product_variant and (
                                             product_variant_count &gt; 1
                                             or (product_variant_count == 0 and is_dynamically_created)
                                         ))"
                                     >
-                                        <label for="standard_price" class="o_form_label"/>
+                                        
                                         <field
-                                            class="oe_inline"
                                             name="standard_price"
                                             widget="monetary"
                                             options="{
@@ -164,6 +169,7 @@
                                     <field
                                         name="product_tag_ids"
                                         widget="many2many_tags"
+                                        options="{'on_tag_click': 'open_form'}"
                                         context="{'product_template_id': id}"
                                     />
                                     <field name="company_id"
@@ -188,7 +194,29 @@
                                         options="{'no_quick_create': True, 'on_tag_click': 'open_form'}"
                                         groups="uom.group_uom"
                                         force_save="1"
-                                        context="{'product_id': product_variant_id if product_variant_count == 1 else False, 'product_ids': product_variant_ids, 'show_variant_name': product_variant_count > 1}"/>
+                                        context="{
+                                            'product_id': product_variant_id if product_variant_count == 1 else False,
+                                            'default_product_id': product_variant_id,
+                                            'product_ids': product_variant_ids,
+                                            'has_variants': product_variant_count > 1,
+                                        }"
+                                    />
+                                    <label
+                                        for="action_open_packaging_barcodes"
+                                        string="Packaging Barcodes"
+                                        groups="uom.group_uom"
+                                        class="d-flex d-sm-none o_form_label"
+                                        invisible="type != 'consu' or not product_variant_count"
+                                    />
+                                    <button
+                                        string="Barcodes"
+                                        name="action_open_packaging_barcodes"
+                                        type="object"
+                                        groups="uom.group_uom"
+                                        icon="east"
+                                        class="oe_link p-0"
+                                        invisible="type != 'consu' or not product_variant_count"
+                                    />
                                 </group>
                                 <group string="Short Description" name="description">
                                     <field colspan="2" name="description_sale" nolabel="1" placeholder="This note is added to sales orders and invoices."/>
@@ -355,7 +383,11 @@
             <field name="inherit_id" ref="product.product_template_search_view"/>
             <field name="arch" type="xml">
                 <field name="product_tag_ids" position="replace">
-                    <field name="all_product_tag_ids" string="Tags"/>
+                    <field
+                        name="all_product_tag_ids"
+                        string="Tags"
+                        options="{'on_tag_click': 'open_form'}"
+                    />
                 </field>
                 <field name="name" position="replace">
                     <field name="name" string="Product" filter_domain="['|', '|', '|', ('default_code', 'ilike', self), ('name', 'ilike', self), ('barcode', 'ilike', self), ('display_name', '=', self)]"/>
@@ -473,7 +505,7 @@
                         readonly="1"
                         sum="Total Forecasted"
                     />
-                    <field name="uom_id" groups="uom.group_uom" optional="show" readonly="1"/>
+                    <field name="uom_id" groups="uom.group_uom" optional="show" readonly="1" options="{'no_open': True}"/>
                     <field
                         name="extra_uom_ids"
                         widget="many2many_uom_tags"
@@ -551,7 +583,7 @@
                 <div name="list_price_per_uom_id" position="after">
                     <label for="base_unit_count" groups="product.group_show_uom_price"/>
                     <div name="base_unit_price" groups="product.group_show_uom_price" class="d-flex flex-row">
-                        <field name="base_unit_count" style="width: 4rem;"/>
+                        <field name="base_unit_count" style="width: 4rem;" digits="[12, 5]" options="{'hide_trailing_zeros': true}"/>
                         <field name="base_unit_id" options="{'no_open': True}" placeholder="Specify unit" style="width: 10rem;"/>
                         <div class="d-flex flex-row" invisible="base_unit_price == 0">
                             (<field name="base_unit_price" class="oe_inline"/> / <field name="base_unit_name" class="oe_inline"/>)
@@ -569,18 +601,23 @@
                     <field
                         name="additional_product_tag_ids"
                         widget="many2many_tags"
+                        options="{'on_tag_click': 'open_form'}"
                         invisible="product_variant_count == 1"
                     />
                 </field>
-                <field name="uom_ids" position="replace">
-                <field
-                    name="extra_uom_ids"
-                    widget="many2many_uom_tags"
-                    options="{'no_quick_create': True, 'on_tag_click': 'open_form'}"
-                    groups="uom.group_uom"
-                    invisible="product_variant_count == 1"
-                    context="{'product_id': id}"
-                />
+                <field name="uom_ids" position="attributes">
+                    <attribute name="readonly">product_variant_count != 1</attribute>
+                    <attribute name="context">{'product_id': id}</attribute>
+                </field>
+                <field name="uom_ids" position="after">
+                    <field
+                        name="extra_uom_ids"
+                        widget="many2many_uom_tags"
+                        options="{'no_quick_create': True, 'on_tag_click': 'open_form'}"
+                        groups="uom.group_uom"
+                        invisible="product_variant_count == 1"
+                        context="{'product_id': id}"
+                    />
                 </field>
             </field>
         </record>
@@ -653,9 +690,9 @@
                                 </div>
                                 <div name="on_hand_qty_kanban" t-if="record.is_storable.raw_value" class="d-flex gap-1 align-items-baseline">
                                     <strong>
-                                        <field name="qty_available" digits="[16, 0]"/> 
+                                        <field name="qty_available" digits="[16, 0]"/>
                                     </strong>
-                                    <field name="uom_id" groups="uom.group_uom"/> 
+                                    <field name="uom_id" groups="uom.group_uom"/>
                                     <span class="text-muted">On Hand</span>
                                 </div>
                                 <field name="product_template_variant_value_ids" groups="product.group_product_variant" widget="many2many_tags" options="{'color_field': 'color'}"/>
@@ -744,6 +781,7 @@ action = {
                                         nolabel="1"
                                         readonly="1"/>
                                     <field name="name" class="fw-bold fs-4 text-reset"/>
+                                    <field name="default_code" class="text-muted ms-1"/>
                                 </div>
                                 <field
                                     name="product_template_attribute_value_ids"
@@ -785,13 +823,22 @@ action = {
                 <field name="product_template_attribute_value_ids"
                        groups="product.group_product_variant"/>
                 <field name="product_tmpl_id" string="Product Template"/>
+                <field name="seller_ids" string="Vendor" invisible="not context.get('is_purchase_document', False)"/>
                 <!-- Filter -->
                 <filter string="Favorites" name="favorites" domain="[('is_favorite', '=', True)]"/>
                 <separator/>
-                <filter string="Services" name="services" domain="[('type', '=', 'service')]"/>
-                <filter string="Goods"
-                        name="goods"
-                        domain="[('type', '=', 'consu')]"/>
+                <filter
+                    string="Services"
+                    name="services"
+                    domain="[('type', '=', 'service')]"
+                    invisible="context.get('hide_product_type_filters')"
+                />
+                <filter
+                    string="Goods"
+                    name="goods"
+                    domain="[('type', '=', 'consu')]"
+                    invisible="context.get('hide_product_type_filters')"
+                />
                 <!-- Group By -->
                 <group>
                     <filter string="Product Type" name="type" context="{'group_by':'type'}"/>
@@ -803,10 +850,10 @@ action = {
                 <searchpanel>
                     <field name="categ_id"
                            string="Categories"
-                           icon="fa-th-list"/>
+                           icon="view_list"/>
                     <field name="product_tag_ids"
                            string="Tags"
-                           icon="fa-th-list"
+                           icon="view_list"
                            enable_counters="1"
                            select="multi"/>
                 </searchpanel>

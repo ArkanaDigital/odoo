@@ -46,6 +46,7 @@ export class ImageGalleryOptionPlugin extends Plugin {
         reorder_items_processors: this.reorderGalleryItems.bind(this),
         on_will_remove_handlers: this.onWillRemove.bind(this),
         on_removed_handlers: this.onRemoved.bind(this),
+        clean_for_save_processors: this.cleanForSave.bind(this),
         on_media_replaced_handlers: ({ newMediaEl }) => this.updateCarouselThumbnail(newMediaEl),
         on_image_updated_handlers: ({ imageEl }) => this.updateCarouselThumbnail(imageEl),
         on_image_saved_handlers: ({ imageEl }) => this.updateCarouselThumbnail(imageEl),
@@ -150,6 +151,7 @@ export class ImageGalleryOptionPlugin extends Plugin {
                 this.dependencies.builderOptions.setNextTarget(activeImageEl);
             }
         }
+        return activeItemEl;
     }
 
     /**
@@ -291,6 +293,7 @@ export class ImageGalleryOptionPlugin extends Plugin {
             copyAttributes: true,
             getIndicatorLabel: (itemPosition, total) =>
                 _t("Slide %(itemPosition)s of %(total)s", { itemPosition, total }),
+            hasPauseBtn: carouselEl.classList.contains("o_carousel_pause_btn_hidden"),
         });
         if (carouselEl) {
             carouselEl.removeEventListener("slid.bs.carousel", this.onCarouselSlid);
@@ -458,6 +461,19 @@ export class ImageGalleryOptionPlugin extends Plugin {
         }
     }
 
+    cleanForSave(rootEl) {
+        // A gallery emptied through "Remove all" is kept during edition (to let
+        // the user add media back) but must not be saved as an empty snippet.
+        const mediaSelector =
+            "img, a.o_link_readonly, span.oi.object-fit-cover, div.media_iframe_video";
+        for (const galleryEl of rootEl.querySelectorAll(".s_image_gallery")) {
+            if (!galleryEl.querySelector(mediaSelector)) {
+                galleryEl.remove();
+            }
+        }
+        return rootEl;
+    }
+
     updateCarouselThumbnail(mediaEl) {
         if (mediaEl.matches(".s_image_gallery img")) {
             forwardToThumbnail(mediaEl);
@@ -470,7 +486,9 @@ export class ImageGalleryOptionPlugin extends Plugin {
 
     getContentEditableEls(rootEl) {
         return [...selectElements(rootEl, ".s_image_gallery *")].filter(
-            (el) => isMediaElement(el) || el.tagName === "IMG"
+            (el) =>
+                !el.closest(".o_carousel_controllers") &&
+                (isMediaElement(el) || el.tagName === "IMG")
         );
     }
 
@@ -584,3 +602,5 @@ export class IndicatorsStyleClassAction extends ClassAction {
 }
 
 registry.category("website-plugins").add(ImageGalleryOptionPlugin.id, ImageGalleryOptionPlugin);
+// Add it to translation plugins for the thumbnails update.
+registry.category("translation-plugins").add(ImageGalleryOptionPlugin.id, ImageGalleryOptionPlugin);

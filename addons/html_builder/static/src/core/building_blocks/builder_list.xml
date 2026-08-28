@@ -4,16 +4,16 @@
 <t t-name="html_builder.BuilderList">
     <BuilderComponent><SortableContainer setupLayoutEffect.bind="this.setupSortable">
         <div class="w-100 p-2 py-0">
-            <t t-set="isMany2X" t-value="this.allRecords and this.allRecords.length"/>
+            <t t-set="isMany2X" t-value="this.allRecords() and this.allRecords().length"/>
             <t t-if="this.state.value?.length > 2">
-                <div class="o_we_table_wrapper" t-on-scroll="this.onTableScroll">
-                    <table t-custom-ref="table">
+                <div class="o_we_table_wrapper" t-att-class="{ no_scrollbar: !this.props.withScrollbar }" t-on-scroll="this.onTableScroll">
+                    <table t-ref="this.tableRef">
                         <t t-set="items" t-value="this.cappedItems"/>
                         <t t-foreach="items" t-as="item" t-key="item._id">
                             <tr class="o_row_draggable" t-att-data-id="item._id">
                                 <td t-if="this.props.sortable" class="o_handle_cell w-0">
                                     <button type="button" class="btn">
-                                        <i class="fa fa-fw fa-arrows" aria-hidden="true"/>
+                                        <i class="oi" data-icon="drag_indicator" aria-hidden="true"/>
                                         <span class="visually-hidden">Drag and sort field</span>
                                     </button>
                                 </td>
@@ -47,7 +47,7 @@
                                     <button type="button" class="btn text-danger builder_list_remove_item"
                                             t-if="this.props.isEditable and !(this.props.forbidLastItemRemoval and (items.length === 1))"
                                             t-on-click="() => this.deleteItem(item._id)">
-                                        <i class="fa fa-fw fa-minus" aria-hidden="true"/>
+                                        <i class="oi oi-fw" data-icon="remove" aria-hidden="true"/>
                                         <span class="visually-hidden">Delete item</span>
                                     </button>
                                 </td>
@@ -68,12 +68,13 @@
                                 menuClass="'o-hb-select-dropdown o-hb-selectMany2X-dropdown'"
                                 togglerClass="'o-hb-selectMany2X-toggle btn-secondary'"
                                 disabled="!excludedRecords.length"
+                                position="'bottom-end'"
                             >
                                 <t t-out="this.props.addItemTitle"/>
                             </SelectMenu>
                         </div>
-                        <button type="button" class="btn btn-lg btn-secondary fa fa-refresh" title="Update the list with all records and sort it alphabetically" t-on-click="this.updateRecords"/>
-                        <button type="button" class="btn btn-lg btn-secondary fa fa-gear" title="Open the record list manager" t-on-click="this.openRecordsDialog"/>
+                        <button type="button" class="oi btn btn-lg btn-secondary" data-icon="refresh" title="Update the list with all records and sort it alphabetically" t-on-click="this.updateRecords"/>
+                        <button type="button" class="oi oi-filled btn btn-lg btn-secondary" data-icon="settings" title="Open the record list manager" t-on-click="this.openRecordsDialog"/>
                     </div>
                 </div>
             </div>

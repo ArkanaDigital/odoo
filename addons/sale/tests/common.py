@@ -11,6 +11,11 @@ class SaleCommon(
     ProductCommon,  # BaseCommon, UomCommon
     SalesTeamCommon,
 ):
+    # DO not use ProductCommon._test_user_groups as we do not want to provide product manager
+    # rights by default here.
+    _test_user_groups = SalesTeamCommon._test_user_groups
+    _test_user_name = SalesTeamCommon._test_user_name
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -22,11 +27,13 @@ class SaleCommon(
             (cls.product + cls.service_product).write({"taxes_id": [Command.clear()]})
         cls.sale_order = cls.env["sale.order"].create([
             {
+                "user_id": cls._test_user.id,
                 "partner_id": cls.partner.id,
                 "order_line": [
                     Command.create({"product_id": cls.product.id, "product_uom_qty": 5.0}),
                     Command.create({"product_id": cls.service_product.id, "product_uom_qty": 12.5}),
                 ],
+                "require_signature": False,
             }
         ])
 
@@ -45,12 +52,15 @@ class SaleCommon(
         default_values = {
             "partner_id": cls.partner.id,
             "order_line": [Command.create({"product_id": cls.product.id})],
+            "require_signature": False,
             **values,
         }
         return cls.env["sale.order"].create(default_values)
 
 
 class TestSaleCommon(AccountTestInvoicingCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -224,6 +234,8 @@ class TestSaleCommon(AccountTestInvoicingCommon):
 
 
 class TestTaxCommonSale(TestSaleCommon, TestTaxCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

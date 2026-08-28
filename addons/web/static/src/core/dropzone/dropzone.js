@@ -1,26 +1,28 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { Component, onMounted, onPatched, proxy, signal, t, useProps } from "@odoo/owl";
+
+export const dropzoneProps = {
+    extraClass: t.string().optional(),
+    onDrop: t.function().optional(),
+    ref: t.signal(t.ref()),
+    slots: t.object().optional(),
+};
 
 export class Dropzone extends Component {
-    static props = {
-        extraClass: { type: String, optional: true },
-        onDrop: { type: Function, optional: true },
-        ref: [Object, Function],
-        slots: { type: Object, optional: true },
-    };
+    props = useProps(dropzoneProps);
     static template = "web.Dropzone";
+
+    root = signal.ref();
 
     setup() {
         super.setup();
-        this.root = useRef("root");
         this.state = proxy({
             isDraggingInside: false,
         });
-        useLayoutEffect(() => {
-            const getEl =
-                typeof this.props.ref === "function" ? this.props.ref : () => this.props.ref.el;
-            const { top, left, width, height } = getEl().getBoundingClientRect();
-            this.root.el.style = `top:${top}px;left:${left}px;width:${width}px;height:${height}px;`;
-        });
+        const alignWithTarget = () => {
+            const { top, left, width, height } = this.props.ref().getBoundingClientRect();
+            this.root().style = `top:${top}px;left:${left}px;width:${width}px;height:${height}px;`;
+        };
+        onMounted(alignWithTarget);
+        onPatched(alignWithTarget);
     }
 }

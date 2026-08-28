@@ -21,7 +21,6 @@ Tento modul definuje:
     'depends': [
         'account',
         'account_edi_ubl_cii',
-        'base_vat',
         'base_address_extended',
     ],
     'auto_install': ['account'],
@@ -34,7 +33,7 @@ Tento modul definuje:
         'views/res_company_views.xml',
         'views/report_template.xml',
         'views/tax_office_view.xml',
-        'security/ir.model.access.csv',
+        'security/ir.access.csv',
     ],
     'demo': [
         'demo/demo_company.xml',

@@ -1,17 +1,20 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from datetime import datetime, timedelta
-from freezegun import freeze_time
-from psycopg2 import IntegrityError
 from unittest import skip
 from unittest.mock import patch
 
-from odoo.addons.base.models.res_users import ResUsersPatchedInTest
-from odoo.addons.base.tests.common import HttpCaseWithUserDemo
+from freezegun import freeze_time
+from psycopg2 import IntegrityError
+
+from odoo import Command
+from odoo.exceptions import AccessError
+from odoo.tests import HttpCase, RecordCapturer, tagged, users
+from odoo.tools import mute_logger
+
+from odoo.addons.base.models.res_users import NO_GROUP_CHANGE_LOG, ResUsersPatchedInTest
 from odoo.addons.bus.tests.common import BusResult
 from odoo.addons.mail.tests.common import MailCommon, mail_new_test_user
-from odoo.tests import RecordCapturer, tagged, users
-from odoo.tools import mute_logger
 
 
 @tagged('mail_tools', 'res_users')
@@ -182,28 +185,33 @@ class TestUser(MailCommon):
 
 
 @tagged('res_users')
-class TestUserTours(HttpCaseWithUserDemo):
+class TestUserTours(HttpCase):
 
     def test_user_modify_own_profile(self):
-        """" A user should be able to modify their own profile.
-        Even if that user does not have access rights to write on the res.users model. """
-        if 'hr.employee' in self.env and not self.user_demo.employee_id:
+        """ A user should be able to modify their own profile.
+        Even if that user does not have access rights to write on the res.users model."""
+        test_user = mail_new_test_user(
+            self.env,
+            login="employee",
+            password="employee",
+            notification_type="email",
+            tz="Europe/Brussels",
+        )
+        if 'hr.employee' in self.env and not test_user.employee_id:
             self.env['hr.employee'].create({
-                'name': 'Marc Demo',
-                'user_id': self.user_demo.id,
+                'name': test_user.name,
+                'user_id': test_user.id,
             })
-            self.user_demo.group_ids += self.env.ref('hr.group_hr_user')
-        self.user_demo.tz = "Europe/Brussels"
-        self.user_demo.notification_type = "email"
+            test_user.group_ids += self.env.ref('hr.group_hr_user')
 
         # avoid 'reload_context' action in the middle of the tour to ease steps and form save checks
         with patch.object(ResUsersPatchedInTest, 'preference_save', lambda self: True):
             self.start_tour(
                 "/odoo",
                 "mail/static/tests/tours/user_modify_own_profile_tour.js",
-                login="demo",
+                login=test_user.login,
             )
-        self.assertEqual(self.user_demo.notification_type, "inbox")
+        self.assertEqual(test_user.notification_type, "inbox")
 
 
 class TestUserSettings(MailCommon):
@@ -248,14 +256,14 @@ class TestUserSettings(MailCommon):
     def test_set_res_users_settings_should_send_notification_on_bus(self):
         settings = self.user_employee.res_users_settings_id
         settings.channel_notifications = False
-
         with self.assertBus(
             BusResult(
                 self.user_employee,
-                "res.users.settings",
+                "mail.record/insert",
                 {
-                    "id": settings.id,
-                    "channel_notifications": "no_notif",
+                    "res.users.settings": [
+                        {"channel_notifications": "no_notif", "id": settings.id}
+                    ],
                 },
             ),
         ):
@@ -270,3 +278,90 @@ class TestUserSettings(MailCommon):
             "no_notif",
             "channel_notifications state should be updated correctly"
         )
+
+
+@tagged('mail_tools', 'res_users')
+class TestUserGroupChangeLog(MailCommon):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.normal_user = mail_new_test_user(
+            cls.env,
+            login='test_internal_user',
+            name='Internal User',
+        )
+        cls.second_user = mail_new_test_user(
+            cls.env,
+            login='test_internal_user_2',
+            name='Second Internal User',
+        )
+
+    def test_add_group_log(self):
+        group = self.env.ref('base.group_partner_manager')
+        users = self.normal_user | self.second_user
+        with self.mock_mail_app():
+            users.write({'group_ids': [Command.link(group.id)]})
+            self.assertEqual(len(self._new_msgs), 2)
+            for user in users:
+                self.assertMessageFields(user.message_ids[0], {'body_content': 'Added groups'})
+                self.assertMessageFields(user.message_ids[0], {'body_content': group.display_name})
+
+    def test_group_add_members(self):
+        group = self.env.ref('base.group_partner_manager')
+        users = self.normal_user | self.second_user
+        with self.mock_mail_app():
+            group.write({'user_ids': [Command.link(user.id) for user in users]})
+            self.assertEqual(len(self._new_msgs), 2)
+            for user in users:
+                self.assertMessageFields(user.message_ids[0], {'body_content': 'Added groups'})
+                self.assertMessageFields(user.message_ids[0], {'body_content': group.display_name})
+
+    def test_group_remove_members(self):
+        group = self.env.ref('base.group_partner_manager')
+        users = self.normal_user | self.second_user
+        group.write({'user_ids': [Command.link(user.id) for user in users]})
+        with self.mock_mail_app():
+            group.write({'user_ids': [Command.unlink(user.id) for user in users]})
+            self.assertEqual(len(self._new_msgs), 2)
+            for user in users:
+                self.assertMessageFields(user.message_ids[0], {'body_content': 'Removed groups'})
+
+    def test_no_group_change_log(self):
+        group = self.env.ref('base.group_partner_manager')
+        users = self.normal_user | self.second_user
+        with self.mock_mail_app():
+            users.with_context(no_group_change_log=NO_GROUP_CHANGE_LOG).write(
+                {'group_ids': [Command.link(group.id)]}
+            )
+            self.assertEqual(len(self._new_msgs), 0)
+
+    def test_no_log_existing_groups(self):
+        group = self.env.ref('base.group_partner_manager')
+        users = self.normal_user | self.second_user
+        users.write({'group_ids': [Command.link(group.id)]})
+        with self.mock_mail_app():
+            users.write({'group_ids': [Command.link(group.id)]})
+            self.assertEqual(len(self._new_msgs), 0)
+
+    def test_no_logs_upon_access_error(self):
+        group = self.env.ref('base.group_partner_manager')
+        portal_user = self._create_portal_user()
+        users = self.normal_user | self.second_user
+        with self.mock_mail_app():
+            with self.assertRaises(AccessError):
+                users.with_user(portal_user).write(
+                    {'group_ids': [Command.link(group.id)]}
+                )
+        self.assertEqual(len(self._new_msgs), 0)
+
+    def test_remove_group_log(self):
+        group = self.env.ref('base.group_partner_manager')
+        users = self.normal_user | self.second_user
+        users.write({'group_ids': [Command.link(group.id)]})
+        with self.mock_mail_app():
+            users.write({'group_ids': [Command.unlink(group.id)]})
+            self.assertEqual(len(self._new_msgs), 2)
+            for user in users:
+                self.assertMessageFields(user.message_ids[0], {'body_content': 'Removed groups'})
+                self.assertMessageFields(user.message_ids[0], {'body_content': group.display_name})

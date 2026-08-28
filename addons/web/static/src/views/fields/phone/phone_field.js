@@ -2,25 +2,28 @@ import { registry } from "@web/core/registry";
 import { _t } from "@web/core/l10n/translation";
 import { useInputField } from "../input_field_hook";
 import { standardFieldProps } from "../standard_field_props";
-import { useChildRef } from "@web/core/utils/hooks";
 import { browser } from "@web/core/browser/browser";
-import { Component } from "@odoo/owl";
+import { Component, signal, t, useProps } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 
+export const phoneFieldProps = {
+    ...standardFieldProps,
+    placeholder: t.string().optional(),
+    formattedField: t.string().optional(),
+    dialField: t.string().optional(),
+    displayButtons: t.boolean().optional(true),
+};
+
 export class PhoneField extends Component {
     static template = "web.PhoneField";
-    static props = {
-        ...standardFieldProps,
-        placeholder: { type: String, optional: true },
-        formattedField: { type: String, optional: true },
-        dialField: { type: String, optional: true },
-    };
+    props = useProps(phoneFieldProps);
     static components = { Dropdown, DropdownItem };
 
+    inputRef = signal.ref();
+
     setup() {
-        this.input = useChildRef();
-        useInputField({ getValue: () => this.value || "" });
+        useInputField({ ref: this.inputRef, getValue: () => this.value || "" });
     }
 
     get value() {
@@ -42,7 +45,8 @@ export class PhoneField extends Component {
     get actionButtons() {
         return [
             {
-                icon: "fa-phone",
+                href: this.value ? this.phoneHref : undefined,
+                icon: "phone",
                 onSelected: () => this.onLinkClicked(),
                 name: _t("Call"),
             },
@@ -78,10 +82,11 @@ export const phoneField = {
         },
     ],
     supportedTypes: ["char"],
-    extractProps: ({ options, placeholder }) => ({
+    extractProps: ({ options, placeholder, viewType }) => ({
         placeholder,
         formattedField: options.formatted_field,
         dialField: options.dial_field,
+        displayButtons: viewType === "form",
     }),
 };
 

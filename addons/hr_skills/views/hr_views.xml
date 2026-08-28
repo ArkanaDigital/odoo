@@ -46,7 +46,7 @@
                             <label id="date_start_label" for="date_start" string="Duration" invisible="is_course"/>
                             <div class="o_row" invisible="is_course">
                                 <field name="date_start"/>
-                                <i class="fa fa-long-arrow-right mx-2" aria-label="Arrow icon" title="Arrow"/>
+                                <i class="oi mx-2" data-icon="east" aria-label="Arrow icon" title="Arrow"/>
                                 <field name="date_end" placeholder="Forever"/>
                             </div>
                             <label for="date_start" string="Date" invisible="not is_course"/>
@@ -140,6 +140,7 @@
                                     'warning': 'valid_to and valid_to &lt;= (context_today() + relativedelta(months=3)).strftime(\'%Y-%m-%d\') and valid_to &gt; (context_today() + relativedelta(days=7)).strftime(\'%Y-%m-%d\')'
                                 }
                             }"/>
+                            <field name="certificate_file" widget="binary" filename="certificate_filename"/>
                         </list>
                     </field>
                 </page>
@@ -194,7 +195,7 @@
             </page>
             <page name="resume" position="after">
                 <page name="certification" string="Certifications">
-                    <field name="certification_ids" mode="list" nolabel="1" readonly="1">
+                    <field name="certification_ids" mode="list" nolabel="1" readonly="1" invisible="not certification_ids">
                         <list
                             no_open="1"
                             decoration-muted="valid_to and valid_to &lt; context_today().strftime('%Y-%m-%d')">
@@ -211,6 +212,11 @@
                             }"/>
                         </list>
                     </field>
+                    <div class="o_view_nocontent position-relative" invisible="certification_ids">
+                        <div class="o_nocontent_help">
+                            <p class="o_view_nocontent_empty_folder fs-4 fw-normal">No certifications found.</p>
+                        </div>
+                    </div>
                 </page>
             </page>
         </field>
@@ -300,8 +306,8 @@
         <field name="arch" type="xml">
             <search string="Resume Lines">
                 <searchpanel view_types="list,kanban">
-                    <field name="company_id" groups="base.group_multi_company" icon="fa-building" enable_counters="1"/>
-                    <field name="department_id" icon="fa-users" enable_counters="1"/>
+                    <field name="company_id" groups="base.group_multi_company" icon="business" icon_class="oi-filled" enable_counters="1"/>
+                    <field name="department_id" icon="group" icon_class="oi-filled" enable_counters="1"/>
                 </searchpanel>
             </search>
         </field>

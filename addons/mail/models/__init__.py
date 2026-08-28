@@ -49,10 +49,9 @@ from . import mail_template
 # discuss
 from . import mail_ice_server
 from . import mail_canned_response
-from . import res_users_settings
-from . import res_users_settings_volumes
 
 # odoo models
+from . import ir_access
 from . import ir_action_act_window
 from . import ir_actions_server
 from . import ir_attachment
@@ -74,6 +73,7 @@ from . import res_users
 from . import update
 
 # after mail specifically as discuss module depends on mail
+from . import mail_call_artifact
 from . import discuss
 
 # discuss_channel_member must be loaded first

@@ -109,6 +109,16 @@ class PaymentTransaction(models.Model):
         base_url = self.provider_id.get_base_url()
         return_url = urljoin(base_url, RedsysController._return_url)
         webhook_url = urljoin(base_url, RedsysController._webhook_url)
+        emv3ds_payload = {
+            'billAddrCity': self.partner_city,
+            'billAddrCountry': COUNTRY_NUMERIC_CODES.get(self.partner_country_id.code, ''),
+            'billAddrLine1': self.partner_address,
+            'billAddrPostCode': self.partner_zip,
+            'cardholderName': self.partner_name,
+            'email': self.partner_email,
+        }
+        if self.partner_state_id.code:
+            emv3ds_payload['billAddrState'] = self.partner_state_id.code
         merchant_parameters = {
             "DS_MERCHANT_AMOUNT": str(converted_amount),
             "DS_MERCHANT_CURRENCY": self.currency_id.iso_numeric,
@@ -122,15 +132,7 @@ class PaymentTransaction(models.Model):
             "DS_MERCHANT_PAYMETHODS": const.PAYMENT_METHODS_MAPPING.get(
                 self.payment_method_id.code, "C"
             ),
-            "DS_MERCHANT_EMV3DS": {
-                "billAddrCity": self.partner_city,
-                "billAddrCountry": COUNTRY_NUMERIC_CODES.get(self.partner_country_id.code, ""),
-                "billAddrLine1": self.partner_address,
-                "billAddrPostCode": self.partner_zip,
-                "billAddrState": self.partner_state_id.code,
-                "cardholderName": self.partner_name,
-                "email": self.partner_email,
-            },
+            'DS_MERCHANT_EMV3DS': emv3ds_payload
         }
         if self.tokenize:
             merchant_parameters.update({
@@ -161,7 +163,7 @@ class PaymentTransaction(models.Model):
 
         # Update the payment method.
         card_brand = payment_data.get("Ds_Card_Brand")
-        payment_method = self.env["payment.method"]._get_from_code(
+        payment_method = self.provider_id._get_pm_from_code(
             card_brand, mapping=const.PAYMENT_METHODS_MAPPING
         )
         self.payment_method_id = payment_method or self.payment_method_id
@@ -173,13 +175,7 @@ class PaymentTransaction(models.Model):
         elif status_code in const.PAYMENT_STATUS_MAPPING["cancel"]:
             self._set_canceled()
         elif status_code in const.PAYMENT_STATUS_MAPPING["error"]:
-            self._set_error(
-                self.env._(
-                    "An error occurred during the processing of your payment (%s). Please try"
-                    " again.",
-                    payment_data.get("Ds_ErrorCode"),
-                )
-            )
+            self._set_error(const.ERROR_CODE_MAPPING[status_code])
         else:
             _logger.warning("Received invalid payment status (%s).", status_code)
             self._set_error(self.env._("Unknown status code: %s", status_code))

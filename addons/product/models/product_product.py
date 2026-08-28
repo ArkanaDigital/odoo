@@ -35,6 +35,7 @@ class ProductProduct(models.Model):
     lst_price = fields.Float(
         'Sales Price',
         compute='_compute_product_lst_price',
+        inverse='_inverse_product_lst_price',
         min_display_digits='Product Price',
         readonly=False,
         store=True,
@@ -164,6 +165,9 @@ class ProductProduct(models.Model):
         help="Display base unit price. Set to 0 to hide it for this product.",
         required=True,
         default=1,
+        # Force NUMERIC with unlimited precision, as for `uom.uom.relative_factor`,
+        # to support very small ratios, e.g. one unit in a box of 10000.
+        digits=0,
     )
     base_unit_id = fields.Many2one(
         string="Custom Unit of Measure",
@@ -379,6 +383,12 @@ class ProductProduct(models.Model):
         for product in self:
             product.lst_price = product.list_price + product.price_extra
 
+    def _inverse_product_lst_price(self):
+        for product in self:
+            template = product.product_tmpl_id
+            if len(template.with_context(active_test=False).product_variant_ids) == 1 and not template.has_configurable_attributes:
+                template.list_price = product.lst_price
+
     @api.depends_context('partner_id')
     def _compute_product_code(self):
         read_access = self.env['product.supplierinfo'].has_access('read')
@@ -485,9 +495,10 @@ class ProductProduct(models.Model):
         if not (order_id and order_model and line_field):
             return []
 
-        product_ids = self.env[order_model].browse(order_id)[line_field].filtered(
-            lambda line: line.get_parent_section_line().id == ctx.get('section_id'),
-        ).mapped('product_id').ids
+        order_lines = self.env[order_model].browse(order_id)[line_field]
+        product_ids = (
+            order_lines.filtered(lambda line: line._is_in_section()).mapped("product_id").ids
+        )
 
         return [('id', 'in', product_ids)]
 
@@ -1035,7 +1046,7 @@ class ProductProduct(models.Model):
                     (
                         'product_tmpl_id',
                         'in',
-                        self_no_active_test.env['product.supplierinfo']._search(supplier_domain).subselect('product_tmpl_id'),
+                        self_no_active_test.env['product.supplierinfo']._search(supplier_domain).subselect(SQL('product_tmpl_id')),
                     )
                 ])
             )
@@ -1133,6 +1144,17 @@ class ProductProduct(models.Model):
                             '&', ('res_model', '=', 'product.template'),
                             ('res_id', '=', self.product_tmpl_id.id)]
         return res
+
+    def action_open_packaging_barcodes(self):
+        self.ensure_one()
+        action = self.env['ir.actions.act_window']._for_xml_id('product.product_uom_action_view_list')
+        action['domain'] = [('product_id', '=', self.id)]
+        action['context'] = {
+            'create': True,
+            'default_product_id': self.id,
+            'product_ids': self.ids,
+        }
+        return action
 
     #=== BUSINESS METHODS ===#
 

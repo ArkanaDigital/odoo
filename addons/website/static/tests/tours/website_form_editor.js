@@ -43,6 +43,17 @@ const getQuotesEncodedName = function (name) {
     return name.replaceAll(/"/g, (character) => `&quot;`);
 };
 
+const selectOnlyFormNotField = () => [
+    {
+        content: "Select form",
+        trigger: "[data-container-title=Form] [title='Select only this block']",
+        run: "click",
+    },
+    {
+        trigger: ".o_customize_tab:not(:has([data-container-title=Field]))",
+    },
+];
+
 const triggerFieldByLabel = (label) =>
     `.s_website_form_field.s_website_form_custom:has(label:contains("${label}"))`;
 const selectFieldByLabel = (label) => [
@@ -80,6 +91,29 @@ const selectButtonByData = function (text, data) {
         },
     ];
 };
+
+const selectConditionField = function (data) {
+    return [
+        {
+            trigger: ".o_customize_tab #hidden_condition_opt:not(:empty)",
+        },
+        {
+            content: "Open condition field selector",
+            trigger: ".o_customize_tab #hidden_condition_opt",
+            run: "click",
+        },
+        {
+            content: "Select condition field",
+            trigger: `.o_popover ${data}`,
+            run: "click",
+        },
+    ];
+};
+
+const checkFieldCount = (x) => ({
+    trigger: `:iframe section.s_website_form:has(.s_website_form_field:count(${x}))`,
+});
+
 const addField = function (
     name,
     type,
@@ -93,26 +127,38 @@ const addField = function (
         : `[data-action-id='existingField'][data-action-value='${name}']`;
     const ret = [
         {
-            trigger: ":iframe .s_website_form_field",
-        },
-        {
             content: "Select form",
             trigger: ":iframe section.s_website_form",
             run: "click",
         },
+        ...selectOnlyFormNotField(),
         {
             content: "Add field",
             trigger: "[data-container-title=Form] button:contains('+ Field')",
             run: "click",
         },
-        ...selectButtonByData("Text", data),
+        {
+            trigger: `:iframe section.s_website_form .s_website_form_field:last:contains(Custom Text)`,
+        },
+        {
+            content: "Open field type selector",
+            trigger: "[data-container-title='Field'] button:contains('Text')",
+            run: "click",
+        },
+        {
+            content: "Select field type",
+            trigger: `.o_popover ${data}`,
+            run: "click",
+        },
         {
             content: "Wait for field to load",
-            trigger: `:iframe .s_website_form_field[data-type="${name}"],:iframe .s_website_form_input[name="${name}"]`, //custom or existing field
+            trigger: isCustom //custom or existing field
+                ? `:iframe .s_website_form_field:last[data-type="${name}"]`
+                : `:iframe .s_website_form_input:last[name="${name}"]`,
         },
         ...changeOptionInPopover("Field", "Visibility Rule", display.visibility),
     ];
-    let testText = ":iframe .s_website_form_field";
+    let testText = ":iframe .s_website_form_field:last";
     if (display.condition) {
         ret.push({
             content: "Set the visibility condition",
@@ -141,8 +187,9 @@ const addField = function (
         testText += `:has(label:contains(${label}))`;
         ret.push({
             content: "Change the label text",
-            trigger: ".o_customize_tab div[data-action-id='setLabelText'] input",
-            run: `edit ${label} && press Tab`,
+            trigger:
+                ":iframe .s_website_form_field:nth-last-child(2) .s_website_form_label_content",
+            run: `editor ${label}`,
         });
     }
     if (type !== "checkbox" && type !== "radio" && type !== "select") {
@@ -167,19 +214,20 @@ const addExistingField = function (name, type, label, required, display) {
 const compareIds = ({ content, firstElSelector, secondElSelector, errorMessage }) => ({
     content,
     trigger: `:iframe ${firstElSelector}`,
-    run: function () {
-        const firstEl = this.anchor;
-        const secondEl = firstEl.ownerDocument.querySelector(secondElSelector);
-        if (firstEl.id === secondEl.id) {
-            console.error(errorMessage);
-        }
+    async run({ anchor, waitUntil }) {
+        await waitUntil(
+            () => {
+                const secondEl = anchor.ownerDocument.querySelector(secondElSelector);
+                return secondEl && anchor.id !== secondEl.id;
+            },
+            { message: errorMessage }
+        );
     },
 });
 
 registerWebsitePreviewTour(
     "website_form_editor_tour",
     {
-        undeterministicTour_doNotCopy: true, // Remove this key to make the tour failed. ( It removes delay between steps )
         edition: true,
     },
     () => [
@@ -215,9 +263,10 @@ registerWebsitePreviewTour(
             trigger: ".o_customize_tab div[data-container-title='Form']",
         },
         {
-            content: "Rename and leave the field label",
-            trigger: ".o_customize_tab div[data-action-id='setLabelText'] input",
-            run: "edit Renamed && click body",
+            content: "Rename the field label",
+            trigger:
+                ":iframe .s_website_form_field:has(textarea.s_website_form_input) .s_website_form_label_content",
+            run: "editor Renamed",
         },
         goBackToBlocks(),
         {
@@ -232,21 +281,16 @@ registerWebsitePreviewTour(
         {
             content: "Form has a model name",
             trigger: ':iframe section.s_website_form form[data-model_name="mail.mail"]',
-            run: "click",
         },
         {
             content: "Set the offset and width of the Phone Number field",
-            trigger: ':iframe input[name="phone"]',
-            run: function () {
+            trigger: ':iframe input[name="Phone Number"]',
+            run() {
                 const fieldEl = this.anchor.closest(".s_website_form_field");
                 fieldEl.classList.add("offset-lg-3");
                 fieldEl.classList.add("col-lg-9");
+                this.anchor.click();
             },
-        },
-        {
-            content: "Edit the Phone Number field",
-            trigger: ':iframe input[name="phone"]',
-            run: "click",
         },
         ...unfoldOptionsGroup("Form"),
         {
@@ -256,15 +300,22 @@ registerWebsitePreviewTour(
             run: "click",
         },
         ...addCustomField("char", "text", "Conditional Visibility Check 1", false),
+        checkFieldCount(8),
         ...addCustomField("char", "text", "Conditional Visibility Check 2", false),
+        checkFieldCount(9),
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
-        ...selectButtonByData("Your Name", "[data-action-value='Conditional Visibility Check 1']"),
+        ...selectConditionField("[data-action-value='Conditional Visibility Check 1']"),
         ...addCustomField("char", "text", "Conditional Visibility Check 2", false),
+        checkFieldCount(10),
+        ...selectOnlyFormNotField(),
         ...selectFieldByLabel("Conditional Visibility Check 1"),
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
         {
+            trigger: ".o_customize_tab #hidden_condition_opt:not(:empty)",
+        },
+        {
             content: "Open list of the visibility selector of Conditional Visibility Check 1",
-            trigger: ".o_customize_tab button:contains('Your Name')",
+            trigger: ".o_customize_tab #hidden_condition_opt",
             run: "click",
         },
         {
@@ -274,33 +325,38 @@ registerWebsitePreviewTour(
                 ".o_popover div:not(:has([data-action-value='Conditional Visibility Check 2']))",
         },
         ...addCustomField("char", "text", "Conditional Visibility Check 3", false),
+        checkFieldCount(11),
         ...addCustomField("char", "text", "Conditional Visibility Check 4", false),
+        checkFieldCount(12),
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
-        ...selectButtonByData("Your Name", "[data-action-value='Conditional Visibility Check 3']"),
+        ...selectConditionField("[data-action-value='Conditional Visibility Check 3']"),
         {
             content:
                 "Change the label of 'Conditional Visibility Check 4' and change it to 'Conditional Visibility Check 3'",
-            trigger: ".o_customize_tab div[data-action-id='setLabelText'] input",
-            // TODO: remove && click body
-            run: "edit Conditional Visibility Check 3 && click body",
+            trigger: ":iframe .s_website_form_label_content:text(Conditional Visibility Check 4)",
+            run: "editor Conditional Visibility Check 3",
         },
         {
             content: "Check that the conditional visibility of the renamed field is removed",
             trigger: ".o_customize_tab [data-label='Visibility Rule'] button:contains('None')",
         },
         ...addCustomField("char", "text", "Conditional Visibility Check 5", false),
+        checkFieldCount(13),
         ...addCustomField("char", "text", "Conditional Visibility Check 6", false),
+        checkFieldCount(14),
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
         {
             content:
                 "Change the label of 'Conditional Visibility Check 6' and change it to 'Conditional Visibility Check 5'",
-            trigger: ".o_customize_tab div[data-action-id='setLabelText'] input",
-            // TODO: remove && click body
-            run: "edit Conditional Visibility Check 5 && click body",
+            trigger: ":iframe .s_website_form_label_content:text(Conditional Visibility Check 6)",
+            run: "editor Conditional Visibility Check 5",
+        },
+        {
+            trigger: ".o_customize_tab #hidden_condition_opt:not(:empty)",
         },
         {
             content: "Open list of the visibility selector of Conditional Visibility Check 1",
-            trigger: ".o_customize_tab button:contains('Your Name')",
+            trigger: ".o_customize_tab #hidden_condition_opt",
             run: "click",
         },
         {
@@ -313,6 +369,7 @@ registerWebsitePreviewTour(
             visibility: CONDITIONALVISIBILITY,
             condition: "odoo",
         }),
+        checkFieldCount(15),
         {
             content: "Ensure that the description has correctly been added on the field",
             trigger:
@@ -322,9 +379,11 @@ registerWebsitePreviewTour(
         ...addCustomField("char", "text", "dependent", false, {
             visibility: CONDITIONALVISIBILITY,
         }),
+        checkFieldCount(16),
         ...addCustomField("selection", "radio", "dependency", false),
+        checkFieldCount(17),
         ...selectFieldByLabel("dependent"),
-        ...selectButtonByData("Your Name", "[data-action-value='dependency']"),
+        ...selectConditionField("[data-action-value='dependency']"),
         ...selectFieldByLabel("dependency"),
         ...selectButtonByData("Radio Buttons", "[data-action-value='char']"),
         ...selectFieldByLabel("dependent"),
@@ -339,12 +398,13 @@ registerWebsitePreviewTour(
         },
 
         ...addExistingField("date", "text", "Test Date", true),
-
+        checkFieldCount(18),
         ...addExistingField("body_html", "textarea", "Your Message", true),
-
+        checkFieldCount(19),
         ...addExistingField("recipient_ids", "checkbox"),
-
+        checkFieldCount(20),
         ...addCustomField("one2many", "checkbox", "Products", true),
+        checkFieldCount(21),
         {
             content: "Change Option 1 label",
             trigger: ".o_we_table_wrapper table input[name='display_name']:eq(0)",
@@ -393,7 +453,7 @@ registerWebsitePreviewTour(
         },
         // Check conditional visibility for the relational fields
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
-        ...selectButtonByData("Your Name", "[data-action-value='recipient_ids']"),
+        ...selectConditionField("[data-action-value='recipient_ids']"),
         ...selectButtonByText("Is equal to", "Is not equal to"),
         {
             content: "Click on option to change the partner for visiblity condition",
@@ -424,6 +484,7 @@ registerWebsitePreviewTour(
         },
         ...clickOnEditAndWaitEditMode(),
         ...addCustomField("selection", "radio", "Service", true),
+        checkFieldCount(22),
         {
             content: "Change Option 1 label",
             trigger: ".o_we_table_wrapper table input[name='display_name']:eq(0)",
@@ -465,7 +526,7 @@ registerWebsitePreviewTour(
         },
 
         ...addCustomField("many2one", "select", "State", true),
-
+        checkFieldCount(23),
         // Customize custom selection field
         {
             content: "Change Option 1 Label",
@@ -541,6 +602,7 @@ registerWebsitePreviewTour(
         },
 
         ...addExistingField("attachment_ids", "file", "Invoice Scan"),
+        checkFieldCount(24),
         {
             content: "Insure the history step of the editor is not checking for unbreakable",
             trigger: ":iframe #wrapwrap",
@@ -602,15 +664,19 @@ registerWebsitePreviewTour(
         // being set, and the 2nd one is autopopulated. As a result, both
         // should be visible by default.
         ...addCustomField("char", "text", "field A", false, { visibility: CONDITIONALVISIBILITY }),
+        checkFieldCount(25),
         ...addCustomField("char", "text", "field B", false),
+        checkFieldCount(26),
+        ...selectOnlyFormNotField(),
         ...selectFieldByLabel("field A"),
-        ...selectButtonByData("Your Name", "[data-action-value='field B']"),
+        ...selectConditionField("[data-action-value='field B']"),
         ...selectButtonByText("Is equal to", "Is set"),
+        ...selectOnlyFormNotField(),
         ...selectFieldByLabel("field B"),
         {
             content: "Insert default value",
             trigger: "[data-label='Default Value'] input",
-            run: "edit prefilled",
+            run: "edit prefilled && press Tab",
         },
         ...clickOnSave(),
         {
@@ -659,13 +725,11 @@ registerWebsitePreviewTour(
             run: "click",
         },
         ...addCustomField("char", "text", "field C", false),
+        checkFieldCount(27),
+        ...selectOnlyFormNotField(),
         ...selectFieldByLabel("field B"),
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
-        {
-            content: "Verify that the default comparator should be set",
-            trigger: ".o_customize_tab #hidden_condition_opt:not(:empty)",
-        },
-        ...selectButtonByData("Your Name", "[data-action-value='field C']"),
+        ...selectConditionField("[data-action-value='field C']"),
         ...selectButtonByText("Is equal to", "Is set"),
         ...selectFieldByLabel("field C"),
         ...clickOnSave(),
@@ -737,6 +801,7 @@ registerWebsitePreviewTour(
         },
         ...clickOnEditAndWaitEditMode(),
         ...addCustomField("char", "text", "Philippe of Belgium", false),
+        checkFieldCount(28),
         {
             content: "Select the 'Subject' field",
             trigger:
@@ -746,16 +811,17 @@ registerWebsitePreviewTour(
         {
             content: "Check that the delete button is disabled and shows the tooltip",
             trigger:
-                '.options-container-header span[title=\'The field "subject" is mandatory for the action "Send an E-mail".\'] > button.fa-trash[disabled]',
+                '.options-container-header span[title=\'The field "subject" is mandatory for the action "Send an E-mail".\'] > button[data-icon="delete"][disabled]',
         },
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
-        ...selectButtonByData("Your Name", "[data-action-value='Philippe of Belgium']"),
+        ...selectConditionField("[data-action-value='Philippe of Belgium']"),
         ...selectButtonByText("Is equal to", "Is set"),
         {
             content: "Set a default value to the 'Subject' field",
             trigger: "[data-label='Default Value'] input",
             run: "edit Default Subject",
         },
+        ...selectOnlyFormNotField(),
         {
             content: "Select the 'Your Message' field",
             trigger:
@@ -763,7 +829,7 @@ registerWebsitePreviewTour(
             run: "click",
         },
         ...changeOptionInPopover("Field", "Visibility Rule", "Visible only if"),
-        ...selectButtonByData("Your Name", "[data-action-value='Philippe of Belgium']"),
+        ...selectConditionField("[data-action-value='Philippe of Belgium']"),
         ...selectButtonByText("Is equal to", "Is set"),
 
         ...clickOnSave(),
@@ -797,6 +863,7 @@ registerWebsitePreviewTour(
             trigger: "[data-label='Default Value'] input",
             run: "clear",
         },
+        ...selectOnlyFormNotField(),
         {
             content: "Select the 'Your Message' field",
             trigger:
@@ -825,9 +892,11 @@ registerWebsitePreviewTour(
         // Test a field visibility when it's tied to another Date [Time] field
         // being set.
         ...addCustomField("char", "text", "field D", false, { visibility: CONDITIONALVISIBILITY }),
+        checkFieldCount(29),
         ...addCustomField("date", "text", "field E", false),
+        checkFieldCount(30),
         ...selectFieldByLabel("field D"),
-        ...selectButtonByData("Your Name", "[data-action-value='field E']"),
+        ...selectConditionField("[data-action-value='field E']"),
         {
             content: "Open the comparator select",
             trigger: "#hidden_condition_time_comparators_opt",
@@ -1089,7 +1158,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "Check the form was sent (success page without form)",
-            trigger: ':iframe body:not(:has([data-snippet="s_website_form"])) .fa-paper-plane',
+            trigger: ':iframe body:not(:has([data-snippet="s_website_form"])) [data-icon="send"]',
         },
         {
             content: "Go back to the form",
@@ -1113,7 +1182,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "Check the form was again sent (success page without form)",
-            trigger: ':iframe body:not(:has([data-snippet="s_website_form"])) .fa-paper-plane',
+            trigger: ':iframe body:not(:has([data-snippet="s_website_form"])) [data-icon="send"]',
         },
     ]
 );
@@ -1248,7 +1317,7 @@ registerWebsitePreviewTour(
         ...essentialFieldsForDefaultFormFillInSteps,
         {
             content: "Complete 'Your Question' field",
-            trigger: ":iframe textarea[name='description']",
+            trigger: ":iframe textarea[name='Your Question']",
             run: "edit test",
         },
         {
@@ -1263,7 +1332,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "Check the form was again sent (success page without form)",
-            trigger: ":iframe body:not(:has([data-snippet='s_website_form'])) .fa-paper-plane",
+            trigger: ":iframe body:not(:has([data-snippet='s_website_form'])) [data-icon='send']",
         },
     ]
 );
@@ -1292,8 +1361,8 @@ registerWebsitePreviewTour(
         }),
         compareIds({
             content: "Check that the first field of both the form snippets have different IDs",
-            firstElSelector: ".s_website_form input[name='name']",
-            secondElSelector: ".s_title_form .s_website_form input[name='name']",
+            firstElSelector: ".s_website_form input[name='Your Name']",
+            secondElSelector: ".s_title_form .s_website_form input[name='Your Name']",
             errorMessage: "The first fields of two different form snippet have the same ID",
         }),
         {
@@ -1326,8 +1395,9 @@ registerWebsitePreviewTour(
         compareIds({
             content:
                 "Check if the first field of forms in original and cloned snippets have different IDs",
-            firstElSelector: ".s_title_form .s_website_form input[name='name']",
-            secondElSelector: ".s_title_form:nth-of-type(2) .s_website_form input[name='name']",
+            firstElSelector: ".s_title_form .s_website_form input[name='Your Name']",
+            secondElSelector:
+                ".s_title_form:nth-of-type(2) .s_website_form input[name='Your Name']",
             errorMessage: "The first fields of original and cloned form snippet have the same ID",
         }),
         // Cloning a form itself should should generate new IDs for the cloned
@@ -1349,14 +1419,15 @@ registerWebsitePreviewTour(
         compareIds({
             content:
                 "Check if the first field of original and cloned form snippets have different IDs",
-            firstElSelector: ".s_title_form .s_website_form input[name='name']",
-            secondElSelector: ".s_title_form .s_website_form:nth-of-type(2) input[name='name']",
+            firstElSelector: ".s_title_form .s_website_form input[name='Your Name']",
+            secondElSelector:
+                ".s_title_form .s_website_form:nth-of-type(2) input[name='Your Name']",
             errorMessage: "The first fields of original and cloned form snippet have the same ID",
         }),
         // Cloning a field should generate new ID for the cloned field
         {
             content: "Click on the name field",
-            trigger: ":iframe .s_title_form .s_website_form input[name='name']",
+            trigger: ":iframe .s_title_form .s_website_form input[name='Your Name']",
             run: "click",
         },
         {
@@ -1366,8 +1437,9 @@ registerWebsitePreviewTour(
         },
         compareIds({
             content: "Check if both, original and cloned name fields have unique IDs",
-            firstElSelector: ".s_title_form .s_website_form input[name='name']",
-            secondElSelector: ".s_title_form [data-name='Field']:nth-of-type(3) input[name='name']",
+            firstElSelector: ".s_title_form .s_website_form input[name='Your Name']",
+            secondElSelector:
+                ".s_title_form [data-name='Field']:nth-of-type(3) input[name='Your Name']",
             errorMessage: "Original and cloned fields have the same ID",
         }),
     ]

@@ -1,4 +1,3 @@
-import { reactive, useRef } from "@web/owl2/utils";
 import { CodeEditor } from "@web/core/code_editor/code_editor";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { Dropdown } from "@web/core/dropdown/dropdown";
@@ -15,7 +14,18 @@ import { useService } from "@web/core/utils/hooks";
 import { ResourceEditorWarningOverlay } from "./resource_editor_warning";
 import { checkSCSS, checkXML, formatXML } from "./utils";
 
-import { Component, onWillUnmount, onWillStart, useEffect, proxy } from "@odoo/owl";
+import {
+    Component,
+    onWillUnmount,
+    onWillStart,
+    useProps,
+    proxy,
+    signal,
+    t,
+    useEffect,
+    usePlugin,
+} from "@odoo/owl";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 const BUNDLES_RESTRICTION = [
     "web.assets_frontend",
@@ -33,12 +43,13 @@ export class ResourceEditor extends Component {
         SelectMenu,
     };
     static template = "website.ResourceEditor";
-    static props = {
-        close: { type: Function, optional: true },
-    };
-    static defaultProps = {
-        close: () => {},
-    };
+    props = useProps({
+        close: t.function().optional(() => () => {}),
+    });
+
+    editorRef = signal.ref();
+
+    debugMode = usePlugin(DebugModePlugin);
 
     setup() {
         this.website = useService("website");
@@ -47,9 +58,6 @@ export class ResourceEditor extends Component {
 
         this.keepLast = new KeepLast();
 
-        this.editorRef = useRef("editor");
-
-        this.debug = this.env.debug;
         this.viewKey =
             this.website.pageDocument &&
             this.website.pageDocument.documentElement.dataset.viewXmlid;
@@ -92,7 +100,7 @@ export class ResourceEditor extends Component {
         });
 
         let showErrorInterval;
-        this.errors = reactive([]);
+        this.errors = proxy([]);
         useEffect(() => {
             clearInterval(showErrorInterval);
             if (this.errors.length) {
@@ -251,7 +259,7 @@ export class ResourceEditor extends Component {
             // Compute labels
             Object.values(this.state.resources.xml).forEach((view) => {
                 view.label = `${"-".repeat(view.level)} ${view.name}`;
-                if (this.debug && view.xml_id) {
+                if (this.debugMode.isActive() && view.xml_id) {
                     view.label += ` (${view.xml_id})`;
                 }
             });
@@ -269,7 +277,7 @@ export class ResourceEditor extends Component {
                 files.forEach((file) => {
                     // Compute labels
                     file.label = file.url.split("/").at(-1).split(".")[0];
-                    if (this.debug) {
+                    if (this.debugMode.isActive()) {
                         file.label += ` (${file.url})`;
                     }
 
@@ -411,7 +419,8 @@ export class ResourceEditor extends Component {
     }
 
     showErrorLine() {
-        if (!this.editorRef.el) {
+        const el = this.editorRef();
+        if (!el) {
             // Possibly destroyed.
             return;
         }
@@ -419,7 +428,7 @@ export class ResourceEditor extends Component {
         const error = this.errors.find(({ resource }) => resource.id === resourceId)?.error;
         if (error) {
             const { line, message } = error;
-            const gutterCell = this.editorRef.el.querySelectorAll(".ace_gutter-cell")[line - 1];
+            const gutterCell = el.querySelectorAll(".ace_gutter-cell")[line - 1];
             if (gutterCell && !gutterCell.classList.contains("o_error")) {
                 gutterCell.classList.add("o_error");
                 gutterCell.setAttribute("data-tooltip", message);
@@ -429,11 +438,12 @@ export class ResourceEditor extends Component {
     }
 
     clearErrorLine() {
-        if (!this.editorRef.el) {
+        const el = this.editorRef();
+        if (!el) {
             // Possibly destroyed.
             return;
         }
-        const allGutterCells = this.editorRef.el.querySelectorAll(".ace_gutter-cell");
+        const allGutterCells = el.querySelectorAll(".ace_gutter-cell");
         for (const gutterCell of allGutterCells) {
             gutterCell.classList.remove("o_error");
             gutterCell.removeAttribute("data-tooltip");

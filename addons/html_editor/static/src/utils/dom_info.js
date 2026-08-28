@@ -266,7 +266,7 @@ export function isVisibleTextNode(testedNode) {
         return false;
     }
     // Preceding is whitespace or following is whitespace: invisible
-    return visibleCharRegex.test(preceding.textContent);
+    return !isWhitespace(preceding);
 }
 
 /**
@@ -296,7 +296,7 @@ export const selfClosingHtmlTags = [
     "V:IMAGE",
     "V:FILL",
 ];
-export const selfClosingXmlTags = ["T"];
+export const selfClosingXmlTags = [];
 export const selfClosingElementTags = [...selfClosingHtmlTags, ...selfClosingXmlTags];
 export function isSelfClosingElement(node) {
     return node && selfClosingElementTags.includes(node.nodeName);
@@ -931,7 +931,7 @@ export function isContentEditableAncestor(node) {
     return node.isContentEditable && node.matches("[contenteditable]");
 }
 
-const QWEB_STYLE_ATTRS = ["t-att-class", "t-attf-class", "t-att-style", "t-attf-style"];
+export const QWEB_STYLE_ATTRS = ["t-att-class", "t-attf-class", "t-att-style", "t-attf-style"];
 
 /**
  * @param {Node} node
@@ -1020,9 +1020,6 @@ export function isRedundantElement(node) {
 
     return true;
 }
-
-// Selector for QWeb-specific attributes
-export const PROTECTED_QWEB_SELECTOR = "[t-esc], [t-raw], [t-out], [t-field]";
 
 /**
  * Check if two DOMRect are overlapping.

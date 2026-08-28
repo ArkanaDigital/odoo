@@ -6,7 +6,7 @@
     <div id="o_snippet_viewer_description" class="visually-hidden">
         Navigate around the blocks with <kbd>Tab</kbd> or the arrow keys. Select with <kbd>Enter</kbd> or <kbd>Space</kbd>.
     </div>
-    <div t-custom-ref="content"
+    <div t-ref="this.content"
          class="row g-0 o_snippets_preview_row"
          t-att-class="{ 'flex-row-reverse': this.props.frontendDirection !== this.backendDirection }"
          t-att-dir="this.props.frontendDirection"
@@ -41,11 +41,11 @@
                     <span class="w-100" t-out="snippet.title"></span>
                     <button class="o_btn_reset me-md-2" t-on-click="() => this.onClickRename(snippet)" title="Rename">
                         <span class="visually-hidden" t-out="this.getRenameBtnLabel(snippet.title)"/>
-                        <span class="fa fa-pencil"/>
+                        <span class="oi oi-filled" data-icon="edit"/>
                     </button>
                     <button class="o_btn_reset" t-on-click="() => this.onClickDelete(snippet)" title="Remove">
                         <span class="visually-hidden" t-out="this.getDeleteBtnLabel(snippet.title)"/>
-                        <span class="fa fa-trash"/>
+                        <span class="oi oi-filled" data-icon="delete"/>
                     </button>
                 </div>
             </t>

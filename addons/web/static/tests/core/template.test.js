@@ -1,6 +1,5 @@
-import { useRef } from "@web/owl2/utils";
 import { after, expect, test } from "@odoo/hoot";
-import { Component, xml } from "@odoo/owl";
+import { Component, signal, useProps, xml } from "@odoo/owl";
 import { mountWithCleanup, patchTranslations } from "@web/../tests/web_test_helpers";
 import { registerTemplate, registerTemplateExtension, setUrlFilters } from "@web/core/templates";
 
@@ -58,14 +57,12 @@ function registerTemplates(...templates) {
 
 async function mountTestComponentWithTemplate(name) {
     class TestComponent extends Component {
-        static props = ["*"];
-        static template = xml`<div t-custom-ref="root"><t t-call="${name}"/></div>`;
-        setup() {
-            this.rootRef = useRef("root");
-        }
+        props = useProps();
+        static template = xml`<div t-ref="this.rootRef"><t t-call="${name}"/></div>`;
+        rootRef = signal.ref();
     }
     const component = await mountWithCleanup(TestComponent);
-    return component.rootRef.el;
+    return component.rootRef();
 }
 
 test("translation-context: single template", async () => {

@@ -3,7 +3,7 @@ import { BoundedSet, debounce, Logger } from "@bus/workers/bus_worker_utils";
 /**
  * Type of events that can be sent from the worker to its clients.
  *
- * @typedef { 'BUS:CONNECT' | 'BUS:RECONNECT' | 'BUS:DISCONNECT' | 'BUS:RECONNECTING' | 'BUS:NOTIFICATION' | 'BUS:INITIALIZED' | 'BUS:OUTDATED'| 'BUS:WORKER_STATE_UPDATED' | 'BUS:PROVIDE_LOGS' } WorkerEvent
+ * @typedef { 'BUS:CONNECT' | 'BUS:RECONNECT' | 'BUS:DISCONNECT' | 'BUS:RECONNECTING' | 'BUS:NOTIFICATION' | 'BUS:INITIALIZED' | 'BUS:OUTDATED'| BUS:LAST_ID_RESET | 'BUS:WORKER_STATE_UPDATED' | 'BUS:PROVIDE_LOGS' } WorkerEvent
  */
 
 /**
@@ -37,7 +37,14 @@ export const WORKER_STATE = Object.freeze({
     IDLE: "IDLE",
     CONNECTING: "CONNECTING",
 });
-const MAXIMUM_RECONNECT_DELAY = 60000;
+const MAXIMUM_RECONNECT_DELAY = 120_000;
+// Don't wait to reconnect: keep-alive shouldn't be noticed, and the closing
+// handshake was aborted because the client explicitly tried to connect while
+// the socket was stuck in the closing state.
+const IMMEDIATE_RECONNECT_CLOSE_CODES = [
+    WEBSOCKET_CLOSE_CODES.KEEP_ALIVE_TIMEOUT,
+    WEBSOCKET_CLOSE_CODES.CLOSING_HANDSHAKE_ABORTED,
+];
 const UUID = Date.now().toString(36) + Math.random().toString(36).substring(2);
 const logger = new Logger("bus_websocket_worker");
 
@@ -51,7 +58,7 @@ const logger = new Logger("bus_websocket_worker");
 export class WebsocketWorker {
     static OUTGOING_BATCH_DELAY = 500;
     INITIAL_RECONNECT_DELAY = 1000;
-    RECONNECT_JITTER = 1000;
+    RECONNECT_JITTER = 30000;
     CONNECTION_CHECK_DELAY = 60_000;
 
     /**
@@ -59,8 +66,6 @@ export class WebsocketWorker {
      * guaarantee at-most-once delivery.
      */
     seenNotificationIds = new BoundedSet(10_000);
-    /** Number of times the worker has opened a websocket connection */
-    connectCount = 0;
 
     constructor(name) {
         this.active = true;
@@ -73,8 +78,8 @@ export class WebsocketWorker {
         this.isReconnecting = false;
         this.isWaitingForNewUID = true;
         this.lastChannelSubscription = null;
-        this.lastNotificationId = 0;
-        /** @type {{force: boolean, minId: number}|null} */
+        this.lastNotificationId = null;
+        /** @type {?{force: boolean, minId: number|null}} */
         this.nextSubscribeData = null;
         this.loggingEnabled = null;
         this.messageWaitQueue = [];
@@ -118,7 +123,10 @@ export class WebsocketWorker {
     broadcast(type, data) {
         this._logDebug("broadcast", type, data);
         for (const client of this.channelsByClient.keys()) {
-            client.postMessage({ type, data: data ? JSON.parse(JSON.stringify(data)) : undefined });
+            client.postMessage({
+                type,
+                data: data === undefined ? data : JSON.parse(JSON.stringify(data)),
+            });
         }
     }
 
@@ -145,7 +153,10 @@ export class WebsocketWorker {
         if (type !== "BUS:PROVIDE_LOGS") {
             this._logDebug("sendToClient", type, data);
         }
-        client.postMessage({ type, data: data ? JSON.parse(JSON.stringify(data)) : undefined });
+        client.postMessage({
+            type,
+            data: data === undefined ? data : JSON.parse(JSON.stringify(data)),
+        });
     }
 
     //--------------------------------------------------------------------------
@@ -219,11 +230,20 @@ export class WebsocketWorker {
      *
      * @param {{type: string, internal: true, payload: any}} param0
      */
-    _onServerMessage({ type }) {
+    _onServerMessage({ type, payload }) {
         switch (type) {
             case "bus/subscription_outdated":
                 this.broadcast("BUS:OUTDATED", { unregisterMultiTab: false });
                 return;
+            case "bus/last_id_reset": {
+                const newLastSeenId = payload;
+                this.lastNotificationId = newLastSeenId;
+                this.seenNotificationIds = new BoundedSet(
+                    10_000,
+                    [...this.seenNotificationIds].filter((id) => id <= newLastSeenId)
+                );
+                return;
+            }
         }
     }
 
@@ -275,7 +295,7 @@ export class WebsocketWorker {
      *
      * @param {Object} param0
      * @param {string} [param0.db] Database name.
-     * @param {Number} [param0.lastNotificationId] Last notification id
+     * @param {?number} param0.lastNotificationId Last notification id
      * known by the client.
      * @param {String} [param0.websocketURL] URL of the websocket endpoint.
      * @param {Number|false|undefined} [param0.uid] Current user id
@@ -292,7 +312,7 @@ export class WebsocketWorker {
         }
         this.newestStartTs = startTs;
         this.websocketURL = websocketURL;
-        this.lastNotificationId = Math.max(this.lastNotificationId, lastNotificationId);
+        this.lastNotificationId ??= lastNotificationId;
         const isCurrentUserKnown = uid !== undefined;
         if (this.isWaitingForNewUID && isCurrentUserKnown) {
             this.isWaitingForNewUID = false;
@@ -331,7 +351,15 @@ export class WebsocketWorker {
         this._updateState(WORKER_STATE.DISCONNECTED);
         this.lastChannelSubscription = null;
         this.firstSubscribeResolver = Promise.withResolvers();
+        if (IMMEDIATE_RECONNECT_CLOSE_CODES.includes(code)) {
+            this.connectRetryDelay = 0;
+        }
         if (this.isReconnecting) {
+            if (code === WEBSOCKET_CLOSE_CODES.CLOSING_HANDSHAKE_ABORTED) {
+                // This close was triggered manually by `_start`, which discards
+                // the socket right after: nothing else will retry to connect.
+                this._retryConnectionWithDelay();
+            }
             // Connection was not established but the close event was
             // triggered anyway. Let the onWebsocketError method handle
             // this case.
@@ -350,17 +378,6 @@ export class WebsocketWorker {
         // WebSocket was not closed cleanly, let's try to reconnect.
         this.broadcast("BUS:RECONNECTING", { closeCode: code });
         this.isReconnecting = true;
-        if (
-            [
-                WEBSOCKET_CLOSE_CODES.KEEP_ALIVE_TIMEOUT,
-                WEBSOCKET_CLOSE_CODES.CLOSING_HANDSHAKE_ABORTED,
-            ].includes(code)
-        ) {
-            // Don't wait to reconnect: keep-alive shouldn't be noticed, and the
-            // closing handshake was aborted because the client explicitly tried
-            // to connect while the socket was stuck in the closing state.
-            this.connectRetryDelay = 0;
-        }
         if (code === WEBSOCKET_CLOSE_CODES.SESSION_EXPIRED) {
             this.isWaitingForNewUID = true;
         }
@@ -422,7 +439,6 @@ export class WebsocketWorker {
      * the connection to open.
      */
     _onWebsocketOpen() {
-        this.connectCount++;
         this._logDebug("_onWebsocketOpen");
         this._updateState(WORKER_STATE.CONNECTED);
         this.broadcast(this.isReconnecting ? "BUS:RECONNECT" : "BUS:CONNECT");
@@ -461,12 +477,13 @@ export class WebsocketWorker {
     }
 
     /**
-     * Try to reconnect to the server, an exponential back off is
-     * applied to the reconnect attempts.
+     * Try to reconnect to the server, add a random jitter to avoid thundering
+     * herd problem.
      */
     _retryConnectionWithDelay() {
+        clearTimeout(this.connectTimeout);
         this.connectRetryDelay =
-            Math.min(this.connectRetryDelay * 1.5, MAXIMUM_RECONNECT_DELAY) +
+            Math.min(this.connectRetryDelay, MAXIMUM_RECONNECT_DELAY) +
             this.RECONNECT_JITTER * Math.random();
         this._logDebug("_retryConnectionWithDelay", this.connectRetryDelay);
         this.connectTimeout = setTimeout(this._start.bind(this), this.connectRetryDelay);
@@ -570,12 +587,7 @@ export class WebsocketWorker {
         const shouldUpdateChannelSubscription =
             allTabsChannelsString !== this.lastChannelSubscription;
         if (force || shouldUpdateChannelSubscription) {
-            // Do not check for outdated state on the first connection: `last_id` comes from
-            // storage, so GC may have already occurred, but this is safe since the page
-            // was actively loaded. Only check on the first subscribe, as notifications
-            // are streamed in real time and cannot be missed during an active connection
-            // (no `lastChannelSubscription`).
-            const check_outdated = this.connectCount > 1 && !this.lastChannelSubscription;
+            const check_outdated = minId !== null && !this.lastChannelSubscription;
             this.lastChannelSubscription = allTabsChannelsString;
             this._sendToServer({
                 event_name: "subscribe",

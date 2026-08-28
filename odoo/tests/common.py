@@ -55,7 +55,7 @@ from werkzeug.exceptions import BadRequest
 import odoo.cli
 import odoo.models
 import odoo.orm.registry
-from odoo import api
+from odoo import api, fields
 from odoo.exceptions import AccessError
 from odoo.fields import Command
 from odoo.http import request, request_var
@@ -73,6 +73,7 @@ from odoo.modules.registry import Registry
 from odoo.sql_db import Cursor
 from odoo.tools import SQL, DotDict, config, file_open, float_compare, mute_logger, profiler
 from odoo.tools.binary import BinaryBytes
+from odoo.tools.lru import LRU
 from odoo.tools.mail import single_email_re
 from odoo.tools.misc import diff_zip, find_in_path, real_time, str2bool
 from odoo.tools.safe_eval import safe_whitelist
@@ -198,7 +199,14 @@ def flushing_cursor(cr: Cursor):
         # affected by updating parent layers.
         registry_caches = cr.transaction.registry.registry_caches__
         for name in registry_caches:
-            registry_caches[name] = (registry_caches[name][0], cr.transaction.ormcaches__[name].parent)
+            layer = cr.transaction.ormcaches__[name]
+            parent = layer.parent
+            if parent is None:
+                # simulate signaling already here
+                layer.parent = parent = LRU(999999)
+                layer.update_parent()
+            registry_caches[name] = (registry_caches[name][0], parent)
+
         cr._closing = True  # do a quick clean
         cr.transaction._state_stack__ = []  # replace the stack
         with cr.transaction.committing():
@@ -301,7 +309,7 @@ def new_test_user(env, login='', groups='base.group_user', context=None, **kwarg
     if 'company_id' in create_values and 'company_ids' not in create_values:
         create_values['company_ids'] = [(4, create_values['company_id'])]
 
-    return env['res.users'].with_context(**context).create(create_values)
+    return env['res.users'].sudo().with_context(**context).create(create_values)
 
 def loaded_demo_data(env):
     return bool(env.ref('base.user_demo', raise_if_not_found=False))
@@ -1090,17 +1098,42 @@ class BaseCase(case.TestCase):
                 cr, _registry_test_lock, readonly and cls._registry_readonly_enabled
             )
 
+        try:
+            from odoo.addons.bus.tools import misc as bus_misc  # noqa: PLC0415
+        except ImportError:
+            additional_patches = ()
+        else:
+            og_db_connect = bus_misc.db_connect
+
+            def _patched_ws_db_connect(to, allow_uri=False, readonly=False):
+                # acquire_cursor() opens a cursor via db_connect(db_name) directly instead
+                # of going through Registry(db_name).cursor(), bypassing the patch above.
+                # Redirect it to the test's cursor too.
+                if to == cr.dbname:
+
+                    class _TestConnection:
+                        def cursor(self):
+                            return _patched_cursor(readonly)
+
+                    return _TestConnection()
+                return og_db_connect(to, allow_uri=allow_uri, readonly=readonly)
+
+            additional_patches = (
+                patch.object(bus_misc, 'db_connect', _patched_ws_db_connect),
+            )
+
         def get_sequences(cr):
             return registry.registry_sequence, registry.cache_sequences.copy()
 
-        with (
-            patch.object(cls, '_registry_patched', True),
+        with ExitStack() as stack:
+            for additional_patch in additional_patches:
+                stack.enter_context(additional_patch)
+            stack.enter_context(patch.object(cls, '_registry_patched', True))
             # New cursor should point to the test's cursor
-            patch.object(registry, 'cursor', _patched_cursor),
+            stack.enter_context(patch.object(registry, 'cursor', _patched_cursor))
             # Disable locking and signaling
-            patch.object(Registry, '_lock', DummyRLock()),
-            patch.object(registry, 'setup_signaling', return_value=None),  # noop
-        ):
+            stack.enter_context(patch.object(Registry, '_lock', DummyRLock()))
+            stack.enter_context(patch.object(registry, 'setup_signaling', return_value=None))  # noop
             yield
 
     @classmethod
@@ -1115,10 +1148,16 @@ class BaseCase(case.TestCase):
             message = f"Trying to open a test cursor for {self.canonical_tag} while already in a test {odoo.modules.module.current_test.canonical_tag}"
             _logger.runbot(message)
             raise BadRequest(message)
+        if isinstance(request, Mock):
+            return
         if not request or self.http_request_allow_all:
             return
         http_request_required_key = self.http_request_key
-        http_request_key = request.cookies.get(TEST_CURSOR_COOKIE_NAME)
+        # Read from the raw transmitted cookies rather than request.cookies.
+        # The latter can be cleared by a handler (e.g. downgrade_to_public_user
+        # in livechat CORS flows) before a new cursor is opened, which would
+        # incorrectly fail this check even though the cookie was sent by the test.
+        http_request_key = request.httprequest.cookies.get(TEST_CURSOR_COOKIE_NAME)
         if http_request_key != http_request_required_key:
             expected = http_request_required_key
             if not expected:
@@ -1289,7 +1328,7 @@ class TransactionCase(BaseCase):
         # We need to check the status of the file system outside of the test cursor
         with cls.registry.cursor() as cr:
             gc_env = api.Environment(cr, api.SUPERUSER_ID, {})
-            gc_env['ir.attachment']._gc_file_store_unsafe()
+            gc_env['ir.attachment']._gc_file_store_unsafe(grace_period=0)
 
     @classmethod
     def setUpClass(cls):
@@ -1418,6 +1457,18 @@ class TransactionCase(BaseCase):
         transaction = self.env.transaction
         for name, layer in transaction.ormcaches__.items():
             transaction.ormcaches__[name] = CacheLayer(layer)
+
+    @classmethod
+    @contextmanager
+    def mock_datetime_and_now(cls, mock_dt):
+        """ Used when synchronization date (using env.cr.now()) is important
+        in addition to standard datetime mocks. Used mainly to detect sync
+        issues. """
+        mock_dt = fields.Datetime.to_datetime(mock_dt)
+        with freeze_time(mock_dt) as frozen_datetime_mock, \
+             patch.object(cls.env.cr, 'now', lambda: mock_dt):
+            cls.frozen_datetime_mock = frozen_datetime_mock
+            yield
 
     @classmethod
     @contextmanager
@@ -1669,7 +1720,7 @@ class ChromeBrowser:
         port_file = pathlib.Path(self.user_data_dir, 'DevToolsActivePort')
         for _ in range(CHECK_BROWSER_ITERATIONS):
             time.sleep(CHECK_BROWSER_SLEEP)
-            if port_file.is_file() and port_file.stat().st_size > 5:
+            if port_file.is_file() and port_file.stat().st_size >= 5:
                 with port_file.open('r', encoding='utf-8') as f:
                     return proc, int(f.readline())
 
@@ -1684,6 +1735,11 @@ class ChromeBrowser:
             'Chrome headless failed to start:\n%s',
             self.read_log().decode(),
         )
+        if port_file.is_file():
+            content = port_file.read_text('utf-8')
+            _logger.warning('DevToolsActivePort content: %r', content)
+        else:
+            _logger.warning('DevToolsActivePort not found')
         self.stop()
 
         raise unittest.SkipTest(f'Failed to detect chrome devtools port after {BROWSER_WAIT :.1f}s.')
@@ -1698,34 +1754,50 @@ class ChromeBrowser:
     ):
         headless_switches = {
             '--headless': '',
-            '--disable-extensions': '',
-            '--disable-background-networking' : '',
-            '--disable-background-timer-throttling' : '',
-            '--disable-backgrounding-occluded-windows': '',
-            '--disable-renderer-backgrounding' : '',
-            '--disable-breakpad': '',
-            '--disable-client-side-phishing-detection': '',
-            '--disable-crash-reporter': '',
-            '--disable-dev-shm-usage': '',
-            '--disable-namespace-sandbox': '',
-            '--disable-translate': '',
-            '--no-sandbox': '',
-            '--disable-gpu': '',
-            '--enable-unsafe-swiftshader': '',
-            '--mute-audio': '',
+            '--disable-extensions': '',  # Disable all chrome extensions
+            '--disable-component-extensions-with-background-pages': '',  # Disable built-in extensions (e.g., PDF viewer, Hangouts...)
+            '--disable-background-networking': '',  # Stop background requests (telemetry, updates, safe browsing)
+            '--disable-background-timer-throttling': '',  # Prevent Chrome from slowing down JS in inactive tabs
+            '--disable-backgrounding-occluded-windows': '',  # Prevent Chrome from suspending hidden windows
+            '--disable-renderer-backgrounding': '',  # Keep background rendering processes running at normal priority
+            '--disable-breakpad': '',  # Disable the Breakpad crash reporting system
+            '--disable-client-side-phishing-detection': '',  # Disable local machine-learning phishing analysis
+            '--disable-crash-reporter': '',  # Disable crash report generation
+            '--disable-dev-shm-usage': '',  # Use /tmp instead of /dev/shm
+            '--disable-namespace-sandbox': '',  # Disable Linux namespace sandboxing
+            '--disable-sync': '',  # Completely disable Google account synchronization engine
+            '--no-crash-upload': '',  # Prevent uploading crash dumps to Google servers
+            '--no-sandbox': '',  # Disable OS-level sandboxing
+            '--disable-gpu': '',  # Disable hardware GPU acceleration
+            '--enable-unsafe-swiftshader': '',  # Allow software rendering fallback for WebGL when GPU is disabled
+            '--mute-audio': '',  # Prevent audio playback from allocating system resources
+            '--font-render-hinting': 'none',  # Disable sub-pixel font rendering calculations
+            '--disable-gpu-early-init': '',  # Disable proactive early init of GPU process
+            '--disable-gpu-sandbox': '',  # Disables the GPU process sandbox
+            '--disable-gpu-driver-bug-workarounds': '',  # Disable workarounds for various GPU driver bugs
         }
         switches = {
             # required for tours that use Youtube autoplay conditions (namely website_slides' "course_tour")
-            '--autoplay-policy': 'no-user-gesture-required',
-            '--disable-default-apps': '',
-            '--disable-device-discovery-notifications': '',
-            '--no-default-browser-check': '',
+            '--autoplay-policy': 'no-user-gesture-required',  # Allow media autoplay without requiring a user click
+            '--disable-default-apps': '',  # Disable installation of default apps
+            '--disable-domain-reliability': '',  # Stop tracking and sending telemetry for failed network requests
+            '--disable-search-engine-choice-screen': '',  # Bypass the EU search engine selection prompt on startup
+            '--disable-features': ','.join([
+                'Translate',  # Disables Chrome translation
+                'MediaRouter',  # Stop scanning for local Cast or media devices
+                'InterestFeedContentSuggestions',  # Disables the Discover feed on NTP
+            ]),
+            '--ash-no-nudges': '',  # Avoids blue bubble "user education" nudges (eg., "… give your browser a new look", Memory Saver)
+            '--propagate-iph-for-testing': '',  # Disable all in-product help (IPH) features
+            '--no-default-browser-check': '',  # Bypass the prompt asking to make Chrome the default browser
+            '--no-first-run': '',  # Skip the welcome screen and first-run setup wizards
+            '--proxy-server': '"direct://"',  # Force a direct connection, bypassing any system proxies
+            '--proxy-bypass-list': '*',  # Bypass proxy for all domains (eliminates local resolution delays)
             '--remote-debugging-address': HOST,
             '--remote-debugging-port': str(self.remote_debugging_port),
             '--user-data-dir': user_data_dir,
             '--enable-logging': '',
             '--v': str(int(os.environ.get("ODOO_BROWSER_LOG_VERBOSITY", "0"))),
-            '--no-first-run': '',
             # FIXME: these next 2 flags are temporarily uncommented to allow client
             # code to manually run garbage collection. This is done as currently
             # the Chrome unit test process doesn't have access to its available
@@ -2704,6 +2776,7 @@ class HttpCase(TransactionCase):
             _trace_disable=True,  # saves a query on all requests
         )
         self.session.context['lang'] = DEFAULT_LANG
+        self.session.context['host_id'] = self.env['ir.http']._get_host_id_from_domain(self.base_url())
 
         if session_extra:
             if extra_ctx := session_extra.pop('context', None):
@@ -2723,7 +2796,7 @@ class HttpCase(TransactionCase):
             # patching to speedup the check in case the password is hashed with many hashround + avoid to update the password
             with flushing, patch('odoo.addons.base.models.res_users.ResUsersPatchedInTest._check_credentials', new=patched_check_credentials):
                 credential = {'login': user, 'password': password, 'type': 'password'}
-                auth_info = self.env['res.users'].authenticate(credential, {'interactive': False})
+                auth_info = self.env(context=self.session.context)['res.users'].authenticate(credential, {'interactive': False})
             uid = auth_info['uid']
             env = api.Environment(self.cr, uid, {})
             self.session['uid'] = uid
@@ -2906,11 +2979,12 @@ class HttpCase(TransactionCase):
             self._logger.warning('step_delay is only suitable for local testing')
         Users = self.registry['res.users']
 
-        def setup(_):
+        def _post_model_setup__(model):
+            super(Users, model)._post_model_setup__()
             Users.tour_enabled = False
 
         with patch.object(Users, 'tour_enabled', False),\
-                patch.object(Users, '_post_model_setup__', setup),\
+                patch.object(Users, '_post_model_setup__', _post_model_setup__),\
                 patch.object(Users, '_compute_tour_enabled', lambda _: None):
             self.browser_js(url_path=url_path, code=code, ready=ready, timeout=timeout, success_signal="tour succeeded", **kwargs)
 

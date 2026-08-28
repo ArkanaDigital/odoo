@@ -1,15 +1,11 @@
-import { useChildSubEnv, useSubEnv } from "@web/owl2/utils";
+import { useSubEnv } from "@web/owl2/utils";
 import { Composer } from "@mail/core/common/composer";
 import { Thread } from "@mail/core/common/thread";
 import { Call } from "@mail/discuss/call/common/call";
 import { CallActionList } from "@mail/discuss/call/common/call_action_list";
-import {
-    inDiscussCallViewProps,
-    useInDiscussCallView,
-    useMessageScrolling,
-} from "@mail/utils/common/hooks";
+import { useMessageScrolling } from "@mail/utils/common/hooks";
 
-import { Component, onMounted, onWillUnmount, signal } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, types, useProps } from "@odoo/owl";
 
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { user } from "@web/core/user";
@@ -19,7 +15,6 @@ import { MeetingReadyBanner } from "./meeting_ready_banner";
 import { MeetingSideActions } from "./meeting_side_actions";
 import { useThreadActions } from "@mail/core/common/thread_actions";
 import { useMessageSearch } from "@mail/core/common/message_search_hook";
-import { useDynamicInterval } from "@mail/utils/common/misc";
 
 const { DateTime } = luxon;
 const PIP_EXTRA_ACTION_IDS = ["copy-invite-link", "meeting-chat"];
@@ -28,7 +23,6 @@ const PIP_EXTRA_ACTION_IDS = ["copy-invite-link", "meeting-chat"];
 
 export class Meeting extends Component {
     static template = "mail.Meeting";
-    static props = [...inDiscussCallViewProps];
     static components = {
         Call,
         CallActionList,
@@ -40,19 +34,15 @@ export class Meeting extends Component {
     };
 
     setup() {
+        this.props = useProps({
+            autoOpenAction: types.string().optional(),
+            isPip: types.boolean().optional(),
+        });
         this.store = useService("mail.store");
         this.ui = useService("ui");
         this.rtc = useService("discuss.rtc");
-        this.datetimeNow = signal(DateTime.now());
-        useDynamicInterval(
-            () => {
-                this.datetimeNow.set(DateTime.now());
-                return 60_000 - (Date.now() % 60_000);
-            },
-            () => []
-        );
-        useInDiscussCallView();
         useSubEnv({
+            inDiscussCallView: true,
             inMeetingView: {
                 openChat: () =>
                     this.threadActions.actions
@@ -63,7 +53,7 @@ export class Meeting extends Component {
         this.threadActions = useThreadActions({ thread: () => this.channel.thread });
         this.messageHighlight = useMessageScrolling({ thread: () => this.channel.thread });
         this.messageSearch = useMessageSearch(this.channel.thread);
-        useChildSubEnv({
+        useSubEnv({
             hasPreviousActionPanel: () => this.threadActions.actionStack.length > 0,
             messageHighlight: this.messageHighlight,
             messageSearch: this.messageSearch,
@@ -78,11 +68,15 @@ export class Meeting extends Component {
     }
 
     get dateSimple() {
-        return this.datetimeNow().toLocaleString(DateTime.TIME_SIMPLE, { locale: user.lang });
+        return this.store.startOfMinute.toLocaleString(DateTime.TIME_SIMPLE, {
+            locale: user.lang,
+        });
     }
 
     get datetimeMedium() {
-        return this.datetimeNow().toLocaleString(DateTime.DATETIME_MED, { locale: user.lang });
+        return this.store.startOfMinute.toLocaleString(DateTime.DATETIME_MED, {
+            locale: user.lang,
+        });
     }
 
     get pipExtraActions() {
@@ -97,8 +91,8 @@ export class Meeting extends Component {
             this.threadActions.activeAction.actionPanelClose();
             return true;
         }
-        if (this.rtc.isFullscreen) {
-            this.rtc.exitFullscreen();
+        if (this.rtc.isFullscreen && !this.rtc.isBrowserFullscreen) {
+            this.rtc.minimize();
             return true;
         }
         return false;

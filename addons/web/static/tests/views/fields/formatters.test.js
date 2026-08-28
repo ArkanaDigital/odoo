@@ -42,6 +42,8 @@ test("formatFloat", () => {
     expect(formatFloat(false)).toBe("");
     expect(formatFloat(200)).toBe("200.00");
     expect(formatFloat(200, { trailingZeros: false })).toBe("200");
+    expect(formatFloat(223e22)).toBe("2e+24");
+    expect(formatFloat(2230000000000000000000000)).toBe("2e+24");
 });
 
 test("formatFloatFactor", () => {
@@ -261,7 +263,7 @@ test("formatFloatTime special cases", () => {
 });
 
 test("formatBinary", () => {
-    expect(formatBinary("1.5 MB")).toBe("1.5 MB", { message: "binary sizes are not modified" });
-    expect(formatBinary("aGVsbG8=")).toBe("6 Bytes");
-    expect(formatBinary("a".repeat(3000))).toBe("2.20 kB");
+    expect(formatBinary({filename: "", size: 6})).toBe("6 Bytes");
+    expect(formatBinary({filename: "toto", size: 6})).toBe("toto");
+    expect(formatBinary({content: "aGVsbG8="})).toBe("(file)");
 });

@@ -1,8 +1,8 @@
 import { SearchState } from "@mail/utils/common/hooks";
 
-import { Component, props, signal, types, useEffect } from "@odoo/owl";
+import { Component, signal, t, useEffect, useProps } from "@odoo/owl";
 
-import { useAutofocus } from "@web/core/utils/hooks";
+import { autofocusParamsType, useAutofocus } from "@web/core/utils/hooks";
 
 let nextId = 0;
 
@@ -22,24 +22,21 @@ export class SearchInput extends Component {
 
     setup() {
         super.setup();
-        this.props = props(
-            {
-                "accesskey?": types.string(),
-                /** @type {boolean | Parameters<typeof useAutofocus>[0]} */
-                "autofocus?": types.or([types.boolean(), types.object()]),
-                "classNames?": types.string(),
-                "inputRef?": types.signal(types.instanceOf(HTMLElement)),
-                "loadingDelay?": types.number(),
-                "onClear?": types.function([types.instanceOf(MouseEvent)]),
-                "onKeydown?": types.function([types.instanceOf(KeyboardEvent)]),
-                "placeholder?": types.string(),
-                search: types.instanceOf(SearchState),
-            },
-            {
-                autofocus: false,
-                inputRef: signal(null, { type: types.instanceOf(HTMLElement) }),
-                loadingDelay: 200,
-            }
+        this.props = useProps({
+            accesskey: t.string().optional(),
+            /** @type {boolean | Parameters<typeof useAutofocus>[0]} */
+            autofocus: t.or([t.boolean(), autofocusParamsType]).optional(false),
+            classNames: t.string().optional(""),
+            loadingDelay: t.number().optional(200),
+            onClear: t.function([t.instanceOf(MouseEvent)]).optional(),
+            onKeydown: t.function([t.instanceOf(KeyboardEvent)]).optional(),
+            placeholder: t.string().optional(),
+            search: t.instanceOf(SearchState),
+        });
+        /** Input element, either owned by the parent (`inputRef` prop) or local. */
+        this.inputRef = useProps.static(
+            "inputRef",
+            t.signal(t.instanceOf(HTMLElement)).optional(() => signal.ref())
         );
         this.uniqueId = `mail.SearchInput.${nextId++}`;
         this.spinner = signal(false);
@@ -53,7 +50,7 @@ export class SearchInput extends Component {
         });
         if (this.props.autofocus) {
             const opts = typeof this.props.autofocus === "object" ? this.props.autofocus : {};
-            useAutofocus({ ...opts, ref: this.props.inputRef });
+            useAutofocus({ ...opts, ref: this.inputRef });
         }
     }
 }

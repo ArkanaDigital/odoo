@@ -18,10 +18,12 @@ class HrLeave(models.Model):
         # The french l10n is meant to be computed only in very specific cases:
         # - there is only one employee affected by the leave
         # - the company is french
+        # - the employee has a working schedule different from the company's
         # - the work_entry_type is the reference work_entry_type of that company
         self.ensure_one()
         return self.employee_id and \
                self.company_id.country_id.code == 'FR' and \
+               self.resource_calendar_id and \
                self.resource_calendar_id != self.company_id.resource_calendar_id and \
                self.work_entry_type_id == self.company_id._get_fr_reference_work_entry_type()
 
@@ -37,18 +39,8 @@ class HrLeave(models.Model):
         if self.work_entry_type_request_unit != 'hour':
             # Use company's working schedule hours for the leave to avoid duration calculation issues.
             def adjust_date_range(date_from, date_to, from_period, to_period, attendance_ids, employee_id):
-                weektype = False
-                if self.resource_calendar_id.two_weeks_calendar:
-                    weektype = str(self.env['resource.calendar.attendance'].get_week_type(date_from))
-                period_ids_from = attendance_ids.filtered(lambda a: a.day_period in from_period
-                                                                    and a.week_type == weektype
-                                                                    and int(a.dayofweek) == date_from.weekday())
-                weektype = False
-                if self.resource_calendar_id.two_weeks_calendar:
-                    weektype = str(self.env['resource.calendar.attendance'].get_week_type(date_to))
-                period_ids_to = attendance_ids.filtered(lambda a: a.day_period in to_period
-                                                                    and a.week_type == weektype
-                                                                    and int(a.dayofweek) == date_to.weekday())
+                period_ids_from = attendance_ids._filter_by_date(date_from.date(), lambda a: a.day_period in from_period)
+                period_ids_to = attendance_ids._filter_by_date(date_to.date(), lambda a: a.day_period in to_period)
                 if period_ids_from:
                     min_hour = min(attendance.hour_from for attendance in period_ids_from)
                     date_from = self._to_utc(date_from, min_hour, employee_id)
@@ -66,22 +58,10 @@ class HrLeave(models.Model):
             attendance_ids = self.company_id.resource_calendar_id.attendance_ids | self.resource_calendar_id.attendance_ids
             date_from, date_to = adjust_date_range(date_from, date_to, from_period, to_period, attendance_ids, self.employee_id)
 
-        similar = date_from.date() == date_to.date() and self.request_date_from_period == self.request_date_to_period
-        if self.work_entry_type_request_unit == 'half_day' and similar and self.request_date_from_period == 'am':
-            # In normal workflows work_entry_type_request_unit = 'half_day' implies that date_from and date_to are the same
-            # work_entry_type_request_unit = 'half_day' allows us to choose between `am` and `pm`
+        if self.work_entry_type_request_unit == 'half_day' and self.request_date_to_period == 'am':
             # In a case where we work from mon-wed and request a half day in the morning
             # we do not want to push date_to since the next work attendance is actually in the afternoon
-            date_from_dayofweek = str(date_from.weekday())
-            date_from_weektype = False
-            if self.resource_calendar_id.two_weeks_calendar:
-                date_from_weektype = str(self.env['resource.calendar.attendance'].get_week_type(date_from))
-            # Fetch the attendances we care about
-            attendance_ids = self.resource_calendar_id.attendance_ids.filtered(lambda a:
-                a.dayofweek == date_from_dayofweek and
-                a.week_type == date_from_weektype
-            )
-            if len(attendance_ids) == 2:
+            if self.resource_calendar_id.attendance_ids.filtered(lambda a: a.day_period in ('afternoon', 'full_day')):
                 # The employee took the morning off on a day where he works the afternoon aswell
                 return (date_from, date_to)
 
@@ -93,16 +73,17 @@ class HrLeave(models.Model):
         # the employee calendar as otherwise days worked on by the company
         # calendar before the actual start of the leave would be taken into
         # account.
-        while not self.resource_calendar_id._works_on_date(date_start):
+        working_attendances = self.resource_calendar_id.attendance_ids.filtered(lambda a: a._is_work_period())
+        while not working_attendances._filter_by_date(date_start.date()):
             date_start += relativedelta(days=1)
-        while not self.resource_calendar_id._works_on_date(date_target + relativedelta(days=1)):
+        while not working_attendances._filter_by_date((date_target + relativedelta(days=1)).date()):
             date_target += relativedelta(days=1)
 
         # Undo the last day increment
         return (date_start, date_target)
 
     @api.depends('request_date_from_period', 'request_date_to_period', 'request_hour_from', 'request_hour_to',
-                'request_date_from', 'request_date_to', 'work_entry_type_request_unit', 'employee_id')
+                'request_date_from', 'request_date_to', 'employee_id')
     def _compute_date_from_to(self):
         super()._compute_date_from_to()
         for leave in self:
@@ -136,6 +117,11 @@ class HrLeave(models.Model):
                     ('date_from', '<', max(fr_leaves.mapped('date_to')) + relativedelta(days=1)),
                     ('date_to', '>', min(fr_leaves.mapped('date_from')) - relativedelta(days=1)),
                 ])
+            standard_duration = super(HrLeave, fr_leaves)._get_durations(
+                check_work_entry_type=check_work_entry_type,
+                resource_calendar=resource_calendar,
+                additional_domain=additional_domain,
+            )
             for company, leaves in fr_leaves_by_company.items():
                 company_cal = company.resource_calendar_id
                 holidays_days_list = []
@@ -151,29 +137,37 @@ class HrLeave(models.Model):
                         holidays_days_list.append(current)
                         current += relativedelta(days=1)
                 for leave in leaves:
-                    if leave.work_entry_type_request_unit == 'half_day':
-                        duration_by_leave_id.update(leave._get_durations(check_work_entry_type=check_work_entry_type, resource_calendar=company_cal, additional_domain=additional_domain))
-                        continue
                     # Extend the end date to next working day
                     date_start = leave.date_from
                     date_end = leave.date_to
-                    while not leave.resource_calendar_id._works_on_date(date_start):
+                    while leave.resource_calendar_id and not leave.resource_calendar_id._works_on_date(date_start.date()):
                         date_start += relativedelta(days=1)
                     extended_date_end = date_end
-                    while not company_cal._works_on_date(extended_date_end + relativedelta(days=1)):
+                    while not company_cal._works_on_date(extended_date_end.date() + relativedelta(days=1)):
                         extended_date_end += relativedelta(days=1)
                     # Count number of days in company calendar
                     current = date_start.date()
                     end_date = extended_date_end.date()
                     legal_days = 0.0
+                    is_half_day_start = leave.work_entry_type_request_unit == 'half_day' and (
+                            (leave.request_date_from == leave.request_date_to and leave.request_date_from_period == leave.request_date_to_period)
+                            or (leave.request_date_from != leave.request_date_to and leave.request_date_from_period == 'pm')
+                    )
+                    is_half_day_end = (
+                            leave.work_entry_type_request_unit == 'half_day' and leave.request_date_to_period == 'am'
+                            and not leave.l10n_fr_date_to_changed  # date_to was not extended -> employee works PM
+                            and leave.request_date_from != leave.request_date_to  # same-day handled by is_half_day_start
+                    )
                     while current <= end_date:
                         if current in holidays_days_list:
                             current += relativedelta(days=1)
                             continue
                         if company_cal._works_on_date(current):
-                            legal_days += 1.0
+                            if is_half_day_start and current == date_start.date() or is_half_day_end and current == end_date:
+                                legal_days += 0.5
+                            else:
+                                legal_days += 1.0
                         current += relativedelta(days=1)
-                    standard_duration = super()._get_durations(check_work_entry_type=check_work_entry_type, resource_calendar=resource_calendar, additional_domain=additional_domain)
                     _, hours = standard_duration.get(leave.id, (0.0, 0.0))
 
                     duration_by_leave_id[leave.id] = (legal_days, hours)

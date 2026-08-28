@@ -18,13 +18,14 @@
             <BuilderSelectItem classAction="'o_mark_optional'" id="'form_optional_opt'">Optional</BuilderSelectItem>
         </BuilderSelect>
     </BuilderRow>
-    <BuilderRow label.translate="Marker" level="1">
-        <BuilderTextInput action="'setMark'" default="''" t-if="this.isActiveItem('form_required_opt') || this.isActiveItem('form_optional_opt')"/>
+    <BuilderRow label.translate="Marker" level="1" t-if="this.isActiveItem('form_required_opt') || this.isActiveItem('form_optional_opt')">
+        <BuilderTextInput action="'setMark'" default="''"/>
+        <BuilderColorPicker enabledTabs="['solid', 'custom']" action="'markColor'"/>
     </BuilderRow>
     <BuilderRow t-if="this.canChangeFieldsLayout" label.translate="Labels Position">
         <BuilderButtonGroup action="'selectLabelsPosition'">
             <BuilderButton title.translate="Hide" actionValue="'none'" id="'label_position_hide_opt'">
-                <i class="fa fa-eye-slash"/>
+                <i class="oi" data-icon="visibility_off"/>
             </BuilderButton>
             <BuilderButton title.translate="Top" actionValue="'top'" iconImg="'/website/static/src/img/snippets_options/pos_top.svg'" id="'label_position_top_opt'"/>
             <BuilderButton ltrRtlMapping="'left-right'" title.translate="Left" actionValue="'left'" iconImg="'/website/static/src/img/snippets_options/pos_left.svg'"/>
@@ -44,7 +45,7 @@
         </BuilderSelect>
         <BuilderButton t-if="this.isActiveItem('show_message_opt')"
                        title.translate="Edit Message"
-                       icon="'fa-eye'"
+                       icon="'visibility'"
                        preview="false"
                        action="'toggleEndMessage'"/>
     </BuilderRow>
@@ -70,12 +71,11 @@
                         <t t-out="record.display_name"/>
                     </BuilderSelectItem>
                 </BuilderSelect>
-                <BuilderButton t-if="field.createAction" className="'fa fa-fw fa-plus'"
+                <BuilderButton t-if="field.createAction" iconClass="'oi-fw'" icon="'add'"
                     title.translate="Create New"
                     action="'promptSaveRedirect'" actionParam="field.createAction"
                 />
             </BuilderRow>
-            <!-- TODO className="'o_we_large'" -->
             <BuilderRow t-if="field.type === 'char'" label="field.string" tooltip="field.help">
                 <BuilderTextInput actionParam="{ fieldName: field.name }" action="'addActionField'" default="''"/>
             </BuilderRow>
@@ -169,9 +169,8 @@
     <BuilderRow label.translate="Height" level="1" applyTo="'textarea'">
         <BuilderNumberInput unit.translate="rows" saveUnit="''" step="1" attributeAction="'rows'" default="3"/>
     </BuilderRow>
-    <BuilderRow label.translate="Label">
-        <BuilderTextInput action="'setLabelText'" default="this.domState.fieldTranslatedName"/>
-        <BuilderButton title.translate="Hide" action="'toggleCheckboxLabel'" t-if="this.isActiveItem('custom_field_boolean_opt')" icon="'fa-eye-slash'" preview="false"/>
+    <BuilderRow label.translate="Hide Label" t-if="this.isActiveItem('custom_field_boolean_opt')">
+        <BuilderCheckbox action="'toggleCheckboxLabel'"/>
     </BuilderRow>
     <BuilderRow label.translate="Required">
         <BuilderCheckbox t-if="!this.domState.elClassList.includes('s_website_form_model_required')"
@@ -202,7 +201,7 @@
     <BuilderRow label.translate="Default Value" t-if="!this.isOtherOptionSupported">
         <BuilderTextInput action="'selectTextareaValue'" applyTo="'textarea'"/>
         <BuilderCheckbox attributeAction="'checked'" attributeActionValue="'checked'"
-            applyTo="`.col-sm > * > input[type='checkbox']`" preview="false"
+            applyTo="`[data-type='boolean'] input[type='checkbox']`" preview="false"
         />
         <BuilderTextInput attributeAction="'value'" action="'property'" actionParam="{ property: 'value' }"
             applyTo="`input[type='text']:not(.datetimepicker-input), input[type='email'], input[type='tel'], input[type='url']`"
@@ -348,7 +347,7 @@
                 t-elif="this.domStateCurrentFieldInput.hasDateTimePicker"
                 preview="false"
                 dataAttributeAction="'requirementComparator'"
-                action="'setRequirementComparator'">
+                action="'setDateRequirementComparator'">
             <BuilderSelectItem id="'no_requirement_opt'" dataAttributeActionValue="''">None</BuilderSelectItem>
             <BuilderSelectItem dataAttributeActionValue="'after'">Is date after</BuilderSelectItem>
             <BuilderSelectItem dataAttributeActionValue="'before'">Is date before</BuilderSelectItem>
@@ -360,7 +359,7 @@
         <BuilderButton id="'error_message_opt'"
             t-if="!this.isActiveItem('no_requirement_opt')"
             title.translate="Add custom error message"
-            className="'fa ' + (this.isActiveItem('error_message_opt') ? 'fa-eye' : 'fa-eye-slash')"
+            icon="this.isActiveItem('error_message_opt') ? 'visibility' : 'visibility_off'"
             preview="false"
             action="'setCustomErrorMessage'"/>
     </BuilderRow>
@@ -369,28 +368,32 @@
             placeholder.translate="Enter requirement conditions"
             dataAttributeAction="'requirementCondition'"/>
     </BuilderRow>
-    <BuilderRow label.translate="Conditions" level="1" t-elif="this.domStateCurrentFieldInput.isFormDateTime and this.domState.elDataset.requirementComparator">
+    <BuilderRow label="this.dateRequirementConditionLabel" level="1" t-elif="this.domStateCurrentFieldInput.isFormDateTime and this.domState.elDataset.requirementComparator">
         <BuilderDateTimePicker id="'require_condition_additional_datetime_1'"
             placeholder.translate="Enter requirement conditions"
             dataAttributeAction="'requirementCondition'"
+            allowRelativeDate="!this.isRangeComparator"
             type="'datetime'"/>
     </BuilderRow>
-    <BuilderRow label.translate="Conditions" level="1" t-elif="this.domStateCurrentFieldInput.isFormDate and this.domState.elDataset.requirementComparator">
+    <BuilderRow label="this.dateRequirementConditionLabel" level="1" t-elif="this.domStateCurrentFieldInput.isFormDate and this.domState.elDataset.requirementComparator">
         <BuilderDateTimePicker id="'require_condition_additional_date'"
             placeholder.translate="Enter requirement conditions"
             dataAttributeAction="'requirementCondition'"
+            allowRelativeDate="!this.isRangeComparator"
             type="'date'"/>
     </BuilderRow>
-    <BuilderRow label.translate="Conditions" level="1" t-if="this.domStateCurrentFieldInput.isFormDateTime and ['between', '!between'].includes(this.domState.elDataset.requirementComparator)">
+    <BuilderRow label.translate="End date" level="1" t-if="this.domStateCurrentFieldInput.isFormDateTime and this.isRangeComparator">
         <BuilderDateTimePicker id="'require_condition_additional_datetime_2'"
             placeholder.translate="Enter requirement conditions"
             dataAttributeAction="'requirementBetween'"
+            minDate="this.requirementStartDate"
             type="'datetime'"/>
     </BuilderRow>
-    <BuilderRow label.translate="Conditions" level="1" t-elif="this.domStateCurrentFieldInput.isFormDate and ['between', '!between'].includes(this.domState.elDataset.requirementComparator)">
+    <BuilderRow label.translate="End date" level="1" t-elif="this.domStateCurrentFieldInput.isFormDate and this.isRangeComparator">
         <BuilderDateTimePicker id="'require_condition_additional_date_end'"
             placeholder.translate="Enter requirement conditions"
             dataAttributeAction="'requirementBetween'"
+            minDate="this.requirementStartDate"
             type="'date'"/>
     </BuilderRow>
     <BuilderRow t-if="this.isMultipleTextConditionForRequirementOptionVisible">

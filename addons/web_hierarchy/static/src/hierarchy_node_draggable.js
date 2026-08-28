@@ -1,8 +1,5 @@
-import { useLayoutEffect } from "@web/owl2/utils";
-import { onWillUnmount, proxy, useExternalListener } from "@odoo/owl";
-import { useThrottleForAnimation } from "@web/core/utils/timing";
 import { pick } from "@web/core/utils/objects";
-import { makeDraggableHook } from "@web/core/utils/draggable_hook_builder";
+import { makeDraggableHook } from "@web/core/utils/draggable_hook_builder_owl";
 
 const hookParams = {
     name: "useHierarchyNodeDraggable",
@@ -49,12 +46,12 @@ const hookParams = {
 
         const { ref, current, elementSelector, rowSelector } = ctx;
 
-        for (const rowEl of ref.el.querySelectorAll(rowSelector)) {
+        for (const rowEl of ref().querySelectorAll(rowSelector)) {
             addListener(rowEl, "pointerenter", onRowPointerEnter);
             addListener(rowEl, "pointerleave", onRowPointerLeave);
         }
 
-        for (const siblingEl of ref.el.querySelectorAll(elementSelector)) {
+        for (const siblingEl of ref().querySelectorAll(elementSelector)) {
             if (siblingEl !== current.element) {
                 addListener(siblingEl, "pointerenter", onElementPointerEnter);
                 addListener(siblingEl, "pointerleave", onElementPointerLeave);
@@ -91,12 +88,5 @@ const hookParams = {
 };
 
 export function useHierarchyNodeDraggable(params) {
-    const setupHooks = {
-        addListener: useExternalListener,
-        setup: useLayoutEffect,
-        teardown: onWillUnmount,
-        throttle: useThrottleForAnimation,
-        wrapState: proxy,
-    }
-    return makeDraggableHook({ ...hookParams, setupHooks })(params);
+    return makeDraggableHook(hookParams)(params);
 }

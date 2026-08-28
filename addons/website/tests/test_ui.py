@@ -10,6 +10,7 @@ from odoo.addons.base.tests.common import HttpCaseWithUserDemo
 from odoo.addons.html_editor.controllers.main import HTML_Editor
 from odoo.addons.website.tests.common import HttpCaseWithWebsiteUser
 from odoo.fields import Command
+from odoo.tools import mute_logger
 
 
 @odoo.tests.tagged('-at_install', 'post_install')
@@ -45,7 +46,7 @@ class TestUiCustomizeTheme(odoo.tests.HttpCase):
 
         # simulate PDF from ecommerce order
         # Note: it will only have its website_id flag if the website has a domain
-        # equal to the current URL (fallback or get_current_website())
+        # equal to the current URL.
         so_attachment = Attachment.create({
             'name': 'SO036.pdf',
             'type': 'binary',
@@ -148,7 +149,7 @@ class TestUiHtmlEditor(HttpCaseWithUserDemo):
     def test_html_editor_scss(self):
         self.user_demo.write({
             'group_ids': [(6, 0, [
-                self.env.ref('base.group_user').id,
+                self.env.ref('base.group_user_regular').id,
                 self.env.ref('website.group_website_designer').id
             ])]
         })
@@ -345,6 +346,33 @@ class TestUiTranslate(odoo.tests.HttpCase):
 
         self.start_tour('/fr', 'searchbar_in_translated_website', login='admin')
 
+    def test_translate_website_media(self):
+        lang_en = self.env.ref('base.lang_en')
+        lang_fr = self.env.ref('base.lang_fr')
+        self.env['res.lang']._activate_lang(lang_fr.code)
+        default_website = self.env.ref('base.default_website')
+        default_website.write({
+            'default_lang_id': lang_en.id,
+            'language_ids': [Command.link(lang_en.id), Command.link(lang_fr.id)],
+        })
+
+        self.env['ir.attachment'].create({
+            'name': 'test.png',
+            'raw': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            'public': True,
+        })
+        self.env['ir.attachment'].create({
+            'name': 'file.txt',
+            'raw': b'My attachment',
+            'public': True,
+        })
+        self.env['ir.attachment'].create({
+            'name': 'file_translated.txt',
+            'raw': b'tnemh cat taym',
+            'public': True,
+        })
+        self.start_tour(self.env['website'].get_client_action_url('/', True), 'translate_website_media', login='admin')
+
 
 @odoo.tests.common.tagged('post_install', '-at_install')
 class TestUi(HttpCaseWithWebsiteUser):
@@ -432,7 +460,14 @@ class TestUi(HttpCaseWithWebsiteUser):
             'name': 'bg_test.png',
             'mimetype': 'image/png',
         })
+        last_view_before = self.env['ir.ui.view'].search([], order='id DESC', limit=1)
         self.start_tour(self.env['website'].get_client_action_url('/', True), 'website_style_edition', login='admin')
+        last_view_after = self.env['ir.ui.view'].search([], order='id DESC', limit=1)
+        self.assertEqual(
+            last_view_before.id,
+            last_view_after.id,
+            "Editing website style shouldn't create new views",
+        )
 
     def test_09_website_edit_link_popover(self):
         self.start_tour(self.env['website'].get_client_action_url('/', True), 'edit_link_popover', login='admin', timeout=180)
@@ -601,7 +636,7 @@ class TestUi(HttpCaseWithWebsiteUser):
         to test (TODO).
         """
         # Remove all menu items but the first one
-        website = self.env['website'].get_current_website()
+        website = self.env.ref('base.default_website')
         website.menu_id.child_id[1:].unlink()
         # Create a new menu item whose text is very long so that we are sure
         # it is folded into the extra items "+" menu outside of edit mode and
@@ -618,8 +653,7 @@ class TestUi(HttpCaseWithWebsiteUser):
         # Previous tests are testing the dirty behavior when the extra items
         # "+" menu comes in play. For other "no dirty" tests, we just remove
         # most menu items first to make sure they pass independently.
-        website = self.env['website'].get_current_website()
-        website.menu_id.child_id[1:].unlink()
+        self.env.ref('base.default_website').menu_id.child_id[1:].unlink()
 
         self.start_tour(self.env["website"].get_client_action_url('/', True), 'website_no_dirty_page', login='admin')
 
@@ -812,3 +846,96 @@ class TestUi(HttpCaseWithWebsiteUser):
             },
         )
         self.start_tour(self.env["website"].get_client_action_url('/', True), 'background_color_gradient_precedence', login='admin')
+
+    def test_website_optimize_seo_with_multiple_fields(self):
+        model_id = self.env["ir.model"]._get_id("website")
+
+        self.env["ir.model.fields"].create(
+            [
+                {
+                    "name": "x_zone_left",
+                    "field_description": "Zone Left",
+                    "model_id": model_id,
+                    "ttype": "html",
+                },
+                {
+                    "name": "x_zone_right",
+                    "field_description": "Zone Right",
+                    "model_id": model_id,
+                    "ttype": "html",
+                },
+            ],
+        )
+
+        img = '<img src="/web/image/website.s_banner_default_image"/>'
+        website = self.env.ref('base.default_website')
+        website.write(
+            {
+                "x_zone_left": f"<div>{img}</div>",
+                "x_zone_right": f"<div>{img}</div>",
+            },
+        )
+
+        arch = """
+            <t t-name="website.seo_test_page">
+                <t t-call="website.layout">
+                    <div class="container"><div class="row">
+                        <div class="col-6"><div id="zone_left"  t-field="website.x_zone_left"/></div>
+                        <div class="col-6"><div id="zone_right" t-field="website.x_zone_right"/></div>
+                    </div></div>
+                </t>
+            </t>
+        """
+        view = self.env["ir.ui.view"].create(
+            {
+                "name": "SEO Test Page",
+                "type": "qweb",
+                "arch": arch,
+            },
+        )
+
+        self.env["website.page"].create(
+            {
+                "name": "SEO Test Page",
+                "url": "/optimize_seo_test_page",
+                "view_id": view.id,
+                "is_published": True,
+            },
+        )
+        self.start_tour(
+            self.env["website"].get_client_action_url("/optimize_seo_test_page"),
+            "website.test_website_seo_with_duplicate_images_across_html_fields",
+            login="admin",
+        )
+
+    @mute_logger("odoo.http")
+    def test_website_replace_remove_image(self):
+        self.start_tour(self.env['website'].get_client_action_url("/", True), "website_replace_remove_image", login="admin")
+
+    def test_seo_multilang_alt_check(self):
+        self.add_fr_language_to_website()
+        website = self.env.ref('base.default_website')
+        homepage = website.with_context(website_id=website.id).viewref('website.homepage')
+        homepage.arch = """
+            <t t-name="website.homepage">
+                <t t-call="website.layout">
+                    <div id="wrap" class="oe_structure">
+                        <section class="s_text_image">
+                            <p>a paragraph</p>
+                            <img src="/web/image/website.s_banner_default_image" alt="alt text in English"/>
+                        </section>
+                    </div>
+                </t>
+            </t>
+        """
+        self.start_tour(website.get_client_action_url("/fr"), "seo_multilang_alt_check", login="admin")
+
+    def test_header_bg_blur_option(self):
+        self.start_tour(self.env['website'].get_client_action_url('/', True), 'header_bg_blur_option', login='admin')
+
+    def test_header_over_the_content_bg_blur_option(self):
+        self.start_tour(
+            self.env['website'].get_client_action_url('/', True),
+            'header_over_the_content_bg_blur_option',
+            login='admin',
+        )

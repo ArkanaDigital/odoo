@@ -41,19 +41,19 @@ declare module "models" {
         livechat_channel_id: LivechatChannel;
         livechat_channel_member_history_ids: LivechatChannelMemberHistory[];
         livechat_customer_history_ids: LivechatChannelMemberHistory[];
+        livechat_customer_partner_ids: ResPartner[];
         livechat_end_dt: import("luxon").DateTime;
         livechat_expertise_ids: LivechatExpertise[];
         livechat_lang_id: ResLang;
         livechat_looking_for_help_since_dt: import("luxon").DateTime;
         livechat_note: ReturnType<typeof import("@odoo/owl").markup>|string;
         livechat_operator_id: ResPartner;
+        livechat_outcome: string|undefined;
         livechat_status: "in_progress"|"need_help"|undefined;
         livechatNoteText: string|undefined;
         livechatShouldAskLeaveConfirmation: Readonly<boolean>;
         livechatVisitorMember: ChannelMember;
-        storeAsPinnedLivechats: Store;
         transcriptUrl: Readonly<string>;
-        unpinOnThreadSwitch: boolean;
     }
     export interface LivechatChannel {
         channel_ids: DiscussChannel[];
@@ -62,19 +62,30 @@ declare module "models" {
         chatbotStep: ChatbotStep;
     }
     export interface ResPartner {
+        invite_by_self_count: number|undefined;
+        is_available: boolean|undefined;
+        lang_name: string|undefined;
         livechat_languages: String[];
+        user_livechat_username: string|undefined;
     }
     export interface ResUsers {
         is_livechat_manager: boolean;
         livechat_expertise_ids: LivechatExpertise[];
     }
+    export interface ResUsersSettings {
+        livechat_expertise_ids: number[];
+        livechat_lang_ids: number[];
+        livechat_username: string|undefined;
+    }
     export interface Store {
+        can_download_transcript: boolean|undefined;
         Chatbot: StaticMailRecord<Chatbot, typeof ChatbotClass>;
         "chatbot.message": StaticMailRecord<ChatbotMessage, typeof ChatbotMessageClass>;
         "chatbot.script": StaticMailRecord<ChatbotScript, typeof ChatbotScriptClass>;
         "chatbot.script.answer": StaticMailRecord<ChatbotScriptStepAnswer, typeof ChatbotScriptStepAnswerClass>;
         "chatbot.script.step": StaticMailRecord<ChatbotScriptStep, typeof ChatbotScriptStepClass>;
         ChatbotStep: StaticMailRecord<ChatbotStep, typeof ChatbotStepClass>;
+        has_access_livechat: boolean;
         "im_livechat.channel": StaticMailRecord<LivechatChannel, typeof LivechatChannelClass>;
         "im_livechat.channel.member.history": StaticMailRecord<LivechatChannelMemberHistory, typeof LivechatChannelMemberHistoryClass>;
         "im_livechat.channel.rule": StaticMailRecord<LivechatChannelRule, typeof LivechatChannelRuleClass>;

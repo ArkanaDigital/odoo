@@ -1,4 +1,4 @@
-import { useChildSubEnv } from "@web/owl2/utils";
+import { useSubEnv } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
@@ -35,14 +35,12 @@ export class StockValuationReport extends Component {
         })
         this.orm = useService("orm");
         this.actionService = useService("action");
-        this._t = _t;
 
         onWillStart(async () => {
             await this.controller.load(this.data);
         })
 
-        useChildSubEnv({
-            _t,
+        useSubEnv({
             controller: this.controller,
             formatMonetary: this.formatMonetary.bind(this),
         });

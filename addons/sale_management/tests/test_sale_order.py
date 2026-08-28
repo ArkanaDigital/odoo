@@ -12,6 +12,19 @@ from odoo.addons.sale_management.tests.common import SaleManagementCommon
 
 @tagged("-at_install", "post_install")
 class TestSaleOrder(SaleManagementCommon):
+    _test_user_groups = (
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+        # FIXME: base.group_erp_manager is required because the discount wizard auto-creates the
+        # company's discount product on first use (sale/wizard/sale_order_discount.py
+        # _get_discount_product, requires company.has_access("write")). Business logic ->
+        # test_optional_section_discount_line_not_editable_on_portal. Prefer the user-level group
+        # 'base.group_user' once that flow no longer requires res.company write access.
+        'base.group_erp_manager',
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -357,9 +370,12 @@ class TestSaleOrder(SaleManagementCommon):
         ]
         # Remove product description to ease comparing before/after translations
         self.product_1.description_sale = None
+        self.quotation_template_no_discount.sale_order_template_line_ids.filtered(
+            lambda line: line.product_id == self.product_1
+        ).name = False
 
         # Commence activation of Dutch vernacular
-        self.env["res.lang"]._activate_lang("nl_NL")
+        self.env["res.lang"].sudo()._activate_lang("nl_NL")
         partner_NL = self.partner.copy({"lang": "nl_NL", "name": "Pieter-Jan Hollandman"})
         names_EN = ["Product 1", "Section 1", "Note 1", "Optional products", "Optional product"]
         names_NL = ["Artikel 1", "Sectie 1", "Nota 1", "Optionele producten", "Optioneel product"]
@@ -462,9 +478,12 @@ class TestSaleOrder(SaleManagementCommon):
         sale_order._onchange_sale_order_template_id()
         self.assertEqual(
             sale_order.order_line[0].name,
-            quotation_template_with_description.sale_order_template_line_ids[0].name,
-            "The sale order line should use the quotation template's description when both \
-            product and the quotation template descriptions are set.",
+            self.product_1.display_name
+            + "\n"
+            + quotation_template_with_description.sale_order_template_line_ids[0].name,
+            "The sale order line should use the quotation template's description "
+            "(with product display_name) when both product and the quotation template descriptions"
+            " are set.",
         )
 
     def test_warning_quotation(self):
@@ -475,7 +494,7 @@ class TestSaleOrder(SaleManagementCommon):
         quotation_template.sale_order_template_line_ids = [
             Command.create({"product_id": self.product.id})
         ]
-        self.env["ir.default"].set("sale.order", "sale_order_template_id", quotation_template.id)
+        self.env["ir.default"].sudo().set("sale.order", "sale_order_template_id", quotation_template.id)
         try:
             with self.assertLogs("odoo.tests.form.onchange") as log_catcher:
                 Form(self.env["sale.order"])
@@ -492,11 +511,10 @@ class TestSaleOrder(SaleManagementCommon):
             "name": "Test Quotation Template",
             "sale_order_template_line_ids": [Command.create({"product_id": self.product.id})],
         })
-        self.env["ir.default"].set("sale.order", "sale_order_template_id", quotation_template.id)
+        self.env["ir.default"].sudo().set("sale.order", "sale_order_template_id", quotation_template.id)
         with Form(self.env["sale.order"]) as sale_order_form:
             self.assertTrue(sale_order_form.sale_order_template_id)
             self.assertTrue(sale_order_form.order_line)
-            self.assertFalse(sale_order_form.show_update_pricelist)
             sale_order_form.partner_id = self.partner
 
     def test_optional_section_discount_line_not_editable_on_portal(self):
@@ -547,3 +565,74 @@ class TestSaleOrder(SaleManagementCommon):
                 sale_order_with_option.id, optional_product_line.id, input_quantity=10
             )
             self.assertEqual(optional_product_line.discount, 20)
+
+    def test_optional_lines_price_recomputed_with_pricelist_on_portal(self):
+        """Test that optional line prices are recomputed based on pricelist quantity rules."""
+        pricelist = self.env["product.pricelist"].create({
+            "name": "Qty-based Pricelist",
+            "item_ids": [
+                Command.create({
+                    "applied_on": "1_product",
+                    "product_tmpl_id": self.optional_product.product_tmpl_id.id,
+                    "min_quantity": 1,
+                    "compute_price": "fixed",
+                    "fixed_price": 100.0,
+                }),
+                Command.create({
+                    "applied_on": "1_product",
+                    "product_tmpl_id": self.optional_product.product_tmpl_id.id,
+                    "min_quantity": 10,
+                    "compute_price": "fixed",
+                    "fixed_price": 80.0,
+                }),
+            ],
+        })
+        self.sale_order.write({
+            "pricelist_id": pricelist.id,
+            "order_line": [
+                Command.create({
+                    "display_type": "line_section",
+                    "name": "Optional products",
+                    "is_optional": True,
+                }),
+                Command.create({"product_id": self.optional_product.id, "product_uom_qty": 1}),
+            ],
+        })
+
+        line = self._get_optional_product_lines(self.sale_order)
+        self.assertEqual(line.price_unit, 100.0)
+
+        with MockRequest(self.env):
+            CustomerPortal().portal_quote_option_update(
+                self.sale_order.id, line.id, input_quantity=10
+            )
+        self.assertEqual(line.price_unit, 80.0)
+
+        self.env["ir.config_parameter"].sudo().set_bool("sale.disable_sale_update", True)
+        with MockRequest(self.env):
+            CustomerPortal().portal_quote_option_update(
+                self.sale_order.id, line.id, input_quantity=1
+            )
+        self.assertEqual(line.price_unit, 80.0)
+
+    def test_update_optional_line_without_product_on_portal(self):
+        """Test updating an optional line without a product on the portal."""
+        self.sale_order.write({
+            "order_line": [
+                Command.create({
+                    "display_type": "line_section",
+                    "name": "Optional products",
+                    "is_optional": True,
+                }),
+                Command.create({"name": "Test line", "product_uom_qty": 1}),
+            ],
+        })
+
+        line = self._get_optional_product_lines(self.sale_order)
+        self.assertFalse(line.product_id)
+
+        with MockRequest(self.env):
+            CustomerPortal().portal_quote_option_update(
+                self.sale_order.id, line.id, input_quantity=5
+            )
+        self.assertEqual(line.product_uom_qty, 5)

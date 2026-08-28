@@ -16,6 +16,8 @@ from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 @tagged('-at_install', 'post_install')
 class TestPurchase(AccountTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -280,6 +282,33 @@ class TestPurchase(AccountTestInvoicingCommon):
         self.assertEqual(po.order_line[0].price_unit, 200)
         self.assertEqual(po.order_line[1].price_unit, 0, "No vendor with matching UoM is found, so price should be 0")
 
+    def test_amount_to_invoice_at_date_with_uom(self):
+        self.env.user.group_ids += self.env.ref('uom.group_uom')
+        uom_dozens = self.env.ref('uom.product_uom_dozen')
+
+        product_data = {
+            'name': 'SuperProduct',
+            'type': 'consu',
+            'seller_ids': [Command.create({
+                'partner_id': self.partner_a.id,
+                'price': 100,
+            })]
+        }
+        product = self.env['product.product'].create(product_data)
+
+        po_form = Form(self.env['purchase.order'])
+        po_form.partner_id = self.partner_a
+        with po_form.order_line.new() as po_line:
+            po_line.product_id = product
+            po_line.uom_id = uom_dozens
+            po_line.product_qty = 2
+        po = po_form.save()
+
+        po.order_line[0].qty_received = 2
+
+        self.assertEqual(po.order_line[0].price_unit, 1200)
+        self.assertEqual(po.order_line[0].amount_to_invoice_at_date, 2400)
+
     def test_on_change_quantity_description(self):
         """
         When a user changes the quantity of a product in a purchase order it
@@ -305,9 +334,6 @@ class TestPurchase(AccountTestInvoicingCommon):
         correctly handled when creating a purchase order i-e product having a price of 100 usd
         and when purchasing in EUR company the correct conversion should be applied
         """
-        self.env['decimal.precision'].search([
-            ('name', '=', 'Product Price'),
-        ]).digits = 5
         product = self.env['product.product'].create({
             'name': 'product_test',
             'uom_id': self.env.ref('uom.product_uom_unit').id,
@@ -1153,8 +1179,9 @@ class TestPurchase(AccountTestInvoicingCommon):
         po = po_form.save()
         self.assertEqual(po.order_line.price_unit, 5)
         # Update the price manually and then change the quantity
-        with Form(po.order_line) as line:
-            line.price_unit = 100.0
+        with Form(po) as po_form:
+            with po_form.order_line.edit(0) as po_line:
+                po_line.price_unit = 100.0
         po.order_line.product_qty = 10
         self.assertEqual(po.order_line.price_unit, 100.0, "Price should remain 100.0 after changing the quantity")
 
@@ -1448,6 +1475,8 @@ class TestPurchase(AccountTestInvoicingCommon):
 
 @tagged('at_install', '-post_install')
 class TestPurchaseWithoutStock(AccountTestInvoicingCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     def test_qty_received_with_different_purchase_and_product_uom(self):
         """Ensure that when a purchase order line uses a UoM different from the

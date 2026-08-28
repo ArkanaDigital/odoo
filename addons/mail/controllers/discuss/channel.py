@@ -15,12 +15,35 @@ from odoo.addons.mail.tools.store_handler import store_handler
 
 class DiscussChannelWebclientController(WebclientController):
     """Override to add discuss channel specific features."""
-    @classmethod
-    def _add_has_unpinned_channels_to_store(self, store: Store):
-        # sudo: discuss.channel.member: sudo for performance. Checking existence of unpinned
+    def _process_request_loop(self, store: Store, fetch_params):
+        """Override to add discuss channel specific features."""
+        # aggregate of channels to return, to batch them in a single query when all the fetch params
+        # have been processed
+        request.update_context(
+            channels=request.env["discuss.channel"],
+            add_channels_last_message=False,
+            add_channels_last_needaction=False,
+        )
+        super()._process_request_loop(store, fetch_params)
+        channels = request.env.context["channels"]
+        if channels:
+            store.add(channels, "_store_channel_fields")
+            store.add(channels.self_member_id, ["is_favorite"])
+        if request.env.context["add_channels_last_message"]:
+            # fetch channels data before messages to benefit from prefetching (channel info might
+            # prefetch a lot of data that message format could use)
+            store.add(channels._get_last_messages(), "_store_message_fields")
+        if request.env.context["add_channels_last_needaction"] and (
+            channels_with_needaction := channels.filtered("message_needaction_counter")
+        ):
+            store.add(channels_with_needaction._get_last_needaction_messages(), "_store_message_fields")
+
+    @store_handler("has_hidden_channels", audience="everyone")
+    def store_has_hidden_channels(self, store: Store):
+        # sudo: discuss.channel.member: sudo for performance. Checking existence of hidden
         # channels is acceptable, even if the channel is no longer accessible to the user.
         store.add_global_values(
-            has_unpinned_channels=request.env["discuss.channel.member"]
+            has_hidden_channels=request.env["discuss.channel.member"]
             .sudo()
             .search_count(
                 [
@@ -33,30 +56,6 @@ class DiscussChannelWebclientController(WebclientController):
             > 0,
         )
 
-    def _process_request_loop(self, store: Store, fetch_params):
-        """Override to add discuss channel specific features."""
-        # aggregate of channels to return, to batch them in a single query when all the fetch params
-        # have been processed
-        request.update_context(
-            channels=request.env["discuss.channel"], add_channels_last_message=False
-        )
-        super()._process_request_loop(store, fetch_params)
-        channels = request.env.context["channels"]
-        if channels:
-            store.add(channels, "_store_channel_fields")
-            store.add(channels.self_member_id, ["is_favorite"])
-        if request.env.context["add_channels_last_message"]:
-            # fetch channels data before messages to benefit from prefetching (channel info might
-            # prefetch a lot of data that message format could use)
-            store.add(channels._get_last_messages(), "_store_message_fields")
-
-    def store_init_messaging(self, store: Store):
-        member_domain = [("is_self", "=", True), ("rtc_inviting_session_id", "!=", False)]
-        channel_domain = [("channel_member_ids", "any", member_domain)]
-        channels = request.env["discuss.channel"].search_fetch(channel_domain)
-        request.update_context(channels=request.env.context["channels"] | channels)
-        super().store_init_messaging(store)
-
     @store_handler("channels_as_member", audience="everyone")
     def store_channels_as_member(self, store: Store):
         channels = request.env["discuss.channel"].search_fetch(
@@ -66,7 +65,7 @@ class DiscussChannelWebclientController(WebclientController):
             channels=request.env.context["channels"] | channels,
             add_channels_last_message=True,
         )
-        self._add_has_unpinned_channels_to_store(store)
+        self.store_has_hidden_channels(store)
 
     @store_handler("discuss.channel", audience="everyone")
     def store_add_discuss_channel_to_context(self, store: Store, ids=(), with_last_message=False):
@@ -107,6 +106,17 @@ class DiscussChannelWebclientController(WebclientController):
         ):
             member.is_favorite = is_favorite
 
+    @store_handler(
+        "/discuss/channel/meeting_to_group_chat", audience="everyone", readonly=True,
+    )
+    def store_convert_meeting_to_group_chat(self, store: Store, channel_id):
+        if channel := request.env["discuss.channel"].search([("id", "=", channel_id)]):
+            channel.default_display_mode = False
+            notification = Markup(
+                '<div class="o_mail_notification" data-oe-type="meeting_to_group_chat">%s</div>',
+            ) % self.env._("%(user)s converted this meeting into a group chat") % {"user": self.env.user.name}
+            channel.message_post(body=notification, subtype_xmlid="mail.mt_important_notification")
+
     @store_handler("/discuss/channel/messages", audience="everyone", readonly=False)
     def store_get_discuss_channel_messages(self, store: Store, channel_id, fetch_params=None):
         channel = request.env["discuss.channel"].search([("id", "=", channel_id)])
@@ -124,7 +134,7 @@ class DiscussChannelWebclientController(WebclientController):
             [("channel_id", "=", channel_id), ("is_self", "=", True)],
         ):
             member.unpin_dt = False if pinned else fields.Datetime.now()
-        self._add_has_unpinned_channels_to_store(store)
+        self.store_has_hidden_channels(store)
 
     @store_handler("/discuss/get_or_create_chat", audience="everyone", readonly=False)
     def store_get_or_create_chat(self, store: Store, partners_to):
@@ -134,7 +144,7 @@ class DiscussChannelWebclientController(WebclientController):
             store.resolve_data_request(
                 lambda res: res.one("channel", "_store_channel_fields", value=resolve_channel),
             )
-            self._add_has_unpinned_channels_to_store(store)
+            self.store_has_hidden_channels(store)
 
     @store_handler("/discuss/create_channel", audience="everyone", readonly=False)
     def store_create_channel(self, store: Store, name, group_id, is_readonly):
@@ -147,14 +157,45 @@ class DiscussChannelWebclientController(WebclientController):
                 lambda res: res.one("channel", "_store_channel_fields", value=resolve_channel),
             )
 
-    @store_handler("/discuss/channel/add_members", audience="logged_in", readonly=False)
-    def store_discuss_channel_add_members(self, store: Store, channel_id, partner_ids=None, user_ids=None, invite_to_rtc_call=False, post_joined_message=True):
+    @store_handler("/discuss/channel/add_members", audience="everyone", readonly=False)
+    def store_discuss_channel_add_members(
+        self,
+        store: Store,
+        channel_id,
+        partner_ids=None,
+        user_ids=None,
+        guest_ids=None,
+        emails=None,
+        invite_to_rtc_call=False,
+        post_joined_message=True,
+    ):
         channel = request.env["discuss.channel"].search_fetch([("id", "=", channel_id)])
         if not channel:
             return
+        users = request.env["res.users"].search_fetch(
+            [("id", "in", user_ids or [])], field_names=["share", "email"],
+        )
+        partners = request.env["res.partner"].search_fetch(
+            [("id", "in", partner_ids or [])], field_names=["partner_share", "email"],
+        )
+        if self.env.user._is_internal():
+            guests = request.env["mail.guest"].search_fetch([("id", "in", guest_ids or [])])
+            if channel._allow_invite_by_email() and (
+                all_emails := [
+                    *(emails or []),
+                    *users.filtered(lambda u: u.share).mapped("email"),
+                    *partners.filtered(lambda p: p.partner_share).mapped("email"),
+                ]
+            ):
+                channel.invite_by_email(emails=all_emails)
+        else:
+            # Non-internal users can only add themselves as guest.
+            _, guest = self.env["res.users"]._get_current_persona()
+            guests = guest if guest.id in (guest_ids or []) else request.env["mail.guest"]
         channel._add_members(
-            partners=request.env["res.partner"].search_fetch([("id", "in", partner_ids or [])]),
-            users=request.env["res.users"].search_fetch([("id", "in", user_ids or [])]),
+            partners=partners,
+            users=users,
+            guests=guests,
             invite_to_rtc_call=invite_to_rtc_call,
             post_joined_message=post_joined_message,
         )
@@ -163,38 +204,19 @@ class DiscussChannelWebclientController(WebclientController):
     def store_create_group(
         self,
         store: Store,
-        partners_to,
+        *,
+        users_to,
         default_display_mode=False,
         name="",
     ):
         if resolve_channel := request.env["discuss.channel"]._create_group(
+            users_to=request.env["res.users"].with_context(active_test=False).search_fetch([("id", "in", users_to)]),
             name=name,
-            partners_to=partners_to,
             default_display_mode=default_display_mode,
         ):
             store.resolve_data_request(
                 lambda res: res.one("channel", "_store_channel_fields", value=resolve_channel),
             )
-
-    @classmethod
-    def _store_init_messaging_global_fields(cls, res: Store.FieldList, bus_last_id):
-        members = request.env["discuss.channel.member"].search_fetch(
-            [
-                ("is_self", "=", True),
-                ("is_pinned", "=", True),
-                ("channel_id.active", "=", True),
-                ("mute_until_dt", "=", False),
-            ],
-        )
-        members_with_unread = members.filtered(
-            lambda member: (
-                member.message_unread_counter or member.channel_id.message_needaction_counter
-            ),
-        )
-        res.attr("init_unread_channel_ids", members_with_unread.channel_id.ids)
-        # fetch channels data before calling super to benefit from prefetching (channel info might
-        # prefetch a lot of data that super could use, about the current user in particular)
-        super()._store_init_messaging_global_fields(res, bus_last_id)
 
 
 class ChannelController(http.Controller):
@@ -229,7 +251,9 @@ class ChannelController(http.Controller):
     def discuss_channel_notify_typing(self, channel_id, is_typing):
         channel = request.env["discuss.channel"].search([("id", "=", channel_id)])
         if not channel:
-            raise request.not_found()
+            # Ignore if the conversation was deleted in the meantime (e.g. composer
+            # still notifies stop-typing after an empty chat was unlinked on close).
+            return
         # Do not create member automatically when setting typing to `False`
         # as it could be resulting from the user leaving.
         if is_typing:
@@ -323,6 +347,16 @@ class ChannelController(http.Controller):
         if not channel_member:
             raise NotFound()
         channel_member.unlink()
+
+    @mail_route("/discuss/channel/member/resend_invitation", methods=["POST"], type="jsonrpc", auth="user")
+    def discuss_channel_member_resend_invitation(self, member_id):
+        channel_member = request.env["discuss.channel.member"].search([("id", "=", member_id)])
+        if not channel_member or not channel_member.invitation_sent_dt:
+            raise NotFound()
+        channel = channel_member.channel_id
+        if not channel.self_member_id:
+            raise AccessError(self.env._("Only members can send the invitation link again."))
+        channel.invite_by_email([channel_member.guest_id.email or channel_member.partner_id.email])
 
     @mail_route("/discuss/channel/member/set_role", methods=["POST"], type="jsonrpc", auth="public")
     def discuss_channel_set_channel_member_role(self, member_id, channel_role):

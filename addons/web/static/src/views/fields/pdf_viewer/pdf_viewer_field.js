@@ -1,4 +1,3 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
@@ -6,7 +5,7 @@ import { url } from "@web/core/utils/urls";
 import { standardFieldProps } from "../standard_field_props";
 import { FileUploader } from "../file_handler";
 
-import { Component, onWillUpdateProps, proxy } from "@odoo/owl";
+import { Component, onWillUpdateProps, proxy, signal, t, useOnChange, useProps } from "@odoo/owl";
 import { hidePDFJSButtons } from "@web/core/utils/pdfjs";
 
 export class PdfViewerField extends Component {
@@ -14,10 +13,12 @@ export class PdfViewerField extends Component {
     static components = {
         FileUploader,
     };
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        fileNameField: { type: String, optional: true },
-    };
+        fileNameField: t.string().optional(),
+    });
+
+    iframeViewerPdfRef = signal.ref();
 
     setup() {
         this.notification = useService("notification");
@@ -26,22 +27,21 @@ export class PdfViewerField extends Component {
             isValid: true,
             objectUrl: "",
         });
-        this.iframeViewerPdfRef = useRef("iframeViewerPdf");
         onWillUpdateProps((nextProps) => {
             if (nextProps.readonly) {
                 this.state.objectUrl = "";
             }
         });
-        useLayoutEffect(
+        useOnChange(
+            () => [this.iframeViewerPdfRef()],
             (el) => {
                 if (el) {
-                    hidePDFJSButtons(this.iframeViewerPdfRef.el, {
+                    hidePDFJSButtons(el, {
                         hideDownload: true,
                         hidePrint: true,
                     });
                 }
-            },
-            () => [this.iframeViewerPdfRef.el]
+            }
         );
     }
 
@@ -66,9 +66,11 @@ export class PdfViewerField extends Component {
     }
 
     update({ name, data }) {
-        const changes = {
-            [this.props.name]: data || false,
-        };
+        const payload = data || name ? {
+            filename: name || "",
+            content: data || false,
+        } : false;
+        const changes = { [this.props.name]: payload };
         if (this.props.fileNameField && this.props.record.data[this.props.fileNameField] !== name) {
             changes[this.props.fileNameField] = name || false;
         }

@@ -208,23 +208,36 @@ export class EmbeddedComponentPlugin extends Plugin {
         if (getStateChangeManager) {
             env.getStateChangeManager = this.getStateChangeManager.bind(this);
         }
+        const selectionManager = { restoreSelection: null };
         if (getEditableDescendants) {
             env.getEditableDescendants = getEditableDescendants;
             // Enable the automatic selection restoration feature in @see useEditableDescendants
             Object.assign(env.editorShared, {
                 selection: { ...this.dependencies.selection },
             });
+            env.selectionManager = selectionManager;
         }
         this.trigger("on_will_mount_component_handlers", { name, env, props });
-        const { root } = mountComponent(this.app, Component, host, props, env, {
-            onAfterComplete: () => this.trigger("on_component_mounted_handlers"),
-        });
+        // If a pending operation should be executed after the first mount of
+        // an inserted blueprint, run it synchronously right after the mounted
+        // callbacks, in the same call stack as the DOM insertion.
         const onComponentInserted = this.extractOnComponentInserted(host);
-        if (onComponentInserted) {
-            // If a pending operation should be executed after the first mount
-            // of an inserted blueprint, add it as the last `onMounted` callback
-            root.node.mounted.push(onComponentInserted);
-        }
+        const { root } = mountComponent(this.app, Component, host, props, env, {
+            onBeforeComplete: () => {
+                if (this.isDestroyed) {
+                    return false;
+                }
+                if (!getEditableDescendants) {
+                    return;
+                }
+                selectionManager.restoreSelection =
+                    this.dependencies.selection.preserveSelection().restore;
+            },
+            onAfterComplete: () => {
+                onComponentInserted?.();
+                this.trigger("on_component_mounted_handlers");
+            },
+        });
         const info = {
             root,
             host,
@@ -331,6 +344,7 @@ export class EmbeddedComponentPlugin extends Plugin {
                 this.dependencies.protectedNode.setProtectingNode(editableDescendant, false);
             }
         });
+        return elem;
     }
 
     cleanForSave(clone) {
@@ -346,6 +360,7 @@ export class EmbeddedComponentPlugin extends Plugin {
             delete host.dataset.oeProtected;
             delete host.dataset.embeddedState;
         });
+        return clone;
     }
 
     preProcessSanitizedElem(elem) {

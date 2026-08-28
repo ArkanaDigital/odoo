@@ -1,6 +1,7 @@
-import { onWillRender, useRef } from "@web/owl2/utils";
+import { onWillRender } from "@web/owl2/utils";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillStart, usePlugin, proxy, signal, t, useProps } from "@odoo/owl";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
@@ -15,25 +16,28 @@ export class OfflineSearchBar extends Component {
         Dropdown,
         DropdownItem,
     };
-    static props = {
-        autofocus: { type: Boolean, optional: true },
-        toggler: { type: Object, optional: true },
-    };
+    props = useProps({
+        autofocus: t.boolean().optional(),
+        toggler: t.object().optional(),
+    });
+
+    rootRef = signal.ref();
+    autofocusRef = signal.ref();
 
     setup() {
         this.ui = useService("ui");
-        this.rootRef = useRef("root");
-        this.inputRef =
-            this.env.config.disableSearchBarAutofocus || !this.props.autofocus
-                ? useRef("autofocus")
-                : useAutofocus({ mobile: this.ui.isSmall }); // only force the focus on touch devices on small screens
+        this.inputRef = this.autofocusRef;
+        if (!(this.env.config.disableSearchBarAutofocus || !this.props.autofocus)) {
+            // only force the focus on touch devices on small screens
+            useAutofocus({ ref: this.autofocusRef, mobile: this.ui.isSmall });
+        }
         this.searchBarDropdownState = useDropdownState();
         this.visibilityState = proxy(this.props.toggler?.state || { showSearchBar: true });
 
         useHotkey("backspace", () => this.onBackspace(), {
-            area: () => this.inputRef.el,
+            area: () => this.inputRef(),
             bypassEditableProtection: true,
-            isAvailable: () => this.inputRef.el.value === "",
+            isAvailable: () => this.inputRef()?.value === "",
         });
 
         this.allSearches = [];
@@ -42,10 +46,10 @@ export class OfflineSearchBar extends Component {
             limit: INITIAL_SEARCH_LIMIT,
         });
 
-        const offlineService = useService("offline");
+        const offlinePlugin = usePlugin(OfflinePlugin);
         onWillStart(async () => {
             const { actionId, viewType } = this.env.config;
-            this.allSearches = await offlineService.getAvailableSearches(actionId, viewType);
+            this.allSearches = await offlinePlugin.getAvailableSearches(actionId, viewType);
             this.emptySearch = this.allSearches.find((search) => !search.facets.length) || null;
             this.state.searches = this.allSearches;
         });
@@ -78,7 +82,7 @@ export class OfflineSearchBar extends Component {
     }
 
     onBackspace() {
-        if (this.emptySearch && this.inputRef.el.value === "") {
+        if (this.emptySearch && this.inputRef()?.value === "") {
             this.selectSearch(this.emptySearch);
         }
     }
@@ -104,7 +108,10 @@ export class OfflineSearchBar extends Component {
     }
 
     onSelect(search) {
-        this.inputRef.el.value = "";
+        const el = this.inputRef();
+        if (el) {
+            el.value = "";
+        }
         this.selectSearch(search);
     }
 

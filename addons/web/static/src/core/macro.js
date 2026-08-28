@@ -1,24 +1,23 @@
-import { assertType, types as t } from "@odoo/owl";
+import { assertType, t } from "@odoo/owl";
 import { isVisible } from "@web/core/utils/ui";
 import { delay } from "@web/core/utils/concurrency";
 
 const macroSchema = t.strictObject({
-    "name?": t.string(),
-    "timeout?": t.number(),
-    "allowDelayToRemove?": t.boolean(),
+    name: t.string().optional(),
+    timeout: t.number().optional(),
     steps: t.array(
         t.customValidator(
             t.object({
-                "action?": t.or([t.function(), t.string()]),
-                "timeout?": t.number(),
-                "trigger?": t.or([t.function(), t.string()]),
+                action: t.or([t.function(), t.string()]).optional(),
+                timeout: t.number().optional(),
+                trigger: t.or([t.function(), t.string()]).optional(),
             }),
             (step) => step.action || step.trigger
         )
     ),
-    "onComplete?": t.function(),
-    "onStep?": t.function(),
-    "onError?": t.function(),
+    onComplete: t.function().optional(),
+    onStep: t.function().optional(),
+    onError: t.function().optional(),
 });
 
 class MacroError extends Error {
@@ -43,14 +42,11 @@ async function performAction(trigger, action) {
     }
 }
 
-async function waitForTrigger(trigger, waitDelay = false) {
+async function waitForTrigger(trigger) {
     if (!trigger) {
         return;
     }
     try {
-        if (waitDelay) {
-            await delay(50);
-        }
         return await waitUntil(() => {
             if (typeof trigger === "function") {
                 return trigger();
@@ -120,8 +116,7 @@ export class Macro {
             const step = this.steps[this.currentIndex];
             const timeoutDelay = step.timeout || this.timeout || 10000;
             const executeStep = async () => {
-                // To be remove ASAP because it allows non deterministic behaviors.
-                const trigger = await waitForTrigger(step.trigger, this.allowDelayToRemove);
+                const trigger = await waitForTrigger(step.trigger);
                 const result = await performAction(trigger, step.action);
                 await this.onStep({ step, trigger, index: this.currentIndex });
                 return result;

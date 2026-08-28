@@ -11,16 +11,7 @@ export function render(component, deep = false) {
 }
 
 export const onWillRender = owl.onWillRender;
-export const onRendered = owl.onRendered;
-export const useRef = owl.useRef;
 export const useComponent = owl.useComponent;
-export const useExternalListener = owl.useExternalListener;
-export const reactive = owl.reactive;
 export const useLayoutEffect = owl.useLayoutEffect;
 export const useEnv = owl.useEnv;
-export const useChildEnv = owl.useChildEnv;
-delete owl.useChildEnv;
-export const provideEnv = owl.provideEnv;
-delete owl.provideEnv;
 export const useSubEnv = owl.useSubEnv;
-export const useChildSubEnv = owl.useChildSubEnv;

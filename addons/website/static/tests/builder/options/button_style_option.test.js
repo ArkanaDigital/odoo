@@ -4,6 +4,7 @@ import {
     setupWebsiteBuilder,
 } from "@website/../tests/builder/website_helpers";
 import { contains } from "@web/../tests/web_test_helpers";
+import { delay } from "@web/core/utils/concurrency";
 
 describe.current.tags("desktop");
 defineWebsiteModels();
@@ -112,11 +113,23 @@ test("should preview button styles in dropdown", async () => {
 });
 
 test("should have a button linking to theme tab", async () => {
-    await setupWebsiteBuilder('<p><a href="#" class="btn btn-primary test-target">clickme</a></p>');
+    await setupWebsiteBuilder(
+        `<p>
+            <a href="#" class="btn btn-custom test-target">clickme</a>
+        </p>`,
+        {
+            loadIframeBundles: true,
+        }
+    );
 
     await contains(":iframe p > a.test-target").click();
-    await contains("a.o-hb-button-style-btn-edit").click();
+    await contains("a.o-hb-theme-tab-link").click();
+
+    // Hoot disables transitions by default, so the tab switch relies on the
+    // fallback instead of a transitionend event.
+    await delay(500);
     await animationFrame();
+    expect("button[data-name='customize']").not.toHaveClass("active");
     expect("button[data-name='theme']").toHaveClass("active");
 });
 
@@ -146,6 +159,6 @@ test("button border width is not previewed", async () => {
     });
     // If border width is 0, previewed width is 0
     expect(".options-container .o-hb-select-toggle .o-hb-button-style-preview").toHaveStyle({
-        "border-color": "rgba(0, 0, 0, 0)",
+        "border-width": "0px",
     });
 });

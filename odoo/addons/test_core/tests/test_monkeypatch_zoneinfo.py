@@ -1,6 +1,6 @@
 import datetime
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from odoo.tests.common import tagged, TransactionCase
@@ -14,7 +14,7 @@ _logger = logging.getLogger(__name__)
 class TestTZ(TransactionCase):
 
     def test_tz_legacy(self):
-        d = datetime.datetime(1969, 7, 16)
+        d = datetime.datetime(2014, 7, 21)
         # See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
         def assertTZEqual(tz1, tz2):
             self.assertEqual(d.replace(tzinfo=tz1).strftime('%z'), d.replace(tzinfo=tz2).strftime('%z'))
@@ -72,3 +72,31 @@ class TestTZ(TransactionCase):
             self.env['res.partner'].create({'name': 'test', 'tz': 'localtime'})
         with self.assertRaises(ValueError):
             self.env['res.partner'].create({'name': 'test', 'tz': 'Factory'})
+
+    def test_login_deprecated_timezone(self):
+        # browsers report the CLDR name, which is deprecated for some timezones
+        user = self.env['res.users'].create({
+            'name': 'tz test',
+            'login': 'tz_test',
+            'password': 'tz_test',
+            'tz': False,
+        })
+
+        def login(cookie_tz):
+            user.write({'tz': False, 'login_date': False})
+            request = MagicMock(cookies={'tz': cookie_tz})
+            with patch('odoo.addons.base.models.res_users.request', request):
+                self.env['res.users']._login(
+                    {'login': 'tz_test', 'password': 'tz_test', 'type': 'password'},
+                    {'interactive': False},
+                )
+            user.invalidate_recordset()
+            return user.tz
+
+        if 'US/Eastern' not in all_timezones:
+            self.assertEqual(login('US/Eastern'), 'America/New_York')
+        self.assertEqual(login('Europe/Brussels'), 'Europe/Brussels')
+        # a cookie holding anything else leaves the timezone unset
+        self.assertFalse(login('Nowhere/Unknown'))
+        self.assertFalse(login('/etc/passwd'))
+        self.assertFalse(login(''))

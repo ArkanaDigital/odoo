@@ -1,9 +1,14 @@
 import { browser } from "@web/core/browser/browser";
 import { registry } from "@web/core/registry";
 
-const CLICK_ON_CHAT_STEP = "click-on-chat-action";
+/** Pathname of the channel invitation link, which holds the channel secret token. */
+function getInvitationPathname() {
+    /** @type {import("models").Store} */
+    const store = odoo.__WOWL_DEBUG__.root.env.services["mail.store"];
+    return new URL(store.discuss.thread.channel.invitationLink).pathname;
+}
 
-function getMeetingViewTourSteps({ inWelcomePage = false } = {}) {
+function getMeetingViewTourSteps({ isPublicPage = false } = {}) {
     const steps = [
         { trigger: ".o-mail-Meeting" },
         {
@@ -24,7 +29,6 @@ function getMeetingViewTourSteps({ inWelcomePage = false } = {}) {
         {
             trigger: ".o-mail-Meeting [title='Chat']",
             run: "click",
-            content: CLICK_ON_CHAT_STEP,
         },
         {
             trigger:
@@ -71,15 +75,35 @@ function getMeetingViewTourSteps({ inWelcomePage = false } = {}) {
         },
         { trigger: "body:not(:has(.o-mail-Meeting))" },
     ];
-    if (inWelcomePage) {
+    if (isPublicPage) {
         steps.unshift(
-            { trigger: "input[name='guest_name']", run: "edit Guest" },
             {
-                trigger: ".modal .btn-close",
+                trigger: ".modal:has(button:text('Use Camera')) .btn-close",
                 run: "click",
             },
-            { trigger: "[title='Join Channel']", run: "click" }
+            { trigger: "input[name='guest_name']", run: "edit Guest" },
+            { trigger: "[title='Join Channel']", run: "click" },
+            {
+                trigger: ".o-mail-Meeting",
+                run() {
+                    if (window.location.pathname !== getInvitationPathname()) {
+                        console.error(
+                            `Meeting view should show the invitation link, got "${window.location.pathname}".`
+                        );
+                    }
+                },
+            }
         );
+        steps.push({
+            trigger: "body:not(:has(.o-mail-Meeting))",
+            run() {
+                if (window.location.pathname === getInvitationPathname()) {
+                    console.error(
+                        "Leaving the meeting view should remove the invitation link from the URL."
+                    );
+                }
+            },
+        });
     }
     return steps;
 }
@@ -95,5 +119,5 @@ registry
         },
     })
     .add("discuss.meeting_view_public_tour", {
-        steps: () => getMeetingViewTourSteps({ inWelcomePage: true }),
+        steps: () => getMeetingViewTourSteps({ isPublicPage: true }),
     });

@@ -2,7 +2,6 @@ import { registry } from "@web/core/registry";
 import { stepUtils } from "@web_tour/tour_utils";
 import * as tourUtils from "@sale/js/tours/tour_utils";
 
-import { markup } from "@odoo/owl";
 
 registry.category("web_tour.tours").add('sale_timesheet_tour', {
     steps: () => [
@@ -34,15 +33,11 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     isActive: ['button.o-kanban-button-new.dropdown'], // if the project template dropdown is active
     trigger: 'button.o-dropdown-item:contains("New Project")',
     content: 'Let\'s create a regular project.',
-    tooltipPosition: 'right',
     run: "click",
 }, {
     trigger: '.o_field_widget.o_project_name input',
     content: 'Select your project name (e.g. Project for Freeman)',
     run: "edit Project for Freeman",
-}, {
-    trigger: 'div[name="allow_billable"] input',
-    run: 'click',
 }, {
     trigger: 'button[name="action_view_tasks"]',
     content: 'Click on Create button to create and enter to this newest project.',
@@ -60,6 +55,9 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     run: "click",
 }, {
     trigger: ".nav-link:contains('Settings')",
+    run: "click",
+}, {
+    trigger: "div[name='allow_billable'] input",
     run: "click",
 }, {
     trigger: "div[name='allow_milestones'] input",
@@ -89,11 +87,10 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
 }, {
     trigger: 'button.o_kanban_edit',
     content: 'Click on Edit button to enter to the form view of the task.',
-    tooltipPosition: 'bottom',
     run: "click",
 }, {
     trigger: 'div[name="partner_id"] input',
-    content: markup('Select the customer of your Sales Order <i>(e.g. Brandon Freeman)</i>. Since we have a Sales Order for this customer with a prepaid service product which the remaining hours to deliver is greater than 0, the Sales Order Item in the task should be contain the Sales Order Item containing this prepaid service product.'),
+    content: 'Select the customer of your Sales Order (e.g. Brandon Freeman). Since we have a Sales Order for this customer with a prepaid service product which the remaining hours to deliver is greater than 0, the Sales Order Item in the task should be contain the Sales Order Item containing this prepaid service product.',
     run: "edit Brandon Freeman",
 }, {
     trigger: 'div[name="partner_id"] ul > li:first-child > a:contains(Freeman)',
@@ -140,23 +137,8 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     content: 'Click on this stat button to see the SO linked to the SOL of the task.',
     run: "click",
 }, {
-    trigger: 'div[name="order_line"]',
+    trigger: 'div[name="order_line"] tbody tr:first-child td[name="qty_delivered"]:contains("1.00")',
     content: 'Check if the quantity delivered is equal to 1 hour.',
-    run({ queryFirst }) {
-        const header = this.anchor.querySelectorAll("thead > tr");
-        if (!header || header.length === 0)
-            console.error('No Sales Order Item is found in the Sales Order.');
-        const tr = [...header][0];
-        let index = -1;
-        for (let i = 0; i < tr.children.length; i++) {
-            const th = tr.children.item(i);
-            if (th.dataset && th.dataset.name === 'qty_delivered')
-                index = i;
-        }
-        const qtyDelivered = queryFirst(`tbody > tr:first-child > td.o_data_cell:eq(${index})`, { root: this.anchor });
-        if (qtyDelivered.textContent !== "1.00")
-            console.error('The quantity delivered on this Sales Order Item should be equal to 1.00 hour. qtyDelivered = ' + qtyDelivered);
-    },
 }, {
     trigger: 'button[data-menu-xmlid="project.menu_project_config"]',
     content: 'Click on the Configuration menu.',
@@ -173,7 +155,6 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     isActive: ['button.o_list_button_add.dropdown'], // if the project template dropdown is active
     trigger: 'button.o-dropdown-item:contains("New Project")',
     content: 'Let\'s create a regular project.',
-    tooltipPosition: 'right',
     run: "click",
 },
 {
@@ -186,14 +167,14 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
 }, {
     trigger: 'div[name="allow_billable"] input',
     content: 'Check the allow_billable',
-    run: function (actions) {
+    async run(actions) {
         if (!this.anchor.checked) {
-            actions.click();
+            await actions.click();
         }
     }
 }, {
     trigger: 'div[name="partner_id"] input',
-    content: markup('Add the customer for this project to select an SO and SOL for this customer <i>(e.g. Brandon Freeman)</i>.'),
+    content: 'Add the customer for this project to select an SO and SOL for this customer (e.g. Brandon Freeman).',
     run: "edit Brandon Freeman",
 }, {
     trigger: 'div[name="partner_id"] ul > li:first-child > a:contains(Freeman)',
@@ -204,7 +185,7 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     content: 'Select a Sales Order Item as Default Sales Order Item for each task in this project.',
     run: "edit S",
 }, {
-    trigger: '[name="sale_line_id"] ul.ui-autocomplete > li:first-child > a:not(:has(i.fa))',
+    trigger: '[name="sale_line_id"] ul.ui-autocomplete > li:first-child > a:not(:has(i.oi))',
     content: 'Select the Sales Order Item in the autocomplete dropdown.',
     run: "click",
 },
@@ -224,16 +205,15 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     content: 'Select an employee to link a Sales Order Item on his timesheets into this project.',
     run: 'click',
 }, {
-    trigger: '[name="employee_id"] ul.ui-autocomplete > li:first-child > a:not(:has(i.fa))',
+    trigger: '[name="employee_id"] ul.ui-autocomplete > li:first-child > a:not(:has(i.oi))',
     content: 'Select the first employee in the autocomplete dropdown',
     run: "click",
 }, {
     trigger: 'div[name="sale_line_employee_ids"] div[name="sale_line_id"] input',
     content: 'Select the Sales Order Item to link to the timesheets of this employee.',
-    tooltipPosition: 'bottom',
     run: "edit S",
 }, {
-    trigger: '[name=sale_line_id] ul.ui-autocomplete > li:first-child > a:not(:has(i.fa))',
+    trigger: '[name=sale_line_id] ul.ui-autocomplete > li:first-child > a:not(:has(i.oi))',
     content: 'Select the first Sales Order Item in the autocomplete dropdown.',
     run: "click",
 }, {
@@ -252,7 +232,7 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     run: "click",
 }, {
     trigger: 'div[name="partner_id"] input',
-    content: markup('Add the customer for this project to select an SO and SOL for this customer <i>(e.g. Brandon Freeman)</i>.'),
+    content: 'Add the customer for this project to select an SO and SOL for this customer (e.g. Brandon Freeman).',
     run: "edit Brandon Freeman",
 }, {
     trigger: 'div[name="partner_id"] ul > li:first-child > a:contains(Freeman)',
@@ -271,7 +251,7 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     content: 'Select the first sale order of the list',
     run: "edit Prepaid",
 }, {
-    trigger: 'ul.ui-autocomplete > li:first-child > a:not(:has(i.fa))',
+    trigger: 'ul.ui-autocomplete > li:first-child > a:not(:has(i.oi))',
     content: 'Select the first item on the autocomplete dropdown',
     run: "click",
 }, {
@@ -283,7 +263,7 @@ registry.category("web_tour.tours").add('sale_timesheet_tour', {
     content: 'Open the project',
     run: "click",
 }, {
-    trigger: ".o_control_panel_navigation button i.fa-sliders",
+    trigger: ".o_control_panel_navigation button i[data-icon='tune']",
     content: 'Open embedded actions',
     run: "click",
 }, {

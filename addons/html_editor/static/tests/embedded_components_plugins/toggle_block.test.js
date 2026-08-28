@@ -19,9 +19,7 @@ import {
 } from "@html_editor/others/embedded_components/core/toggle_block/toggle_block";
 import { onMounted } from "@odoo/owl";
 import { animationFrame, press, queryOne, tick, waitFor } from "@odoo/hoot-dom";
-import { Deferred } from "@odoo/hoot-mock";
 import { browser } from "@web/core/browser/browser";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 import { EmbeddedComponentPlugin } from "@html_editor/others/embedded_component_plugin";
 import { ToggleBlockPlugin } from "@html_editor/others/embedded_components/plugins/toggle_block_plugin/toggle_block_plugin";
 import { parseHTML } from "@html_editor/utils/html";
@@ -30,7 +28,7 @@ let embeddedToggleMountedPromise;
 
 function getConfig(components) {
     return {
-        Plugins: [...MAIN_PLUGINS, EmbeddedComponentPlugin, ToggleBlockPlugin],
+        includePlugins: [EmbeddedComponentPlugin, ToggleBlockPlugin],
         resources: {
             embedded_components: components,
         },
@@ -38,7 +36,7 @@ function getConfig(components) {
 }
 
 beforeEach(() => {
-    embeddedToggleMountedPromise = new Deferred();
+    embeddedToggleMountedPromise = Promise.withResolvers();
     patchWithCleanup(EmbeddedToggleBlockComponent.prototype, {
         setup() {
             super.setup();
@@ -70,7 +68,7 @@ describe("deleteBackward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteBackward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -78,7 +76,7 @@ describe("deleteBackward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-down"></i>
+                            <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -93,6 +91,66 @@ describe("deleteBackward applied to toggle", () => {
                     </div>
                 </div>
                 <p data-selection-placeholder=""><br></p>`)
+        );
+    });
+    test("delete paragraph not direct child of content should not create new paragraph after toggle block", async () => {
+        browser.sessionStorage.setItem(`html_editor.ToggleBlock1.showContent`, "true");
+        const { editor, el } = await setupEditor(
+            unformat(
+                `<div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
+                    <div data-embedded-editable="title">
+                        <p>Hello World</p>
+                    </div>
+                    <div data-embedded-editable="content">
+                        <table class="table table-bordered o_table">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <div class="o-paragraph">abc</div>
+                                        <div class="o-paragraph"><br>[]</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`
+            ),
+            {
+                config: getConfig([toggleBlockEmbedding]),
+            }
+        );
+        await embeddedToggleMountedPromise;
+        deleteBackward(editor);
+        expect(getContent(el)).toBe(
+            unformat(`<p data-selection-placeholder=""><br></p>
+                    <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
+                        <div class="d-flex flex-row align-items-center">
+                            <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
+                                <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
+                            </button>
+                            <div class="flex-fill ms-1">
+                                <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
+                                    <p>Hello World</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ps-4 ms-1">
+                            <div data-embedded-editable="content" data-oe-protected="false" contenteditable="true">
+                                <p data-selection-placeholder=""><br></p>
+                                <table class="table table-bordered o_table">
+                                    <tbody>
+                                        <tr>
+                                            <td>
+                                                <div class="o-paragraph">abc[]</div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
+                            </div>
+                        </div>
+                    </div>
+                    <p data-selection-placeholder=""><br></p>`)
         );
     });
     test("toggle closed, after toggle: should append to title", async () => {
@@ -114,7 +172,7 @@ describe("deleteBackward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteBackward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -122,7 +180,7 @@ describe("deleteBackward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -158,7 +216,7 @@ describe("deleteBackward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteBackward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -184,7 +242,7 @@ describe("deleteBackward applied to toggle", () => {
             `),
             { config: getConfig([toggleBlockEmbedding]) }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteBackward(editor);
         expect("[data-embedded-editable='title']").toHaveInnerHTML(`
             <p>HelloWorldGood</p>
@@ -205,7 +263,7 @@ describe("deleteBackward applied to toggle", () => {
             `),
             { config: getConfig([toggleBlockEmbedding]) }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteBackward(editor);
         expect("[data-embedded-editable='content'").toHaveInnerHTML(`
             <p>Good</p>
@@ -230,7 +288,7 @@ describe("deleteBackward applied to toggle", () => {
             `),
             { config: getConfig([toggleBlockEmbedding]) }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         await press(["CTRL", "A"]); // select all
         deleteBackward(editor);
         expect(getContent(el)).toBe(
@@ -260,7 +318,7 @@ describe("deleteBackward applied to toggle", () => {
             `),
             { config: getConfig([toggleBlockEmbedding]) }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         await press(["shift", "arrowup"]);
         expect(getContent(el)).toBe(
             unformat(`
@@ -268,7 +326,7 @@ describe("deleteBackward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -286,7 +344,7 @@ describe("deleteBackward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "2" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -310,7 +368,7 @@ describe("deleteBackward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -328,7 +386,7 @@ describe("deleteBackward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "2" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -368,7 +426,7 @@ describe("deleteForward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteForward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -376,7 +434,7 @@ describe("deleteForward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -411,7 +469,7 @@ describe("deleteForward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteForward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -444,7 +502,7 @@ describe("deleteForward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteForward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -452,7 +510,7 @@ describe("deleteForward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-down"></i>
+                            <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -493,7 +551,7 @@ describe("deleteForward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteForward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -501,7 +559,7 @@ describe("deleteForward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -544,7 +602,7 @@ describe("deleteForward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteForward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -552,7 +610,7 @@ describe("deleteForward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-down"></i>
+                            <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -586,7 +644,7 @@ describe("deleteForward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteForward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -594,7 +652,7 @@ describe("deleteForward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -630,7 +688,7 @@ describe("deleteForward applied to toggle", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         deleteForward(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -638,7 +696,7 @@ describe("deleteForward applied to toggle", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-down"></i>
+                            <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -678,22 +736,22 @@ describe("Enter applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         patchWithCleanup(ToggleBlockPlugin.prototype, {
             getUniqueIdentifier() {
                 return "2";
             },
         });
-        embeddedToggleMountedPromise = new Deferred();
+        embeddedToggleMountedPromise = Promise.withResolvers();
         splitBlock(editor);
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         expect(getContent(el)).toBe(
             unformat(`
                 <p data-selection-placeholder=""><br></p>
                 <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{"toggleBlockId":"2"}'>
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -711,7 +769,7 @@ describe("Enter applied to toggle title", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "1" }'>
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-down"></i>
+                            <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -746,22 +804,22 @@ describe("Enter applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         patchWithCleanup(ToggleBlockPlugin.prototype, {
             getUniqueIdentifier() {
                 return "2";
             },
         });
-        embeddedToggleMountedPromise = new Deferred();
+        embeddedToggleMountedPromise = Promise.withResolvers();
         splitBlock(editor);
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         expect(getContent(el)).toBe(
             unformat(`
             <p data-selection-placeholder=""><br></p>
             <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false">
                 <div class="d-flex flex-row align-items-center">
                     <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                        <i class="fa align-self-center fa-caret-right"></i>
+                        <i class="oi align-self-center" data-icon="arrow_right"></i>
                     </button>
                     <div class="flex-fill ms-1">
                         <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -779,7 +837,7 @@ describe("Enter applied to toggle title", () => {
             <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{"toggleBlockId":"2"}'>
                 <div class="d-flex flex-row align-items-center">
                     <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                        <i class="fa align-self-center fa-caret-right"></i>
+                        <i class="oi align-self-center" data-icon="arrow_right"></i>
                     </button>
                     <div class="flex-fill ms-1">
                         <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -815,7 +873,7 @@ describe("Enter applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         splitBlock(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -823,7 +881,7 @@ describe("Enter applied to toggle title", () => {
             <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "1" }'>
                 <div class="d-flex flex-row align-items-center">
                     <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                        <i class="fa align-self-center fa-caret-down"></i>
+                        <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                     </button>
                     <div class="flex-fill ms-1">
                         <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -859,7 +917,7 @@ describe("Enter applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         splitBlock(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -886,7 +944,7 @@ describe("Enter applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         splitBlock(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -912,7 +970,7 @@ describe("Enter applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         splitBlock(editor);
         expect(getContent(el)).toBe(
             unformat(`
@@ -948,7 +1006,7 @@ describe("Tab applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         await keydownTab(editor);
         await animationFrame();
         expect(getContent(el)).toBe(
@@ -957,7 +1015,7 @@ describe("Tab applied to toggle title", () => {
             <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "1" }'>
                 <div class="d-flex flex-row align-items-center">
                     <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                        <i class="fa align-self-center fa-caret-down"></i>
+                        <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                     </button>
                     <div class="flex-fill ms-1">
                         <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -971,7 +1029,7 @@ describe("Tab applied to toggle title", () => {
                         <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "2" }'>
                             <div class="d-flex flex-row align-items-center">
                                 <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                                    <i class="fa align-self-center fa-caret-right"></i>
+                                    <i class="oi align-self-center" data-icon="arrow_right"></i>
                                 </button>
                                 <div class="flex-fill ms-1">
                                     <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -1019,7 +1077,7 @@ describe("Tab applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         await keydownTab(editor);
         await animationFrame();
         expect(getContent(el)).toBe(
@@ -1028,7 +1086,7 @@ describe("Tab applied to toggle title", () => {
             <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "1" }'>
                 <div class="d-flex flex-row align-items-center">
                     <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                        <i class="fa align-self-center fa-caret-down"></i>
+                        <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                     </button>
                     <div class="flex-fill ms-1">
                         <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -1042,7 +1100,7 @@ describe("Tab applied to toggle title", () => {
                         <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "2" }'>
                             <div class="d-flex flex-row align-items-center">
                                 <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                                    <i class="fa align-self-center fa-caret-down"></i>
+                                    <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                                 </button>
                                 <div class="flex-fill ms-1">
                                     <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -1091,7 +1149,7 @@ describe("Shift+Tab applied to toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         await keydownShiftTab(editor);
         await animationFrame();
         expect(getContent(el)).toBe(
@@ -1100,7 +1158,7 @@ describe("Shift+Tab applied to toggle title", () => {
             <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "1" }'>
                 <div class="d-flex flex-row align-items-center">
                     <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                        <i class="fa align-self-center fa-caret-down"></i>
+                        <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                     </button>
                     <div class="flex-fill ms-1">
                         <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -1118,7 +1176,7 @@ describe("Shift+Tab applied to toggle title", () => {
             <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "2" }'>
                 <div class="d-flex flex-row align-items-center">
                     <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                        <i class="fa align-self-center fa-caret-down"></i>
+                        <i class="oi align-self-center" data-icon="arrow_drop_down"></i>
                     </button>
                     <div class="flex-fill ms-1">
                         <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -1155,7 +1213,7 @@ describe("Hide and show toggle content", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         expect(
             queryOne("[data-embedded-editable='content']").parentElement.matches(".d-none")
         ).toBe(true);
@@ -1187,7 +1245,7 @@ describe("Hide and show toggle content", () => {
         el.style.minHeight = "600px";
         const powerButtons = queryOne(".o_we_power_buttons");
         const p = el.lastChild;
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         expect(
             queryOne("[data-embedded-editable='content']").parentElement.matches(".d-none")
         ).toBe(true);
@@ -1227,7 +1285,7 @@ describe("Insert (paste, drop) inside toggle title", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         expect("[data-embedded-editable='title']").toHaveInnerHTML(`
             <div class="o-paragraph">HelloWorld</div>
         `);
@@ -1245,7 +1303,7 @@ describe("Insert (paste, drop) inside toggle title", () => {
                 <p data-selection-placeholder=""><br></p>
                 <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{ "toggleBlockId": "1" }'>
                     <div class="d-flex flex-row align-items-center">
-                        <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button"><i class="fa align-self-center fa-caret-right"></i></button>
+                        <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button"><i class="oi align-self-center" data-icon="arrow_right"></i></button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
                                 <div class="o-paragraph">HelloNew</div>
@@ -1281,7 +1339,7 @@ describe("hint", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         expect("[data-embedded-editable='title']").toHaveInnerHTML(
             '<p o-we-hint-text="Toggle title" class="o-we-hint"><br></p>'
         );
@@ -1318,7 +1376,7 @@ describe("Toggle block: Switch Direction", () => {
                 config: getConfig([toggleBlockEmbedding]),
             }
         );
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         switchDirection(editor);
         expect(getContent(el)).toBe(
             unformat(
@@ -1327,7 +1385,7 @@ describe("Toggle block: Switch Direction", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false" dir="rtl">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -1368,9 +1426,9 @@ describe("Toggle block: Switch Direction", () => {
                 return "2";
             },
         });
-        embeddedToggleMountedPromise = new Deferred();
+        embeddedToggleMountedPromise = Promise.withResolvers();
         splitBlock(editor);
-        await embeddedToggleMountedPromise;
+        await embeddedToggleMountedPromise.promise;
         expect(getContent(el)).toBe(
             unformat(
                 `
@@ -1378,7 +1436,7 @@ describe("Toggle block: Switch Direction", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" data-embedded-props='{ "toggleBlockId": "1" }' contenteditable="false" dir="rtl">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">
@@ -1396,7 +1454,7 @@ describe("Toggle block: Switch Direction", () => {
                 <div data-embedded="toggleBlock" data-oe-protected="true" contenteditable="false" data-embedded-props='{"toggleBlockId":"2"}' dir="rtl">
                     <div class="d-flex flex-row align-items-center">
                         <button class="btn p-0 border-0 align-items-center justify-content-center btn-light" type="button">
-                            <i class="fa align-self-center fa-caret-right"></i>
+                            <i class="oi align-self-center" data-icon="arrow_right"></i>
                         </button>
                         <div class="flex-fill ms-1">
                             <div data-embedded-editable="title" data-oe-protected="false" contenteditable="true">

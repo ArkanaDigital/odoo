@@ -1,5 +1,4 @@
-import { useLayoutEffect } from "@web/owl2/utils";
-import { Component, computed, proxy, signal, types } from "@odoo/owl";
+import { Component, computed, proxy, signal, types, useOnChange, useProps } from "@odoo/owl";
 
 import { useThreadActions } from "@mail/core/common/thread_actions";
 import { AutoresizeInput } from "@mail/core/common/autoresize_input";
@@ -8,8 +7,6 @@ import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { Thread } from "@mail/core/common/thread";
 import { ThreadIcon } from "@mail/core/common/thread_icon";
 import { Composer } from "@mail/core/common/composer";
-import { useDynamicInterval } from "@mail/utils/common/misc";
-import { formatLocalDateTime } from "@mail/utils/common/dates";
 import { attClassObjectToString } from "@mail/utils/common/format";
 
 import { FileUploader } from "@web/views/fields/file_handler";
@@ -25,38 +22,35 @@ export class DiscussContent extends Component {
         Composer,
         FileUploader,
     };
-    static props = ["thread?"];
     static template = "mail.DiscussContent";
 
     setup() {
         super.setup();
         this.store = useService("mail.store");
+        this.props = useProps({
+            thread: types.instanceOf(this.store["mail.thread"]).optional(),
+        });
         this.ui = useService("ui");
         this.notification = useService("notification");
-        this.rootRef = signal(null, { type: types.instanceOf(HTMLDivElement) });
+        this.rootRef = signal.ref(HTMLDivElement);
+        this.threadAvatarRef = signal.ref(HTMLDivElement);
         this.threadActions = useThreadActions({ rootRef: this.rootRef, thread: () => this.thread });
-        this.correspondentLocalDateTimeFormatted = signal("");
+        this.headerActionsList = computed(() => {
+            const partition = this.threadActions.partition;
+            return [partition.quick, partition.other, ...partition.group.slice().reverse()];
+        });
         this.state = proxy({ jumpThreadPresent: 0 });
         this.isDiscussContent = true;
         this.attClassObjectToString = attClassObjectToString;
         this.selfGuestName = computed(() => this.store.self_guest?.name);
         this.threadDisplayName = computed(() => this.thread?.displayName);
         this.threadDescription = computed(() => this.thread?.description);
-        useLayoutEffect(
-            () => this.actionPanelAutoOpenFn(),
-            () => [this.thread]
+        useOnChange(
+            () => [this.thread],
+            () => this.actionPanelAutoOpenFn()
         );
-        useDynamicInterval(
-            (partnerTz, currentUserTz) => {
-                this.correspondentLocalDateTimeFormatted.set(
-                    formatLocalDateTime(partnerTz, currentUserTz)
-                );
-                if (!this.correspondentLocalDateTimeFormatted()) {
-                    return;
-                }
-                return 60000 - (Date.now() % 60000);
-            },
-            () => [this.thread?.channel?.correspondent?.persona?.tz, this.store.self?.tz]
+        this.correspondentLocalDateTimeFormatted = computed(() =>
+            this.store.localTimeIn(this.thread?.channel?.correspondent?.persona?.tz)
         );
     }
 
@@ -71,6 +65,12 @@ export class DiscussContent extends Component {
         return this.props.thread || this.store.discuss.thread;
     }
 
+    get isNotificationTabActive() {
+        return Boolean(
+            this.store.messagingMenu.notificationTab?.eq(this.store.discuss.sidebarState.activeTab)
+        );
+    }
+
     get showsChatLocalDateTime() {
         return (
             this.thread.channel?.channel_type === "chat" &&
@@ -79,7 +79,10 @@ export class DiscussContent extends Component {
     }
 
     get showThreadAvatar() {
-        return ["channel", "group", "chat"].includes(this.thread.channel?.channel_type);
+        return (
+            ["channel", "group"].includes(this.thread.channel?.channel_type) ||
+            this.thread.channel?.hasCorrespondentAvatar
+        );
     }
 
     get isThreadAvatarEditable() {
@@ -94,6 +97,10 @@ export class DiscussContent extends Component {
         return {
             "o-mail-DiscussContent-threadDescription flex-shrink-1 small pt-1": true,
         };
+    }
+
+    get threadAvatarAttClass() {
+        return {};
     }
 
     async onFileUploaded(file) {

@@ -12,15 +12,19 @@ class HrEmployee(models.Model):
     _inherit = ['hr.employee', 'pos.load.mixin']
 
     @api.model
-    def _load_pos_data_domain(self, data, config):
-        return config._employee_domain(config.current_user_id.id)
+    def _load_pos_data_domain(self, data):
+        config_id = data['pos.config']
+        return config_id._employee_domain(config_id.current_user_id.id)
 
     @api.model
     def _load_pos_data_fields(self, config):
         return ['name', 'user_id', 'work_contact_id']
 
-    def _server_date_to_domain(self, domain):
-        return domain
+    @api.model
+    def load_pos_data_force_loading(self):
+        # We need to reload employees at each PoS start to ensure that their role is up-to-date
+        # as, when changing their role, their write_date is not updated so they will not be reloaded otherwise.
+        return True
 
     @api.model
     def _load_pos_data_read(self, records, config):
@@ -48,8 +52,9 @@ class HrEmployee(models.Model):
                 role = 'cashier'
 
             employee['_role'] = role
-            employee['_barcode'] = bp_per_employee_id[employee['id']]['barcode']
-            employee['_pin'] = bp_per_employee_id[employee['id']]['pin']
+            if employee['id'] in bp_per_employee_id:
+                employee['_barcode'] = bp_per_employee_id[employee['id']]['barcode']
+                employee['_pin'] = bp_per_employee_id[employee['id']]['pin']
 
         return read_records
 

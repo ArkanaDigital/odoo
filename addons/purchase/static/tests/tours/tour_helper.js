@@ -43,8 +43,7 @@ export const purchaseForm = {
     displayOptionalField(fieldName) {
         return [
             {
-                trigger:
-                    ".o_form_renderer .o_list_view.o_field_x2many .o_optional_columns_dropdown button",
+                trigger: ".o_form_renderer .o_list_view.o_field_x2many .o_optional_columns button",
                 run: "click",
             },
             { trigger: `input[name="${fieldName}"]:not(:checked)`, run: "click" },
@@ -119,7 +118,7 @@ export const purchaseForm = {
 
 export const productCatalog = {
     addProduct(productName) {
-        const trigger = `.o_kanban_record:contains("${productName}") button:has(.oi-plus,.fa-shopping-cart)`;
+        const trigger = `.o_kanban_record:contains("${productName}") button:has([data-icon="add"],[data-icon="shopping_cart"])`;
         return [{ trigger, run: "click" }];
     },
 
@@ -135,10 +134,10 @@ export const productCatalog = {
         return [{ content, trigger }];
     },
 
-    /** Remove a product from the PO by clicking the "trash" button */
-    removeProduct(productName) {
-        const trigger = `.o_kanban_record:contains("${productName}") button:has(.fa-trash)`;
-        return [{ trigger, run: "click" }];
+    selectProductUoM(productName, uom) {
+        const trigger = `.o_kanban_record:contains("${productName}") .o_product_catalog_quantity select`;
+        const content = `Select the UoM ${uom} for product "${productName}"`;
+        return [{ content, trigger, run: `selectByLabel ${uom}` }];
     },
 
     waitForQuantity(productName, quantity) {

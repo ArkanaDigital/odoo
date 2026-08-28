@@ -10,7 +10,7 @@ from odoo.exceptions import UserError
 from odoo.fields import Command, Domain
 from odoo.tools import get_lang, SQL, LazyTranslate
 from odoo.tools.misc import unquote
-from odoo.tools.translate import _
+from odoo.tools.translate import _, mark_as_copy
 from .project_update import STATUS_COLOR
 from .project_task import CLOSED_STATES
 from markupsafe import Markup
@@ -53,7 +53,10 @@ class ProjectProject(models.Model):
     def _compute_open_task_count(self):
         self.__compute_task_count(
             count_field='open_task_count',
-            additional_domain=[('state', 'in', self.env['project.task'].OPEN_STATES)],
+            additional_domain=Domain.AND([
+                [('state', 'in', self.env['project.task'].OPEN_STATES)],
+                ['|', ('parent_id.is_template', '=', False), ('parent_id', '=', False)],
+            ]),
         )
 
     def _compute_closed_task_count(self):
@@ -118,14 +121,15 @@ class ProjectProject(models.Model):
     task_ids = fields.One2many('project.task', 'project_id', string='Tasks', export_string_translation=False,
                                domain="[('is_closed', '=', False)]")
     color = fields.Integer(string='Color Index', export_string_translation=False)
-    user_id = fields.Many2one('res.users', string='Project Manager', default=lambda self: self.env.user, tracking=True, falsy_value_label=_lt("👤 Unassigned"))
+    user_id = fields.Many2one('res.users', string='Project Manager', default=lambda self: self.env.user, tracking=True, falsy_value_label=_lt("👤 Unassigned"),
+        domain="[('share', '=', False), '|', ('company_id', '=?', company_id), ('company_ids', 'in', company_id)]")
     alias_id = fields.Many2one(help="Internal email associated with this project. Incoming emails are automatically synchronized "
                                     "with Tasks (or optionally Issues if the Issue Tracker module is installed).")
     privacy_visibility = fields.Selection([
             ('followers', 'Invited internal users'),
             ('invited_users', 'Invited internal and portal users'),
             ('employees', 'All internal users'),
-            ('portal', ' All internal users and invited portal users'),
+            ('portal', 'All internal users and invited portal users'),
         ],
         string='Visibility', required=True,
         default='portal',
@@ -206,6 +210,8 @@ class ProjectProject(models.Model):
                 order=f"sequence asc, {self.env['project.project.stage']._order}",
                 limit=1,
             ).id
+        if self.company_id and self.user_id and self.company_id not in self.user_id.company_ids:
+            self.user_id = False
 
     @api.depends('next_milestone_id')
     def _compute_next_milestone_info(self):
@@ -529,10 +535,10 @@ class ProjectProject(models.Model):
                 for field in self._get_template_field_blacklist():
                     if field in vals and field not in default:
                         del vals[field]
-            if copy_from_template or (not project.is_template and vals.get('is_template')):
-                vals['name'] = default.get('name', project.name)
-            else:
-                vals['name'] = default.get('name', self.env._('%s (copy)', project.name))
+            if 'name' not in default and not (
+                copy_from_template or (not project.is_template and vals.get('is_template'))
+            ):
+                vals['name'] = mark_as_copy('name')(project)
         return vals_list
 
     def copy(self, default=None):
@@ -552,7 +558,7 @@ class ProjectProject(models.Model):
             for follower in old_project.message_follower_ids:
                 new_project.message_subscribe(partner_ids=follower.partner_id.ids, subtype_ids=follower.subtype_ids.ids)
             if old_project.allow_milestones:
-                new_project.milestone_ids = self.milestone_ids.copy().ids
+                new_project.milestone_ids = old_project.milestone_ids.copy().ids
             if 'tasks' not in default:
                 old_project.map_tasks(new_project.id)
             if not old_project.active:
@@ -634,9 +640,8 @@ class ProjectProject(models.Model):
     @api.model
     def name_create(self, name):
         res = super().name_create(name)
-        if res:
-            # We create a default stage `new` for projects created on the fly.
-            self.browse(res[0]).type_ids += self.env['project.task.type'].sudo().create({'name': _('New')})
+        # We create a default stage `new` for projects created on the fly.
+        self.browse(res[0]).type_ids += self.env['project.task.type'].sudo().create({'name': _('New')})
         return res
 
     @api.model_create_multi
@@ -758,7 +763,17 @@ class ProjectProject(models.Model):
             analytic_account_to_update = self.env['account.analytic.account'].browse([
                 analytic_account.id for [analytic_account] in projects_read_group
             ])
-            analytic_account_to_update.write({'name': self.name})
+            analytic_account_to_update.write({'name': vals['name']})
+
+        if vals.get('company_id'):
+            for project in self:
+                if project.company_id and project.user_id and project.company_id not in project.user_id.company_ids:
+                    project.user_id = False
+                for task in project.task_ids:
+                    task.user_ids = task.user_ids.filtered(
+                        lambda user: project.company_id in user.company_ids
+                    )
+
         return res
 
     def unlink(self):
@@ -1135,9 +1150,9 @@ class ProjectProject(models.Model):
             elif project.privacy_visibility in ['invited_users', 'portal']:
                 portal_users = project.message_partner_ids.user_ids.filtered('share')
                 project.message_unsubscribe(partner_ids=portal_users.partner_id.ids)
-                project.tasks._unsubscribe_portal_users()
+                project.with_context(active_test=False).tasks._unsubscribe_portal_users()
                 # revoke access_token since the project and its tasks are no longer accessible for portal/public users
-                project.tasks.access_token = ''
+                project.with_context(active_test=False).tasks.access_token = ''
                 project.access_token = ''
 
     # ---------------------------------------------------
@@ -1273,7 +1288,9 @@ class ProjectProject(models.Model):
 
     def action_create_template_from_project(self):
         self.ensure_one()
-        template = self.copy(default={"is_template": True, "partner_id": False})
+        template = self.with_context(convert_to_template=True).copy(
+            default={"is_template": True, "partner_id": False, "date_start": self.date_start, "date": self.date,
+        })
         template._toggle_template_mode(True)
         template.message_post(body=self.env._("Template created from %s.", self.name))
         config = {

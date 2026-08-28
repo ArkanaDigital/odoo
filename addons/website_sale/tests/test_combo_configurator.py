@@ -8,6 +8,15 @@ from odoo.addons.website_sale.tests.common import WebsiteSaleCommon
 
 @tagged("post_install", "-at_install")
 class TestWebsiteSaleComboConfigurator(HttpCase, WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+        'website.group_website_designer',  # website config (show_line_subtotals_tax_selection)
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     def test_website_sale_combo_configurator(self):
         no_variant_attribute = self.env["product.attribute"].create({
             "name": "No variant attribute",

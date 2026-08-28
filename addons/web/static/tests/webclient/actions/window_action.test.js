@@ -1,7 +1,7 @@
 import { expect, test } from "@odoo/hoot";
 import { click, queryAllTexts, waitFor } from "@odoo/hoot-dom";
-import { Deferred, animationFrame, runAllTimers } from "@odoo/hoot-mock";
-import { Component, xml } from "@odoo/owl";
+import { animationFrame, runAllTimers } from "@odoo/hoot-mock";
+import { Component, useProps, xml } from "@odoo/owl";
 import {
     MockServer,
     clickSave,
@@ -14,10 +14,10 @@ import {
     editKanbanRecordQuickCreateInput,
     editSearch,
     fields,
+    getMockEnv,
     getPagerLimit,
     getPagerValue,
     getService,
-    makeMockEnv,
     makeServerError,
     mockOffline,
     models,
@@ -85,7 +85,7 @@ class Partner extends models.Model {
             <form>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
-                        <button class="oe_stat_button" type="action" name="1" icon="fa-star" context="{'default_partner': id}">
+                        <button class="oe_stat_button" type="action" name="1" icon="star" icon_class="oi-filled" context="{'default_partner': id}">
                             <field string="Partners" name="o2m" widget="statinfo"/>
                         </button>
                     </div>
@@ -493,6 +493,19 @@ test("breadcrumbs are updated when switching between views", async () => {
 });
 
 test.tags("desktop");
+test("breadcrumb href includes debug param when in debug mode", async () => {
+    serverState.debug = "assets";
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(3);
+    await contains(".o_list_view .o_data_cell").click();
+    expect(queryAllTexts(".breadcrumb-item a, .o_breadcrumb .active")).toEqual([
+        "Partners",
+        "First record",
+    ]);
+    expect(".o_control_panel .breadcrumb a").toHaveAttribute("href", "/odoo/action-3?debug=assets");
+});
+
+test.tags("desktop");
 test("switch buttons are updated when switching between views", async () => {
     await mountWithCleanup(WebClient);
     await getService("action").doAction(3);
@@ -727,7 +740,7 @@ test("A deleted form view can be shown when history back", async () => {
     expect(browser.location.pathname).toBe("/odoo/action-3/1");
 
     // Delete the current record
-    await contains(".o_cp_action_menus .fa-cog").click();
+    await contains(".o_cp_action_menus [data-icon='more_vert']").click();
     await contains(".o_menu_item:contains(Delete)").click();
     expect(".modal").toHaveCount(1, { message: "a confirm modal should be displayed" });
     await contains(".modal-footer button.btn-danger").click();
@@ -752,7 +765,7 @@ test("A deleted form view can be shown when history back", async () => {
 test.tags("desktop");
 test("there is no flickering when switching between views", async () => {
     let def;
-    onRpc(() => def);
+    onRpc(() => def?.promise);
     Partner._views.list = `<list>
                                 <field name="display_name"/>
                                 <field name="foo"/>
@@ -762,7 +775,7 @@ test("there is no flickering when switching between views", async () => {
     await getService("action").doAction(3);
 
     // switch to kanban view
-    def = new Deferred();
+    def = Promise.withResolvers();
     await switchView("kanban");
     expect(".o_list_view").toHaveCount(0, { message: "shouldn't display the list anymore" });
     expect(".o_kanban_view").toHaveCount(1, { message: "should display an empty kanban" });
@@ -774,7 +787,7 @@ test("there is no flickering when switching between views", async () => {
     expect(".o_kanban_view .o_kanban_record:not(.o_kanban_ghost)").toHaveCount(5);
 
     // switch back to list view
-    def = new Deferred();
+    def = Promise.withResolvers();
     await switchView("list");
     expect(".o_kanban_view").toHaveCount(0, { message: "shouldn't display the kanban anymore" });
     expect(".o_list_view").toHaveCount(1, { message: "should display an empty list view" });
@@ -790,7 +803,7 @@ test("there is no flickering when switching between views", async () => {
     expect(".o_list_view table .o_data_row").toHaveCount(5);
 
     // open a record in form view
-    def = new Deferred();
+    def = Promise.withResolvers();
     await contains(".o_list_view .o_data_cell").click();
     expect(".o_list_view").toHaveCount(1, { message: "should still display the list view" });
     expect(".o_form_view").toHaveCount(0, { message: "shouldn't display the form view yet" });
@@ -806,7 +819,7 @@ test("there is no flickering when switching between views", async () => {
     ]);
 
     // go back to list view using the breadcrumbs
-    def = new Deferred();
+    def = Promise.withResolvers();
     await contains(".o_control_panel .breadcrumb a").click();
     expect(".o_form_view").toHaveCount(0, { message: "shouldn't display the form anymore" });
     expect(".o_list_view").toHaveCount(1, { message: "should display an empty list" });
@@ -824,7 +837,7 @@ test("there is no flickering when switching between views", async () => {
 test.tags("desktop");
 test("there is no flickering when reloading a view", async () => {
     let def;
-    onRpc(() => def);
+    onRpc(() => def?.promise);
 
     await mountWithCleanup(WebClient);
     await getService("action").doAction(3);
@@ -833,7 +846,7 @@ test("there is no flickering when reloading a view", async () => {
 
     MockServer.env["partner"].create([{ foo: "a new record" }]);
     // reload the list view
-    def = new Deferred();
+    def = Promise.withResolvers();
     await switchView("list");
     expect(".o_list_view .o_data_row").toHaveCount(5);
 
@@ -847,7 +860,7 @@ test("there is no flickering when reloading a view", async () => {
     expect(".o_kanban_view .o_kanban_record:not(.o_kanban_ghost)").toHaveCount(6);
 
     MockServer.env["partner"].create([{ foo: "yet another record" }]);
-    def = new Deferred();
+    def = Promise.withResolvers();
     await switchView("kanban");
     expect(".o_kanban_view .o_kanban_record:not(.o_kanban_ghost)").toHaveCount(6);
 
@@ -1004,9 +1017,9 @@ test("execute_action of type object: disable buttons (2)", async () => {
         },
     ]);
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     // delay the opening of the dialog
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
 
     await mountWithCleanup(WebClient);
     await getService("action").doAction(3);
@@ -1038,9 +1051,9 @@ test("view button: block ui attribute", async () => {
                 </header>
             </form>`;
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     // delay the action
-    onRpc("onchange", () => def);
+    onRpc("onchange", () => def?.promise);
 
     await mountWithCleanup(WebClient);
     await getService("action").doAction(3);
@@ -1174,9 +1187,9 @@ test("execute smart button and back", async () => {
 test.tags("desktop");
 test("execute smart button and fails on desktop", async () => {
     expect.errors(1);
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("web_search_read", async () => {
-        await def;
+        await def?.promise;
         throw makeServerError({ message: "Oups" });
     });
     stepAllNetworkCalls();
@@ -1212,9 +1225,9 @@ test("execute smart button and fails on desktop", async () => {
 test.tags("mobile");
 test("execute smart button and fails on mobile", async () => {
     expect.errors(1);
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("web_search_read", async () => {
-        await def;
+        await def?.promise;
         throw makeServerError({ message: "Oups" });
     });
     stepAllNetworkCalls();
@@ -1251,7 +1264,7 @@ test("execute smart button and fails on mobile", async () => {
 test.tags("desktop");
 test("requests for execute_action of type object: disable buttons", async () => {
     let def = undefined;
-    onRpc("web_read", () => def); // block the 'read' call
+    onRpc("web_read", () => def?.promise); // block the 'read' call
     onRpc("/web/dataset/call_button/*", () => false);
 
     await mountWithCleanup(WebClient);
@@ -1261,7 +1274,7 @@ test("requests for execute_action of type object: disable buttons", async () => 
     await contains(".o_list_view .o_data_cell").click();
 
     // click on 'Call method' button (should call an Object method)
-    def = new Deferred();
+    def = Promise.withResolvers();
     await contains(".o_form_view button:contains(Call method)").click();
 
     // Buttons should be disabled
@@ -1913,7 +1926,7 @@ test("stored action is restored correctly with domain", async () => {
 test("current_action doesn't contains _originalAction", async () => {
     class myActionComponent extends Component {
         static template = xml`<div>This is a Client Action</div>`;
-        static props = ["*"];
+        props = useProps();
     }
 
     const myAction = (env, action) => {
@@ -2056,7 +2069,7 @@ test("execute a contextual action from a form view", async () => {
     expect(".o_form_view").toHaveCount(1);
 
     // execute the custom action from the action menu
-    await contains(".o_cp_action_menus .fa-cog").click();
+    await contains(".o_cp_action_menus [data-icon='more_vert']").click();
     await toggleMenuItem("Favorite Ponies");
     expect(".o_list_view").toHaveCount(1);
 });
@@ -2245,11 +2258,11 @@ test("search view should keep focus during do_search", async () => {
     // over and over again seamlessly.
     // Verifying the input's value is a lot trickier than verifying the search_read
     // because of how native events are handled in tests
-    const searchPromise = new Deferred();
+    const searchPromise = Promise.withResolvers();
     onRpc("web_search_read", async ({ kwargs }) => {
         expect.step("search_read " + kwargs.domain);
         if (JSON.stringify(kwargs.domain) === JSON.stringify([["foo", "ilike", "m"]])) {
-            await searchPromise;
+            await searchPromise?.promise;
         }
     });
 
@@ -2276,8 +2289,7 @@ test("Call twice clearUncommittedChanges in a row does not save twice", async ()
         writeCalls += 1;
     });
 
-    const env = await makeMockEnv();
-    await mountWithCleanup(WebClient, { env });
+    await mountWithCleanup(WebClient);
 
     // execute an action and edit existing record
     await getService("action").doAction(3);
@@ -2285,11 +2297,11 @@ test("Call twice clearUncommittedChanges in a row does not save twice", async ()
     expect(".o_form_view .o_form_editable").toHaveCount(1);
 
     await contains(".o_field_widget[name=foo] input").edit("val");
-    clearUncommittedChanges(env);
+    clearUncommittedChanges(getMockEnv());
 
     await animationFrame();
     expect(".modal").toHaveCount(0);
-    clearUncommittedChanges(env);
+    clearUncommittedChanges(getMockEnv());
 
     await animationFrame();
     expect(".modal").toHaveCount(0);
@@ -2724,7 +2736,7 @@ test("click on breadcrumb of a deleted record", async () => {
         "First record",
     ]);
     // open action menu and delete
-    await contains(".o_cp_action_menus .fa-cog").click();
+    await contains(".o_cp_action_menus [data-icon='more_vert']").click();
     await toggleMenuItem("Delete");
     expect(".o_dialog").toHaveCount(1);
 

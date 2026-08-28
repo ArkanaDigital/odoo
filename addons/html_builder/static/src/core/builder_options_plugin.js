@@ -5,6 +5,7 @@ import { isRemovable } from "./remove_plugin";
 import { getElementsWithOption, isElementInViewport } from "@html_builder/utils/utils";
 import { OptionsContainer } from "@html_builder/sidebar/option_container";
 import { shouldEditableMediaBeEditable } from "@html_builder/utils/utils_css";
+import { scrollTo } from "@html_builder/utils/scrolling";
 import { _t } from "@web/core/l10n/translation";
 import { closestElement } from "@html_editor/utils/dom_traversal";
 import { BaseOptionComponent } from "@html_builder/core/base_option_component";
@@ -51,7 +52,6 @@ import { omit } from "@web/core/utils/objects";
  * @typedef { Object } BuilderOptionsShared
  * @property { BuilderOptionsPlugin['checkElement'] } checkElement
  * @property { BuilderOptionsPlugin['closestWithOption'] } closestWithOption
- * @property { BuilderOptionsPlugin['computeContainers'] } computeContainers
  * @property { BuilderOptionsPlugin['findOption'] } findOption
  * @property { BuilderOptionsPlugin['getContainers'] } getContainers
  * @property { BuilderOptionsPlugin['updateContainers'] } updateContainers
@@ -132,7 +132,6 @@ export class BuilderOptionsPlugin extends Plugin {
     static shared = [
         "checkElement",
         "closestWithOption",
-        "computeContainers",
         "findOption",
         "getContainers",
         "updateContainers",
@@ -161,6 +160,7 @@ export class BuilderOptionsPlugin extends Plugin {
                 context.selector = this.getReloadSelector(el);
                 context.folded = this.lastContainers.map((c) => c.folded);
             }
+            return context;
         },
         on_editor_started_handlers: () => {
             if (this.config.reloadContext) {
@@ -176,7 +176,8 @@ export class BuilderOptionsPlugin extends Plugin {
             const buttons = [];
             if (el.matches("section")) {
                 buttons.push({
-                    class: "fa fa-fw fa-crosshairs btn o-hb-btn btn-accent-color-hover",
+                    class: "oi oi-fw btn o-hb-btn btn-accent-color-hover",
+                    icon: "center_focus_weak",
                     title: _t("Select only this block"),
                     handler: (el) => this.updateContainers(el),
                 });
@@ -422,7 +423,7 @@ export class BuilderOptionsPlugin extends Plugin {
                     containerTitle: elementToContainerTitle.get(element)
                         ? elementToContainerTitle.get(element)[0]
                         : {},
-                    hideOverlay: Options.every((Option) => Option.hideOverlay),
+                    hideOverlay: Options.length && Options.every((Option) => Option.hideOverlay),
                     hasOverlayOptions: this.hasOverlayOptions(element),
                     isRemovable: isRemovable(element),
                     removeDisabledReason: this.getRemoveDisabledReason(element),
@@ -516,6 +517,7 @@ export class BuilderOptionsPlugin extends Plugin {
                 cleanForSave(el, this.getBuilderOptionContext(Option));
             }
         }
+        return root;
     }
 
     /**
@@ -572,8 +574,7 @@ export class BuilderOptionsPlugin extends Plugin {
             this.updateContainers(targetEl, { forceUpdate: true });
             // Scroll to the target if not visible.
             if (!isElementInViewport(targetEl)) {
-                // Firefox mis-scrolls with block "center" on tall snippets; keep "start".
-                targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                scrollTo(targetEl);
             }
         }
     }

@@ -1,18 +1,14 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
+import { t, untrack, useProps } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
-import { FormRenderer } from "@web/views/form/form_renderer";
+import { useLayoutEffect } from "@web/owl2/utils";
+import { FormRenderer, formRendererProps } from "@web/views/form/form_renderer";
 
 export class FormRendererWithHtmlExpander extends FormRenderer {
-    static props = {
-        ...FormRenderer.props,
-        reloadHtmlFieldHeight: { type: Boolean, optional: true },
-        notifyHtmlExpander: { type: Function, optional: true },
-    };
-    static defaultProps = {
-        ...FormRenderer.defaultProps,
-        reloadHtmlFieldHeight: true,
-        notifyHtmlExpander: () => {},
-    };
+    props = useProps({
+        ...formRendererProps,
+        reloadHtmlFieldHeight: t.boolean().optional(true),
+        notifyHtmlExpander: t.function().optional(() => () => {}),
+    });
 
     setup() {
         super.setup();
@@ -20,7 +16,6 @@ export class FormRendererWithHtmlExpander extends FormRenderer {
             // Should be defined in FormRenderer
             this.uiService = useService("ui");
         }
-        const ref = useRef("compiled_view_root");
         useLayoutEffect(
             (el, size) => {
                 if (el && this._canExpandHTMLField(size)) {
@@ -46,7 +41,11 @@ export class FormRendererWithHtmlExpander extends FormRenderer {
                 }
                 this.props.notifyHtmlExpander();
             },
-            () => [ref.el, this.uiService.size, this.props.reloadHtmlFieldHeight]
+            () => [
+                untrack(this.rootRef),
+                this.uiService.size,
+                this.props.reloadHtmlFieldHeight,
+            ]
         );
     }
 

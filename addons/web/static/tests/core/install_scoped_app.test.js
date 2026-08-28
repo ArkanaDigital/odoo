@@ -1,9 +1,9 @@
 import { expect, getFixture, test } from "@odoo/hoot";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import {
     contains,
-    makeMockEnv,
+    makeTestApp,
     mountWithCleanup,
     onRpc,
     patchWithCleanup,
@@ -25,7 +25,6 @@ test("Installation page displays the app info correctly", async () => {
     beforeInstallPromptEvent.preventDefault = () => {};
     beforeInstallPromptEvent.prompt = async () => ({ outcome: "accepted" });
     browser.BeforeInstallPromptEvent = beforeInstallPromptEvent;
-    await makeMockEnv();
     patchWithCleanup(browser.location, {
         replace: (url) => {
             expect(url.searchParams.get("app_name")).toBe("%3COtto%26", {
@@ -34,6 +33,7 @@ test("Installation page displays the app info correctly", async () => {
             expect.step("URL replace");
         },
     });
+    await makeTestApp();
     mountManifestLink("/web/manifest.scoped_app_manifest");
     onRpc("/*", (request) => {
         expect.step(new URL(request.url).pathname);
@@ -52,7 +52,7 @@ test("Installation page displays the app info correctly", async () => {
     });
 
     class Parent extends Component {
-        static props = ["*"];
+        props = useProps();
         static components = { InstallScopedApp };
         static template = xml`<InstallScopedApp/>`;
     }
@@ -63,24 +63,24 @@ test("Installation page displays the app info correctly", async () => {
     expect(".o_install_scoped_app").toHaveCount(1);
     expect(".o_install_scoped_app h1").toHaveText("My App");
     expect(".o_install_scoped_app img").toHaveAttribute("data-src", "/fake_image_src");
-    expect(".fa-pencil").toHaveCount(0);
+    expect("[data-icon='edit']").toHaveCount(0);
     expect("button.btn-primary").toHaveCount(0);
     expect("div.bg-info").toHaveCount(1);
     expect("div.bg-info").toHaveText("You can install the app from the browser menu");
     browser.dispatchEvent(beforeInstallPromptEvent);
     await animationFrame();
-    expect(".fa-pencil").toHaveCount(1);
+    expect("[data-icon='edit']").toHaveCount(1);
     expect("div.bg-info").toHaveCount(0);
     expect("button.btn-primary").toHaveCount(1);
     expect("button.btn-primary").toHaveText("Install");
-    await contains(".fa-pencil").click();
+    await contains("[data-icon='edit']").click();
     await contains("input").edit("<Otto&", { confirm: "blur" });
     expect.verifySteps(["URL replace"]);
 });
 
 test("Installation page displays the error message when browser is not supported", async () => {
     delete browser.BeforeInstallPromptEvent;
-    await makeMockEnv();
+    await makeTestApp();
     mountManifestLink("/web/manifest.scoped_app_manifest");
     onRpc("/*", (request) => {
         expect.step(new URL(request.url).pathname);
@@ -99,7 +99,7 @@ test("Installation page displays the error message when browser is not supported
     });
 
     class Parent extends Component {
-        static props = ["*"];
+        props = useProps();
         static components = { InstallScopedApp };
         static template = xml`<InstallScopedApp/>`;
     }

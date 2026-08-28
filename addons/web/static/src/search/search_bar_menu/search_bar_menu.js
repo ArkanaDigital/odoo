@@ -1,6 +1,7 @@
-import { Component, proxy } from "@odoo/owl";
-import { Dropdown } from "@web/core/dropdown/dropdown";
+import { Component, proxy, t, useProps } from "@odoo/owl";
 import { PropertiesGroupByItem } from "@web/search/properties_group_by_item/properties_group_by_item";
+import { SearchBarDropdown } from "../search_bar_dropdown";
+import { dropdownProps } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { registry } from "@web/core/registry";
 import { sortBy } from "@web/core/utils/arrays";
@@ -13,29 +14,26 @@ import { CustomGroupByItem } from "@web/search/custom_group_by_item/custom_group
 import { CheckboxItem } from "@web/core/dropdown/checkbox_item";
 import { FACET_ICONS, GROUPABLE_TYPES } from "@web/search/utils/misc";
 import { _t } from "@web/core/l10n/translation";
+import { render } from "@web/owl2/utils";
+import { condition } from "@web/core/tree_editor/condition_tree";
+import { domainFromTree } from "@web/core/tree_editor/domain_from_tree";
 
 const favoriteMenuRegistry = registry.category("favoriteMenu");
 
 export class SearchBarMenu extends Component {
     static template = "web.SearchBarMenu";
     static components = {
-        Dropdown,
+        SearchBarDropdown,
         DropdownItem,
         CheckboxItem,
         CustomGroupByItem,
         AccordionItem,
         PropertiesGroupByItem,
     };
-    static props = {
-        slots: {
-            type: Object,
-            optional: true,
-            shape: {
-                default: { optional: true },
-            },
-        },
-        dropdownState: { ...Dropdown.props.state },
-    };
+    props = useProps({
+        dropdownState: dropdownProps.state,
+        popoverWillCloseOnClickAway: t.function().optional(() => () => true),
+    });
 
     setup() {
         this.facet_icons = FACET_ICONS;
@@ -51,7 +49,7 @@ export class SearchBarMenu extends Component {
         this.fields = sortBy(fields, "string");
         // Favorite
         this.state = proxy({ sharedFavoritesExpanded: false });
-        useBus(this.env.searchModel, "update", this.render);
+        useBus(this.env.searchModel, "update", () => render(this));
         this.dialogService = useService("dialog");
         this.notificationService = useService("notification");
 
@@ -65,15 +63,40 @@ export class SearchBarMenu extends Component {
         }
     }
 
-    // Filter Panel
     get filterItems() {
-        return this.env.searchModel.getSearchItems((searchItem) =>
-            ["filter", "dateFilter", "parentFilter", "lazyParentFilter"].includes(searchItem.type)
-        );
+        const show = ["filter", "dateFilter", "parentFilter", "lazyParentFilter", "relativeFilter"];
+        return this.env.searchModel.getSearchItems((item) => show.includes(item.type));
     }
 
-    async onAddCustomFilterClick() {
+    /**
+     * Filter out top level items that are only shown nested (eg. relative filters)
+     * (It was a hard and debatable design decision to model relative filters as top
+     * level items even though they are only shown nested, to avoid much refactoring)
+     */
+    get displayedFilterItems() {
+        const relativeItems = new Map();
+        const displayed = [];
+        for (const item of this.filterItems) {
+            if (item.type === "relativeFilter") {
+                relativeItems.set(item.id, item);
+            } else {
+                displayed.push(item);
+            }
+        }
+        for (const item of displayed) {
+            item.relativeItem = relativeItems.get(item.relativeFilterId) ?? null;
+        }
+        return displayed;
+    }
+
+    onAddCustomFilterClick() {
         this.env.searchModel.spawnCustomFilterDialog();
+    }
+
+    /** Opens a domain editor dialog for the given item, default to "is in" "today" option */
+    onAddCustomDateFilterClick({ fieldName, fieldType }) {
+        const domain = domainFromTree(condition(fieldName, "in range", [fieldType, "today"]));
+        this.env.searchModel.spawnCustomFilterDialog({ domain });
     }
 
     /**
@@ -89,16 +112,24 @@ export class SearchBarMenu extends Component {
         }
     }
 
+    onRelativeFilterSelected({ itemId, optionId }) {
+        this.env.searchModel.toggleRelativeFilter(itemId, optionId);
+    }
+
+    hasActiveOption(item, relativeItem) {
+        return item.isActive || (relativeItem?.options?.some((o) => o.isActive) ?? false);
+    }
+
     async onToggle({ itemId, optionsParams }) {
         if (optionsParams.toBeLoaded) {
             await this.env.searchModel.loadLazyParentFilter(itemId);
-            this.render();
+            render(this);
         }
     }
 
     async onLoadMoreOptions({ itemId }) {
         await this.env.searchModel.loadMoreOptions(itemId);
-        this.render();
+        render(this);
     }
 
     // GroupBy Panel

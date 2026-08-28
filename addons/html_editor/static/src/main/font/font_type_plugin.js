@@ -34,7 +34,7 @@ import { weakMemoize } from "@html_editor/utils/functions";
  * @typedef {{ name: LazyTranslatedString; tagName: string; extraClass?: string; }[]} font_type_items
  */
 
-const headingTags = ["H1", "H2", "H3", "H4", "H5", "H6"];
+export const headingTags = ["H1", "H2", "H3", "H4", "H5", "H6"];
 const handledElemSelector = [...headingTags, "BLOCKQUOTE"].join(", ");
 
 export class FontTypePlugin extends Plugin {
@@ -77,7 +77,7 @@ export class FontTypePlugin extends Plugin {
         user_commands: [
             {
                 id: "setTagHeading",
-                icon: "fa-header",
+                icon: "title",
                 run: ({ level } = {}) =>
                     this.dependencies.dom.setBlock({ tagName: `H${level ?? 1}` }),
                 isAvailable: this.blockFormatIsAvailable.bind(this),
@@ -86,7 +86,7 @@ export class FontTypePlugin extends Plugin {
                 id: "setTagParagraph",
                 title: _t("Text"),
                 description: _t("Paragraph block"),
-                icon: "fa-paragraph",
+                icon: "format_paragraph",
                 run: () => {
                     this.dependencies.dom.setBlock({
                         tagName: this.dependencies.baseContainer.getDefaultNodeName(),
@@ -98,7 +98,8 @@ export class FontTypePlugin extends Plugin {
                 id: "setTagQuote",
                 title: _t("Quote"),
                 description: _t("Add a blockquote section"),
-                icon: "fa-quote-right",
+                icon: "format_quote",
+                iconClass: "oi-filled",
                 run: () => this.dependencies.dom.setBlock({ tagName: "blockquote" }),
                 isAvailable: this.blockFormatIsAvailable.bind(this),
             },
@@ -135,6 +136,7 @@ export class FontTypePlugin extends Plugin {
             {
                 title: _t("Heading 1"),
                 description: _t("Big section heading"),
+                icon: "format_h1",
                 categoryId: "format",
                 commandId: "setTagHeading",
                 commandParams: { level: 1 },
@@ -143,6 +145,7 @@ export class FontTypePlugin extends Plugin {
             {
                 title: _t("Heading 2"),
                 description: _t("Medium section heading"),
+                icon: "format_h2",
                 categoryId: "format",
                 commandId: "setTagHeading",
                 commandParams: { level: 2 },
@@ -151,6 +154,7 @@ export class FontTypePlugin extends Plugin {
             {
                 title: _t("Heading 3"),
                 description: _t("Small section heading"),
+                icon: "format_h3",
                 categoryId: "format",
                 commandId: "setTagHeading",
                 commandParams: { level: 3 },
@@ -227,6 +231,19 @@ export class FontTypePlugin extends Plugin {
         ],
         delete_backward_overrides: withSequence(20, this.handleDeleteBackward.bind(this)),
         delete_backward_word_overrides: this.handleDeleteBackward.bind(this),
+        set_block_overrides: this.handleSetBlock.bind(this),
+
+        /** Predicates */
+        are_shorthands_available_predicates: (node) => {
+            if (closestElement(node, "pre")) {
+                return false;
+            }
+        },
+        is_powerbox_available_predicates: (node) => {
+            if (closestElement(node, "pre")) {
+                return false;
+            }
+        },
 
         /** Processors */
         clipboard_content_processors: this.processContentForClipboard.bind(this),
@@ -253,6 +270,7 @@ export class FontTypePlugin extends Plugin {
                 unwrapContents(el);
             }
         }
+        return root;
     }
 
     get fontTypeName() {
@@ -430,5 +448,18 @@ export class FontTypePlugin extends Plugin {
             }
         }
         return clonedContents;
+    }
+
+    handleSetBlock(params) {
+        const { block, newEl } = params;
+        if (
+            ["BLOCKQUOTE", "PRE"].includes(newEl?.nodeName) &&
+            block.parentElement === newEl.parentElement
+        ) {
+            const br = this.document.createElement("BR");
+            newEl.append(br, ...childNodes(block));
+            block.remove();
+            return true;
+        }
     }
 }

@@ -11,22 +11,22 @@
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
 # "Larissa Manderfeld (lman)" <lman@odoo.com>, 2025, 2026.
 # "Malaz Siddig Elsayed Abuidris (msea)" <msea@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-29 17:40+0000\n"
-"PO-Revision-Date: 2026-04-30 13:37+0000\n"
-"Last-Translator: \"Larissa Manderfeld (lman)\" <lman@odoo.com>\n"
-"Language-Team: German <https://translate.odoo.com/projects/odoo-s19-3/"
+"POT-Creation-Date: 2026-07-26 19:10+0000\n"
+"PO-Revision-Date: 2026-06-21 05:03+0000\n"
+"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
+"Language-Team: German <https://translate.odoo.com/projects/odoo-master/"
 "product/de/>\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.17\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__product_variant_count
@@ -46,23 +46,23 @@ msgstr "# Produkte"
 msgid ""
 "%(base)s with a %(discount)s %% %(discount_type)s and %(surcharge)s extra "
 "fee\n"
-"Example: %(amount)s * %(discount_charge)s + %(price_surcharge)s → %"
-"(total_amount)s"
+"Example: %(amount)s * %(discount_charge)s + %(price_surcharge)s → "
+"%(total_amount)s"
 msgstr ""
 "%(base)s mit einem Rabatt von %(discount)s %% %(discount_type)s und einer "
 "Zusatzgebühr von %(surcharge)s \n"
-"Beispiel: %(amount)s * %(discount_charge)s + %(price_surcharge)s → %"
-"(total_amount)s"
+"Beispiel: %(amount)s * %(discount_charge)s + %(price_surcharge)s → "
+"%(total_amount)s"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid ""
-"%(item_name)s: end date (%(end_date)s) should be after start date (%"
-"(start_date)s)"
+"%(item_name)s: end date (%(end_date)s) should be after start date "
+"(%(start_date)s)"
 msgstr ""
-"%(item_name)s: Enddatum (%(end_date)s) sollte größer sein als Startdatum (%"
-"(start_date)s)"
+"%(item_name)s: Enddatum (%(end_date)s) sollte größer sein als Startdatum "
+"(%(start_date)s)"
 
 #. module: product
 #. odoo-python
@@ -98,8 +98,9 @@ msgstr "%s (Kopie)"
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label4x12_gs1
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label4x7
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label_dymo
+#, fuzzy
 msgid "&amp;nbsp;"
-msgstr ""
+msgstr "&amp;nbsp;"
 
 #. module: product
 #: model:ir.actions.report,print_report_name:product.report_product_template_label_2x7
@@ -144,8 +145,8 @@ msgstr "- %(amount)s Preisnachlass"
 msgid ""
 "- Barcode \"%(barcode)s\" already assigned to product(s): %(product_list)s"
 msgstr ""
-"- Barcode „%(barcode)s“ bereits dem/den Produkt(en) zugeordnet: %"
-"(product_list)s"
+"- Barcode „%(barcode)s“ bereits dem/den Produkt(en) zugeordnet: "
+"%(product_list)s"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute__create_variant
@@ -252,19 +253,19 @@ msgstr "<b>Tipp: Möchten Sie auf 9,99 runden?</b>"
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid ""
-"<i class=\"fa fa-long-arrow-right mx-2 oe_edit_only\" aria-label=\"Arrow "
+"<i class=\"oi mx-2 oe_edit_only\" data-icon=\"east\" aria-label=\"Arrow "
 "icon\" title=\"Arrow\"/>"
 msgstr ""
-"<i class=\"fa fa-long-arrow-right mx-2 oe_edit_only\" aria-label=\"Arrow "
+"<i class=\"oi mx-2 oe_edit_only\" data-icon=\"east\" aria-label=\"Arrow "
 "icon\" title=\"Arrow\"/>"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view_kanban
 msgid ""
-"<i class=\"fa fa-money\" role=\"img\" aria-label=\"Currency\" "
+"<i class=\"oi\" data-icon=\"payments\" role=\"img\" aria-label=\"Currency\" "
 "title=\"Currency\"/>"
 msgstr ""
-"<i class=\"fa fa-money\" role=\"img\" aria-label=\"Currency\" "
+"<i class=\"oi\" data-icon=\"payments\" role=\"img\" aria-label=\"Currency\" "
 "title=\"Currency\"/>"
 
 #. module: product
@@ -273,7 +274,7 @@ msgid "<span class=\"o_stat_text\"> Products</span>"
 msgstr "<span class=\"o_stat_text\"> Produkte</span>"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.uom_uom_form_view_inherit
+#: model_terms:ir.ui.view,arch_db:product.uom_uom_view_form
 msgid "<span class=\"o_stat_text\">Packaging Barcodes</span>"
 msgstr "<span class=\"o_stat_text\">Verpackungsbarcodes</span>"
 
@@ -491,14 +492,16 @@ msgstr "Symbol des Aktivitätstyps"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
+#, fuzzy
 msgid "Add"
-msgstr ""
+msgstr "Hinzufügen"
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
+#, fuzzy
 msgid "Add Products"
-msgstr ""
+msgstr "Produkte hinzufügen"
 
 #. module: product
 #. odoo-javascript
@@ -520,10 +523,14 @@ msgstr "Menge hinzufügen"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
+#, fuzzy
 msgid ""
 "Add products using the \"Add Products\" button at the top right to\n"
 "                                include them in the report."
 msgstr ""
+"Fügen Sie Produkte hinzu, indem Sie oben rechts auf die Schaltfläche "
+"„Produkte hinzufügen“\n"
+"                                klicken, um sie dem Bericht hinzuzufügen."
 
 #. module: product
 #. odoo-python
@@ -564,6 +571,11 @@ msgstr "Alle"
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid "All Categories"
 msgstr "Alle Kategorien"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_category_form_view
+msgid "All Companies"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__all_product_tag_ids
@@ -617,6 +629,7 @@ msgstr "Kunden erlauben, ihren eigenen Wert festzulegen"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__allowed_uom_ids
+#: model:ir.model.fields,field_description:product.field_product_uom__allowed_uom_ids
 msgid "Allowed Uom"
 msgstr "Zulässige Maßeinheit"
 
@@ -668,8 +681,9 @@ msgstr "Archiviert"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_search_view
+#, fuzzy
 msgid "Archived Products"
-msgstr ""
+msgstr "Archivierte Produkte"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_ariel
@@ -696,11 +710,6 @@ msgid ""
 msgstr ""
 "Es können maximal %s Mengen gleichzeitig angezeigt werden. Entfernen Sie "
 "eine, um andere hinzuzufügen."
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_document_form
-msgid "Attached To"
-msgstr "Angehängt an"
 
 #. module: product
 #: model:ir.model,name:product.model_ir_attachment
@@ -836,8 +845,14 @@ msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_uom_uom__product_uom_ids
+#: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 msgid "Barcodes"
 msgstr "Barcodes"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.uom_uom_view_form
+msgid "Barcodes can be configured on"
+msgstr ""
 
 #. module: product
 #: model:ir.model,name:product.model_report_product_label_base
@@ -952,6 +967,12 @@ msgid "Canon"
 msgstr "Canon"
 
 #. module: product
+#. odoo-python
+#: code:addons/product/models/product_catalog_mixin.py:0
+msgid "Catalog missing the child field to update."
+msgstr ""
+
+#. module: product
 #: model:ir.actions.act_window,name:product.product_category_action_form
 #: model_terms:ir.ui.view,arch_db:product.product_view_search_catalog
 msgid "Categories"
@@ -975,8 +996,8 @@ msgstr "Stuhlkombination"
 #: code:addons/product/models/product_product.py:0
 #: code:addons/product/models/product_template.py:0
 msgid ""
-"Changing the unit of measure for your product will apply a conversion 1 %"
-"(old_uom_name)s = 1 %(new_uom_name)s.\n"
+"Changing the unit of measure for your product will apply a conversion 1 "
+"%(old_uom_name)s = 1 %(new_uom_name)s.\n"
 "All existing records (Sales orders, Purchase orders, etc.) using this "
 "product will be updated by replacing the unit name."
 msgstr ""
@@ -1090,6 +1111,7 @@ msgstr "Gemütlicher gelber Stuhl für die tägliche Nutzung"
 
 #. module: product
 #: model:ir.model,name:product.model_res_company
+#: model:ir.model.fields,field_description:product.field_product_category__company_id
 #: model:ir.model.fields,field_description:product.field_product_combo__company_id
 #: model:ir.model.fields,field_description:product.field_product_combo_item__company_id
 #: model:ir.model.fields,field_description:product.field_product_document__company_id
@@ -1099,6 +1121,7 @@ msgstr "Gemütlicher gelber Stuhl für die tägliche Nutzung"
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__company_id
 #: model:ir.model.fields,field_description:product.field_product_template__company_id
 #: model:ir.model.fields,field_description:product.field_product_uom__company_id
+#: model_terms:ir.ui.view,arch_db:product.product_category_search_view
 msgid "Company"
 msgstr "Unternehmen"
 
@@ -1274,11 +1297,6 @@ msgstr "Erstellt von"
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__create_date
 msgid "Created on"
 msgstr "Erstellt am"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_document_form
-msgid "Creation"
-msgstr "Erstellung"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__res_config_settings__product_volume_volume_in_cubic_feet__1
@@ -1522,6 +1540,7 @@ msgstr "„Angewendet auf“ anzeigen"
 #: model:ir.model.fields,field_description:product.field_product_attribute_custom_value__display_name
 #: model:ir.model.fields,field_description:product.field_product_attribute_value__display_name
 #: model:ir.model.fields,field_description:product.field_product_base_unit__display_name
+#: model:ir.model.fields,field_description:product.field_product_catalog_line_mixin__display_name
 #: model:ir.model.fields,field_description:product.field_product_catalog_mixin__display_name
 #: model:ir.model.fields,field_description:product.field_product_category__display_name
 #: model:ir.model.fields,field_description:product.field_product_combo__display_name
@@ -1579,11 +1598,6 @@ msgid ""
 msgstr ""
 "Zeigt die benutzerdefinierte Einheit für die Produkte an, falls definiert, "
 "oder andernfalls die ausgewählte Maßeinheit."
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_document_kanban
-msgid "Document"
-msgstr "Dokument"
 
 #. module: product
 #. odoo-python
@@ -1675,6 +1689,14 @@ msgid "End Date"
 msgstr "Enddatum"
 
 #. module: product
+#. odoo-python
+#: code:addons/product/models/product_supplierinfo.py:0
+msgid ""
+"End date can't be earlier than the start date. Please check dates for vendor "
+"pricelist: %s"
+msgstr ""
+
+#. module: product
 #: model:ir.model.fields,help:product.field_product_supplierinfo__date_end
 msgid "End date for this vendor price"
 msgstr "Enddatum dieses Lieferantenpreises"
@@ -1764,6 +1786,11 @@ msgid "Favorites"
 msgstr "Favoriten"
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_document_form
+msgid "File"
+msgstr ""
+
+#. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__raw
 msgid "File Content (raw)"
 msgstr "Datei-Inhalt (roh)"
@@ -1810,13 +1837,6 @@ msgstr "Follower"
 #: model:ir.model.fields,field_description:product.field_product_template__message_partner_ids
 msgid "Followers (Partners)"
 msgstr "Follower (Partner)"
-
-#. module: product
-#: model:ir.model.fields,help:product.field_product_pricelist__activity_type_icon
-#: model:ir.model.fields,help:product.field_product_product__activity_type_icon
-#: model:ir.model.fields,help:product.field_product_template__activity_type_icon
-msgid "Font awesome icon e.g. fa-tasks"
-msgstr "FontAwesome-Icon, z. B. fa-tasks"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist_item__min_quantity
@@ -2017,11 +2037,6 @@ msgid "High-back office chair with great support"
 msgstr "Bürostuhl mit hoher Rückenlehne und hervorragender Stützfunktion"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_document_form
-msgid "History"
-msgstr "Historie"
-
-#. module: product
 #: model:product.category,name:product.product_category_construction
 msgid "Home Construction"
 msgstr "Hausbau"
@@ -2037,6 +2052,7 @@ msgstr "Übernachtungskosten"
 #: model:ir.model.fields,field_description:product.field_product_attribute_custom_value__id
 #: model:ir.model.fields,field_description:product.field_product_attribute_value__id
 #: model:ir.model.fields,field_description:product.field_product_base_unit__id
+#: model:ir.model.fields,field_description:product.field_product_catalog_line_mixin__id
 #: model:ir.model.fields,field_description:product.field_product_catalog_mixin__id
 #: model:ir.model.fields,field_description:product.field_product_category__id
 #: model:ir.model.fields,field_description:product.field_product_combo__id
@@ -2180,11 +2196,6 @@ msgstr "Bildquelle"
 #: model:ir.model.fields,field_description:product.field_product_document__image_width
 msgid "Image Width"
 msgstr "Bildbreite"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_document_kanban
-msgid "Image is a link"
-msgstr "Bild ist ein Link"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_search
@@ -2535,7 +2546,15 @@ msgstr "Kastanienbraun"
 
 #. module: product
 #: model:product.attribute,name:product.pa_material
+#, fuzzy
 msgid "Material"
+msgstr "Material"
+
+#. module: product
+#: model:ir.model.fields,help:product.field_product_pricelist__activity_type_icon
+#: model:ir.model.fields,help:product.field_product_product__activity_type_icon
+#: model:ir.model.fields,help:product.field_product_template__activity_type_icon
+msgid "Material Symbols icon e.g. checklist"
 msgstr ""
 
 #. module: product
@@ -2745,14 +2764,16 @@ msgstr ""
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/kanban_renderer.xml:0
+#, fuzzy
 msgid "No products could be found."
-msgstr ""
+msgstr "Es konnten keine Produkte gefunden werden."
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
+#, fuzzy
 msgid "No products found in the report"
-msgstr ""
+msgstr "Kein Produkte im Bericht gefunden"
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_supplierinfo_type_action
@@ -2769,6 +2790,11 @@ msgstr "Nein, behalten!"
 #: model:product.template,description_sale:product.product_template_acoustic_bloc_screens
 msgid "Noise-reducing panels for open spaces"
 msgstr "Lärmschutzwände für Großraumbüros"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_category_form_view
+msgid "None"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__normal
@@ -2893,8 +2919,8 @@ msgstr ""
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_line.py:0
 msgid ""
-"On the product %(product)s you cannot transform the attribute %"
-"(attribute_src)s into the attribute %(attribute_dest)s."
+"On the product %(product)s you cannot transform the attribute "
+"%(attribute_src)s into the attribute %(attribute_dest)s."
 msgstr ""
 "Für das Produkt %(product)s können Sie das Attribut %(attribute_src)s nicht "
 "in das Attribut %(attribute_dest)s umwandeln."
@@ -2967,8 +2993,8 @@ msgid "Packaging"
 msgstr "Verpackung"
 
 #. module: product
-#. odoo-python
-#: code:addons/product/models/uom_uom.py:0
+#: model:ir.actions.act_window,name:product.product_uom_action_view_list
+#: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_uom_list_view
 msgid "Packaging Barcodes"
 msgstr "Verpackungsbarcodes"
@@ -2995,6 +3021,11 @@ msgid "Pantene"
 msgstr "Pantene"
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_category_form_view
+msgid "Parent"
+msgstr ""
+
+#. module: product
 #: model:ir.model.fields,field_description:product.field_product_category__parent_id
 msgid "Parent Category"
 msgstr "Oberkategorie"
@@ -3006,8 +3037,9 @@ msgstr "Übergeordneter Pfad"
 
 #. module: product
 #: model:product.attribute,name:product.pa_pattern
+#, fuzzy
 msgid "Pattern"
-msgstr ""
+msgstr "Muster"
 
 #. module: product
 #: model:product.template,name:product.product_product_9_product_template
@@ -3237,6 +3269,7 @@ msgstr "Privater Arbeitsbereich mit Schreibtisch und Stuhl"
 #. odoo-python
 #: code:addons/product/controllers/pricelist_report.py:0
 #: model:ir.model,name:product.model_product_template
+#: model:ir.model.fields,field_description:product.field_product_catalog_line_mixin__product_id
 #: model:ir.model.fields,field_description:product.field_product_label_layout__product_ids
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__product_tmpl_id
 #: model:ir.model.fields,field_description:product.field_product_product__product_variant_id
@@ -3287,6 +3320,11 @@ msgstr "Produktattribut und -werte"
 #: model:ir.model.fields,field_description:product.field_product_template__attribute_line_ids
 msgid "Product Attributes"
 msgstr "Produktattribute"
+
+#. module: product
+#: model:ir.model,name:product.model_product_catalog_line_mixin
+msgid "Product Catalog Line Mixin"
+msgstr ""
 
 #. module: product
 #: model:ir.model,name:product.model_product_catalog_mixin
@@ -3569,8 +3607,9 @@ msgstr "Violett"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
+#, fuzzy
 msgid "Quantities"
-msgstr ""
+msgstr "Mengen"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_pricelist_page
@@ -3708,8 +3747,9 @@ msgstr "Zugehöriger Anhang"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
+#, fuzzy
 msgid "Remove"
-msgstr ""
+msgstr "Entfernen"
 
 #. module: product
 #. odoo-javascript
@@ -3925,6 +3965,11 @@ msgid "Show separately the extra price for this attribute value."
 msgstr "Zeigen Sie den Aufpreis für diesen Attributwert separat an."
 
 #. module: product
+#: model:product.attribute,name:product.pa_sides
+msgid "Sides"
+msgstr ""
+
+#. module: product
 #: model:product.attribute.value,name:product.pav_color_silver
 msgid "Silver"
 msgstr "Silber"
@@ -4133,11 +4178,11 @@ msgstr "Die Referenz „%s“ existiert bereits."
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_line.py:0
 msgid ""
-"The attribute %(attribute)s must have at least one value for the product %"
-"(product)s."
+"The attribute %(attribute)s must have at least one value for the product "
+"%(product)s."
 msgstr ""
-"Das Attribut %(attribute)s muss mindestens einen Wert für das Produkt %"
-"(product)s haben."
+"Das Attribut %(attribute)s muss mindestens einen Wert für das Produkt "
+"%(product)s haben."
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute_value__attribute_id
@@ -4178,8 +4223,8 @@ msgstr "Der Anzeigetyp, der im Produktkonfigurator verwendet wird."
 #: code:addons/product/models/product_product.py:0
 msgid ""
 "The exitings product has different attribute value. \"%(imported_values)s\" "
-"is not equivalent to \"%(existing_values)s\" for \"%(external_id)s\", \"%"
-"(id)s\""
+"is not equivalent to \"%(existing_values)s\" for \"%(external_id)s\", "
+"\"%(id)s\""
 msgstr ""
 "Das Ausgangsprodukt hat einen anderen Attributwert. „%(imported_values)s“ "
 "entspricht nicht „%(existing_values)s“ für „%(external_id)s“ und „%(id)s“."
@@ -4285,8 +4330,8 @@ msgid ""
 "The value %(value)s is not defined for the attribute %(attribute)s on the "
 "product %(product)s."
 msgstr ""
-"Der Wert %(value)s ist für das Attribut %(attribute)s des Produkts %"
-"(product)s nicht definiert."
+"Der Wert %(value)s ist für das Attribut %(attribute)s des Produkts "
+"%(product)s nicht definiert."
 
 #. module: product
 #. odoo-python
@@ -4297,6 +4342,14 @@ msgid ""
 msgstr ""
 "Der Wert der Basisstückzahl muss größer als 0 sein. Verwenden Sie 0, um den "
 "Einzelpreis für dieses Produkt auszublenden."
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_catalog_mixin.py:0
+msgid ""
+"There are multiple lines with the same product, please update those one by "
+"one and not through the catalog."
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -4570,8 +4623,9 @@ msgstr "Den Aufpreis für bestehende Produkte aktualisieren"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/product_document_kanban/upload_button/upload_button.xml:0
+#, fuzzy
 msgid "Upload"
-msgstr ""
+msgstr "Hochladen"
 
 #. module: product
 #. odoo-python
@@ -4680,11 +4734,15 @@ msgstr "Werte"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__product_id
-#: model_terms:ir.ui.view,arch_db:product.product_document_kanban
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_view_search
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 msgid "Variant"
 msgstr "Variante"
+
+#. module: product
+#: model:ir.model.fields,field_description:product.field_product_document__variant_attribute_value_ids
+msgid "Variant Attribute Value"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__product_variant_count
@@ -4767,6 +4825,7 @@ msgstr "Samt"
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__partner_id
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_search_view
+#: model_terms:ir.ui.view,arch_db:product.product_view_search_catalog
 msgid "Vendor"
 msgstr "Lieferant"
 
@@ -4916,6 +4975,12 @@ msgid "Write Date"
 msgstr "Änderungsdatum"
 
 #. module: product
+#. odoo-python
+#: code:addons/product/models/product_catalog_mixin.py:0
+msgid "Wrong catalog child field!"
+msgstr ""
+
+#. module: product
 #: model:product.attribute.value,name:product.pav_size_xl
 msgid "XL"
 msgstr "XL"
@@ -5000,7 +5065,14 @@ msgstr ""
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
+#, fuzzy
 msgid "You can't edit this product in the catalog."
+msgstr "Sie können dieses Produkt im Katalog nicht bearbeiten."
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_catalog_mixin.py:0
+msgid "You cannot add or remove products from this record."
 msgstr ""
 
 #. module: product
@@ -5047,23 +5119,39 @@ msgstr ""
 
 #. module: product
 #. odoo-python
-#: code:addons/product/models/product_template_attribute_value.py:0
+#: code:addons/product/models/product_category.py:0
 msgid ""
-"You cannot change the product of the value %(value)s set on product %"
-"(product)s."
+"You cannot change the company of %(categories)s as they hold products shared "
+"between companies or belonging to other companies."
 msgstr ""
-"Sie können das Produkt des auf Produkt %(product)s eingestellten Wertes %"
-"(value)s nicht ändern."
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_category.py:0
+msgid ""
+"You cannot change the company of %(category)s as it holds products shared "
+"between companies or belonging to other companies."
+msgstr ""
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_value.py:0
 msgid ""
-"You cannot change the value of the value %(value)s set on product %"
-"(product)s."
+"You cannot change the product of the value %(value)s set on product "
+"%(product)s."
 msgstr ""
-"Sie können den Wert des auf Produkt %(product)s eingestellten Wertes %"
-"(value)s nicht ändern."
+"Sie können das Produkt des auf Produkt %(product)s eingestellten Wertes "
+"%(value)s nicht ändern."
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_template_attribute_value.py:0
+msgid ""
+"You cannot change the value of the value %(value)s set on product "
+"%(product)s."
+msgstr ""
+"Sie können den Wert des auf Produkt %(product)s eingestellten Wertes "
+"%(value)s nicht ändern."
 
 #. module: product
 #. odoo-python
@@ -5126,11 +5214,15 @@ msgstr ""
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/kanban_renderer.xml:0
+#, fuzzy
 msgid ""
 "You must define a product for everything you sell or purchase,\n"
 "                            whether it's a storable product, a consumable or "
 "a service."
 msgstr ""
+"Sie müssen ein Produkt definieren für alles, was Sie verkaufen oder kaufen,\n"
+"                             ob es sich nun um ein lagerfähiges Produkt, ein "
+"Verbrauchsartikel oder eine Dienstleistung handelt."
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_template_action
@@ -5349,15 +5441,15 @@ msgid "e.g. USD Retailers"
 msgstr "z. B. USD-Händler"
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.uom_uom_view_form
+msgid "each variant"
+msgstr ""
+
+#. module: product
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid "markup"
 msgstr "Preisaufschlag"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_document_form
-msgid "on"
-msgstr "am"
 
 #. module: product
 #. odoo-javascript
@@ -5406,18 +5498,3 @@ msgstr "bis"
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
 msgid "xlsx"
 msgstr "xlsx"
-
-#~ msgid "<strong>Qty: </strong>"
-#~ msgstr "<strong>Menge</strong>"
-
-#~ msgid "Eco-friendly Wooden Chair"
-#~ msgstr "Umweltfreundlicher Holzstuhl"
-
-#~ msgid "Package Type A"
-#~ msgstr "Pakettyp A"
-
-#~ msgid "On hand:"
-#~ msgstr "Vorrätig:"
-
-#~ msgid "Price:"
-#~ msgstr "Preis:"

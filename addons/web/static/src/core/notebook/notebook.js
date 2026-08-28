@@ -1,5 +1,5 @@
-import { onWillRender, useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onWillUpdateProps, proxy } from "@odoo/owl";
+import { useLayoutEffect } from "@web/owl2/utils";
+import { Component, computed, proxy, signal, t, useOnChange, useProps } from "@odoo/owl";
 import { KeepLast } from "@web/core/utils/concurrency";
 
 /**
@@ -51,57 +51,63 @@ import { KeepLast } from "@web/core/utils/concurrency";
  * @extends Component
  */
 
+export const notebookProps = {
+    slots: t.object().optional(),
+    pages: t.array().optional(),
+    class: t.any().optional(),
+    className: t.string().optional(""),
+    defaultPage: t.string().optional(),
+    orientation: t.string().optional("horizontal"),
+    icons: t.object().optional(),
+    onPageUpdate: t.function().optional(() => () => {}),
+    onWillActivatePage: t.function().optional(() => () => {}),
+};
+
 export class Notebook extends Component {
     static template = "web.Notebook";
-    static defaultProps = {
-        className: "",
-        orientation: "horizontal",
-        onPageUpdate: () => {},
-        onWillActivatePage: () => {},
-    };
-    static props = {
-        slots: { type: Object, optional: true },
-        pages: { type: Object, optional: true },
-        class: { optional: true },
-        className: { type: String, optional: true },
-        defaultPage: { type: String, optional: true },
-        orientation: { type: String, optional: true },
-        icons: { type: Object, optional: true },
-        onPageUpdate: { type: Function, optional: true },
-        onWillActivatePage: { type: Function, optional: true },
-    };
+    props = useProps(notebookProps);
+
+    activePane = signal.ref();
 
     setup() {
-        this.activePane = useRef("activePane");
-        this.pages = this.computePages(this.props);
-        this.invalidPages = new Set();
+        this.pages = computed(() => this.computePages(this.props));
         this.state = proxy({ currentPage: null });
         this.state.currentPage = this.computeActivePage(this.props.defaultPage, true);
         this.keepLastPageTransition = new KeepLast();
         useLayoutEffect(
             () => {
                 this.props.onPageUpdate(this.state.currentPage);
-                this.activePane.el?.classList.add("show");
+                this.activePane()?.classList.add("show");
             },
             () => [this.state.currentPage]
         );
-        onWillRender(() => {
-            this.computeInvalidPages();
-        });
-        onWillUpdateProps((nextProps) => {
-            const activateDefault =
-                this.props.defaultPage !== nextProps.defaultPage || !this.defaultVisible;
-            this.pages = this.computePages(nextProps);
-            this.state.currentPage = this.computeActivePage(nextProps.defaultPage, activateDefault);
-        });
+        // the default page changed: always activate it
+        useOnChange(
+            () => [this.props.defaultPage],
+            (defaultPage) => {
+                this.state.currentPage = this.computeActivePage(defaultPage, true);
+            },
+            { initialRun: false }
+        );
+        // the pages changed: only fall back on the default page if it wasn't visible
+        useOnChange(
+            () => [this.pages()],
+            () => {
+                this.state.currentPage = this.computeActivePage(
+                    this.props.defaultPage,
+                    !this.defaultVisible
+                );
+            },
+            { initialRun: false }
+        );
     }
 
     get navItems() {
-        return this.pages.filter((e) => e[1].isVisible);
+        return this.pages().filter((e) => e[1].isVisible);
     }
 
     get page() {
-        const page = this.pages.find((e) => e[0] === this.state.currentPage)[1];
+        const page = this.pages().find((e) => e[0] === this.state.currentPage)[1];
         return page.Component && page;
     }
 
@@ -110,7 +116,7 @@ export class Notebook extends Component {
             const prom = (async () => this.props.onWillActivatePage(pageIndex))();
             const canProceed = await this.keepLastPageTransition.add(prom);
             if (canProceed !== false) {
-                this.activePane.el?.classList.remove("show");
+                this.activePane()?.classList.remove("show");
                 this.state.currentPage = pageIndex;
             }
         }
@@ -146,10 +152,12 @@ export class Notebook extends Component {
     }
 
     computeActivePage(defaultPage, activateDefault) {
-        if (!this.pages.length) {
+        if (!this.pages().length) {
             return null;
         }
-        const pages = this.pages.filter((e) => e[1].isVisible).map((e) => e[0]);
+        const pages = this.pages()
+            .filter((e) => e[1].isVisible)
+            .map((e) => e[0]);
 
         if (defaultPage) {
             if (!pages.includes(defaultPage)) {
@@ -170,14 +178,15 @@ export class Notebook extends Component {
     }
 
     computeInvalidPages() {
-        this.invalidPages = new Set();
+        const invalidPages = new Set();
         for (const page of this.navItems) {
             const invalid = page[1].fieldNames?.some((fieldName) =>
                 this.env.model?.root.isFieldInvalid(fieldName)
             );
             if (invalid) {
-                this.invalidPages.add(page[0]);
+                invalidPages.add(page[0]);
             }
         }
+        return invalidPages;
     }
 }

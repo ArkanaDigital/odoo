@@ -1,5 +1,4 @@
-import { useComponent } from "@web/owl2/utils";
-import { effect, markup, onWillDestroy, onWillStart, onWillUpdateProps, untrack } from "@odoo/owl";
+import { markup, onWillStart, untrack, useEffect } from "@odoo/owl";
 import { evalPartialContext, makeContext } from "@web/core/context";
 import { Domain } from "@web/core/domain";
 import {
@@ -8,13 +7,14 @@ import {
     serializeDate,
     serializeDateTime,
 } from "@web/core/l10n/dates";
+import { _t } from "@web/core/l10n/translation";
 import { x2ManyCommands } from "@web/core/orm_plugin";
 import { evaluateExpr } from "@web/core/py_js/py";
-import { omit } from "@web/core/utils/objects";
-import { orderByToString } from "@web/search/utils/order_by";
-import { _t } from "@web/core/l10n/translation";
 import { user } from "@web/core/user";
 import { unique } from "@web/core/utils/arrays";
+import { omit } from "@web/core/utils/objects";
+import { render, useComponent } from "@web/owl2/utils";
+import { orderByToString } from "@web/search/utils/order_by";
 
 const granularityToInterval = {
     hour: { hours: 1 },
@@ -760,36 +760,19 @@ export function isRelational(field) {
  * depends on the record props.
  * The callback will be executed once during setup and each time
  * a record value read in the callback changes.
- * @param {(record) => void} callback
+ *
+ * @deprecated use 'computed' or 'effect' on record values directly
+ * @param {(record: import("./record").Record, props: any) => any} callback
  */
 export function useRecordObserver(callback) {
     const component = useComponent();
     let prom;
-    let props = component.props;
-    const observeRecord = () => {
-        // Read props inside untrack: with reactive props, reading them here would
-        // subscribe the effect to every prop signal, so any parent re-render
-        // producing a non-identical prop value (e.g. a fresh `context` object)
-        // would re-run the callback. Only reactive reads made by the callback
-        // itself (record values) should re-trigger it; prop updates are handled
-        // by onWillUpdateProps below.
-        const currentProps = untrack(() => ({ ...props }));
-        prom = Promise.resolve(callback(currentProps.record, currentProps)).then(() =>
-            component.render()
-        );
-        return prom;
-    };
-    let cleanup = effect(() => observeRecord());
-    onWillStart(() => prom);
-    onWillUpdateProps((nextProps) => {
-        if (nextProps.record !== component.props.record) {
-            props = nextProps;
-            cleanup();
-            cleanup = effect(() => observeRecord());
-            return prom;
-        }
+    useEffect(() => {
+        const record = component.props.record;
+        const currentProps = untrack(() => ({ ...component.props }));
+        prom = Promise.resolve(callback(record, currentProps)).then(() => render(component));
     });
-    onWillDestroy(cleanup);
+    onWillStart(() => prom);
 }
 
 /**

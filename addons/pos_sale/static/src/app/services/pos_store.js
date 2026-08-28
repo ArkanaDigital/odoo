@@ -82,9 +82,13 @@ patch(PosStore.prototype, {
         return sale_order;
     },
     getConvertedQuantityFromSaleOrderline(convertedLine, soLine) {
-        const type = convertedLine.product_id.type;
+        const type = soLine.product_id.type;
         const sOrder = soLine.order_id;
-        if (type === "service" && !["sent", "draft"].includes(sOrder.state)) {
+        if (
+            soLine.product_id.id !== this.config.default_product_id.id &&
+            type === "service" &&
+            !["sent", "draft"].includes(sOrder.state)
+        ) {
             return convertedLine.qty_to_invoice;
         } else {
             return (
@@ -116,6 +120,8 @@ patch(PosStore.prototype, {
 
             if (line.is_downpayment) {
                 line.product_id = this.config.down_payment_product_id;
+            } else if (!line.display_type && !line.product_id) {
+                line.product_id = this.config.default_product_id;
             }
 
             const taxes = orderFiscalPos?.getTaxesAfterFiscalPosition(line.tax_ids) || line.tax_ids;
@@ -154,13 +160,6 @@ patch(PosStore.prototype, {
             if (["line_section", "line_subsection"].includes(line.display_type)) {
                 continue;
             }
-            newLineValues.attribute_value_ids = (line.product_custom_attribute_value_ids || []).map(
-                (value_line) => {
-                    if (value_line?.custom_product_template_attribute_value_id) {
-                        return ["link", value_line.custom_product_template_attribute_value_id];
-                    }
-                }
-            );
             const converted_line = converted_lines.find((l) => l.id === line.id);
             newLineValues.qty = this.getConvertedQuantityFromSaleOrderline(converted_line, line);
             if (!newLineValues.qty || newLineValues.qty === 0) {
@@ -182,9 +181,38 @@ patch(PosStore.prototype, {
         }
     },
 
-    async updateSOLines(line, convertedLine, newLine, newLineValues) {
+    async updateSOLines(line, convertedLine, newLine, newLineValues, state) {
         newLine.setUnitPrice(convertedLine.price_unit);
         newLine.setDiscount(line.discount);
+        this.splitSOLine(line, convertedLine, newLine, newLineValues, state);
+    },
+
+    splitSOLine(line, convertedLine, newLine, newLineValues, state) {
+        const productUnit = line.product_id.uom_id;
+        if (!productUnit || productUnit.is_pos_groupable) {
+            return [];
+        }
+
+        const splittedLines = [];
+        let remainingQuantity = newLine.qty;
+        const priceUnit = newLine.price_unit;
+
+        newLineValues.product_id = newLine.product_id;
+        newLine.delete();
+
+        while (!productUnit.isZero(remainingQuantity)) {
+            const splittedLine = this.models["pos.order.line"].create({
+                ...newLineValues,
+            });
+            splittedLine.setQuantity(Math.min(remainingQuantity, 1.0), true);
+            splittedLine.setUnitPrice(priceUnit);
+            splittedLine.setDiscount(line.discount);
+
+            remainingQuantity -= splittedLine.qty;
+            splittedLines.push(splittedLine);
+        }
+
+        return splittedLines;
     },
 
     prepareSoBaseLineForTaxesComputationExtraValues(so, soLine) {
@@ -267,6 +295,9 @@ patch(PosStore.prototype, {
         const saleOrderLines = saleOrder.order_line.filter((soLine) => !soLine.display_type);
         const baseLines = [];
         for (const saleOrderLine of saleOrderLines) {
+            if (saleOrderLine.is_downpayment) {
+                saleOrderLine.product_uom_qty = -1;
+            }
             baseLines.push(
                 accountTaxHelpers.prepare_base_line_for_taxes_computation(
                     saleOrderLine,
@@ -302,7 +333,7 @@ patch(PosStore.prototype, {
             raw_grouping_key: { product_id: downPaymentProduct.id },
         });
         const downPaymentBaseLines = accountTaxHelpers.prepare_down_payment_lines(
-            baseLines,
+            baseLines.filter((baseLine) => !baseLine.record.is_downpayment),
             this.company,
             "fixed",
             amount,

@@ -1,27 +1,58 @@
-import { scrollTo } from "@html_builder/utils/scrolling";
+import { scrollFixedOffset, scrollTo } from "@html_builder/utils/scrolling";
 import { Interaction } from "@web/public/interaction";
 import { registry } from "@web/core/registry";
-
 import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
 import { verifyHttpsUrl } from "@website/utils/misc";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
+import { BlogNavSheet } from "./components/blog_nav_sheet";
 
 export class WebsiteBlog extends Interaction {
     static selector = ".website_blog";
     dynamicContent = {
+        ".o_wblog_sheet_trigger": {
+            "t-on-click": this.onBlogSheetTriggerClick,
+        },
         ".o_wblog_next_button": {
             "t-on-click.prevent": this.onNextBlogClick,
             "t-on-keydown": this.onNextBlogKeydown,
         },
         "#o_wblog_post_content_jump": {
-            "t-on-click.prevent.withTarget": this.onContentAnchorClick,
+            "t-on-click.prevent": this.onContentAnchorClick,
         },
         ".o_twitter, .o_facebook, .o_linkedin, .o_google, .o_twitter_complete, .o_facebook_complete, .o_linkedin_complete, .o_google_complete":
             {
-                "t-on-click.prevent.withTarget": this.onShareArticleClick,
+                "t-on-click.prevent": this.onShareArticleClick,
             },
+        ".o_sticky_reactive": {
+            "t-att-style": () => ({
+                top: `${this.position || this.defaultPosition}px`,
+                transition: "top 0.2s",
+            }),
+        },
     };
+
+    setup() {
+        this.defaultPosition = this._isCompactListOrSplitGridView() ? 0 : 16;
+        this.position = this.defaultPosition;
+    }
+
+    start() {
+        this._adaptToHeaderChange();
+        this.registerCleanup(
+            this.services.website_menus.registerCallback(this._adaptToHeaderChange.bind(this))
+        );
+    }
+
+    onBlogSheetTriggerClick() {
+        const navEl = this.el.querySelector(".o_wblog_category");
+        const blogs = [...navEl.querySelectorAll("a")].map((a) => ({
+            name: a.textContent.trim(),
+            href: a.getAttribute("href"),
+            active: a.classList.contains("active"),
+        }));
+        this.services.bottom_sheet.add(this.el, BlogNavSheet, { blogs });
+    }
 
     /**
      * @param {MouseEvent} ev
@@ -61,11 +92,10 @@ export class WebsiteBlog extends Interaction {
 
     /**
      * @param {MouseEvent} ev
-     * @param {HTMLElement} currentTargetEl
      */
-    async onContentAnchorClick(ev, currentTargetEl) {
+    async onContentAnchorClick(ev) {
         ev.stopImmediatePropagation();
-        const scrollTargetEl = document.querySelector(currentTargetEl.hash);
+        const scrollTargetEl = document.querySelector(ev.currentTarget.hash);
 
         await this.forumScrollAction(
             scrollTargetEl,
@@ -76,13 +106,12 @@ export class WebsiteBlog extends Interaction {
 
     /**
      * @param {MouseEvent} ev
-     * @param {HTMLElement} currentTargetEl
      */
-    onShareArticleClick(ev, currentTargetEl) {
+    onShareArticleClick(ev) {
         let url = "";
         const blogPostTitle = document.querySelector(".o_wblog_post_name").textContent || "";
         const articleURL = browser.location.href;
-        if (currentTargetEl.classList.contains("o_twitter")) {
+        if (ev.currentTarget.classList.contains("o_twitter")) {
             const tweetText = _t("Amazing blog article: %(title)s! Check it live: %(url)s", {
                 title: blogPostTitle,
                 url: articleURL,
@@ -90,9 +119,9 @@ export class WebsiteBlog extends Interaction {
             url =
                 "https://twitter.com/intent/tweet?tw_p=tweetbutton&text=" +
                 encodeURIComponent(tweetText);
-        } else if (currentTargetEl.classList.contains("o_facebook")) {
+        } else if (ev.currentTarget.classList.contains("o_facebook")) {
             url = "https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(articleURL);
-        } else if (currentTargetEl.classList.contains("o_linkedin")) {
+        } else if (ev.currentTarget.classList.contains("o_linkedin")) {
             url =
                 "https://www.linkedin.com/sharing/share-offsite/?url=" +
                 encodeURIComponent(articleURL);
@@ -108,6 +137,37 @@ export class WebsiteBlog extends Interaction {
     async forumScrollAction(el, duration, callback) {
         await this.waitFor(scrollTo(el, { duration }));
         callback();
+    }
+
+    //--------------------------------------------------------------------------
+    // Private
+    //--------------------------------------------------------------------------
+
+    /**
+     * @private
+     */
+    _adaptToHeaderChange() {
+        const position = this.defaultPosition + scrollFixedOffset(this.el.ownerDocument);
+        if (this.position !== position) {
+            this.position = position;
+            this.el.style.setProperty("--wblog-sticky-top", `${position}px`);
+            this.updateContent();
+        }
+    }
+
+    /**
+     * Checks if the layout is "Compact" list view or "Split" grid view (which
+     * require zero top default position).
+     * (by looking for specific elements that are only present in these views)
+     *
+     * @private
+     * @returns {boolean}
+     */
+    _isCompactListOrSplitGridView() {
+        return (
+            this.el.querySelector(".o_wblog_compact_list_month_header") !== null ||
+            this.el.querySelector(".o_wblog_split_grid_view_container") !== null
+        );
     }
 }
 

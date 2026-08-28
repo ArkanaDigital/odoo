@@ -1,35 +1,24 @@
-import { useExternalListener } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
-import { Dialog } from "@web/core/dialog/dialog";
-import { evaluateBooleanExpr } from "@web/core/py_js/py";
 import { is24HourFormat } from "@web/core/l10n/time";
-import { registry } from "@web/core/registry";
-import { Field } from "@web/views/fields/field";
-import { Record } from "@web/model/record";
-import { getFormattedDateSpan } from "@web/views/calendar/utils";
+import { parseXML } from "@web/core/utils/xml";
+import { getColor, getFormattedDateSpan } from "@web/views/calendar/utils";
+import { CARD_ATTRIBUTE } from "@web/views/card/card_arch_parser";
+import { CardPopover } from "@web/views/card/card_popover/card_popover";
 
-import { Component } from "@odoo/owl";
+import { Component, t, useListener, useProps } from "@odoo/owl";
 
 export class CalendarCommonPopover extends Component {
     static template = "web.CalendarCommonPopover";
-    static subTemplates = {
-        popover: "web.CalendarCommonPopover.popover",
-        body: "web.CalendarCommonPopover.body",
-        footer: "web.CalendarCommonPopover.footer",
-    };
-    static components = {
-        Dialog,
-        Field,
-        Record,
-    };
-    static props = {
-        close: Function,
-        record: Object,
-        model: Object,
-        createRecord: Function,
-        deleteRecord: Function,
-        editRecord: Function,
-    };
+    static components = { CardPopover };
+    static defaultFooterButtonsTemplate = "web.CalendarCommonPopover.DefaultFooterButtons";
+
+    props = useProps({
+        close: t.function(),
+        model: t.object(),
+        record: t.object(),
+        openRecord: t.function().optional(() => () => {}),
+        deleteRecord: t.function().optional(() => () => {}),
+    });
 
     setup() {
         this.time = null;
@@ -37,53 +26,67 @@ export class CalendarCommonPopover extends Component {
         this.date = null;
         this.dateDuration = null;
 
-        useExternalListener(window, "pointerdown", (e) => {
-            // Prevent the default behavior so the pointer down event only triggers the click-away callback (closing the popover).
-            // If the clicked element is the popover target, allow the default click and drag-&-drop events,
-            // which will also close the popover.
-            if (!e.target.closest(`.fc-event[data-event-id="${this.props.record.id}"]`)) {
-                e.preventDefault();
-            }
-        }, { capture: true });
+        useListener(
+            window,
+            "pointerdown",
+            (e) => {
+                if (!e.target.closest(`.fc-event[data-event-id="${this.props.record.id}"]`)) {
+                    e.preventDefault();
+                }
+            },
+            { capture: true }
+        );
 
         this.computeDateTimeAndDuration();
     }
 
-    get activeFields() {
-        return this.props.model.activeFields;
+    get resId() {
+        return this.props.record.id;
     }
+
+    get readonly() {
+        return !this.props.model.canEdit;
+    }
+
+    get cardPopoverProps() {
+        const { meta } = this.props.model;
+        const color = getColor(this.props.record.colorIndex);
+        return {
+            close: this.props.close,
+            fields: meta.fields,
+            resModel: this.props.model.resModel,
+            resId: this.resId,
+            popoverNode: meta.popoverNode,
+            readonly: this.readonly,
+            rootClass: `o_cw_popover o_calendar_color_${typeof color === "number" ? color : 0}`,
+            context: meta.context,
+            reloadOnClose: () => this.props.model.load(),
+            openRecord: this.props.openRecord,
+            getDefaultPopoverBody: () => this.getDefaultPopoverBody(),
+        };
+    }
+
+    get title() {
+        return this.props.record.title || "";
+    }
+
     get isEventEditable() {
-        return this.props.model.canEdit;
+        return !this.readonly;
     }
+
     get isEventDeletable() {
         return this.props.model.canDelete;
     }
+
     get isEventViewable() {
         return true;
-    }
-    get hasFooter() {
-        return this.isEventEditable || this.isEventDeletable || this.isEventViewable;
-    }
-
-    isInvisible(fieldNode, record) {
-        return evaluateBooleanExpr(fieldNode.invisible, record.evalContextWithVirtualIds);
-    }
-
-    getFormattedValue(fieldName, record) {
-        const fieldInfo = this.props.model.popoverFieldNodes[fieldName];
-        const field = this.props.model.fields[fieldName];
-        let format;
-        const formattersRegistry = registry.category("formatters");
-        if (fieldInfo.widget && formattersRegistry.contains(fieldInfo.widget)) {
-            format = formattersRegistry.get(fieldInfo.widget);
-        } else {
-            format = formattersRegistry.get(field.type);
-        }
-        return format(record.data[fieldName]);
     }
 
     computeDateTimeAndDuration() {
         const record = this.props.record;
+        if (!record) {
+            return;
+        }
         const { start, end } = record;
         const isSameDay = start.hasSame(end, "day");
 
@@ -119,11 +122,8 @@ export class CalendarCommonPopover extends Component {
     }
 
     formatDateDuration(start, end) {
-        if (!this.props.record.isAllDay) {
+        if (!this.props.record.isAllDay || start.hasSame(end, "day")) {
             return null;
-        }
-        if (start.hasSame(end, "day")) {
-            return _t("All day");
         }
         return end
             .plus({ day: 1 })
@@ -131,12 +131,61 @@ export class CalendarCommonPopover extends Component {
             .toFormat(`d '${_t("days")}'`);
     }
 
+    getDefaultPopoverBody() {
+        const items = [];
+        if (this.date) {
+            const duration = this.dateDuration
+                ? ` <small class="fw-bold">${this.dateDuration}</small>`
+                : "";
+            items.push(`
+                <div class="d-flex align-items-baseline gap-2">
+                    <i class="oi oi-fw oi-filled text-400" data-icon="calendar_today"/>
+                    <span class="fw-bold">${this.date}</span>${duration}
+                </div>
+            `);
+        }
+        if (this.time) {
+            const duration = this.timeDuration
+                ? ` <small class="fw-bold">(${this.timeDuration})</small>`
+                : "";
+            items.push(`
+                <div class="d-flex align-items-baseline gap-2">
+                    <i class="oi oi-fw text-400" data-icon="schedule"/>
+                    <span class="fw-bold">${this.time}</span>${duration}
+                </div>
+            `);
+        }
+        // Retro-compatibility layer: generate a card template from the fields in the arch
+        for (const fieldNode of Object.values(this.props.model.meta.popoverFieldNodes)) {
+            if (["1", "True"].includes(fieldNode.invisible)) {
+                items.push(`<field name="${fieldNode.name}" invisible="1"/>`);
+                continue;
+            }
+            const widget = `widget="${fieldNode.widget || fieldNode.type}"`;
+            const options = `options='${JSON.stringify(fieldNode.options)}'`;
+            const readonly = fieldNode.readonly ? `readonly="${fieldNode.readonly}"` : "";
+            const field = `<field name="${fieldNode.name}" ${options} ${widget} ${readonly}/>`;
+            let label = "";
+            if (!fieldNode.options.noLabel && fieldNode.type !== "properties") {
+                label = fieldNode.options.icon
+                    ? `<i class="oi oi-fw text-400" title="${fieldNode.string}" data-icon="${fieldNode.options.icon}"/>`
+                    : `<span class="fw-bold">${fieldNode.string}</span>`;
+            }
+            const invisible = fieldNode.invisible ? `invisible="${fieldNode.invisible}"` : "";
+            items.push(
+                `<div class="d-flex align-items-baseline gap-2" ${invisible}>${label}${field}</div>`
+            );
+        }
+        return parseXML(`<t t-name="${CARD_ATTRIBUTE}" class="gap-3">${items.join("")}</t>`);
+    }
+
     onEditEvent() {
-        this.props.editRecord(this.props.record);
+        this.props.openRecord();
         this.props.close();
     }
+
     onDeleteEvent() {
-        this.props.deleteRecord(this.props.record);
+        this.props.deleteRecord();
         this.props.close();
     }
 }

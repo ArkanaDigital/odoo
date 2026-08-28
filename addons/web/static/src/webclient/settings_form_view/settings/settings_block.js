@@ -1,7 +1,7 @@
-import { onWillRender, useChildSubEnv, useLayoutEffect, useRef } from "@web/owl2/utils";
+import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { HighlightText } from "../highlight_text/highlight_text";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, computed, proxy, signal, t, useProps } from "@odoo/owl";
 import { normalize } from "@web/core/l10n/utils";
 
 export class SettingsBlock extends Component {
@@ -9,58 +9,54 @@ export class SettingsBlock extends Component {
     static components = {
         HighlightText,
     };
-    static props = {
-        title: { type: String, optional: true },
-        tip: { type: String, optional: true },
-        slots: { type: Object, optional: true },
-        class: { type: String, optional: true },
-    };
+    props = useProps({
+        title: t.string().optional(),
+        tip: t.string().optional(),
+        slots: t.object().optional(),
+        class: t.string().optional(),
+    });
+    settingsContainerRef = signal.ref();
+    settingsContainerTitleRef = signal.ref();
+    settingsContainerTipRef = signal.ref();
     setup() {
         this.state = proxy({
             search: this.env.searchState,
         });
-        this.showAllContainerState = proxy({
-            showAllContainer: false,
+        useSubEnv({
+            showAllContainer: this.showAllContainer,
         });
-        useChildSubEnv({
-            showAllContainer: this.showAllContainerState,
-        });
-        this.settingsContainerRef = useRef("settingsContainer");
-        this.settingsContainerTitleRef = useRef("settingsContainerTitle");
-        this.settingsContainerTipRef = useRef("settingsContainerTip");
         useLayoutEffect(
             () => {
+                const containerEl = this.settingsContainerRef();
+                if (!containerEl) {
+                    return;
+                }
                 const force =
                     this.state.search.value &&
-                    !normalize([this.props.title, this.props.tip].join()).includes(
-                        this.state.search.value
-                    ) &&
-                    !this.settingsContainerRef.el.querySelector(
-                        ".o_setting_box.o_searchable_setting"
-                    );
+                    !this.showAllContainer() &&
+                    !containerEl.querySelector(".o_setting_box.o_searchable_setting");
                 this.toggleContainer(force);
             },
-            () => [this.state.search.value]
+            () => [this.state.search.value, this.settingsContainerRef()]
         );
-        onWillRender(() => {
-            if (
-                normalize([this.props.title, this.props.tip].join()).includes(
-                    this.state.search.value
-                )
-            ) {
-                this.showAllContainerState.showAllContainer = true;
-            } else {
-                this.showAllContainerState.showAllContainer = false;
-            }
-        });
     }
+
+    showAllContainer = computed(() =>
+        normalize([this.props.title, this.props.tip].join()).includes(this.state.search.value)
+    );
+
     toggleContainer(force) {
-        if (this.settingsContainerTitleRef.el) {
-            this.settingsContainerTitleRef.el.classList.toggle("d-none", force);
+        const titleEl = this.settingsContainerTitleRef();
+        if (titleEl) {
+            titleEl.classList.toggle("d-none", force);
         }
-        if (this.settingsContainerTipRef.el) {
-            this.settingsContainerTipRef.el.classList.toggle("d-none", force);
+        const tipEl = this.settingsContainerTipRef();
+        if (tipEl) {
+            tipEl.classList.toggle("d-none", force);
         }
-        this.settingsContainerRef.el.classList.toggle("d-none", force);
+        const containerEl = this.settingsContainerRef();
+        if (containerEl) {
+            containerEl.classList.toggle("d-none", force);
+        }
     }
 }

@@ -1,17 +1,33 @@
-import { Component, onWillUnmount, proxy, status } from "@odoo/owl";
+import { Component, onWillUnmount, proxy, types, useProps, useScope } from "@odoo/owl";
 
-import { useComponent } from "@web/owl2/utils";
-import { useService } from "@web/core/utils/hooks";
-import { _t } from "@web/core/l10n/translation";
-import { browser } from "@web/core/browser/browser";
-import { Mp3Encoder } from "./mp3_encoder";
 import { CallPermissionDeniedDialog } from "@mail/discuss/call/common/call_permission_denied_dialog";
 import { loadLamejs } from "@mail/discuss/voice_message/common/voice_message_service";
 import { monitorAudio } from "@mail/utils/common/media_monitoring";
+import { browser } from "@web/core/browser/browser";
+import { _t } from "@web/core/l10n/translation";
+import { useService } from "@web/core/utils/hooks";
+import { Mp3Encoder } from "./mp3_encoder";
+
+/** @typedef {import("@mail/discuss/call/common/rtc_service").ContextOptions} ContextOptions */
 
 export class VoiceRecorder extends Component {
-    static props = ["composer", "state"];
     static template = "mail.VoiceRecorder";
+
+    setup() {
+        super.setup(...arguments);
+        this.store = useService("mail.store");
+        this.props = useProps({
+            composer: types.instanceOf(this.store["Composer"]),
+            state: types.object({
+                cancelRecording: types.function([]),
+                elapsed: types.string(),
+                limitWarning: types.boolean(),
+                onClick: types.function([]),
+                volumes: types.array(types.number()),
+            }),
+        });
+    }
+
     get title() {
         return _t("Stop Recording");
     }
@@ -30,10 +46,11 @@ export const patchable = {
  * @param {Object} [params={}]
  * @param {number} [params.maxDuration=60] Maximum recording duration in seconds.
  * @param {Function} params.onRecordReady Callback when recording is finished.
+ * @param {ContextOptions} [options]
  */
-export function useVoiceRecorder(params = {}) {
+export function useVoiceRecorder(params = {}, options = {}) {
     const maxDuration = params.maxDuration ?? 60;
-    const component = useComponent();
+    const scope = useScope();
     const onRecordReady = params.onRecordReady;
     /** @type {MediaStream} */
     let microphone;
@@ -72,7 +89,6 @@ export function useVoiceRecorder(params = {}) {
             }
         },
     });
-    /** @type {ReturnType<typeof import("@web/core/notifications/notification_service").notificationService.start>} */
     const dialog = useService("dialog");
     const notification = useService("notification");
     const store = useService("mail.store");
@@ -103,15 +119,20 @@ export function useVoiceRecorder(params = {}) {
         state.isActionPending = true;
         if (!microphone) {
             try {
-                microphone = await browser.navigator.mediaDevices.getUserMedia({
+                const sourceWindow = options.rootRef?.()?.ownerDocument?.defaultView || browser;
+                microphone = await sourceWindow.navigator.mediaDevices.getUserMedia({
                     audio: store.settings.audioConstraints,
                 });
-                if (status(component) === "destroyed") {
+                if (scope.status === 3 /* destroyed */) {
                     cleanUp();
                     return;
                 }
             } catch {
-                dialog.add(CallPermissionDeniedDialog, { permissionType: "microphone" });
+                dialog.add(
+                    CallPermissionDeniedDialog,
+                    { permissionType: "microphone" },
+                    { rootRef: options.rootRef }
+                );
                 state.isActionPending = false;
                 return;
             }

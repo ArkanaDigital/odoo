@@ -1,31 +1,30 @@
 import { useLayoutEffect } from "@web/owl2/utils";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { BadgeTag } from "@web/core/tags_list/badge_tag";
-import { useBus, useChildRef, useService } from "@web/core/utils/hooks";
+import { useBus, useService } from "@web/core/utils/hooks";
 import { RecipientsInputTagsListPopover } from "./recipients_input_tags_list_popover";
 import { RecipientsPopover } from "./recipients_popover";
 
-import { Component, EventBus } from "@odoo/owl";
+import { Component, EventBus, signal, types, useProps } from "@odoo/owl";
 
 export class RecipientTag extends Component {
     static template = "mail.RecipientTag";
     static components = { BadgeTag };
-    static props = [
-        "bus",
-        "color?",
-        "email",
-        "id",
-        "name",
-        "onClick?",
-        "onDelete",
-        "resId?",
-        "text",
-        "tooltip",
-        "updateRecipient",
-    ];
 
     setup() {
-        this.ref = useChildRef();
+        this.props = useProps({
+            bus: types.instanceOf(EventBus),
+            color: types.string().optional(),
+            email: types.string(),
+            id: types.string(),
+            name: types.string(),
+            onDelete: types.function([]).optional(),
+            resId: types.or([types.number(), types.literal(false)]).optional(),
+            text: types.string(),
+            tooltip: types.string(),
+            updateRecipient: types.function([types.string(), types.number()]),
+        });
+        this.ref = signal.ref();
         this.action = useService("action");
 
         this.recipientPopover = usePopover(RecipientsPopover, {
@@ -38,7 +37,7 @@ export class RecipientTag extends Component {
 
         useBus(this.props.bus, "open", (ev) => {
             if (this.props.id === ev.detail.id) {
-                this.emailSetterPopover.open(this.ref.el, {
+                this.emailSetterPopover.open(this.ref(), {
                     tagToUpdate: {
                         email: this.props.email,
                         name: this.props.name,

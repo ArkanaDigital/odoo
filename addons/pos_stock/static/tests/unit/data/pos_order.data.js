@@ -14,4 +14,14 @@ patch(PosOrder.prototype, {
         result["pos.pack.operation.lot"] = packLotLines;
         return result;
     },
+    get_stock_reports_to_print() {
+        return [
+            {
+                type: "ir.actions.report",
+                report_name: "stock.report_return_document",
+                report_type: "qweb-pdf",
+                name: "Return slip",
+            },
+        ];
+    },
 });

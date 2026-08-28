@@ -109,8 +109,8 @@
             &:before {
                 z-index: 2;
                 display: inline-block;
-                font-family: Fontawesome;
-                content: '\f111'; // fa-circle
+                font-family: "Material Symbols Outlined";
+                content: 'circle_f';
             }
 
             &:hover {
@@ -120,7 +120,7 @@
             &.o_event_hatched:before {
                 --o-event-bg: var(--fc-event-text-color);
 
-                content: "\f1db"; // fa-circle-thin
+                content: "radio_button_unchecked";
             }
         }
     }
@@ -509,7 +509,6 @@
                     display: flex;
                     justify-content: start;
                     flex-direction: row;
-                    max-height: 1.2em;
                     line-height: 100%;
                 }
             }

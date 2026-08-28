@@ -1,29 +1,23 @@
-import { Component } from "@odoo/owl";
+import { Component, useProps, t } from "@odoo/owl";
+import { ProductProduct } from "@point_of_sale/app/models/product_product";
+import { ProductTemplate } from "@point_of_sale/app/models/product_template";
 
 export class ProductCard extends Component {
     static template = "point_of_sale.ProductCard";
-    static props = {
-        class: { type: String, optional: true },
-        name: String,
-        available: { type: Boolean, optional: true },
-        product: Object,
-        productId: [Number, String],
-        comboExtraPrice: { type: String, optional: true },
-        color: { type: [Number, { value: undefined }], optional: true },
-        imageUrl: [String, Boolean],
-        onClick: { type: Function, optional: true },
-        showWarning: { type: Boolean, optional: true },
-        productCartQty: { type: [Number, { value: undefined }], optional: true },
-        slots: { type: Object, optional: true },
-        isComboPopup: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        onClick: () => {},
-        class: "",
-        showWarning: false,
-        isComboPopup: false,
-        available: true,
-    };
+    props = useProps({
+        class: t.string().optional(""),
+        name: t.string(),
+        available: t.boolean().optional(true),
+        product: t.or([t.instanceOf(ProductTemplate), t.instanceOf(ProductProduct)]),
+        productId: t.or([t.number(), t.string()]),
+        comboExtraPrice: t.string().optional(),
+        color: t.or([t.number(), t.literal(undefined)]).optional(),
+        imageUrl: t.or([t.string(), t.boolean()]),
+        onClick: t.function().optional(() => () => {}),
+        showWarning: t.boolean().optional(false),
+        productCartQty: t.or([t.number(), t.literal(undefined)]).optional(),
+        isComboPopup: t.boolean().optional(false),
+    });
 
     get productQty() {
         return this.env.utils.formatProductQty(this.props.productCartQty ?? 0, false);

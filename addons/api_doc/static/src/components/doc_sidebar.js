@@ -1,5 +1,4 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, signal, useOnChange } from "@odoo/owl";
 import { simplifyString } from "@api_doc/utils/doc_model_search";
 
 export class DocSidebar extends Component {
@@ -8,19 +7,20 @@ export class DocSidebar extends Component {
     static components = {};
     static props = {};
 
+    containerRef = signal.ref();
+
     setup() {
-        this.containerRef = useRef("containerRef");
         this.modelStore = proxy(this.env.modelStore);
         this.state = proxy({
             collapseAddons: {},
             searchValue: "",
         });
 
-        useLayoutEffect(
-            () => {
-                this.containerRef.el?.querySelector(":scope .o_active")?.scrollIntoView();
-            },
-            () => [this.containerRef.el]
+        useOnChange(
+            () => [this.containerRef()],
+            (containerEl) => {
+                containerEl?.querySelector(":scope .o_active")?.scrollIntoView();
+            }
         );
 
         for (const addon of this.filteredAddons) {
@@ -32,12 +32,12 @@ export class DocSidebar extends Component {
 
     onSearchInput(event) {
         this.state.searchValue = event.target.value;
-        this.containerRef.el.scrollTop = 0;
+        this.containerRef().scrollTop = 0;
     }
 
     _toggleAllAddons(isCollapsed) {
         const allAddons = this.filteredAddons;
-        allAddons.forEach((a) => this.state.collapseAddons[a.name] = !isCollapsed);
+        allAddons.forEach((a) => (this.state.collapseAddons[a.name] = !isCollapsed));
     }
 
     toggleAddon(event, addonName) {

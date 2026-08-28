@@ -1,29 +1,32 @@
-import { useExternalListener, useRef } from "@web/owl2/utils";
-import { registry } from "@web/core/registry";
-import { useBus, useService } from "@web/core/utils/hooks";
-import { evaluateExpr } from "@web/core/py_js/py";
-import { getNextTabableElement, getPreviousTabableElement } from "@web/core/utils/ui";
-import { usePosition } from "@web/core/position/position_hook";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
-import { shallowEqual } from "@web/core/utils/arrays";
-import { roundDecimals } from "@web/core/utils/numbers";
-import { isMobileOS } from "@web/core/browser/feature_detection";
-import { _t } from "@web/core/l10n/translation";
-import { useRecordObserver } from "@web/model/relational_model/utils";
-
-import { standardFieldProps } from "@web/views/fields/standard_field_props";
-import { BadgeTag } from "@web/core/tags_list/badge_tag";
-import { useOpenMany2XRecord } from "@web/views/fields/relational_utils";
-import { formatPercentage } from "@web/views/fields/formatters";
-
-import { Record } from "@web/model/record";
-import { Field } from "@web/views/fields/field";
 import {
     Component,
-    onWillStart,
+    onMounted,
     onPatched,
+    onWillStart,
+    onWillUnmount,
+    usePlugin,
     proxy,
+    signal,
+    useListener,
 } from "@odoo/owl";
+import { isMobileOS } from "@web/core/browser/feature_detection";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
+import { _t } from "@web/core/l10n/translation";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
+import { usePosition } from "@web/core/position/position_hook";
+import { evaluateExpr } from "@web/core/py_js/py";
+import { registry } from "@web/core/registry";
+import { BadgeTag } from "@web/core/tags_list/badge_tag";
+import { shallowEqual } from "@web/core/utils/arrays";
+import { useBus, useService } from "@web/core/utils/hooks";
+import { roundDecimals } from "@web/core/utils/numbers";
+import { getNextTabableElement, getPreviousTabableElement } from "@web/core/utils/ui";
+import { Record } from "@web/model/record";
+import { useRecordObserver } from "@web/model/relational_model/utils";
+import { Field } from "@web/views/fields/field";
+import { formatPercentage } from "@web/views/fields/formatters";
+import { useOpenMany2XRecord } from "@web/views/fields/relational_utils";
+import { standardFieldProps } from "@web/views/fields/standard_field_props";
 
 export class AnalyticDistribution extends Component {
     static template = "analytic.AnalyticDistribution";
@@ -32,6 +35,11 @@ export class AnalyticDistribution extends Component {
         Record,
         Field,
     }
+
+    widgetRef = signal.ref();
+    dropdownRef = signal.ref();
+    mainRef = signal.ref();
+    addLineButton = signal.ref();
 
     static props = {
         ...standardFieldProps,
@@ -49,6 +57,7 @@ export class AnalyticDistribution extends Component {
     setup(){
         this.orm = useService("orm");
         this.batchedOrm = useService("batchedOrm");
+        this.offlinePlugin = usePlugin(OfflinePlugin);
 
         this.state = proxy({
             showDropdown: false,
@@ -56,11 +65,7 @@ export class AnalyticDistribution extends Component {
             update_plan: {},
         });
 
-        this.widgetRef = useRef("analyticDistribution");
-        this.dropdownRef = useRef("analyticDropdown");
-        this.mainRef = useRef("mainElement");
-        this.addLineButton = useRef("addLineButton");
-        usePosition("analyticDropdown", () => this.widgetRef.el);
+        usePosition(this.dropdownRef, () => this.widgetRef());
 
         this.nextId = 1;
         this.focusSelector = false;
@@ -71,8 +76,10 @@ export class AnalyticDistribution extends Component {
         onWillStart(this.willStart);
         onPatched(this.patched);
 
-        useExternalListener(window, "click", this.onWindowClick, true);
-        useExternalListener(window, "resize", this.onWindowResized);
+        const onWindowClick = this.onWindowClick.bind(this);
+        onMounted(() => window.addEventListener("click", onWindowClick, { capture: true }));
+        onWillUnmount(() => window.removeEventListener("click", onWindowClick, { capture: true }));
+        useListener(window, "resize", this.onWindowResized.bind(this));
         useBus(this.props.record.model.bus, "NEED_LOCAL_CHANGES", ({ detail }) =>
             detail.proms.push(this.commitChanges())
         );
@@ -87,12 +94,12 @@ export class AnalyticDistribution extends Component {
             isToMany: false,
             onRecordSaved: async (record) => {
                 if (!this.props.record.model.multiEdit) {
-                    this.mainRef.el.focus();
+                    this.mainRef()?.focus();
                 }
             },
             onClose: () => {
                 if (!this.props.record.model.multiEdit) {
-                    this.mainRef.el.focus();
+                    this.mainRef()?.focus();
                 }
             },
             fieldString: _t("Analytic Distribution Model"),
@@ -441,11 +448,11 @@ export class AnalyticDistribution extends Component {
     }
 
     get editingRecord() {
-        return !this.props.readonly;
+        return !this.props.readonly && !this.offlinePlugin.isOffline();
     }
 
     get isDropdownOpen() {
-        return this.state.showDropdown && !!this.dropdownRef.el;
+        return this.state.showDropdown && !!this.dropdownRef();
     }
 
     // actions
@@ -494,6 +501,7 @@ export class AnalyticDistribution extends Component {
     async save() {
         await this.props.record.update({ [this.props.name]: this.dataToJson() });
         if (this.props.multi_edit) {
+            await this.props.record.model.root.load();
             await this.jsonToData(this.props.record.data[this.props.name]);
             this.initialFormattedData = this.state.formattedData;
             this.state.formattedData = [];
@@ -503,12 +511,11 @@ export class AnalyticDistribution extends Component {
 
     async commitChanges() {
         if (this.isDropdownOpen) {
-            await this.save();
+            this.forceCloseEditor()
         }
     }
 
     onSaveNew() {
-        this.closeAnalyticEditor();
         const { record, product_field, account_field } = this.props;
         this.openTemplate({ resId: false, context: {
             'default_analytic_distribution': this.dataToJson(),
@@ -522,7 +529,7 @@ export class AnalyticDistribution extends Component {
         // focus to the main Element but the dropdown should not open
         this.preventOpen = true;
         this.closeAnalyticEditor();
-        this.mainRef.el.focus();
+        this.mainRef()?.focus();
         this.preventOpen = false;
     }
 
@@ -532,6 +539,9 @@ export class AnalyticDistribution extends Component {
     }
 
     async openAnalyticEditor() {
+        if (this.offlinePlugin.isOffline()) {
+            return;
+        }
         if (!this.allPlans.length) {
             await this.fetchAllPlans(this.props);
             await this.jsonToData(this.props.record.data[this.props.name]);
@@ -567,7 +577,12 @@ export class AnalyticDistribution extends Component {
 
     focusToSelector() {
         if (this.focusSelector && this.isDropdownOpen) {
-            this.focus(this.adjacentElementToFocus("next", this.dropdownRef.el.querySelector(this.focusSelector)));
+            this.focus(
+                this.adjacentElementToFocus(
+                    "next",
+                    this.dropdownRef()?.querySelector(this.focusSelector)
+                )
+            );
         }
         this.focusSelector = false;
     }
@@ -581,7 +596,7 @@ export class AnalyticDistribution extends Component {
             return null;
         }
         if (!el) {
-            el = this.dropdownRef.el;
+            el = this.dropdownRef();
         }
         return direction == "next" ? getNextTabableElement(el) : getPreviousTabableElement(el);
     }
@@ -620,7 +635,11 @@ export class AnalyticDistribution extends Component {
                     const closestCell = ev.target.closest("td, th");
                     const row = closestCell.parentElement;
                     const line = this.state.formattedData[parseInt(row.id)];
-                    if (this.adjacentElementToFocus("next") == this.addLineButton.el && line && this.lineIsValid(line)) {
+                    if (
+                        this.adjacentElementToFocus("next") == this.addLineButton() &&
+                        line &&
+                        this.lineIsValid(line)
+                    ) {
                         this.addLine();
                         break;
                     }
@@ -671,12 +690,15 @@ export class AnalyticDistribution extends Component {
             ".o_popover",
             ".modal:not(.o_inactive_modal):not(:has(.o_act_window))",
         ];
-        if (this.isDropdownOpen
-            && !this.widgetRef.el.contains(ev.target)
-            && (!ev.target.closest(selectors.join(",")) ||
-                document.querySelector(".modal:not(.o_inactive_modal)").contains(this.widgetRef.el))
-            && !ev.target.isSameNode(document.documentElement)
-           ) {
+        const widgetEl = this.widgetRef();
+        if (
+            this.isDropdownOpen &&
+            widgetEl &&
+            !widgetEl.contains(ev.target) &&
+            (!ev.target.closest(selectors.join(",")) ||
+                document.querySelector(".modal:not(.o_inactive_modal)").contains(widgetEl)) &&
+            !ev.target.isSameNode(document.documentElement)
+        ) {
             this.forceCloseEditor();
         }
     }

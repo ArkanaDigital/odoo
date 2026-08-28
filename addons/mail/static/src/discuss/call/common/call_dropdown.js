@@ -1,8 +1,8 @@
 import { toggleFn } from "@mail/utils/common/signal";
 
-import { Component, signal, useListener } from "@odoo/owl";
+import { Component, signal, t, useListener, useProps } from "@odoo/owl";
 
-import { useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
+import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { useNavigation } from "@web/core/navigation/navigation";
 import { usePosition } from "@web/core/position/position_hook";
 import { getFirstElementOfNode } from "@web/core/dropdown/dropdown";
@@ -13,26 +13,19 @@ import { getFirstElementOfNode } from "@web/core/dropdown/dropdown";
  */
 export class CallDropdown extends Component {
     static template = "discuss.CallDropdown";
-    static props = {
-        position: { type: String, optional: true },
-        class: { type: String, optional: true },
-        menuClass: { type: String, optional: true },
-        slots: { optional: true },
-        openByDefault: { type: Boolean, optional: true },
-        state: { type: Object, optional: true },
-    };
-    static defaultProps = {
-        position: "bottom",
-        class: "",
-        menuClass: "",
-        openByDefault: false,
-    };
+
+    menuRef = signal.ref();
 
     setup() {
         super.setup();
-        this.menuRef = useRef("menu");
+        this.props = useProps({
+            class: t.string().optional(""),
+            menuClass: t.string().optional(""),
+            openByDefault: t.boolean().optional(false),
+            position: t.string().optional("bottom"),
+        });
         this.isOpen = signal(this.props.openByDefault);
-        usePosition("menu", () => this.triggerRef.el, {
+        usePosition(this.menuRef, () => this.triggerEl, {
             position: this.props.position,
             margin: 4,
             flip: true,
@@ -43,8 +36,8 @@ export class CallDropdown extends Component {
         this.navigation = useNavigation(this.menuRef, {
             isNavigationAvailable: () => this.isOpen(),
             getItems: () => {
-                if (this.isOpen() && this.menuRef.el) {
-                    return this.menuRef.el.querySelectorAll(
+                if (this.isOpen() && this.menuRef()) {
+                    return this.menuRef().querySelectorAll(
                         ":scope .o-navigable, :scope .o-dropdown"
                     );
                 }
@@ -63,12 +56,13 @@ export class CallDropdown extends Component {
                     return () => triggerEl.removeEventListener("click", fn);
                 }
             },
-            () => [this.triggerRef.el, toggleFn(this.isOpen)]
+            () => [this.triggerEl, toggleFn(this.isOpen)]
         );
     }
 
-    get triggerRef() {
-        return { el: getFirstElementOfNode(this.__owl__.bdom) };
+    /** The dropdown toggle is the component's own first element. */
+    get triggerEl() {
+        return getFirstElementOfNode(this.__owl__.bdom);
     }
 
     get window() {
@@ -84,7 +78,7 @@ export class CallDropdown extends Component {
             return;
         }
         const isOutsideClick =
-            !this.triggerRef.el?.contains(ev.target) && !this.menuRef.el?.contains(ev.target);
+            !this.triggerEl?.contains(ev.target) && !this.menuRef()?.contains(ev.target);
         if (isOutsideClick) {
             this.close();
         }

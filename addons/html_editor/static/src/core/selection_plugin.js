@@ -1,22 +1,27 @@
-import { closestBlock } from "@html_editor/utils/blocks";
+import { closestBlock, isBlock } from "@html_editor/utils/blocks";
 import {
     getDeepestEditablePosition,
     getDeepestPosition,
+    isEmptyTextNode,
     isMediaElement,
     isProtected,
     isProtecting,
     isSelfClosingElement,
     isUnprotecting,
+    nextLeaf,
+    previousLeaf,
     selfClosingHtmlTags,
 } from "@html_editor/utils/dom_info";
 import {
     childNodes,
     closestElement,
+    closestPath,
     descendants,
+    findNode,
     firstLeaf,
     lastLeaf,
 } from "@html_editor/utils/dom_traversal";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { Plugin } from "../plugin";
 import { DIRECTIONS, leftPos, nodeSize, rightPos } from "../utils/position";
 import {
@@ -198,7 +203,7 @@ function scrollToSelection(selection) {
 
 export class SelectionPlugin extends Plugin {
     static id = "selection";
-    static dependencies = ["domReferenceMap", "domObserver"];
+    static dependencies = ["domReferenceMap"];
     static shared = [
         "getSelectionData",
         "getEditableSelection",
@@ -271,29 +276,32 @@ export class SelectionPlugin extends Plugin {
             }
         },
         on_savepoint_restored_handlers: (savePoint) => {
-            if (savePoint.data.lastRevertedChanges?.selection && !savePoint.data.mutations.length) {
+            // The live cursor may have been dragged onto a node the revert
+            // removed, so restore it from a serialized snapshot.
+            const serializedSelection =
+                savePoint.data.lastRevertedChanges?.selection ?? savePoint.data.serializedSelection;
+            if (serializedSelection && !savePoint.data.mutations.length) {
                 savePoint.data.selection.setCursor((cursor) => {
-                    const anchorNode = this.dependencies.domReferenceMap.getNodeById(
-                        savePoint.data.lastRevertedChanges.selection.anchorNodeId
+                    cursor.anchor.node = this.dependencies.domReferenceMap.getNodeById(
+                        serializedSelection.anchorNodeId
                     );
-                    const focusNode = this.dependencies.domReferenceMap.getNodeById(
-                        savePoint.data.lastRevertedChanges.selection.focusNodeId
+                    cursor.anchor.offset = serializedSelection.anchorOffset;
+                    cursor.focus.node = this.dependencies.domReferenceMap.getNodeById(
+                        serializedSelection.focusNodeId
                     );
-                    cursor.anchor.node = anchorNode;
-                    cursor.anchor.offset =
-                        savePoint.data.lastRevertedChanges.selection.anchorOffset;
-
-                    cursor.focus.node = focusNode;
-                    cursor.focus.offset = savePoint.data.lastRevertedChanges.selection.focusOffset;
+                    cursor.focus.offset = serializedSelection.focusOffset;
                 });
             }
 
             // TODO ABD TODO @phoenix: evaluate if the selection is not restorable at the desired position
             savePoint.data.selection.restore();
         },
-        save_point_history_commit_data_processors: (data) =>
-            // TODO ABD TODO @phoenix: selection may become obsolete, it should evolve with mutations.
-            ({ ...data, selection: this.preserveSelection() }),
+        save_point_history_commit_data_processors: (data) => ({
+            ...data,
+            // Live cursor, plus a snapshot to fall back on if it gets invalidated.
+            selection: this.preserveSelection(),
+            serializedSelection: this.serializeEditableSelection(),
+        }),
         snapshot_history_commit_data_processors: (data) => ({
             ...data,
             activeElementId: null,
@@ -459,7 +467,10 @@ export class SelectionPlugin extends Plugin {
                 return;
             }
             const { documentSelection } = selectionData;
-            const block = closestBlock(documentSelection.anchorNode);
+            const block = findNode(
+                closestPath(documentSelection.anchorNode),
+                (node) => isBlock(node) || node?.matches?.(`[contenteditable="true"]`)
+            );
             const [anchorNode, anchorOffset] = getDeepestPosition(block, 0);
             const [focusNode, focusOffset] = getDeepestPosition(block, nodeSize(block));
             this.setSelection({ anchorNode, anchorOffset, focusNode, focusOffset });
@@ -967,12 +978,33 @@ export class SelectionPlugin extends Plugin {
             return true;
         }
 
+        // Ignore empty text nodes at the boundaries as they hold no content
+        // and are usually excluded from a manual selection range, so they must
+        // not make the node appear partially selected.
         const firstLeafNode = firstLeaf(node);
+        let firstSignificantLeaf = firstLeafNode;
+        while (
+            firstSignificantLeaf &&
+            firstSignificantLeaf !== node &&
+            isEmptyTextNode(firstSignificantLeaf)
+        ) {
+            firstSignificantLeaf = nextLeaf(firstSignificantLeaf, node);
+        }
+        firstSignificantLeaf ??= firstLeafNode;
         const lastLeafNode = lastLeaf(node);
+        let lastSignificantLeaf = lastLeafNode;
+        while (
+            lastSignificantLeaf &&
+            lastSignificantLeaf !== node &&
+            isEmptyTextNode(lastSignificantLeaf)
+        ) {
+            lastSignificantLeaf = previousLeaf(lastSignificantLeaf, node);
+        }
+        lastSignificantLeaf ??= lastLeafNode;
         // Default rule: range must cover the full node.
         return (
-            range.isPointInRange(firstLeafNode, 0) &&
-            range.isPointInRange(lastLeafNode, nodeSize(lastLeafNode))
+            range.isPointInRange(firstSignificantLeaf, 0) &&
+            range.isPointInRange(lastSignificantLeaf, nodeSize(lastSignificantLeaf))
         );
     }
 
@@ -1007,7 +1039,9 @@ export class SelectionPlugin extends Plugin {
         if (selection.isCollapsed && selection.anchorNode.nodeType !== Node.TEXT_NODE) {
             targetedNodes = [root];
         }
-        targetedNodes.push(...descendants(root));
+        for (const node of descendants(root)) {
+            targetedNodes.push(node);
+        }
         if (!targetedNodes.length) {
             targetedNodes = [root];
         }
@@ -1388,20 +1422,9 @@ export class SelectionPlugin extends Plugin {
      * This method is used to save a serialized selection in the currentData.
      * It will be necessary if the commit is reverted at some point because we
      * need to set the selection to where it was before any mutation was made.
-     *
-     * It means that we should not call this method in the middle of mutations
-     * because if a selection is set onto a node that is edited/added/removed
-     * within the same commit, it might become impossible to set the selection
-     * when reverting the commit.
      */
     stageSelection() {
         this.stageFocus();
-        if (this.dependencies.domObserver.hasStagedMutations()) {
-            console.warn(
-                `should not have any "characterData", "remove" or "add" mutations in current changes when you update the selection`
-            );
-            return;
-        }
         this.currentData.selection = this.serializeEditableSelection();
     }
 

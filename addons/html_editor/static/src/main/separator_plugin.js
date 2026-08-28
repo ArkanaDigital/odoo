@@ -26,7 +26,7 @@ export class SeparatorPlugin extends Plugin {
                 id: "insertSeparator",
                 title: _t("Separator"),
                 description: _t("Insert a horizontal rule separator"),
-                icon: "fa-minus",
+                icon: "remove",
                 run: this.insertSeparator.bind(this),
                 isAvailable: isHtmlContentSupported,
             },
@@ -51,6 +51,7 @@ export class SeparatorPlugin extends Plugin {
         /** Processors */
         clean_for_save_processors: (root) => {
             this.deselectHR(root);
+            return root;
         },
         deselect_custom_selected_nodes_processors: this.deselectHR.bind(this),
     };
@@ -106,6 +107,7 @@ export class SeparatorPlugin extends Plugin {
         for (const hr of root.querySelectorAll(".o_selected_hr")) {
             removeClass(hr, "o_selected_hr");
         }
+        return root;
     }
 
     handleSelectionInHr(selectionData) {

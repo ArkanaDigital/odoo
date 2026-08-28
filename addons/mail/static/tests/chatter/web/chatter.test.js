@@ -10,18 +10,21 @@ import {
     listenStoreFetch,
     onRpcBefore,
     openFormView,
+    openMessagingMenu,
     patchUiSize,
     scroll,
     start,
     startServer,
     triggerHotkey,
     waitStoreFetch,
+    MENU_ACTIVE_IDS,
 } from "@mail/../tests/mail_test_helpers";
 import { describe, expect, mockUserAgent, test } from "@odoo/hoot";
 import { advanceTime } from "@odoo/hoot-mock";
 
 import { range } from "@web/core/utils/numbers";
 import {
+    clickSave,
     defineActions,
     getService,
     mockService,
@@ -29,7 +32,7 @@ import {
 } from "@web/../tests/web_test_helpers";
 
 import { DELAY_FOR_SPINNER } from "@mail/chatter/web_portal_project/chatter";
-import { queryFirst } from "@odoo/hoot-dom";
+import { click as clickField, edit, queryFirst } from "@odoo/hoot-dom";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -46,40 +49,42 @@ test("simple chatter on a record", async () => {
     });
     listenStoreFetch(undefined, { logParams: ["mail.thread", "/mail/thread/messages"] });
     await start();
-    await waitStoreFetch(["init_messaging", "failures", "systray_get_activities"]);
+    await waitStoreFetch([
+        "init_messaging",
+        "failures",
+        "systray_get_activities",
+        "/mail/messaging_menu/initialize_counters",
+    ]);
     const partnerId = pyEnv["res.partner"].create({ name: "John Doe" });
     await openFormView("res.partner", partnerId);
     await contains(".o-mail-Chatter-topbar");
     await contains(".o-mail-Thread");
-    await waitStoreFetch(
+    await waitStoreFetch([
         [
-            [
-                "mail.thread",
-                {
-                    access_params: {},
-                    request_list: [
-                        "activities",
-                        "attachments",
-                        "contact_fields",
-                        "defaultSubject",
-                        "followers",
-                        "has_pinned_messages",
-                        "scheduledMessages",
-                        "showSubjectInSmallComposer",
-                        "suggestedRecipients",
-                        "suggestedSubject",
-                    ],
-                    thread_id: partnerId,
-                    thread_model: "res.partner",
-                },
-            ],
-            [
-                "/mail/thread/messages",
-                { thread_id: partnerId, thread_model: "res.partner", fetch_params: { limit: 30 } },
-            ],
+            "/mail/thread/messages",
+            { thread_id: partnerId, thread_model: "res.partner", fetch_params: { limit: 30 } },
         ],
-        { ignoreOrder: true }
-    );
+        [
+            "mail.thread",
+            {
+                access_params: {},
+                request_list: [
+                    "activities",
+                    "attachments",
+                    "contact_fields",
+                    "defaultSubject",
+                    "followers",
+                    "has_pinned_messages",
+                    "scheduledMessages",
+                    "showSubjectInSmallComposer",
+                    "suggestedRecipients",
+                    "suggestedSubject",
+                ],
+                thread_id: partnerId,
+                thread_model: "res.partner",
+            },
+        ],
+    ]);
 });
 
 test("can post a message on a record thread", async () => {
@@ -93,6 +98,8 @@ test("can post a message on a record thread", async () => {
                 body: "hey",
                 email_add_signature: true,
                 message_type: "comment",
+                partner_emails: ["new-partner@ex.com"],
+                partner_cc_emails: ["new-cc-partner@ex.com"],
                 subtype_xmlid: "mail.mt_comment",
             },
             thread_id: partnerId,
@@ -108,8 +115,20 @@ test("can post a message on a record thread", async () => {
     await contains(".o-mail-Composer");
     await insertText(".o-mail-Composer-input", "hey");
     await contains(".o-mail-Message", { count: 0 });
+
+    await insertText(".o-mail-Chatter input[placeholder='Followers only']", "new-partner@ex.com");
+    await click(".dropdown-item:text('Create new-partner@ex.com')");
+    await contains(".o_tag_badge_text:text('new-partner@ex.com')");
+
+    await click(".btn:text('Cc')");
+    await insertText(".o-mail-Chatter input[placeholder='Cc recipients']", "new-cc-partner@ex.com");
+    await click(".dropdown-item:text('Create new-cc-partner@ex.com')");
+    await contains(".o_tag_badge_text:text('new-cc-partner@ex.com')");
+
     await click(".o-mail-Composer button[aria-label='Send']:enabled");
-    await contains(".o-mail-Message");
+    await contains(".o-mail-Message .o-mail-Message-richBody:text('hey')");
+
+    await click("button:text('Send message')");
     await expect.waitForSteps(["/mail/message/post"]);
 });
 
@@ -148,7 +167,7 @@ test("No attachment loading spinner when creating records", async () => {
     await start();
     await openFormView("res.partner");
     await contains("button[aria-label='Attach files']");
-    await contains("button[aria-label='Attach files'] .fa-spin", { count: 0 });
+    await contains("button[aria-label='Attach files'] .oi-spin", { count: 0 });
 });
 
 test("No attachment loading spinner when switching from loading record to creation of record", async () => {
@@ -165,9 +184,9 @@ test("No attachment loading spinner when switching from loading record to creati
     await openFormView("res.partner", partnerId);
     await contains("button[aria-label='Attach files']");
     await advanceTime(DELAY_FOR_SPINNER);
-    await contains("button[aria-label='Attach files'] .fa-spin");
+    await contains("button[aria-label='Attach files'] .oi-spin");
     await click(".o_control_panel_main_buttons .o_form_button_create");
-    await contains("button[aria-label='Attach files'] .fa-spin", { count: 0 });
+    await contains("button[aria-label='Attach files'] .oi-spin", { count: 0 });
     await expect.waitForSteps(["before mail.thread"]);
     resolve();
     await waitStoreFetch("mail.thread");
@@ -254,6 +273,89 @@ test("chatter: drop attachment should refresh thread data with hasParentReloadOn
     await dragenterFiles(".o-mail-Chatter", [textPdf]);
     await dropFiles(".o-Dropzone", [textPdf]);
     await contains(".o-mail-Attachment iframe", { count: 1 });
+});
+
+test("chatter: dropping attachments should close pinned messages and search panels", async () => {
+    patchUiSize({ size: SIZES.XXL });
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({ name: "Armstrong" });
+    pyEnv["mail.message"].create({
+        body: "Pinned message",
+        model: "res.partner",
+        pinned_at: "2025-01-01 00:00:00",
+        res_id: partnerId,
+    });
+    const text = new File(["hello, world"], "text.txt", { type: "text/plain" });
+    const text2 = new File(["hello, world"], "text2.txt", { type: "text/plain" });
+    await start();
+    await openFormView("res.partner", partnerId);
+    await click("[title='Search Messages']");
+    await contains(".o-mail-SearchMessageInput");
+    await dragenterFiles(".o-mail-Chatter", [text]);
+    await dropFiles(".o-Dropzone", [text]);
+    await contains(".o-mail-AttachmentContainer:not(.o-isUploading):has(:text('text.txt'))");
+    await contains(".o-mail-SearchMessageInput", { count: 0 });
+    await click("button[title='Pinned Messages']");
+    await contains(".o-mail-pinnedMessages");
+    await dragenterFiles(".o-mail-Chatter", [text2]);
+    await dropFiles(".o-Dropzone", [text2]);
+    await contains(".o-mail-AttachmentContainer:not(.o-isUploading):has(:text('text.txt'))");
+    await contains(".o-mail-AttachmentContainer:not(.o-isUploading):has(:text('text2.txt'))");
+    await contains(".o-mail-pinnedMessages", { count: 0 });
+});
+
+test("chatter: drop attachment while editing a message", async () => {
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({});
+    pyEnv["mail.message"].create({
+        body: "<p>Hello</p>",
+        message_type: "comment",
+        model: "res.partner",
+        res_id: partnerId,
+    });
+    const textFile = new File(["hello, world"], "test.txt", { type: "text/plain" });
+    await start();
+    await openFormView("res.partner", partnerId);
+    await click(".o-mail-Message [title='Expand']");
+    await click(".o-dropdown-item:text('Edit')");
+    await contains(".o-mail-Message .o-mail-Composer");
+    await dragenterFiles(".o-mail-Message-body", [textFile]);
+    await contains(".o-Dropzone");
+    await dropFiles(".o-Dropzone.o-mail-Composer-dropzone", [textFile]);
+    await contains(
+        ".o-mail-Message .o-mail-Composer .o-mail-AttachmentContainer:not(.o-isUploading)"
+    );
+    await contains(".o-mail-AttachmentContainer");
+});
+
+test("attachment created without message_post refreshes the chatter on reload", async () => {
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({ name: "John Doe" });
+    await start();
+    await openFormView("res.partner", partnerId, {
+        arch: `
+            <form>
+                <sheet>
+                    <field name="name"/>
+                </sheet>
+                <chatter/>
+            </form>`,
+    });
+    await contains("button[aria-label='Attach files']");
+    await contains("button[aria-label='Attach files']:text('1')", { count: 0 });
+    // Attachment linked to the record without going through message_post, as
+    // when "Send & Print" generates an invoice pdf.
+    pyEnv["ir.attachment"].create({
+        mimetype: "application/pdf",
+        name: "invoice.pdf",
+        res_id: partnerId,
+        res_model: "res.partner",
+    });
+    // Reloading the same record (here through a save) must refresh the chatter.
+    await clickField(".o_field_widget[name=name] input");
+    await edit("Jane Doe", { confirm: "blur" });
+    await clickSave();
+    await contains("button[aria-label='Attach files']:text('1')");
 });
 
 test("should display subject when subject isn't infered from the record", async () => {
@@ -766,6 +868,7 @@ test("Update primary email in recipient without saving", async () => {
 
 test("can mark message as unread from chatter", async () => {
     const pyEnv = await startServer();
+    pyEnv["res.users"].write(serverState.userId, { notification_type: "inbox" });
     const partnerId = pyEnv["res.partner"].create({ name: "John Doe" });
     const messageId = pyEnv["mail.message"].create({
         author_id: partnerId,
@@ -787,8 +890,9 @@ test("can mark message as unread from chatter", async () => {
     await click(".o-mail-Message [title='Expand']");
     await click(".o-dropdown-item:text('Mark as Unread')");
     await contains(".o_notification:text(Marked as unread)");
-    await click(".o-mail-MessagingMenu-counter:text(1)");
-    await contains(".o-mail-NotificationItem-text:text(John Doe: lorem ipsum)");
+    await contains(".o-mail-MessagingMenuInDropdown-counter:text(1)");
+    await openMessagingMenu(MENU_ACTIVE_IDS.NOTIFICATION);
+    await contains(".o-mail-NotificationItem-text:has(:text(John Doe: lorem ipsum))");
 });
 
 test("Can only mention internal users in Log note", async () => {

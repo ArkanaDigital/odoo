@@ -129,7 +129,9 @@ class TestCreateEvents(TestCommon):
         outlook_event = dict(self.simple_event_from_outlook_attendee, organizer={
             'emailAddress': {'address': "Mike@organizer.com", 'name': "Mike Organizer"},
         }, attendees=[{'type': 'required', 'status': {'response': 'none', 'time': '0001-01-01T00:00:00Z'},
-                       'emailAddress': {'name': 'John Attendee', 'address': 'John@attendee.com'}}])
+                       'emailAddress': {'name': 'John Attendee', 'address': 'John@attendee.com'}},
+                      {'type': 'required', 'status': {'response': 'none', 'time': '0001-01-01T00:00:00Z'},
+                       'emailAddress': {'name': 'Mike Organizer', 'address': 'Mike@organizer.com'}}])
 
         mock_get_events.return_value = (MicrosoftEvent([outlook_event]), None)
         existing_records = self.env["calendar.event"].search([])
@@ -141,6 +143,7 @@ class TestCreateEvents(TestCommon):
         records = self.env["calendar.event"].search([])
         new_records = (records - existing_records)
         self.assertEqual(len(new_records), 1)
+        self.assertEqual(len(new_records.attendee_ids), 2)
         self.assert_odoo_event(new_records, self.expected_odoo_event_from_outlook)
         self.assertEqual(new_records.user_id, self.organizer_user)
 
@@ -352,8 +355,6 @@ class TestCreateEvents(TestCommon):
         self.assertEqual(self.organizer_user.microsoft_last_sync_date, False,
                          "Variable last_sync_date must be False due to sync stop.")
 
-        # Avoid default alarm for the test event as self.call_post_commit_hooks never clear self.env.cr.postcommit._funcs.
-        self.simple_event_values.update(alarm_ids=False)
         # Create a not synced event (local).
         simple_event_values_updated = self.simple_event_values
         for date_field in ['start', 'stop']:

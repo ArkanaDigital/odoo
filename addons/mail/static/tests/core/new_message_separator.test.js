@@ -7,19 +7,24 @@ import {
     listenStoreFetch,
     openDiscuss,
     openFormView,
+    openMessagingMenu,
     setupChatHub,
     start,
     startServer,
     triggerHotkey,
     waitStoreFetch,
+    MENU_ACTIVE_IDS,
 } from "@mail/../tests/mail_test_helpers";
+import { Thread } from "@mail/core/common/thread_model";
 import { describe, expect, test } from "@odoo/hoot";
-import { click as hootClick, press, queryFirst } from "@odoo/hoot-dom";
+import { click as hootClick, press, queryFirst, waitUntil } from "@odoo/hoot-dom";
 import { mockDate } from "@odoo/hoot-mock";
 import {
     Command,
     getService,
     makeKwArgs,
+    onRpc,
+    patchWithCleanup,
     serverState,
     withUser,
 } from "@web/../tests/web_test_helpers";
@@ -123,15 +128,17 @@ test("new message separator is shown after first mark as read, on receiving new 
 
 test("keep new message separator until user goes back to the thread", async () => {
     const pyEnv = await startServer();
-    pyEnv["res.users"].write(serverState.userId, { notification_type: "inbox" });
     const partnerId = pyEnv["res.partner"].create({ name: "Foreigner partner" });
-    const channelId = pyEnv["discuss.channel"].create({
-        name: "test",
-        channel_member_ids: [
-            Command.create({ partner_id: partnerId }),
-            Command.create({ partner_id: serverState.partnerId }),
-        ],
-    });
+    const [channelId] = pyEnv["discuss.channel"].create([
+        {
+            name: "test",
+            channel_member_ids: [
+                Command.create({ partner_id: partnerId }),
+                Command.create({ partner_id: serverState.partnerId }),
+            ],
+        },
+        { name: "Other" },
+    ]);
     const messageIds = pyEnv["mail.message"].create([
         {
             author_id: partnerId,
@@ -165,9 +172,9 @@ test("keep new message separator until user goes back to the thread", async () =
         "mail.record/insert",
         (n) => n["discuss.channel.member"][0].new_message_separator,
     ]);
-    await hootClick(".o-mail-DiscussSidebar-item:contains(History)");
-    await contains(".o-mail-DiscussContent-threadName", { value: "History" });
-    await hootClick(".o-mail-DiscussSidebar-item:contains(test)");
+    await click(".o-mail-NotificationItem:has(:text('Other'))");
+    await contains(".o-mail-DiscussContent-threadName", { value: "Other" });
+    await click(".o-mail-NotificationItem:has(:text('test'))");
     await contains(".o-mail-DiscussContent-threadName", { value: "test" });
     await contains(".o-mail-Message:has(:text('Message body 2'))");
     await contains(".o-mail-Thread-newMessage:contains('New')", { count: 0 });
@@ -237,7 +244,7 @@ test("keep new message separator when switching between chat window and discuss 
     const pyEnv = await startServer();
     pyEnv["discuss.channel"].create({ channel_type: "channel", name: "General" });
     await start();
-    await click(".o_menu_systray i[aria-label='Messages']");
+    await openMessagingMenu(MENU_ACTIVE_IDS.CHANNEL);
     await click(".o-mail-NotificationItem-name:text('General')");
     await insertText(".o-mail-Composer-input", "Very important message!");
     await triggerHotkey("Enter");
@@ -344,48 +351,6 @@ test("show new message separator when message is received while chat window is c
     await contains(".o-mail-Thread-newMessage:contains('New')");
 });
 
-test("only show new message separator in its thread", async () => {
-    // when a message acts as the reference for displaying new message separator,
-    // this should applies only when vieweing the message in its thread.
-    const pyEnv = await startServer();
-    pyEnv["res.users"].write(serverState.userId, { notification_type: "inbox" });
-    const demoPartnerId = pyEnv["res.partner"].create({ name: "Demo" });
-    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
-    const messageIds = pyEnv["mail.message"].create([
-        {
-            author_id: demoPartnerId,
-            body: "Hello",
-            message_type: "comment",
-            model: "discuss.channel",
-            res_id: channelId,
-        },
-        {
-            author_id: demoPartnerId,
-            body: "@Mitchell Admin",
-            attachment_ids: [],
-            message_type: "comment",
-            model: "discuss.channel",
-            res_id: channelId,
-            needaction: true,
-        },
-    ]);
-    // simulate that there is at least one read message in the channel
-    const [memberId] = pyEnv["discuss.channel.member"].search([
-        ["channel_id", "=", channelId],
-        ["partner_id", "=", serverState.partnerId],
-    ]);
-    pyEnv["discuss.channel.member"].write([memberId], { new_message_separator: messageIds[0] + 1 });
-    await start();
-    await openDiscuss(channelId);
-    await contains(".o-mail-Thread-newMessage ~ .o-mail-Message:has(:text('@Mitchell Admin'))");
-    await click(".o-mail-DiscussSidebar-item:text('Inbox')");
-    await contains(".o-mail-DiscussContent-threadName", { value: "Inbox" });
-    await contains(".o-mail-Message:has(:text('@Mitchell Admin'))");
-    await contains(".o-mail-Thread-newMessage ~ .o-mail-Message:has(:text('@Mitchell Admin'))", {
-        count: 0,
-    });
-});
-
 test("new member's separator should be at the bottom of existing messages after being invited", async () => {
     const pyEnv = await startServer();
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
@@ -414,4 +379,128 @@ test("new member's separator should be at the bottom of existing messages after 
         makeKwArgs({ limit: 1, order: "id DESC" })
     );
     expect(insertedMember.new_message_separator).toBe(lastMessageId + 1);
+});
+
+test("pending mark as read does not revert a later mark as unread", async () => {
+    // Regression test for the discuss.meeting_view tour flake (runbot 941491).
+    const firstMarkAsReadDef = Promise.withResolvers();
+    let markAsReadCount = 0;
+    onRpc("/discuss/channel/mark_as_read", async () => {
+        markAsReadCount++;
+        if (markAsReadCount === 1) {
+            // Keep the request in flight, like under CI load, and skip its
+            // server effects so that the mark as unread has the last word.
+            await firstMarkAsReadDef.promise;
+            return true;
+        }
+    });
+    onRpc("/discuss/channel/set_new_message_separator", () =>
+        expect.step("set_new_message_separator")
+    );
+    patchWithCleanup(Thread.prototype, {
+        handleMarkAsRead() {
+            expect.step("handle_mark_as_read");
+            return super.handleMarkAsRead(...arguments);
+        },
+        markAsReadRpc() {
+            expect.step("mark_as_read_rpc");
+            return super.markAsReadRpc(...arguments);
+        },
+    });
+    const pyEnv = await startServer();
+    const bobPartnerId = pyEnv["res.partner"].create({ name: "Bob" });
+    const channelId = pyEnv["discuss.channel"].create({
+        channel_member_ids: [
+            Command.create({ partner_id: serverState.partnerId }),
+            Command.create({ partner_id: bobPartnerId }),
+        ],
+        channel_type: "group",
+        name: "Meeting",
+    });
+    const messageId = pyEnv["mail.message"].create({
+        author_id: bobPartnerId,
+        body: "Hello everyone!",
+        message_type: "comment",
+        model: "discuss.channel",
+        res_id: channelId,
+    });
+    const [memberId] = pyEnv["discuss.channel.member"].search([
+        ["channel_id", "=", channelId],
+        ["partner_id", "=", serverState.partnerId],
+    ]);
+    pyEnv["discuss.channel.member"].write([memberId], { new_message_separator: messageId + 1 });
+    await start();
+    await openDiscuss(channelId);
+    await contains(".o-mail-Message:has(:text('Hello everyone!'))");
+    await expect.waitForSteps(["handle_mark_as_read", "mark_as_read_rpc"]);
+    // Request a second mark as read, queued until the first one completes.
+    queryFirst(".o-mail-Composer-input").blur();
+    await click(".o-mail-Composer-input");
+    await click("[title='Expand']", {
+        parent: [".o-mail-Message:has(:text('Hello everyone!'))"],
+    });
+    await click(".o-dropdown-item:contains('Mark as Unread')");
+    await contains(".o-mail-Thread-newMessage");
+    firstMarkAsReadDef.resolve();
+    await expect.waitForSteps(["set_new_message_separator"]);
+    await waitUntil(
+        () =>
+            pyEnv["discuss.channel.member"].search_read([["id", "=", memberId]])[0]
+                .new_message_separator === messageId
+    );
+});
+
+test("mark as unread waits for the mark as read in flight", async () => {
+    // Regression test for the discuss.meeting_view tour flake (runbot 944432).
+    // A mark as read sent before the click on "Mark as Unread" can reach the
+    // server after it.
+    const markAsReadDef = Promise.withResolvers();
+    onRpc("/discuss/channel/mark_as_read", async () => {
+        expect.step("mark_as_read");
+        // Keep the request in flight, like under CI load.
+        await markAsReadDef.promise;
+    });
+    onRpc("/discuss/channel/set_new_message_separator", () =>
+        expect.step("set_new_message_separator")
+    );
+    const pyEnv = await startServer();
+    const bobPartnerId = pyEnv["res.partner"].create({ name: "Bob" });
+    const channelId = pyEnv["discuss.channel"].create({
+        channel_member_ids: [
+            Command.create({ partner_id: serverState.partnerId }),
+            Command.create({ partner_id: bobPartnerId }),
+        ],
+        channel_type: "group",
+        name: "Meeting",
+    });
+    const messageId = pyEnv["mail.message"].create({
+        author_id: bobPartnerId,
+        body: "Hello everyone!",
+        message_type: "comment",
+        model: "discuss.channel",
+        res_id: channelId,
+    });
+    const [memberId] = pyEnv["discuss.channel.member"].search([
+        ["channel_id", "=", channelId],
+        ["partner_id", "=", serverState.partnerId],
+    ]);
+    pyEnv["discuss.channel.member"].write([memberId], { new_message_separator: messageId + 1 });
+    await start();
+    await openDiscuss(channelId);
+    await contains(".o-mail-Message:has(:text('Hello everyone!'))");
+    await expect.waitForSteps(["mark_as_read"]);
+    await click("[title='Expand']", {
+        parent: [".o-mail-Message:has(:text('Hello everyone!'))"],
+    });
+    await click(".o-dropdown-item:contains('Mark as Unread')");
+    await contains(".o-mail-Thread-newMessage");
+    expect.verifySteps([]);
+    markAsReadDef.resolve();
+    await expect.waitForSteps(["set_new_message_separator"]);
+    await waitUntil(
+        () =>
+            pyEnv["discuss.channel.member"].search_read([["id", "=", memberId]])[0]
+                .new_message_separator === messageId
+    );
+    await contains(".o-mail-Thread-newMessage");
 });

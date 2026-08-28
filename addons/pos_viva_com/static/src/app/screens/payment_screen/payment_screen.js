@@ -26,6 +26,15 @@ patch(PaymentScreen.prototype, {
             await this.vivaApp.process();
         });
     },
+    async onClickValidate(args = {}) {
+        const validationOptions = this.pos.getValidationOrderOptions(args);
+        const fastPaymentMethod = validationOptions.fastPaymentMethod;
+        if (fastPaymentMethod && this.vivaApp.use(fastPaymentMethod)) {
+            await this.addNewPaymentLine(fastPaymentMethod);
+            return;
+        }
+        return super.onClickValidate(...arguments);
+    },
     async addNewPaymentLine(pm, args = {}) {
         if (this.vivaApp.use(pm)) {
             let previousAnswer = window.localStorage.getItem("vivawallet_app_answer");

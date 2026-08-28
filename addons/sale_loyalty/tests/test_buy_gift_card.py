@@ -8,28 +8,22 @@ from odoo.addons.sale_loyalty.tests.common import TestSaleCouponCommon
 
 @tagged("-at_install", "post_install")
 class TestBuyGiftCard(TestSaleCouponCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_buying_gift_card(self):
         self.immediate_promotion_program.active = False
         order = self._create_so(
             order_line=[
-                (
-                    0,
-                    False,
-                    {
-                        "product_id": self.product_A.id,
-                        "name": "Ordinary Product A",
-                        "product_uom_qty": 1.0,
-                    },
-                ),
-                (
-                    0,
-                    False,
-                    {
-                        "product_id": self.product_gift_card.id,
-                        "name": "Gift Card Product",
-                        "product_uom_qty": 1.0,
-                    },
-                ),
+                Command.create({
+                    "product_id": self.product_A.id,
+                    "name": "Ordinary Product A",
+                    "product_uom_qty": 1.0,
+                }),
+                Command.create({
+                    "product_id": self.product_gift_card.id,
+                    "name": "Gift Card Product",
+                    "product_uom_qty": 1.0,
+                }),
             ]
         )
         self.assertEqual(len(order.order_line.ids), 2)

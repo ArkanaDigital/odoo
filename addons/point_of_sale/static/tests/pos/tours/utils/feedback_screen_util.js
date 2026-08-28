@@ -64,6 +64,7 @@ export function checkTicketData(data, basic = false, simplified = false) {
     //   is_cashier,
     //   cashier_name,
     //   is_qr_code,
+    //   has_portal_url
     //   payment_lines: [{
     // 	  name,
     // 	  amount,
@@ -96,6 +97,10 @@ export function checkTicketData(data, basic = false, simplified = false) {
         );
         const doc = iframe.contentDocument || iframe.contentWindow.document;
         const ticket = doc.getElementById("pos-receipt");
+        const getElementInTicketByText = (selector, text) =>
+            Array.from(ticket.querySelectorAll(selector)).find((el) =>
+                el.textContent.includes(text)
+            );
 
         if (!ticket && !Object.keys(data).length) {
             return true;
@@ -197,6 +202,16 @@ export function checkTicketData(data, basic = false, simplified = false) {
             }
         }
 
+        if (data.has_portal_url) {
+            const selfInvoicingURL = getElementInTicketByText(
+                "#pos-receipt .text-small",
+                `${order.config._base_url}/pos/ticket`
+            );
+            if (!selfInvoicingURL) {
+                throw new Error("No valid self invoicing URL has been found in receipt.");
+            }
+        }
+
         if (data.payment_lines) {
             const paymentLines = ticket.querySelectorAll(".payment-line");
 
@@ -277,6 +292,15 @@ export function checkTicketData(data, basic = false, simplified = false) {
                         if (!line_price.includes(line.line_price)) {
                             throw new Error(
                                 `Order line price mismatch for ${name}: expected ${line.line_price}, got ${line_price}.`
+                            );
+                        }
+                    }
+                    if (line.no_discount_price) {
+                        const no_discount_price =
+                            orderline.querySelector(".no-discount-price").textContent;
+                        if (!no_discount_price.includes(line.no_discount_price)) {
+                            throw new Error(
+                                `Order line price without discount mismatch for ${name}: expected ${line.no_discount_price}, got ${no_discount_price}.`
                             );
                         }
                     }
@@ -375,7 +399,7 @@ export function clickEmailButton() {
     return [
         {
             content: "send email",
-            trigger: ".modal-body .fa-paper-plane",
+            trigger: ".modal-body [data-icon='send']",
             run: "click",
         },
     ];
@@ -427,4 +451,11 @@ export function printTicket(ticketLabel) {
             run: "click",
         },
     ];
+}
+
+export function isSuccess() {
+    return {
+        content: "feedback screen shows success state with icon, Amount Paid and amount",
+        trigger: ".feedback-screen:has(svg):has(.amount-paid):has(.amount)",
+    };
 }

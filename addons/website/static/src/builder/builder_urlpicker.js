@@ -1,25 +1,20 @@
-import { textInputBasePassthroughProps } from "@html_builder/core/building_blocks/builder_input_base";
 import { BuilderUrlPicker } from "@html_builder/core/building_blocks/builder_urlpicker";
-import { basicContainerBuilderComponentProps, useActionInfo } from "@html_builder/core/utils";
+import { useActionInfo } from "@html_builder/core/utils";
+import { useProps, signal, t } from "@odoo/owl";
 import { AutoComplete } from "@web/core/autocomplete/autocomplete";
 import { _t } from "@web/core/l10n/translation";
-import { useChildRef } from "@web/core/utils/hooks";
 import { patch } from "@web/core/utils/patch";
 import wUtils from "@website/js/utils";
 
 export class AutoCompleteBuilderUrlPicker extends AutoComplete {
-    static props = {
-        ...AutoComplete.props,
-        ...basicContainerBuilderComponentProps,
-        ...textInputBasePassthroughProps,
-        default: { type: String, optional: true },
-        inputClass: { type: String, optional: true },
-    };
+    builderProps = useProps({
+        inputClass: t.string().optional(),
+    });
     static template = "website.AutoCompleteBuilderUrlPicker";
 
     setup() {
         super.setup();
-        this.info = useActionInfo();
+        this.info = useActionInfo(this.props);
     }
 
     get ulDropdownClass() {
@@ -34,7 +29,7 @@ patch(BuilderUrlPicker, {
 patch(BuilderUrlPicker.prototype, {
     setup() {
         super.setup();
-        this.urlRef = useChildRef();
+        this.urlRef = signal.ref();
     },
 
     get sources() {
@@ -64,8 +59,8 @@ patch(BuilderUrlPicker.prototype, {
     },
 
     openPreviewUrl() {
-        if (this.urlRef.el.value) {
-            window.open(this.urlRef.el.value, "_blank");
+        if (this.urlRef().value) {
+            window.open(this.urlRef().value, "_blank");
         }
     },
 });

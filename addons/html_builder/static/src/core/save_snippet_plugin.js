@@ -12,6 +12,8 @@ import { BLOCKQUOTE_PARENT_HANDLERS } from "@html_builder/core/utils";
 
 export class SaveSnippetPlugin extends Plugin {
     static id = "saveSnippet";
+    static dependencies = ["disableSnippets"];
+
     /** @type {import("plugins").BuilderResources} */
     resources = {
         options_container_top_buttons_providers: withSequence(
@@ -45,7 +47,8 @@ export class SaveSnippetPlugin extends Plugin {
 
         return [
             {
-                class: "fa fa-fw fa-save oe_snippet_save o_we_hover_warning btn o-hb-btn btn-global-color-hover",
+                class: "oi oi-fw oe_snippet_save o_we_hover_warning btn o-hb-btn btn-global-color-hover",
+                icon: "save",
                 title: _t("Save this block to use it elsewhere"),
                 handler: this.saveSnippet.bind(this),
             },
@@ -85,6 +88,7 @@ export class SaveSnippetPlugin extends Plugin {
             ...this.getResource("clean_for_save_processors"),
             (root) => {
                 escapeTextNodes(root);
+                return root;
             },
         ];
         const savedName = await this.config.saveSnippet(
@@ -92,6 +96,7 @@ export class SaveSnippetPlugin extends Plugin {
             cleanForSaveProcessors,
             this.wrapWithBeforeAfterSaveHandlers.bind(this)
         );
+        this.dependencies.disableSnippets.disableUndroppableSnippets();
         if (savedName) {
             if (this.delegateTo("custom_snippets_notification_overrides", savedName)) {
                 return;

@@ -13,6 +13,8 @@ class TestPoSSetup(TestPoSCommon):
 
     If a test fails here, then it means there are inconsistencies in what we expect in the setup.
     """
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super(TestPoSSetup, self).setUp()
 
@@ -75,7 +77,8 @@ class TestPoSSetup(TestPoSCommon):
             'invoice_reference_type': 'invoice',
             'invoice_reference_model': 'odoo'
         })
-        payment_method = self.env['pos.payment.method'].create({'name': 'Lets Pay for Tests', 'journal_id': journal.id})
+        payment_method = self.env['pos.payment.method'].create({
+            'name': 'Lets Pay for Tests', 'journal_id': journal.id, 'type': 'bank'})
         self.basic_config.write({'payment_method_ids': [payment_method.id]})
         journal.write({'pos_payment_method_ids': [payment_method.id]})
         session = self.env['pos.session'].create(

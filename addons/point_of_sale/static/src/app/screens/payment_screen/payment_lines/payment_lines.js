@@ -1,26 +1,29 @@
 import { _t } from "@web/core/l10n/translation";
 import { NumberPopup } from "@point_of_sale/app/components/popups/number_popup/number_popup";
 import { useService } from "@web/core/utils/hooks";
-import { Component } from "@odoo/owl";
+import { Component, useProps, t } from "@odoo/owl";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { parseFloat } from "@web/views/fields/parsers";
 import { enhancedButtons } from "@point_of_sale/app/components/numpad/numpad";
 import { PriceFormatter } from "@point_of_sale/app/components/price_formatter/price_formatter";
+import { PosPayment } from "@point_of_sale/app/models/pos_payment";
+import { formatCurrency } from "@web/core/currency";
 
+export const paymentScreenPaymentLinesProps = {
+    paymentLines: t.array(t.instanceOf(PosPayment)).optional(),
+    deleteLine: t.function(),
+    selectLine: t.function(),
+    sendForceDone: t.function(),
+    sendForceCancel: t.function(),
+    sendPaymentCancel: t.function(),
+    sendPaymentRequest: t.function(),
+    updateSelectedPaymentline: t.function(),
+    isRefundOrder: t.boolean(),
+};
 export class PaymentScreenPaymentLines extends Component {
     static template = "point_of_sale.PaymentScreenPaymentLines";
     static components = { PriceFormatter };
-    static props = {
-        paymentLines: { type: Array, optional: true },
-        deleteLine: Function,
-        selectLine: Function,
-        sendForceDone: Function,
-        sendForceCancel: Function,
-        sendPaymentCancel: Function,
-        sendPaymentRequest: Function,
-        updateSelectedPaymentline: Function,
-        isRefundOrder: Boolean,
-    };
+    props = useProps(paymentScreenPaymentLinesProps);
 
     setup() {
         this.ui = useService("ui");
@@ -30,6 +33,12 @@ export class PaymentScreenPaymentLines extends Component {
 
     get paymentLines() {
         return this.props.paymentLines.filter((line) => line.payment_method_id);
+    }
+
+    getFormattedPrice(line) {
+        const currency = line.currency;
+        const amount = line.amount_currency || line.amount;
+        return formatCurrency(amount, currency.id);
     }
 
     async selectLine(paymentline) {
@@ -68,6 +77,7 @@ export class PaymentScreenPaymentLines extends Component {
      * @property {string} title                   - Title of the payment status section.
      * @property {Array<PaymentAction>} actions   - Actions available for the current payment state.
      * @property {string} [icon]                  - Optional icon representing the payment state.
+     * @property {string} [iconClass]            - Additional classes for the icon.
      *
      * @type {PaymentActionState}
      */
@@ -75,7 +85,8 @@ export class PaymentScreenPaymentLines extends Component {
         const status = line.payment_status;
         const isRefund = this.props.isRefundOrder;
         const camelToSnakeCase = (id) => id.replace(/([A-Z])/g, "_$1").toLowerCase();
-        const SPINNER_ICON = "fa fa-circle-o-notch fa-spin";
+        const SPINNER_ICON = "autorenew";
+        const SPINNER_ICON_CLASS = "oi-spin";
         const ACTIONS = {
             send: {
                 id: "send",
@@ -157,6 +168,7 @@ export class PaymentScreenPaymentLines extends Component {
             state.id = isRefund ? "waiting_refund" : camelToSnakeCase(status);
             state.title = isRefund ? _t("Refund in process") : titles[status];
             state.icon = SPINNER_ICON;
+            state.iconClass = SPINNER_ICON_CLASS;
             state.actions = [ACTIONS.forceDone, ACTIONS.cancel];
         }
 
@@ -165,6 +177,7 @@ export class PaymentScreenPaymentLines extends Component {
             state.id = camelToSnakeCase(status);
             state.title = _t("Request sent");
             state.icon = SPINNER_ICON;
+            state.iconClass = SPINNER_ICON_CLASS;
             state.actions = [
                 { ...ACTIONS.forceDone, show: status === "waiting" },
                 { ...ACTIONS.forceCancel, show: status === "waitingCancel" },

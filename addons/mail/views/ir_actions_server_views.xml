@@ -52,6 +52,12 @@
                                     placeholder="Choose a user..."
                                     widget="many2one_avatar_user"
                                     required="state == 'next_activity' and activity_user_type == 'specific' "/>
+                                <field name="activity_role_id"
+                                    invisible="activity_user_type != 'role'"
+                                    placeholder="Choose a role..."
+                                    options="{'no_quick_create': True}"
+                                    domain="[('user_ids', '!=', False)]"
+                                    required="state == 'next_activity' and activity_user_type == 'role' "/>
                             </div>
                         </group>
                         <group colspan="2" invisible="not activity_type_id">
@@ -66,47 +72,45 @@
                         <group>
                             <field name="followers_type"
                                 required="state in ['followers', 'remove_followers']"/>
-                            <field name="partner_ids" string="Followers to add" widget="many2many_tags"
-                                placeholder="Choose a contact..."
+                            <field name="partner_ids" string="Followers" widget="many2many_tags"
+                                placeholder="Choose followers..."
                                 invisible="state != 'followers' or followers_type != 'specific'"
                                 required="state == 'followers' and followers_type == 'specific'"/>
-                            <field name="partner_ids" string="Followers to remove" widget="many2many_tags"
-                                placeholder="Choose a contact..."
+                            <field name="partner_ids" string="Followers" widget="many2many_tags"
+                                placeholder="Choose followers..."
                                 invisible="state != 'remove_followers' or followers_type != 'specific'"
                                 required="state == 'remove_followers' and followers_type == 'specific'"/>
                             <field name="followers_partner_field_name"
                                 widget="field_selector" options="{'model': 'model_name'}"
                                 invisible="followers_type != 'generic'"
                                 required="state in ['followers', 'remove_followers'] and followers_type == 'generic'"/>
+                            <field name="subtype_ids"
+                                string="Subscriptions"
+                                widget="many2many_tags"
+                                placeholder="Default"
+                                invisible="state != 'followers' or followers_type != 'specific'"
+                                domain="['&amp;', ('hidden', '=', False), '|', ('res_model', '=', False), ('res_model', '=', model_name)]"/>
                         </group>
                     </group>
                     <!-- Send Email -->
                     <group invisible="state != 'mail_post'">
                         <group>
                             <field name="template_id"
+                                string="Template"
                                 placeholder="Choose a template..."
                                 required="state == 'mail_post'"
                                 context="{'default_model': model_name,
                                             'default_use_default_to': True}"/>
-                            <label for="mail_post_method"/>
-                            <div class="d-flex flex-column">
-                                <field name="mail_post_method" required="state == 'mail_post'"/>
-                                <div class="text-muted">
-                                    <span invisible="mail_post_method != 'email'">
-                                        The message will be sent as an email to the recipients of the
-                                        template and will not appear in the messaging history.
-                                    </span>
-                                    <span invisible="mail_post_method != 'note'">
-                                        The message will be posted as an internal note visible to internal
-                                        users in the messaging history.
-                                    </span>
-                                    <span invisible="mail_post_method != 'comment'">
-                                        The message will be posted as a message on the record,
-                                        notifying all followers. It will appear in the messaging history.
-                                    </span>
-                                </div>
-                            </div>
                             <field name="mail_post_autofollow" invisible="1"/>
+                        </group>
+                    </group>
+                    <!-- Log Note -->
+                    <group invisible="state != 'log_note'">
+                        <group colspan="2">
+                            <field name="log_note_note" class="oe-bordered-editor"
+                                placeholder="Write note to post in the chatter of the record..."
+                                options="{'allowAttachmentCreation': False, 'allowVideo': False, 'embedded_components': False}"
+                                required="state == 'log_note'"/>
                         </group>
                     </group>
                 </xpath>

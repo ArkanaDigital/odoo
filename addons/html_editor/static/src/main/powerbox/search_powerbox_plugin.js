@@ -32,7 +32,7 @@ export class SearchPowerboxPlugin extends Plugin {
         power_buttons: withSequence(100, {
             commandId: "openSearchPowerbox",
             description: _t("More options"),
-            icon: "oi-ellipsis-v",
+            icon: "more_vert",
         }),
     };
     setup() {
@@ -58,7 +58,10 @@ export class SearchPowerboxPlugin extends Plugin {
     }
     onInput(ev) {
         this.searchTerm = undefined;
-        if (ev.data === "/") {
+        // Check DOM instead of ev.data because a previous on_input_handlers
+        // (e.g. emoji plugin) may have already replaced the typed character.
+        const selection = this.dependencies.selection.getEditableSelection();
+        if (selection.anchorNode.textContent.charAt(selection.anchorOffset - 1) === "/") {
             this.openSearchPowerbox();
         } else {
             this.update();

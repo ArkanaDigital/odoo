@@ -1,30 +1,30 @@
-import { useRef } from "@web/owl2/utils";
 import { parseEmail } from "@mail/utils/common/format";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { useService } from "@web/core/utils/hooks";
 import { isEmail } from "@web/core/utils/strings";
 
-import { Component, signal, useListener } from "@odoo/owl";
+import { Component, signal, types, useListener, useProps } from "@odoo/owl";
 /**
  * This class represents the popover opened when we detect that one of our recipients is missing an email
  * address in the RecipientsInput. It allows the user to correct this error and update the partner
  * with an email address.
  */
 export class RecipientsInputTagsListPopover extends Component {
-    static props = {
-        tagToUpdate: { type: Object },
-        onUpdateTag: { type: Function },
-        close: { type: Function },
-    };
     static template = "mail.RecipientsInputTagsListPopover";
 
+    popoverRef = signal.ref();
+
     setup() {
+        this.props = useProps({
+            close: types.function([]),
+            onUpdateTag: types.function([types.string()]),
+            tagToUpdate: types.object({ onDelete: types.function([]) }),
+        });
         this.orm = useService("orm");
         this.inputValue = signal("");
         this.inError = signal(false);
-        this.popoverRef = useRef("tagsListPopoverRef");
         useListener(window, "click", (ev) => {
-            if (!this.popoverRef.el?.contains(ev.target)) {
+            if (!this.popoverRef()?.contains(ev.target)) {
                 this.discardTag();
             }
         });

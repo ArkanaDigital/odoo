@@ -169,8 +169,8 @@ describe("selected cell color in toolbar", () => {
         </table>`);
 
         await expandToolbar();
-        expect(".fa-paint-brush").toHaveCount(1);
-        expect(".fa-paint-brush").toHaveStyle({
+        expect("[data-icon='colors']").toHaveCount(1);
+        expect("[data-icon='colors']").toHaveStyle({
             "border-bottom": "2px solid rgba(255, 0, 0, 0.6)",
         });
     });
@@ -188,8 +188,8 @@ describe("selected cell color in toolbar", () => {
 
         await expandToolbar();
         await animationFrame();
-        expect(".fa-paint-brush").toHaveCount(1);
-        expect(".fa-paint-brush").toHaveStyle({
+        expect("[data-icon='colors']").toHaveCount(1);
+        expect("[data-icon='colors']").toHaveStyle({
             "border-bottom": "2px solid rgba(0, 0, 0, 0)",
         });
     });
@@ -207,8 +207,8 @@ describe("selected cell color in toolbar", () => {
         </table>`);
 
         await expandToolbar();
-        expect(".fa-paint-brush").toHaveCount(1);
-        expect(".fa-paint-brush").toHaveStyle({
+        expect("[data-icon='colors']").toHaveCount(1);
+        expect("[data-icon='colors']").toHaveStyle({
             "border-bottom": "2px solid rgba(255, 0, 0, 0.6)",
         });
         const nonStyledCellOne = queryFirst(".non_styled_1");
@@ -221,8 +221,8 @@ describe("selected cell color in toolbar", () => {
         });
         await waitForSelectionChange();
         await animationFrame();
-        expect(".fa-paint-brush").toHaveCount(1);
-        expect(".fa-paint-brush").toHaveStyle({
+        expect("[data-icon='colors']").toHaveCount(1);
+        expect("[data-icon='colors']").toHaveStyle({
             "border-bottom": "2px solid rgba(0, 0, 0, 0)",
         });
     });
@@ -266,8 +266,8 @@ describe("selected cell color in toolbar", () => {
         // set a timeout for the deplayed toolbar update
         await waitFor(".o-we-toolbar", { timeout: 1500 });
         await expandToolbar();
-        expect(".fa-paint-brush").toHaveCount(1);
-        expect(".fa-paint-brush").toHaveStyle({
+        expect("[data-icon='colors']").toHaveCount(1);
+        expect("[data-icon='colors']").toHaveStyle({
             "border-bottom": "2px solid rgba(255, 0, 0, 0.6)",
         });
     });
@@ -307,9 +307,81 @@ describe("selected cell color in toolbar", () => {
         // set a timeout for the deplayed toolbar update
         await waitFor(".o-we-toolbar", { timeout: 1500 });
         await expandToolbar();
-        expect(".fa-paint-brush").toHaveCount(1);
-        expect(".fa-paint-brush").toHaveStyle({
+        expect("[data-icon='colors']").toHaveCount(1);
+        expect("[data-icon='colors']").toHaveStyle({
             "border-bottom": "2px solid rgba(255, 0, 0, 0.6)",
         });
+    });
+});
+
+describe("normalize table structure", () => {
+    test("should create a tbody when it's missing", async () => {
+        const { el, editor } = await setupEditor(
+            `<table class="table table-bordered o_table" style="width: 500px;"><caption>c</caption></table>`
+        );
+        expect(editor.isDestroyed).toBe(false);
+        expect(getContent(el)).toBe(
+            unformat(`
+                <p data-selection-placeholder=""><br></p>
+                <table class="table table-bordered o_table" style="width: 500px;">
+                    <caption>c</caption>
+                    <tbody>
+                        <tr>
+                            <td><div class="o-paragraph"><br></div></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
+            `)
+        );
+    });
+
+    test("should convert thead to tbody", async () => {
+        const { el } = await setupEditor(
+            `<table style="width: 500px;"><thead><tr><th>1</th><th>2</th></tr></thead></table>`
+        );
+        expect(getContent(el)).toBe(
+            unformat(`
+                <p data-selection-placeholder=""><br></p>
+                <table style="width: 500px;">
+                    <tbody>
+                        <tr>
+                            <th class="o_table_header">1</th>
+                            <th class="o_table_header">2</th>
+                        </tr>
+                    </tbody>
+                </table>
+                <p data-selection-placeholder=""><br></p>
+            `)
+        );
+    });
+
+    test("should move thead rows into the existing tbody", async () => {
+        const { el } = await setupEditor(
+            unformat(
+                `<table style="width: 500px;">
+                    <thead><tr><th>1</th><th>2</th></tr></thead>
+                    <tbody><tr><td>3</td><td>4</td></tr></tbody>
+                </table>`
+            )
+        );
+        expect(getContent(el)).toBe(
+            unformat(`
+                <p data-selection-placeholder=""><br></p>
+                <table style="width: 500px;">
+                    <tbody>
+                        <tr>
+                            <th class="o_table_header">1</th>
+                            <th class="o_table_header">2</th>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>4</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p data-selection-placeholder=""><br></p>
+            `)
+        );
     });
 });

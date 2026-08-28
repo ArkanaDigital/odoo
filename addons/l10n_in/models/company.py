@@ -51,11 +51,6 @@ class ResCompany(models.Model):
         recursive=True,
         store=True,
     )
-    l10n_in_withholding_account_id = fields.Many2one(
-        comodel_name='account.account',
-        string="TDS Account",
-        check_company=True,
-    )
     l10n_in_withholding_journal_id = fields.Many2one(
         comodel_name='account.journal',
         string="TDS Journal",
@@ -71,6 +66,7 @@ class ResCompany(models.Model):
         store=True,
     )
     l10n_in_gstin_status_feature = fields.Boolean(string="Check GST Number Status")
+    l10n_in_disable_b2c_hsn_reporting = fields.Boolean(string="Disable B2C HSN Reporting")
 
     @api.depends('l10n_in_upi_id')
     def _compute_qr_code(self):

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from odoo import api
 from odoo.cli import Command
-from odoo.modules import initialize_sys_path
 from odoo.modules.registry import Registry
 from odoo.tools import config
 
@@ -38,7 +37,6 @@ class Populate(Command):
             sys.exit(1)
 
         _logger.info("Connecting to database '%s'...", dbname)
-        initialize_sys_path()
         with Registry(dbname).cursor() as cr:
             env = api.Environment(cr, api.SUPERUSER_ID, {})
             populate_is_installed = bool(env['ir.module.module'].search_count(
@@ -55,7 +53,7 @@ class Populate(Command):
                 _logger.critical("%s", e)
                 sys.exit(1)
 
-            self._execute(session)
+            self._execute(session, profile=config['profile'])
 
     def _setup_options(self):
         """Register populate-specific options on the global Odoo CLI parser."""
@@ -83,6 +81,10 @@ class Populate(Command):
             '--resume', dest='resuming', type='int', nargs='?', const=0, my_default=None,
             help="Resume from a previous session.\n"
                  "Use without argument to resume the last session, or provide a session ID.",
+        )
+        group.add_option(
+            '--profile', dest='profile', action='store_true', my_default=False,
+            help="Profile populate execution.",
         )
         parser.add_option_group(group)
         config._load_default_options()
@@ -193,16 +195,17 @@ class Populate(Command):
         return session
 
     @staticmethod
-    def _execute(session: Session):
+    def _execute(session: Session, *, profile: bool = False):
         """Run a session and translate runtime failures to CLI exit codes.
 
         :param session: Session to execute or resume.
+        :param profile: Whether to save profiler entries for this invocation.
         """
         from odoo.addons.populate import start_populate  # noqa: PLC0415
 
         time_start = time.time()
         try:
-            start_populate(session)
+            start_populate(session, profile=profile)
         except KeyboardInterrupt:
             session.env.cr.rollback()
             _logger.info("Interrupted populate session %d. Resume later with `--resume`.", session.id)

@@ -143,6 +143,9 @@ class AccountBankStatementLine(models.Model):
         string="Statement Name",
         related='statement_id.name',
     )
+    statement_problem_description = fields.Text(
+        related='statement_id.problem_description',
+    )
 
     # Technical field to store details about the bank statement line
     transaction_details = fields.Json(readonly=True)
@@ -270,7 +273,7 @@ class AccountBankStatementLine(models.Model):
         unless we use a sql view which is more complicated.
         """
         # ensure we are using correct value for reversing sequence in the index (2147483647)
-        # NOTE: assert self._fields['sequence'].column_type[1] == 'int4'
+        assert self._fields['sequence'].column_type[1] == 'int4'
         # if for any reason it changes (how unlikely), we need to update this code
 
         for st_line in self.filtered(lambda line: line._origin.id):
@@ -456,12 +459,21 @@ class AccountBankStatementLine(models.Model):
         """ Undo the reconciliation made on the statement line and reset their journal items
         to their original states.
         """
+        for st_line in self:
+            st_line.move_id._check_review_state_access(st_line.review_state)
+
+        partials = self.line_ids.matched_debit_ids + self.line_ids.matched_credit_ids
+        caba_moves = self.env['account.move'].search([
+            ('tax_cash_basis_rec_id', 'in', partials.ids),
+            *self.env['account.move']._check_company_domain(self.line_ids.company_id)
+        ])
+        caba_moves.line_ids._check_tax_lock_date()
+
         self.line_ids.remove_move_reconcile()
         self.payment_ids.unlink()
 
         for st_line in self:
             st_line.with_context(force_delete=True, skip_readonly_check=True).write({
-                'review_state': 'reviewed',
                 'line_ids': [Command.clear()] + [
                     Command.create(line_vals) for line_vals in st_line._prepare_move_line_default_vals()],
             })

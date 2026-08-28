@@ -1,5 +1,4 @@
 import {
-    Deferred,
     animationFrame,
     click,
     edit,
@@ -92,8 +91,8 @@ test("toggle datepicker on mobile", async () => {
 
 test("datepicker is automatically closed after selecting a value", async () => {
     Partner._onChanges.date = () => {};
-    const def = new Deferred();
-    onRpc("onchange", () => def);
+    const def = Promise.withResolvers();
+    onRpc("onchange", () => def.promise);
 
     await mountView({ type: "form", resModel: "res.partner", resId: 1 });
 
@@ -637,8 +636,8 @@ test("DateField contains a calendar icon on touch devices", async () => {
     // The icon is only visible on touch devices, using css rules
     document.body.classList.add("o_touch_device");
     await mountView({ type: "form", resModel: "res.partner", resId: 1 });
-    expect(".fa-calendar").toHaveCount(1);
-    expect(".fa-calendar").toBeVisible();
+    expect("[data-icon='calendar_today']").toHaveCount(1);
+    expect("[data-icon='calendar_today']").toBeVisible();
 });
 
 test(`DateField in x2many list: open/close picker`, async () => {

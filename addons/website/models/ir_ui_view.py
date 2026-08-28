@@ -11,6 +11,7 @@ from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, MissingError, ValidationError
 from odoo.fields import Domain
 from odoo.http import request
+from odoo.tools import SQL
 
 _logger = logging.getLogger(__name__)
 
@@ -289,11 +290,10 @@ class IrUiView(models.Model):
         # website_id. (It will then always fallback on a website, this
         # method should never be called in a generic context, even for
         # tests)
-        current_website = self.env['website'].get_current_website()
         return super(IrUiView, self.with_context(
-            website_id=current_website.id
+            website_id=self.env.website.id
         )).get_related_views(key, bundles=bundles).with_context(
-            lang=current_website.default_lang_id.code,
+            lang=self.env.website.default_lang_id.code,
         )
 
     def filter_duplicate(self):
@@ -347,13 +347,12 @@ class IrUiView(models.Model):
         return views.filter_duplicate().filtered('active')
 
     @api.model
-    def _get_filter_xmlid_query(self):
+    def _get_filter_xmlid_query(self, *, modules):
         """This method add some specific view that do not have XML ID
         """
         if not self.env.context.get('website_id'):
-            return super()._get_filter_xmlid_query()
-        else:
-            return """SELECT res_id
+            return super()._get_filter_xmlid_query(modules=modules)
+        return SQL("""SELECT res_id
                     FROM   ir_model_data
                     WHERE  res_id IN %(res_ids)s
                         AND model = 'ir.ui.view'
@@ -369,7 +368,10 @@ class IrUiView(models.Model):
                     WHERE  sview.id IN %(res_ids)s
                         AND sview.website_id IS NOT NULL
                         AND oview.website_id IS NULL;
-                    """
+                    """,
+                    res_ids=self._ids,
+                    modules=tuple(modules),
+        )
 
     @api.model
     def _get_cached_template_prefetched_keys(self):
@@ -424,11 +426,10 @@ class IrUiView(models.Model):
         visibility = self._get_cached_visibility()
 
         if visibility != 'public' and not request.env.user.has_group('website.group_website_designer'):
-            website = self.env["website"].get_current_website()
-            if (visibility == 'connected' and website.is_public_user()):
+            if (visibility == 'connected' and self.env.website.is_public_user()):
                 error = werkzeug.exceptions.Forbidden()
             elif visibility == 'password' and \
-                    (website.is_public_user() or self.id not in request.session.get('views_unlock', [])):
+                    (self.env.website.is_public_user() or self.id not in request.session.get('views_unlock', [])):
                 pwd = request.params.get('visibility_password')
                 if pwd and self.env.user._crypt_context().verify(
                         pwd, self.visibility_password):
@@ -543,7 +544,7 @@ class IrUiView(models.Model):
         usage of a custom snippet and copy its translations.
         """
         lang_value = record[html_field]
-        if not lang_value:
+        if not lang_value or not lang_value.strip():
             return
 
         try:
@@ -624,7 +625,7 @@ class IrUiView(models.Model):
     @api.model
     def _save_oe_structure_hook(self):
         res = {}
-        res['website_id'] = self.env['website'].get_current_website().id
+        res['website_id'] = self.env.website.id
         return res
 
     @api.model
@@ -644,12 +645,8 @@ class IrUiView(models.Model):
         :param str xpath: valid xpath to the tag to replace
         """
         self.ensure_one()
-        current_website = self.env['website'].get_current_website(fallback=False)
-
+        current_website = self.env.website
         view = self
-        if current_website:
-            view = view.with_context(website_id=current_website.id)
-
         # xpath condition is important to be sure we are editing a view and not
         # a field as in that case `self` might not exist (check commit message)
         if xpath and view.key and current_website:

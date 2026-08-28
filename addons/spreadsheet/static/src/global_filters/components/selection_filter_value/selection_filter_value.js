@@ -1,11 +1,17 @@
 /** @ts-check */
 
-import { useLayoutEffect } from "@web/owl2/utils";
-import { Component, onWillStart, onWillUpdateProps } from "@odoo/owl";
-import { useChildRef, useService } from "@web/core/utils/hooks";
-
-import { BadgeTag } from "@web/core/tags_list/badge_tag";
+import {
+    Component,
+    onWillStart,
+    onWillUpdateProps,
+    signal,
+    t,
+    onMounted,
+    useProps,
+} from "@odoo/owl";
 import { AutoComplete } from "@web/core/autocomplete/autocomplete";
+import { BadgeTag } from "@web/core/tags_list/badge_tag";
+import { useService } from "@web/core/utils/hooks";
 
 export class SelectionFilterValue extends Component {
     static template = "spreadsheet.SelectionFilterValue";
@@ -13,32 +19,29 @@ export class SelectionFilterValue extends Component {
         BadgeTag,
         AutoComplete,
     };
-    static props = {
-        resModel: String,
-        field: String,
-        value: { type: Array, optional: true },
-        onValueChanged: Function,
-    };
-    static defaultProps = {
-        value: [],
-    };
+    props = useProps({
+        resModel: t.string(),
+        field: t.string(),
+        value: t.array().optional([]),
+        onValueChanged: t.function(),
+        placeholder: t.string().optional(),
+    });
 
     setup() {
-        this.inputRef = useChildRef();
-        useLayoutEffect(
-            () => {
-                if (this.inputRef.el) {
-                    // Prevent the user from typing free-text by setting the maxlength to 0
-                    this.inputRef.el.setAttribute("maxlength", 0);
-                }
-            },
-            () => [this.inputRef.el]
-        );
+        this.inputRef = signal.ref();
+        onMounted(() => {
+            // Prevent the user from typing free-text by setting the maxlength to 0
+            this.inputRef().setAttribute("maxlength", 0);
+        });
         this.tags = [];
         this.sources = [];
         this.fields = useService("field");
         onWillStart(() => this._computeTagsAndSources(this.props));
         onWillUpdateProps((nextProps) => this._computeTagsAndSources(nextProps));
+    }
+
+    get placeholder() {
+        return this.tags.length ? "" : this.props.placeholder;
     }
 
     async _computeTagsAndSources(props) {

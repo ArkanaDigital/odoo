@@ -10,6 +10,8 @@ from .common import TestEsEdiTbaiCommonGipuzkoa
 @tagged('post_install', '-at_install', 'post_install_l10n')
 class TestTbaiUserErrors(TestEsEdiTbaiCommonGipuzkoa):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -145,6 +147,7 @@ class TestTbaiUserErrors(TestEsEdiTbaiCommonGipuzkoa):
         )
         credit_note_id = move_reversal.refund_moves()['res_id']
         credit_note = self.env['account.move'].browse(credit_note_id)
+        credit_note.l10n_es_original_invoice_credited = self.invoice_to_send.name or "INV/2026/00001"
         credit_note.action_post()
         credit_note_send_wizard = self._get_invoice_send_wizard(credit_note)
 

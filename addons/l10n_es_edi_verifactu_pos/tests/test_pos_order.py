@@ -15,6 +15,8 @@ from .common import TestL10nEsEdiVerifactuPosCommon
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestL10nEsEdiVerifactuPosOrder(TestL10nEsEdiVerifactuPosCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -32,8 +34,10 @@ class TestL10nEsEdiVerifactuPosOrder(TestL10nEsEdiVerifactuPosCommon):
     def with_pos_session(self):
         session = self.open_new_session(0.0)
         yield session
-        session.post_closing_cash_details(0.0)
-        session.close_session_from_ui()
+        cash_pm = self.config._get_cash_payment_method()
+        session.close_session_from_ui({
+            cash_pm.id: 0,
+        })
 
     def _create_order(self, data):
         date_order = data.pop('date_order', None)
@@ -140,7 +144,7 @@ class TestL10nEsEdiVerifactuPosOrder(TestL10nEsEdiVerifactuPosCommon):
                 })
                 refund.l10n_es_edi_verifactu_refund_reason = 'R5'
                 refund_payment.with_context(**payment_context).check()
-                self.pos_session.action_pos_session_validate()
+                self.pos_session.close_session_from_ui()
 
         self.assertRecordValues(order, [{
             'l10n_es_edi_verifactu_state': 'accepted',

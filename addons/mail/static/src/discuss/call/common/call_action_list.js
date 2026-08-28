@@ -1,5 +1,4 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, computed, toRaw } from "@odoo/owl";
+import { Component, computed, signal, toRaw, types, useProps } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
@@ -13,17 +12,23 @@ import { CALL_PROMOTE_FULLSCREEN } from "@mail/discuss/call/common/discuss_chann
 
 export class CallActionList extends Component {
     static components = { ActionList };
-    static props = ["channel", "className?", "compact?", "pipExtraActions?"];
     static template = "discuss.CallActionList";
+
+    more = signal(null);
+    root = signal.ref();
 
     setup() {
         super.setup();
         this.store = useService("mail.store");
+        this.props = useProps({
+            channel: types.instanceOf(this.store["discuss.channel"]),
+            className: types.string().optional(),
+            compact: types.boolean().optional(),
+            pipExtraActions: types.array().optional(),
+        });
         this.rtc = useService("discuss.rtc");
         this.pipService = useService("discuss.pip_service");
         this.callActions = useCallActions(this.callActionsParams);
-        this.more = useRef("more");
-        this.root = useRef("root");
         this.popover = usePopover(Tooltip, {
             position: "top-middle",
         });
@@ -49,7 +54,12 @@ export class CallActionList extends Component {
                               this.callActionsParams,
                               {
                                   actions: moreActions,
-                                  dropdownMenuClass: "m-0 mb-1 overflow-x-hidden",
+                                  dropdownMenuClass: attClassObjectToString({
+                                      "m-0 mb-1 overflow-x-hidden": true,
+                                      "o-discuss-CallActionList-menu": Boolean(
+                                          this.env.inMeetingView
+                                      ),
+                                  }),
                                   dropdownPosition: "top-end",
                                   name: this.MORE,
                               },
@@ -82,7 +92,12 @@ export class CallActionList extends Component {
                                             CALL_PROMOTE_FULLSCREEN.ACTIVE
                                     ),
                                 }),
-                            dropdownMenuClass: "m-0 mb-1 overflow-x-hidden",
+                            dropdownMenuClass: attClassObjectToString({
+                                "o-discuss-CallActionList-callLayout m-0 mb-1 overflow-x-hidden": true,
+                                "o-discuss-CallActionList-menu o-inMeetingView": Boolean(
+                                    this.env.inMeetingView
+                                ),
+                            }),
                             dropdownPosition: "top-end",
                             id: "call-layout",
                             name: this.MORE,

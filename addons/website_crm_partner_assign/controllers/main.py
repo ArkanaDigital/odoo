@@ -33,22 +33,12 @@ class WebsiteAccount(CustomerPortal):
             ('type', '=', 'opportunity')
         ]
 
-    def _prepare_home_portal_values(self, counters):
-        values = super()._prepare_home_portal_values(counters)
-        CrmLead = request.env['crm.lead']
-        if 'lead_count' in counters:
-            values['lead_count'] = (
-                CrmLead.search_count(self.get_domain_my_lead(request.env.user))
-                if CrmLead.has_access('read')
-                else 0
-            )
-        if 'opp_count' in counters:
-            values['opp_count'] = (
-                CrmLead.search_count(self.get_domain_my_opp(request.env.user))
-                if CrmLead.has_access('read')
-                else 0
-            )
-        return values
+    def _prepare_portal_counter_values(self, counter):
+        if counter == 'lead_count':
+            return 'crm.lead', self.get_domain_my_lead(request.env.user), 'read'
+        if counter == 'opp_count':
+            return 'crm.lead', self.get_domain_my_opp(request.env.user), 'read'
+        return super()._prepare_portal_counter_values(counter)
 
     @http.route(['/my/leads', '/my/leads/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_leads(self, page=1, date_begin=None, date_end=None, sortby=None, **kw):
@@ -271,13 +261,6 @@ class WebsiteCrmPartnerAssign(WebsitePartnership, GoogleMap):
             grade_domain += [('country_id', '=', country.id)]
         grades = self._get_grades(grade, grade_domain)
 
-        # Group by country
-        country_domain = list(base_partner_domain)
-        if grade:
-            country_domain += [('grade_id', '=', grade.id)]
-        country_groups = partner_obj.sudo()._read_group(
-            country_domain + [('country_id', '!=', False)],
-            ["country_id"], ["__count"], order="country_id")
         countries = [{
             'country_id_count': sum(count for __, count in country_groups),
             'country_id': (0, _("All Countries")),
@@ -343,7 +326,8 @@ class WebsiteCrmPartnerAssign(WebsitePartnership, GoogleMap):
             'search': search,
             'google_maps_api_key': google_maps_api_key,
             'fallback_all_countries': fallback_all_countries,
-            'keep_partners_url': keep
+            'keep_partners_url': keep,
+            'structured_data': partners._render_jsonld(),
         }
         return values
 

@@ -5,6 +5,8 @@ from odoo.tests import tagged
 
 @tagged('post_install', '-at_install', 'post_install_l10n')
 class TestGenericGCC(TestGenericLocalization):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @AccountTestInvoicingCommon.setup_country('sa')
     def setUpClass(cls):
@@ -30,6 +32,14 @@ class TestGenericGCC(TestGenericLocalization):
 
     def test_generic_localization(self):
         self.main_pos_config.l10n_gcc_dual_language_receipt = True
+        self.main_pos_config.cash_rounding = True
+        self.main_pos_config.rounding_method = self.env['account.cash.rounding'].create({
+            'name': 'Test rounding',
+            'rounding': 0.05,
+            'rounding_method': 'UP',
+            'profit_account_id': self.company_data['default_account_revenue'].id,
+            'loss_account_id': self.company_data['default_account_expense'].id,
+        })
         _, html = super().test_generic_localization()
         self.assertTrue("Served by / خدم بواسطة" in html)
         self.assertTrue("Ticket / تذكرة" in html)

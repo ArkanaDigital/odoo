@@ -1,5 +1,4 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onWillUpdateProps, proxy } from "@odoo/owl";
+import { Component, computed, onMounted, onPatched, proxy, signal, t, useProps } from "@odoo/owl";
 import { hasTouch } from "@web/core/browser/feature_detection";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
@@ -7,7 +6,6 @@ import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { localeCompare, normalize } from "@web/core/l10n/utils";
 import { BadgeTag } from "@web/core/tags_list/badge_tag";
 import { mergeClasses } from "@web/core/utils/classname";
-import { useChildRef } from "@web/core/utils/hooks";
 import { highlightText, odoomark } from "@web/core/utils/html";
 import { scrollTo } from "@web/core/utils/scrolling";
 import { useDebounced } from "@web/core/utils/timing";
@@ -19,10 +17,65 @@ export const DEBOUNCED_DELAY = 250;
 class SelectMenuTagsList extends Component {
     static template = "web.SelectMenuTagsList";
     static components = { BadgeTag };
-    static props = {
-        tags: { type: Array },
-    };
+    props = useProps({
+        tags: t.array(),
+    });
 }
+
+export const selectMenuProps = {
+    choices: t
+        .array(
+            t.object({
+                enabled: t.boolean().optional(),
+                value: t.any(),
+                label: t.string(),
+            })
+        )
+        .optional([]),
+    groups: t
+        .array(
+            t.object({
+                label: t.string().optional(),
+                choices: t.array(
+                    t.object({
+                        value: t.any(),
+                        label: t.string(),
+                    })
+                ),
+                section: t.string().optional(),
+            })
+        )
+        .optional([]),
+    sections: t
+        .array(
+            t.object({
+                label: t.string(),
+                name: t.string(),
+            })
+        )
+        .optional([]),
+    id: t.string().optional(""),
+    name: t.string().optional(""),
+    class: t.string().optional(""),
+    menuClass: t.string().optional(""),
+    togglerClass: t.string().optional(""),
+    position: t.string().optional("bottom-fit"),
+    required: t.boolean().optional(false),
+    searchable: t.boolean().optional(true),
+    autoSort: t.boolean().optional(true),
+    placeholder: t.string().optional(),
+    searchPlaceholder: t.string().optional(""),
+    searchClass: t.string().optional(),
+    value: t.any().optional(),
+    multiSelect: t.boolean().optional(false),
+    onInput: t.function().optional(),
+    onSelect: t.function().optional(() => () => {}),
+    onNavigated: t.function().optional(() => () => {}),
+    onOpened: t.function().optional(() => () => {}),
+    onClosed: t.function().optional(() => () => {}),
+    slots: t.object().optional(),
+    disabled: t.boolean().optional(false),
+};
 
 export class SelectMenu extends Component {
     static template = "web.SelectMenu";
@@ -30,97 +83,7 @@ export class SelectMenu extends Component {
 
     static components = { Dropdown, DropdownItem, TagsList: SelectMenuTagsList };
 
-    static defaultProps = {
-        value: undefined,
-        id: "",
-        name: "",
-        class: "",
-        menuClass: "",
-        togglerClass: "",
-        multiSelect: false,
-        onSelect: () => {},
-        onNavigated: () => {},
-        onOpened: () => {},
-        onClosed: () => {},
-        required: false,
-        searchable: true,
-        autoSort: true,
-        searchPlaceholder: "",
-        choices: [],
-        groups: [],
-        sections: [],
-        disabled: false,
-    };
-
-    static props = {
-        choices: {
-            optional: true,
-            type: Array,
-            element: {
-                type: Object,
-                shape: {
-                    enabled: { type: Boolean, optional: true },
-                    value: true,
-                    label: { type: String },
-                    "*": true,
-                },
-            },
-        },
-        groups: {
-            type: Array,
-            optional: true,
-            element: {
-                type: Object,
-                shape: {
-                    label: { type: String, optional: true },
-                    choices: {
-                        type: Array,
-                        element: {
-                            type: Object,
-                            shape: {
-                                value: true,
-                                label: { type: String },
-                                "*": true,
-                            },
-                        },
-                    },
-                    section: {
-                        type: String,
-                        optional: true,
-                    },
-                },
-            },
-        },
-        sections: {
-            type: Array,
-            optional: true,
-            element: {
-                label: { type: String },
-                name: { type: String },
-            },
-        },
-        id: { type: String, optional: true },
-        name: { type: String, optional: true },
-        class: { type: String, optional: true },
-        menuClass: { type: String, optional: true },
-        togglerClass: { type: String, optional: true },
-        required: { type: Boolean, optional: true },
-        searchable: { type: Boolean, optional: true },
-        autoSort: { type: Boolean, optional: true },
-        placeholder: { type: String, optional: true },
-        searchPlaceholder: { type: String, optional: true },
-        searchClass: { type: String, optional: true },
-        value: { optional: true },
-        multiSelect: { type: Boolean, optional: true },
-        onInput: { type: Function, optional: true },
-        onSelect: { type: Function, optional: true },
-        onNavigated: { type: Function, optional: true },
-        onOpened: { type: Function, optional: true },
-        onClosed: { type: Function, optional: true },
-        slots: { type: Object, optional: true },
-        disabled: { type: Boolean, optional: true },
-        menuRef: { type: Function, optional: true },
-    };
+    props = useProps(selectMenuProps);
 
     static SCROLL_SETTINGS = {
         defaultCount: 500,
@@ -128,48 +91,71 @@ export class SelectMenu extends Component {
         distanceBeforeReload: 500,
     };
 
+    // Ref on the menu element, either owned by the parent (`menuRef` prop) or local.
+    menuRef = useProps.static(
+        "menuRef",
+        t.signal(t.ref()).optional(() => signal.ref())
+    );
+
+    choicesRef = signal.ref();
+    inputRefs = {
+        toggler: signal(null),
+        menu: signal(null),
+    };
+
+    selectedChoice = computed(() => {
+        const allChoices = [
+            ...this.props.choices,
+            ...this.props.groups.flatMap((g) => g.choices || []),
+        ];
+        if (!this.props.multiSelect) {
+            return allChoices.find((c) => c.value === this.props.value);
+        }
+        const byValue = new Map(allChoices.map((c) => [c.value, c]));
+        return (this.props.value || [])
+            .map((v) => byValue.get(v) || this._seenChoices.get(v))
+            .filter(Boolean);
+    });
+
     setup() {
         this.selectMenuId = selectMenuId++;
         this.state = proxy({
             choices: [],
             displayedOptions: [],
-            searchValue: null,
             isFocused: false,
         });
-        this.inputRef = useRef("inputRef");
-        this.menuRef = useChildRef();
-        this.choicesRef = useRef("choicesRef");
-        this.props.menuRef?.(this.menuRef);
-        this.debouncedOnInput = useDebounced((ev) => {
+
+        this.debouncedOnInput = useDebounced(() => {
             if (!this.dropdownState.isOpen) {
                 this.dropdownState.open();
             }
-            const searchString = ev.target.value;
-            this.state.searchValue = searchString;
-            delete this.pendingValue;
-            this.onInput(searchString);
+            this.onInput(this.pendingValue);
         }, DEBOUNCED_DELAY);
         this.dropdownState = useDropdownState();
 
-        this.selectedChoice = this.getSelectedChoice(this.props);
-        onWillUpdateProps((nextProps) => {
-            const choicesChanged = this.state.choices !== nextProps.choices;
-            if (choicesChanged) {
-                this.state.choices = nextProps.choices;
+        this._seenChoices = new Map();
+        this._prevChoices = this.props.choices;
+        this._prevGroups = this.props.groups;
+        const refilter = () => {
+            const choices = this.props.choices;
+            const groups = this.props.groups;
+            this._updateSeenChoices({ choices, groups });
+            if (this.dropdownState.isOpen) {
+                this.filterOptions(this.pendingValue, [{ choices, section: "" }, ...groups]);
             }
-            if (choicesChanged || this.props.value !== nextProps.value) {
-                this.selectedChoice = this.getSelectedChoice(nextProps);
+        };
+        onMounted(refilter);
+        onPatched(() => {
+            if (this.props.choices !== this._prevChoices || this.props.groups !== this._prevGroups) {
+                this._prevChoices = this.props.choices;
+                this._prevGroups = this.props.groups;
+                refilter();
             }
         });
-        useLayoutEffect(
-            () => {
-                if (this.dropdownState.isOpen) {
-                    const groups = [{ choices: this.props.choices }, ...this.props.groups];
-                    this.filterOptions(this.state.searchValue, groups);
-                }
-            },
-            () => [this.props.choices, this.props.groups]
-        );
+
+        // updateInputValue is idempotent (pendingValue short-circuits), so sync every patch.
+        onMounted(() => this.updateInputValue());
+        onPatched(() => this.updateInputValue());
 
         const navigationCallback = (navigator) => {
             if (navigator.activeItem) {
@@ -210,16 +196,21 @@ export class SelectMenu extends Component {
 
     handleInputDebounced(ev) {
         this.pendingValue = ev.target.value;
-        this.debouncedOnInput(ev);
+        this.debouncedOnInput();
     }
 
-    get displayValue() {
-        if (this.pendingValue) {
-            return this.pendingValue;
+    clearInputValue() {
+        delete this.pendingValue;
+        this.updateInputValue();
+    }
+
+    updateInputValue(value = null) {
+        for (const ref of Object.values(this.inputRefs)) {
+            const el = ref();
+            if (el) {
+                el.value = value || this.pendingValue || this.selectedChoice()?.label || "";
+            }
         }
-        return this.state.searchValue === null
-            ? this.selectedChoice?.label || ""
-            : this.state.searchValue;
     }
 
     get displayInputInToggler() {
@@ -235,11 +226,11 @@ export class SelectMenu extends Component {
     }
 
     get canDeselect() {
-        return !this.props.required && this.selectedChoice !== undefined;
+        return !this.props.required && this.selectedChoice() !== undefined;
     }
 
     get multiSelectChoices() {
-        return this.selectedChoice.map((c) => ({
+        return this.selectedChoice().map((c) => ({
             id: c.value,
             text: c.label,
             onDelete: () => {
@@ -304,8 +295,12 @@ export class SelectMenu extends Component {
         if (this.displayInputInToggler) {
             this.state.isFocused = false;
         }
-        if (ev.target.value === "" && this.canDeselect && !this.props.multiSelect) {
-            this.onInputClear();
+        if (ev.target.value === "" && !this.props.multiSelect) {
+            if (this.canDeselect) {
+                this.onInputClear();
+            } else {
+                this.clearInputValue();
+            }
         }
     }
 
@@ -328,16 +323,17 @@ export class SelectMenu extends Component {
                 document.activeElement.blur();
             }
             if (this.displayInputInDropdown && !this.isBottomSheet) {
-                this.inputRef.el.focus();
+                this.inputRefs.menu()?.focus();
             }
-            this.choicesRef.el?.addEventListener("scroll", (ev) => this.onScroll(ev));
-            const selectedElement = this.menuRef.el?.querySelectorAll(".selected")[0];
+            this.choicesRef()?.addEventListener("scroll", (ev) => this.onScroll(ev));
+            const selectedElement = this.menuRef()?.querySelectorAll(".selected")[0];
             if (selectedElement) {
                 scrollTo(selectedElement);
             }
+            this.updateInputValue();
             this.props.onOpened();
         } else {
-            this.state.searchValue = null;
+            this.clearInputValue();
             this.props.onClosed();
         }
     }
@@ -363,20 +359,10 @@ export class SelectMenu extends Component {
         }
     }
 
-    getSelectedChoice(props) {
-        const choices = [...props.choices, ...props.groups.flatMap((g) => g.choices || [])];
-        if (!this.props.multiSelect) {
-            return choices.find((c) => c.value === props.value);
+    _updateSeenChoices(props) {
+        for (const c of [...props.choices, ...props.groups.flatMap((g) => g.choices || [])]) {
+            this._seenChoices.set(c.value, c);
         }
-
-        const valueSet = new Set(props.value);
-        // Combine previously selected choices + newly selected choice from
-        // the searched choices and then filter the choices based on
-        // props.value i.e. valueSet.
-        return [...(this.selectedChoice || []), ...choices].filter(
-            (c, index, self) =>
-                valueSet.has(c.value) && self.findIndex((t) => t.value === c.value) === index
-        );
     }
 
     onItemSelected(value) {
@@ -390,13 +376,13 @@ export class SelectMenu extends Component {
             } else {
                 this.props.onSelect([...this.props.value, value]);
             }
-        } else if (!this.selectedChoice || this.selectedChoice.value !== value) {
+        } else if (!this.selectedChoice() || this.selectedChoice().value !== value) {
             this.props.onSelect(value);
-            if (this.inputRef.el && this.state.choices && this.state.choices.length) {
-                this.inputRef.el.value = this.state.choices.find((c) => c.value === value).label;
+            if (this.state.choices && this.state.choices.length) {
+                this.updateInputValue(this.state.choices.find((c) => c.value === value).label);
             }
         }
-        this.state.searchValue = null;
+        this.clearInputValue();
     }
 
     // ==========================================================================================
@@ -463,7 +449,7 @@ export class SelectMenu extends Component {
                         ? highlightText(
                               searchString,
                               odoomark(choice.label),
-                              "text-primary fw-bold"
+                              "o_filtered_text fw-bold"
                           )
                         : choice.value,
                     value: choice.value,

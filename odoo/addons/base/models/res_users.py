@@ -34,8 +34,11 @@ from odoo.tools import (
     str2bool,
 )
 from odoo.tools.date_utils import all_timezones
+from odoo.tools.sql import escape_like_value
 
 _logger = logging.getLogger(__name__)
+
+NO_GROUP_CHANGE_LOG = object()
 
 
 class CryptContext:
@@ -185,13 +188,15 @@ class ResUsers(models.Model):
         # see `_has_field_access``
         return name == 'user_writeable' or super()._valid_field_parameter(field, name)
 
-    def _default_groups(self):
+    def _default_groups(self, group='user_regular'):
         """Default groups for employees
 
         All the groups of the Default User Group
         """
-        groups = self.env.ref('base.group_user')
-        default_group = self.env.ref('base.default_user_group', raise_if_not_found=False)
+        if group not in ['user', 'user_regular', 'system']:
+            raise UserError(self.env._('Invalid user group.'))
+        groups = self.env.ref(f'base.group_{group}')
+        default_group = self.env.ref(f'base.default_{group}_group', raise_if_not_found=False)
         if default_group:
             groups += default_group.implied_ids
         return groups
@@ -251,8 +256,6 @@ class ResUsers(models.Model):
 
     accesses_count = fields.Integer('# Access Rights', help='Number of access rights that apply to the current user',
                                     compute='_compute_accesses_count', compute_sudo=True)
-    rules_count = fields.Integer('# Record Rules', help='Number of record rules that apply to the current user',
-                                 compute='_compute_accesses_count', compute_sudo=True)
     groups_count = fields.Integer('# Groups', help='Number of groups that apply to the current user',
                                   compute='_compute_accesses_count', compute_sudo=True)
 
@@ -260,7 +263,8 @@ class ResUsers(models.Model):
         return self.env['res.groups']._get_view_group_hierarchy()
 
     view_group_hierarchy = fields.Json(string='Technical field for user group setting', store=False, copy=False, default=_default_view_group_hierarchy)
-    role = fields.Selection([('group_user', 'User'), ('group_system', 'Administrator')], compute='_compute_role', readonly=False, string="Role")
+    role = fields.Selection([('group_user', 'Light User'), ('group_user_regular', 'User'), ('group_system', 'Administrator')],
+        compute='_compute_role', inverse='_inverse_role', search='_search_role', string="Role")
 
     _login_key = models.Constraint("UNIQUE (login)",
         'You can not have two users with the same login!')
@@ -427,21 +431,49 @@ class ResUsers(models.Model):
 
     @api.depends('group_ids')
     def _compute_role(self):
+        group_user = self.env.ref('base.group_user')
+        group_no_one = self.env.ref('base.group_no_one', raise_if_not_found=False) or self.env['res.groups']
+        light_groups = (group_user + self._default_groups(group='user')).all_implied_ids - group_no_one
         for user in self:
-            user.role = (
-                'group_system' if user.has_group('base.group_system') else
-                'group_user' if user.has_group('base.group_user') else
-                False
-            )
+            if user.has_group('base.group_system'):
+                user.role = 'group_system'
+            elif user.has_group('base.group_user_regular'):
+                user.role = 'group_user_regular'
+            elif user.has_group('base.group_user'):
+                user_groups = user.all_group_ids._origin - group_no_one
+                user.role = 'group_user' if set(user_groups).issubset(set(light_groups)) else 'group_user_regular'
+            else:
+                user.role = False
+
+    def _inverse_role(self):
+        group_admin = self.env['res.groups'].new(origin=self.env.ref('base.group_system'))
+        group_user_regular = self.env['res.groups'].new(origin=self.env.ref('base.group_user_regular'))
+        group_user = self.env['res.groups'].new(origin=self.env.ref('base.group_user'))
+        for user in self:
+            # If set to light user, access should be reset as a fresh new light user.
+            if user.role == 'group_user':
+                user.group_ids = self._default_groups(group='user')
+            elif user.role and user.has_group('base.group_user'):
+                groups = user.group_ids - (group_admin + group_user_regular + group_user)
+                user.group_ids = groups + (group_admin if user.role == 'group_system'
+                                           else group_user_regular)
 
     @api.onchange('role')
     def _onchange_role(self):
-        group_admin = self.env['res.groups'].new(origin=self.env.ref('base.group_system'))
-        group_user = self.env['res.groups'].new(origin=self.env.ref('base.group_user'))
-        for user in self:
-            if user.role and user.has_group('base.group_user'):
-                groups = user.group_ids - (group_admin + group_user)
-                user.group_ids = groups + (group_admin if user.role == 'group_system' else group_user)
+        self._inverse_role()
+
+    def _search_role(self, operator, value):
+        if operator != 'in':
+            return NotImplemented
+        group_admin = self.env.ref('base.group_system')
+        group_user_regular = self.env.ref('base.group_user_regular')
+        group_user = self.env.ref('base.group_user')
+        domains_by_role = {
+            'group_user': Domain('group_ids', 'in', [group_user.id]) & Domain('group_ids', 'not in', [group_user_regular.id]),
+            'group_user_regular': Domain('group_ids', 'in', [group_user_regular.id]) & Domain('group_ids', 'not in', [group_admin.id]),
+            'group_system': Domain('group_ids', 'in', [group_admin.id]),
+        }
+        return Domain.OR([domains_by_role[v] for v in value if v in domains_by_role])
 
     @api.depends('group_ids.all_implied_ids')
     def _compute_all_group_ids(self):
@@ -476,8 +508,7 @@ class ResUsers(models.Model):
     def _compute_accesses_count(self):
         for user in self:
             groups = user.all_group_ids
-            user.accesses_count = len(groups.model_access)
-            user.rules_count = len(groups.rule_groups)
+            user.accesses_count = len(groups.access_ids)
             user.groups_count = len(groups)
 
     @api.depends('res_users_settings_ids')
@@ -600,7 +631,14 @@ class ResUsers(models.Model):
             # reset before the call to super to ensure `_check_company` sees the right company
             self._reset_cached_properties()
 
+        if 'group_ids' in vals:
+            old_group_ids = {user.id: user.group_ids.ids for user in self.sudo()}
+
         res = super().write(vals)
+
+        if 'group_ids' in vals and self.env.context.get('no_group_change_log') is not NO_GROUP_CHANGE_LOG:
+            # After write to make sure permission check passes
+            self._log_group_changes(vals, old_group_ids)
 
         if 'company_id' in vals:
             for user in self:
@@ -746,7 +784,7 @@ class ResUsers(models.Model):
 
     @api.model
     def _get_email_domain(self, email):
-        return Domain('email', '=', email)
+        return Domain('email', '=ilike', escape_like_value(email or ''))
 
     @api.model
     def _get_login_order(self):
@@ -763,7 +801,12 @@ class ResUsers(models.Model):
                     raise AccessDenied()
                 user = user.with_user(user).sudo()
                 auth_info = user._check_credentials(credential, user_agent_env)
-                tz = request.cookies.get('tz') if request else None
+                tz = None
+                if request and (browser_tz := request.cookies.get('tz')):
+                    # browsers report the CLDR name, a deprecated alias for some
+                    # zones, which ZoneInfo resolves to the canonical one
+                    with contextlib.suppress(KeyError, ValueError):
+                        tz = ZoneInfo(browser_tz).key
                 if tz in all_timezones and (not user.tz or not user.login_date):
                     # first login or missing tz -> set tz to browser tz
                     user.tz = tz
@@ -775,6 +818,20 @@ class ResUsers(models.Model):
         _logger.info("Login successful for login:%s from %s", login, ip)
 
         return auth_info
+
+    def _log_group_changes(self, vals, old_group_ids, editing_groups=None):
+        ip_addr = request.httprequest.remote_addr if request else 'n/a'
+        for user in self:
+            if editing_groups:
+                _logger.info(
+                    "Group change: user %d with IP %s changed groups of user %d who belonged to %s by editing res.groups %s with %s",
+                    self.env.user.id, ip_addr, user.id, old_group_ids[user.id], editing_groups, vals['user_ids'],
+                )
+            else:
+                _logger.info(
+                    "Group change: user %d with IP %s changed groups of user %d who belonged to %s with changes %s",
+                    self.env.user.id, ip_addr, user.id, old_group_ids[user.id], vals['group_ids'],
+                )
 
     def authenticate(self, credential, user_agent_env):
         """Verifies and returns the user ID corresponding to the given
@@ -1148,22 +1205,10 @@ class ResUsers(models.Model):
         return {
             'name': _('Access Rights'),
             'view_mode': 'list,form',
-            'res_model': 'ir.model.access',
+            'res_model': 'ir.access',
             'type': 'ir.actions.act_window',
             'context': {'create': False, 'delete': False},
-            'domain': [('id', 'in', self.all_group_ids.model_access.ids)],
-            'target': 'current',
-        }
-
-    def action_show_rules(self):
-        self.ensure_one()
-        return {
-            'name': _('Record Rules'),
-            'view_mode': 'list,form',
-            'res_model': 'ir.rule',
-            'type': 'ir.actions.act_window',
-            'context': {'create': False, 'delete': False},
-            'domain': [('id', 'in', self.all_group_ids.rule_groups.ids)],
+            'domain': [('group_id', 'in', self.all_group_ids.ids)],
             'target': 'current',
         }
 
@@ -1503,7 +1548,7 @@ class ResUsersApikeys(models.Model):
 
     name = fields.Char("Description", required=True, readonly=True)
     user_id = fields.Many2one('res.users', index=True, required=True, readonly=True, ondelete="cascade")
-    scope = fields.Char("Scope", readonly=True)
+    scope = fields.Char("Scope", required=True, readonly=True)
     create_date = fields.Datetime("Creation Date", readonly=True)
     expiration_date = fields.Datetime("Expiration Date", readonly=True)
 
@@ -1567,7 +1612,7 @@ class ResUsersApikeys(models.Model):
 
     def _generate(self, scope, name, expiration_date):
         """Generates an api key.
-        :param str|None scope: the scope of the key. If None, the key will give access to any rpc.
+        :param str scope: the scope of the key.
         :param str name: the name of the key, mainly intended to be displayed in the UI.
         :param datetime.datetime expiration_date: the expiration date of the key.
         :returns: the key.
@@ -1581,12 +1626,14 @@ class ResUsersApikeys(models.Model):
         self._check_expiration_date(expiration_date)
         # no need to clear the LRU when *adding* a key, only when removing
         k = binascii.hexlify(os.urandom(API_KEY_SIZE)).decode()
-        self.env.cr.execute("""
-        INSERT INTO {table} (name, user_id, scope, expiration_date, key, index)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        RETURNING id
-        """.format(table=self._table),
-        [name, self.env.user.id, scope, expiration_date or None, KEY_CRYPT_CONTEXT.hash(k), k[:INDEX_SIZE]])
+        self.env.cr.execute(SQL("""
+            INSERT INTO %s (name, user_id, scope, expiration_date, key, index)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            SQL.identifier(self._table),
+            name, self.env.user.id, scope, expiration_date or None, KEY_CRYPT_CONTEXT.hash(k), k[:INDEX_SIZE]
+        ))
 
         ip = request.httprequest.environ['REMOTE_ADDR'] if request else 'n/a'
         _logger.info("%s generated: scope: <%s> for '%s' (#%s) from %s",
@@ -1621,7 +1668,7 @@ class ResUsersApikeys(models.Model):
         To renew a key, generate the new one, store it, and then call `revoke` on the previous one.
 
         :param str key: an active API key belonging to the current user
-        :param str|None scope: the scope of the key. If None, the key will give access to any rpc.
+        :param str scope: the scope of the key.
         :param str name: the name of the key, mainly intended to be displayed in the UI.
         :param str|datetime.datetime expiration_date: the expiration date of the key. String values
             may be either ISO 8601 dates (``"2026-12-30"``) or space-separated datetimes
@@ -1646,14 +1693,12 @@ class ResUsersApikeys(models.Model):
             if nb_keys >= nb_keys_limit:
                 raise UserError(_('Limit of %s API keys is reached for programmatic creation', nb_keys_limit))
 
-            # Scope compatibility rules:
-            # - A global key can generate credentials for any scope (including global).
-            # - A scoped key can only generate credentials for its own scope.
+            # A key can only generate credentials for its own scope.
             #
             # This is enforced in _check_credentials by validating scope usage,
             # and the validated scope is then reused when calling _generate.
 
-            uid = self.env['res.users.apikeys']._check_credentials(scope=scope or 'rpc', key=key)
+            uid = self.env['res.users.apikeys']._check_credentials(scope=scope, key=key)
             if not uid or uid != self.env.uid:
                 raise AccessDenied(_("The provided API key is invalid or does not belong to the current user."))
             new_key = self._generate(scope, name, expiration_date)
@@ -1717,7 +1762,7 @@ def _check_apikey_credentials(cr, *, scope, key, table='res_users_apikeys'):
         FROM %(table)s INNER JOIN res_users u ON (u.id = user_id)
         WHERE
             u.active and index = %(index)s
-            AND (scope IS NULL OR scope = %(scope)s)
+            AND scope = %(scope)s
             AND (
                 expiration_date IS NULL OR
                 expiration_date >= now() at time zone 'utc'
@@ -1753,6 +1798,17 @@ class ResUsersApikeysDescription(models.TransientModel):
         )) + [custom_duration]
 
     name = fields.Char("Description", required=True)
+    scope = fields.Selection(
+        [('rpc', 'RPC')],
+        help="""
+        A token with scope 'A' can only be used for endpoints requiring a bearer token of scope 'A' and
+        can't be used for endpoints requiring any other scope than 'A'.
+        """,
+        string='Scope',
+        required=True,
+        default='rpc',
+    )
+    available_scopes_count = fields.Integer(compute='_compute_available_scopes_count')
     duration = fields.Selection(
         selection='_selection_duration', string='Duration', required=True,
         default=lambda self: self._selection_duration()[0][0]
@@ -1769,6 +1825,12 @@ class ResUsersApikeysDescription(models.TransientModel):
                     if int(record.duration)
                     else None
                 )
+
+    @api.depends('scope')
+    def _compute_available_scopes_count(self):
+        selection_values = self._fields['scope'].get_values(self.env)
+        for record in self:
+            record.available_scopes_count = len(selection_values)
 
     @api.onchange('expiration_date')
     def _onchange_expiration_date(self):
@@ -1794,7 +1856,7 @@ class ResUsersApikeysDescription(models.TransientModel):
         self.check_access_make_key()
 
         description = self.sudo()
-        k = self.env['res.users.apikeys']._generate(None, description.name, self.expiration_date)
+        k = self.env['res.users.apikeys']._generate(description.scope, description.name, self.expiration_date)
         description.unlink()
 
         return {
@@ -1813,9 +1875,11 @@ class ResUsersApikeysDescription(models.TransientModel):
             raise AccessError(_("Only internal users can create API keys"))
 
 
-class ResUsersApikeysShow(models.AbstractModel):
+class ResUsersApikeysShow(models.Model):
     _name = 'res.users.apikeys.show'
     _description = 'Show API Key'
+    _auto = False  # no table
+    _table_sql = SQL('(0)')
 
     # the field 'id' is necessary for the onchange that returns the value of 'key'
     id = fields.Id()

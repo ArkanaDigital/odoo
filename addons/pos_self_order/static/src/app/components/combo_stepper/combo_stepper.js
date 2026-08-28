@@ -1,16 +1,20 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, onMounted, onPatched } from "@odoo/owl";
+import { Component, onMounted, onPatched, useProps, signal, t } from "@odoo/owl";
 import { useHorizontalScrollShadow } from "../../utils/scroll_shadow_hook";
 import { useDraggableScroll } from "../../utils/scroll_dnd_hook";
 import { scrollItemIntoViewX } from "../../utils/scroll";
 
 export class Stepper extends Component {
     static template = "pos_self_order.stepper";
-    static props = ["steps", "selectedStep?", "onStepClicked"];
+    props = useProps({
+        steps: t.array(),
+        selectedStep: t.object().optional(),
+        onStepClicked: t.function(),
+    });
+
+    containerRef = signal.ref();
+    scrollContainerRef = signal.ref();
 
     setup() {
-        this.containerRef = useRef("stepperContainer");
-        this.scrollContainerRef = useRef("stepperScroll");
         useHorizontalScrollShadow(this.scrollContainerRef, this.containerRef);
         useDraggableScroll(this.scrollContainerRef);
 
@@ -24,10 +28,10 @@ export class Stepper extends Component {
     }
 
     ensureStepVisible() {
-        if (!this.scrollContainerRef.el || !this.props.selectedStep) {
+        if (!this.scrollContainerRef() || !this.props.selectedStep) {
             return;
         }
-        const scrollEl = this.scrollContainerRef.el;
+        const scrollEl = this.scrollContainerRef();
         scrollItemIntoViewX(scrollEl, `[data-stepper="${this.props.selectedStep.id}"]`, {
             edgePadding: 20,
             minRightGap: scrollEl.offsetWidth / 3,

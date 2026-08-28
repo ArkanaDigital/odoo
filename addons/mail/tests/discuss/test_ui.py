@@ -1,11 +1,10 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import Command
-from odoo.addons.base.tests.common import HttpCaseWithUserDemo, new_test_user
-from odoo.addons.mail.tests.common import freeze_all_time
+from odoo.tests import HttpCase, new_test_user
 
 
-class TestUi(HttpCaseWithUserDemo):
+class TestUi(HttpCase):
 
     def test_01_mail_tour(self):
         self.start_tour("/odoo", 'discuss_channel_tour', login="admin")
@@ -13,7 +12,7 @@ class TestUi(HttpCaseWithUserDemo):
     def test_02_mail_create_channel_no_mail_tour(self):
         self.env['res.users'].create({
             'email': '', # User should be able to create a channel even if no email is defined
-            'group_ids': [Command.set([self.ref('base.group_user')])],
+            'group_ids': [Command.set([self.ref('base.group_user_regular')])],
             'name': 'Test User',
             'login': 'testuser',
             'password': 'testuser',
@@ -28,23 +27,24 @@ class TestUi(HttpCaseWithUserDemo):
         bob = new_test_user(self.env, "bob", groups="base.group_user", email="bob@test.com")
         john = new_test_user(self.env, "john", groups="base.group_user", email="john@test.com")
         guest = self.env["mail.guest"].create({"name": "Guest"})
-        with freeze_all_time("2026-01-01"):
+        with self.mock_datetime_and_now("2026-01-01"):
             group_chat = (
                 self.env["discuss.channel"]
                 .with_user(bob)
                 ._create_group(
-                    partners_to=john.partner_id.ids,
+                    users_to=john,
+                    name="Meeting, Jan 1",
                     default_display_mode="video_full_screen",
                 )
             )
         group_chat._add_members(guests=guest)
+        self.authenticate("bob", "bob")
+        self.make_jsonrpc_request("/mail/rtc/channel/join_call", {"channel_id": group_chat.id})
         group_chat.message_post(
             body="Hello everyone!",
             message_type="comment",
             subtype_xmlid="mail.mt_comment",
         )
-        self.authenticate("bob", "bob")
-        self.make_jsonrpc_request("/mail/rtc/channel/join_call", {"channel_id": group_chat.id})
         self.start_tour(
             f"/odoo/discuss?active_id=discuss.channel_{group_chat.id}&fullscreen=1",
             "discuss.meeting_view_tour",
@@ -58,6 +58,7 @@ class TestUi(HttpCaseWithUserDemo):
 
     def test_05_can_create_channel_tour(self):
         self.env["discuss.channel"].create({"name": "Sports"})
-        settings = self.user_demo.res_users_settings_id
+        test_user = new_test_user(self.env, login="test_user", password="test_user")
+        settings = test_user.res_users_settings_id
         settings.set_res_users_settings({"channel_notifications": "all"})
-        self.start_tour("odoo/discuss", "can_create_channel_from_form_view", login="demo")
+        self.start_tour("odoo/discuss", "can_create_channel_from_form_view", login=test_user.login)

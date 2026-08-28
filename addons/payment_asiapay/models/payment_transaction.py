@@ -98,7 +98,7 @@ class PaymentTransaction(models.Model):
 
         # Update the payment method.
         payment_method_code = payment_data.get("payMethod")
-        payment_method = self.env["payment.method"]._get_from_code(
+        payment_method = self.provider_id._get_pm_from_code(
             payment_method_code, mapping=const.PAYMENT_METHODS_MAPPING
         )
         self.payment_method_id = payment_method or self.payment_method_id
@@ -113,9 +113,7 @@ class PaymentTransaction(models.Model):
         elif success_code in const.SUCCESS_CODE_MAPPING["error"]:
             self._set_error(
                 self.env._(
-                    "An error occurred during the processing of your payment (success code"
-                    " %(success_code)s; primary response code %(response_code)s). Please try"
-                    " again.",
+                    "Success code: %(success_code)s. Primary response code: %(response_code)s.",
                     success_code=success_code,
                     response_code=primary_response_code,
                 )

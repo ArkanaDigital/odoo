@@ -35,7 +35,7 @@ class TestMenu(common.TransactionCase):
         Menu = self.env['website.menu']
         total_menu_items = Menu.search_count([])
 
-        top_menu = self.env['website'].get_current_website().menu_id
+        top_menu = self.env.ref('base.default_website').menu_id
         data = [
             {
                 'id': 'new-1',
@@ -310,6 +310,35 @@ class TestMenu(common.TransactionCase):
         # which should raise a UserError because a main_menu had child.
         with self.assertRaises(UserError):
             self.main_menu.parent_id = self.another_menu.id
+
+    def test_menu_search(self):
+        Menu = self.env['website.menu']
+        page_url = '/page_specific'
+        website_id = self.ref('base.default_website')
+        page = self.env['website.page'].create({
+            'url': page_url,
+            'website_id': website_id,
+            # ir.ui.view properties
+            'name': 'Base',
+            'type': 'qweb',
+            'arch': '<div>Specific View</div>',
+            'key': 'test.specific_view',
+        })
+        page_specific_menu = Menu.create({
+            'name': 'Page Specific menu',
+            'page_id': page.id,
+            'website_id': website_id,
+        })
+        manual_url = 'https://external_url_menu'
+        manual_url_menu = Menu.create({
+            'name': 'External url menu',
+            'url': manual_url,
+            'website_id': website_id,
+        })
+        res = Menu.search([('url', '=', manual_url)])
+        self.assertEqual(res, manual_url_menu)
+        res = Menu.search([('url', '=', page_url)])
+        self.assertEqual(res, page_specific_menu)
 
 
 class TestMenuHttp(common.HttpCase):

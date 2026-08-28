@@ -1,4 +1,4 @@
-import { Component, onWillUnmount } from "@odoo/owl";
+import { Component, onWillUnmount, t, useProps } from "@odoo/owl";
 import { CheckBox } from "@web/core/checkbox/checkbox";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
@@ -13,26 +13,29 @@ import { x2ManyCommands } from "@web/core/orm_plugin";
 export class Many2ManyCheckboxesField extends Component {
     static template = "web.Many2ManyCheckboxesField";
     static components = { CheckBox };
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        domain: { type: [Array, Function], optional: true },
-        context: { type: Object, optional: true },
-    };
+        domain: t.or([t.array(), t.function()]).optional(),
+        context: t.object().optional(),
+    });
 
     setup() {
         this.specialData = useSpecialData((orm, props) => {
             const { relation } = props.record.fields[props.name];
             const domain = getFieldDomain(props.record, props.name, props.domain);
             return orm
-                .call(relation, "name_search", ["", domain], {
+                .call(relation, "web_name_search", [], {
+                    name: "",
+                    domain,
                     context: this.props.context || {},
+                    specification: this.webNameSearchSpecification,
                 })
                 .catch((error) => {
                     if (error instanceof ConnectionLostError) {
-                        return this.props.record.data[this.props.name].records.map((r) => [
-                            r.resId,
-                            r.data.display_name,
-                        ]);
+                        return (this.props.record.data[this.props.name].records || []).map((r) => ({
+                            id: r.resId,
+                            ...r.data,
+                        }));
                     }
                     throw error;
                 });
@@ -47,12 +50,16 @@ export class Many2ManyCheckboxesField extends Component {
         onWillUnmount(this.commitChanges.bind(this));
     }
 
+    get webNameSearchSpecification() {
+        return { display_name: {} };
+    }
+
     get items() {
         return this.specialData.data;
     }
 
     isSelected(item) {
-        return this.props.record.data[this.props.name].currentIds.includes(item[0]);
+        return this.props.record.data[this.props.name].currentIds.includes(item.id);
     }
 
     commitChanges() {

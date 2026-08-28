@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
+import { useLayoutEffect } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { useBus, useService } from "@web/core/utils/hooks";
-import { Component, onMounted, onWillDestroy, proxy } from "@odoo/owl";
+import { Component, onMounted, onWillDestroy, proxy, signal, usePlugin } from "@odoo/owl";
+import { PosNumberBufferPlugin } from "@point_of_sale/app/plugins/pos_number_buffer_plugin";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { serializeDateTime } from "@web/core/l10n/dates";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
@@ -10,15 +11,15 @@ const { DateTime } = luxon;
 
 export class DebugWidget extends Component {
     static template = "point_of_sale.DebugWidget";
-    static props = {};
+
+    importOrderInput = signal.ref();
 
     setup() {
         this.pos = usePos();
         this.barcodeReader = useService("barcode_reader");
         this.notification = useService("notification");
-        this.numberBuffer = useService("number_buffer");
+        this.numberBuffer = usePlugin(PosNumberBufferPlugin);
         this.dialog = useService("dialog");
-        this.importOrderInput = useRef("import-order-input");
         this.state = proxy({
             isOpen: false,
             barcodeInput: "",
@@ -30,18 +31,18 @@ export class DebugWidget extends Component {
                 this.pos.device?.data?.unsynced_number_stack || []
             ),
         });
+        useBus(this.numberBuffer.bus, "buffer-update", this._onBufferUpdate.bind(this));
 
-        useBus(this.numberBuffer, "buffer-update", this._onBufferUpdate);
         onMounted(() => {
-            if (!this.importOrderInput || !this.importOrderInput.el) {
+            if (!this.importOrderInput()) {
                 return;
             }
 
-            this.importOrderInput.el.addEventListener("click", this.handleFileOrderImport);
+            this.importOrderInput().addEventListener("click", this.handleFileOrderImport);
         });
         onWillDestroy(() => {
-            if (this.importOrderInput?.el) {
-                this.importOrderInput.el.removeEventListener("click", this.handleFileOrderImport);
+            if (this.importOrderInput()) {
+                this.importOrderInput().removeEventListener("click", this.handleFileOrderImport);
             }
         });
 
@@ -164,10 +165,6 @@ export class DebugWidget extends Component {
                 console.warn("An error occurred during import", error);
             }
         }
-    }
-
-    refreshDisplay() {
-        this.hardwareProxy.message("display_refresh", {});
     }
     async downloadLogs() {
         await downloadPosLogs();

@@ -73,19 +73,14 @@ export class SettingsFormCompiler extends FormCompiler {
             append(settingsApp, this.compileNode(child, params));
         }
         params.anchors.push(
-            ...[...settingsApp.querySelectorAll("SearchableSetting")].flatMap((s) => {
-                if (!s.id) {
-                    return [];
-                }
-                return {
-                    app: module.key,
-                    settingId: s.id.replaceAll("`", ""),
-                    fieldNames: [...s.querySelectorAll("Field")].flatMap((el) => {
-                        const name = el.getAttribute("name");
-                        return name ? [name.replaceAll("'", "")] : [];
-                    }),
-                };
-            })
+            ...[...settingsApp.querySelectorAll("SearchableSetting")].flatMap((s) => ({
+                app: module.key,
+                settingId: s.id?.replaceAll("`", ""),
+                fieldNames: [...s.querySelectorAll("Field")].flatMap((el) => {
+                    const name = el.getAttribute("name");
+                    return name ? [name.replaceAll("'", "")] : [];
+                }),
+            }))
         );
         return settingsApp;
     }
@@ -102,9 +97,17 @@ export class SettingsFormCompiler extends FormCompiler {
     }
 
     compileSetting(el, params) {
-        params.componentName =
-            el.getAttribute("type") === "header" ? "SettingHeader" : "SearchableSetting";
-        const res = super.compileSetting(el, params);
-        return res;
+        const type = el.getAttribute("type");
+        params.componentName = type === "header" ? "SettingHeader" : "SearchableSetting";
+        const setting = super.compileSetting(el, params);
+
+        if (type !== "header") {
+            const fieldLabels = [...setting.querySelectorAll("FormLabel")].map(
+                (fl) => `{fieldId: ${fl.getAttribute("id")}, string: ${fl.getAttribute("string")}}`
+            );
+
+            setting.setAttribute("fieldLabels", `[${fieldLabels.join(",")}]`);
+        }
+        return setting;
     }
 }

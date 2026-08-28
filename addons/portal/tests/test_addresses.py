@@ -1,5 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+from unittest.mock import patch
+
 from odoo.tests import HttpCase, tagged
 from odoo.tests.common import JsonRpcException
 from odoo.tools import mute_logger, urls
@@ -9,6 +11,8 @@ from odoo.addons.base.tests.common import BaseCommon
 
 @tagged('-at_install', 'post_install')
 class TestPortalAddresses(BaseCommon, HttpCase):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -165,6 +169,105 @@ class TestPortalAddresses(BaseCommon, HttpCase):
             self.portal_user.partner_id,
             [{**self.default_address_values, 'vat': 'BE0926372368'}],
         )
+
+    def test_vat_update_if_not_set(self):
+        self.authenticate(self.portal_user.login, self.portal_user.login)
+        csrf_token = self.csrf_token()
+
+        with patch(
+            "odoo.addons.portal.models.res_partner.ResPartner._has_confirmed_documents",
+            return_value=True
+        ):
+            res = self._submit_address_values({
+                **self.default_address_values,
+                "vat": "BE0926372368",
+                "csrf_token": csrf_token,
+                "partner_id": self.portal_user.partner_id.id,
+            })
+            self.assertEqual(res, {"redirectUrl": "/my/addresses"})
+            # User should be able to update vat if not set
+            self.assertRecordValues(
+                self.portal_user.partner_id,
+                [{**self.default_address_values, "vat": "BE0926372368"}],
+            )
+
+    def test_vat_update_with_parent_name(self):
+        self.authenticate(self.portal_user.login, self.portal_user.login)
+        csrf_token = self.csrf_token()
+        address_values = {
+            **self.default_address_values,
+            "parent_name": "parent company",
+            "csrf_token": csrf_token,
+            "partner_id": self.portal_user.partner_id.id,
+        }
+        # Create parent company of current partner
+        self._submit_address_values(address_values)
+        # Now try to update vat on partner which have parent company set
+        res = self._submit_address_values({**address_values, "vat": "BE0926372368"})
+        self.assertEqual(res, {'redirectUrl': '/my/addresses'})
+        self.assertRecordValues(
+            self.portal_user.partner_id,
+            [{**self.default_address_values, "vat": "BE0926372368"}],
+        )
+
+    def test_addtional_identifiers_update(self):
+        self.authenticate(self.portal_user.login, self.portal_user.login)
+        csrf_token = self.csrf_token()
+
+        res = self._submit_address_values({
+            **self.default_address_values,
+            "ma_ice": "001561191000066",
+            "csrf_token": csrf_token,
+            "partner_id": self.portal_user.partner_id.id,
+        })
+        self.assertEqual(res, {"redirectUrl": "/my/addresses"})
+        self.assertRecordValues(
+            self.portal_user.partner_id,
+            [{**self.default_address_values, "additional_identifiers": {"MA_ICE": "001561191000066"}}],
+        )
+
+    def test_addtional_identifiers_update_on_child_addresses(self):
+        self.authenticate(self.account_a.login, self.account_a.login)
+        csrf_token = self.csrf_token()
+
+        res = self._submit_address_values({
+            **self.default_address_values,
+            "ma_ice": "001561191000066",
+            "csrf_token": csrf_token,
+            "partner_id": self.account_a.partner_id.id,
+        })
+        self.assertIn("ma_ice", res["invalid_fields"])
+
+    def test_addtional_identifiers_with_invalid_value(self):
+        self.authenticate(self.account_a.login, self.account_a.login)
+        csrf_token = self.csrf_token()
+        address_values = {
+            **self.default_address_values,
+            "ma_ice": "Invalid ICE",
+            "csrf_token": csrf_token,
+            "partner_id": self.account_a.partner_id.id,
+        }
+        # Invalid identifiers should not raise error
+        res = self._submit_address_values(address_values)
+        self.assertIn("ma_ice", res["invalid_fields"])
+
+    def test_company_name_update(self):
+        self.authenticate(self.portal_user.login, self.portal_user.login)
+        csrf_token = self.csrf_token()
+        portal_partner = self.portal_user.partner_id
+        address_values = {
+            **self.default_address_values,
+            "parent_name": "parent company",
+            "csrf_token": csrf_token,
+            "partner_id": portal_partner.id,
+        }
+        res = self._submit_address_values(address_values)
+        self.assertEqual(res, {"redirectUrl": "/my/addresses"})
+        self.assertEqual(portal_partner.parent_id.name, "parent company")
+        self.assertTrue(portal_partner.parent_id.is_company)
+
+        res = self._submit_address_values({**address_values, "parent_name": "New parent"})
+        self.assertEqual(portal_partner.parent_id.name, "New parent")
 
     def test_cannot_update_vat_on_child_addresses(self):
         """Check that the VAT cannot be updated on a child address.

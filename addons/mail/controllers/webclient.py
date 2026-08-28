@@ -1,45 +1,23 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 from collections import defaultdict
 
+from odoo.fields import Domain
 from odoo.http import request
 
 from odoo.addons.mail.controllers.thread import ThreadController
-from odoo.addons.mail.tools.discuss import Store, mail_route
-from odoo.addons.mail.tools.store_handler import (
-    store_handler,
-    store_handler_registry,
-)
+from odoo.addons.mail.models.mail_message import SHARE_DOMAIN
+from odoo.addons.mail.tools.discuss import Store
+from odoo.addons.mail.tools.store_handler import store_handler
 
 
 class WebclientController(ThreadController):
-    """Routes for the web client."""
-
-    @mail_route("/mail/store", methods=["POST"], type="jsonrpc", auth="public", readonly=lambda self, *_: self._is_mail_fetch_readonly())
-    def mail_store(self, fetch_params, context=None):
-        """Returns store data for the given fetch_params."""
-        context_user_id = context.get("uid") if context else None
-        store = Store()
-        if context_user_id and (not self.env.user or context_user_id != self.env.user.id):
-            # The user has been logged out in the meantime
-            return store
-
-        if context:
-            request.update_context(**context)
-        self._process_request_loop(store, fetch_params)
-        return store
-
-    def _is_mail_fetch_readonly(self):
-        if request.httprequest.method == "OPTIONS":
-            # CORS preflight request has an empty body, nothing to parse
-            return True
-        fetch_params = request.get_json_data().get("params", {}).get("fetch_params", [])
-        return store_handler_registry.is_fetch_readonly(fetch_params)
+    """Generic store handlers for the web client."""
 
     def _process_request_loop(self, store: Store, fetch_params):
-        # aggregate of messages to return, to batch them in a single query when all the fetch params
-        # have been processed
+        # aggregate of messages to return, to batch them in a single query when all the fetch
+        # params have been processed
         request.update_context(messages=request.env["mail.message"], add_inbox_fields=False, add_chatter_fields=False)
-        store_handler_registry.execute_for_user(self, store, fetch_params)
+        super()._process_request_loop(store, fetch_params)
         if messages := request.env.context["messages"]:
             fields_params = {
                 **({"inbox_fields": True} if request.env.context["add_inbox_fields"] else {}),
@@ -75,6 +53,10 @@ class WebclientController(ThreadController):
             thread = request.env[thread_model].browse(thread_id)
             store.add(thread, {"hasReadAccess": False, "hasWriteAccess": False}, as_thread=True)
         else:
+            if not request.env.user._is_internal() or not thread.sudo(False).with_context(
+                allowed_company_ids=[]
+            ).has_access("read"):
+                request_list = []
             store.add(
                 thread,
                 "_store_thread_fields",
@@ -84,12 +66,20 @@ class WebclientController(ThreadController):
 
     @store_handler("init_messaging", audience="everyone")
     def store_init_messaging(self, store: Store):
+        member_domain = [("is_self", "=", True), ("rtc_inviting_session_id", "!=", False)]
+        channels = request.env["discuss.channel"].search_fetch(
+            [("channel_member_ids", "any", member_domain)],
+        )
         if request.env.user._is_internal():
-            # sudo: bus.bus: reading non-sensitive last id
-            bus_last_id = request.env["bus.bus"].sudo()._bus_last_id()
-            store.add_global_values(
-                lambda res: self._store_init_messaging_global_fields(res, bus_last_id),
-            )
+            # sudo: res.partner - reading the odoobot partner id is acceptable
+            odoobot = request.env.ref("base.partner_root").sudo()
+            odoobot_chat = request.env["discuss.channel"].search_fetch([
+                ("channel_type", "=", "chat"),
+                ("is_member", "=", True),
+                ("channel_member_ids.partner_id", "=", odoobot.id),
+            ])
+            channels |= odoobot_chat
+        request.update_context(channels=request.env.context["channels"] | channels)
 
     @store_handler("res.partner", audience="everyone")
     def store_get_res_partner(self, store: Store, id):
@@ -116,7 +106,7 @@ class WebclientController(ThreadController):
             if self._get_thread_with_access(message.model, message.res_id, mode="read"):
                 store.add(opt_sudo.vote_ids, "_store_vote_fields")
 
-    @store_handler("failures", audience="logged_in")
+    @store_handler("failures")
     def store_get_failures(self, store: Store):
         domain = [
             ("author_id", "=", request.env.user.partner_id.id),
@@ -145,33 +135,49 @@ class WebclientController(ThreadController):
             lost.sudo().unlink()  # no unlink right except admin, ok to remove as lost anyway
         store.add(valid.mail_message_id, "_store_notification_fields")
 
-    @store_handler("/mail/thread/messages", audience="logged_in", readonly=False)
-    def store_get_thread_messages(self, store: Store, thread_model, thread_id, fetch_params=None):
+    @store_handler("/mail/thread/messages", audience="everyone", readonly=False)
+    def store_get_thread_messages(
+        self,
+        store: Store,
+        thread_model,
+        thread_id,
+        fetch_params=None,
+        access_params=None,
+    ):
         request.update_context(add_chatter_fields=True)
         if thread := self._get_thread_with_access(
             thread_model,
             thread_id,
             mode="read",
+            **(access_params or {}),
         ):
+            domain = Domain.TRUE
+            if not request.env.user._is_internal() or not thread.sudo(False).has_access("read"):
+                domain = (
+                    SHARE_DOMAIN
+                    & Domain("message_type", "in", thread._get_customer_portal_message_types())
+                    & ~request.env["mail.message"]._get_empty_domain()
+                )
             messages = self._resolve_messages(
                 store,
+                domain=domain,
                 thread=thread,
                 fetch_params=fetch_params,
+                sudo=thread.env.su,
             )
             if not request.env.user._is_public():
                 messages.set_message_done()
 
-    @store_handler("systray_get_activities", audience="logged_in")
+    @store_handler("systray_get_activities")
     def store_systray_get_activities(self, store: Store):
-        if not self.env.user._is_internal():
-            return
         # sudo: bus.bus: reading non-sensitive last id
         bus_last_id = request.env["bus.bus"].sudo()._bus_last_id()
         groups = request.env["res.users"]._get_activity_groups()
         store.add_global_values(
+            activities_to_assign_count=request.env["res.users"]._get_activities_to_assign_count(),
             activityCounter=sum(group.get("total_count", 0) for group in groups),
             activity_counter_bus_id=bus_last_id,
-            activityGroups=groups,
+            activity_groups=groups,
         )
 
     @store_handler("mail.canned.response")
@@ -196,20 +202,6 @@ class WebclientController(ThreadController):
         }
         record = request.env[model].with_context(**context).search([("id", "=", id)])
         store.add(record, "_store_avatar_card_fields")
-
-    @classmethod
-    def _store_init_messaging_global_fields(cls, res: Store.FieldList, bus_last_id):
-        user = request.env.user.sudo(False)
-        res.attr(
-            "inbox",
-            {
-                "counter": user.partner_id._get_needaction_count(),
-                "counter_bus_id": bus_last_id,
-                "id": "inbox",
-                "model": "mail.box",
-            },
-        )
-        user._store_bookmark_box_global_fields(res, bus_last_id)
 
     @classmethod
     def _get_supported_avatar_card_models(self):

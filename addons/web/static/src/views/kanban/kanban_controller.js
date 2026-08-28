@@ -1,4 +1,4 @@
-import { render, useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
+import { render, useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { _t } from "@web/core/l10n/translation";
 import { user } from "@web/core/user";
@@ -25,7 +25,18 @@ import { KanbanRenderer } from "./kanban_renderer";
 import { useProgressBar } from "./progress_bar_hook";
 import { SelectionBox } from "@web/views/view_components/selection_box";
 
-import { Component, onMounted, onWillStart, proxy, useEffect } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillStart,
+    usePlugin,
+    proxy,
+    signal,
+    t,
+    useEffect,
+    useProps,
+} from "@odoo/owl";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { QuickCreateState } from "./kanban_record_quick_create";
 
 const QUICK_CREATE_FIELD_TYPES = ["char", "boolean", "many2one", "selection", "many2many"];
@@ -46,29 +57,28 @@ export class KanbanController extends Component {
         CogMenu: KanbanCogMenu,
         SelectionBox,
     };
-    static props = {
+    props = useProps({
         ...standardViewProps,
-        editable: { type: Boolean, optional: true },
-        forceGlobalClick: { type: Boolean, optional: true },
-        onSelectionChanged: { type: Function, optional: true },
-        readonly: { type: Boolean, optional: true },
-        Compiler: Function,
-        Model: Function,
-        Renderer: Function,
-        buttonTemplate: String,
-        archInfo: Object,
-    };
+        editable: t.boolean().optional(),
+        forceGlobalClick: t.boolean().optional(false),
+        onSelectionChanged: t.function().optional(),
+        readonly: t.boolean().optional(),
+        Compiler: t.function(),
+        Model: t.function(),
+        Renderer: t.function(),
+        buttonTemplate: t.string(),
+        archInfo: t.object(),
+        createRecord: t.function().optional(() => () => {}),
+        selectRecord: t.function().optional(() => () => {}),
+    });
 
-    static defaultProps = {
-        createRecord: () => {},
-        forceGlobalClick: false,
-        selectRecord: () => {},
-    };
+    rootRef = signal.ref();
 
     setup() {
         this.actionService = useService("action");
         this.dialog = useService("dialog");
-        this.offlineService = useService("offline");
+        this.uiService = useService("ui");
+        this.offlinePlugin = usePlugin(OfflinePlugin);
         const { Model, archInfo } = this.props;
 
         class KanbanSampleModel extends Model {
@@ -122,7 +132,6 @@ export class KanbanController extends Component {
             }
         });
 
-        this.rootRef = useRef("root");
         useViewButtons(this.rootRef, {
             beforeExecuteAction: this.beforeExecuteActionButton.bind(this),
             afterExecuteAction: this.afterExecuteActionButton.bind(this),
@@ -137,10 +146,10 @@ export class KanbanController extends Component {
                     activeBars: this.progressBarState?.activeBars,
                     modelState: this.model.exportState(),
                 };
-                if (this.env.isSmall && this.model.root.isGrouped) {
+                if (this.uiService.isSmall && this.model.root.isGrouped) {
                     const columnScrollTops = [];
                     const sel = ".o_kanban_group:not(.o_column_folded)";
-                    const columnEls = this.rootRef.el.querySelectorAll(sel);
+                    const columnEls = this.rootRef()?.querySelectorAll(sel) ?? [];
                     const groups = this.model.root.groups;
                     for (const columnEl of columnEls) {
                         const scrollTop = columnEl.scrollTop;
@@ -150,7 +159,7 @@ export class KanbanController extends Component {
                         }
                     }
                     state.scrollPositions = {
-                        scrollLeft: this.rootRef.el.querySelector(".o_renderer")?.scrollLeft || 0,
+                        scrollLeft: this.rootRef()?.querySelector(".o_renderer")?.scrollLeft || 0,
                         columnScrollTops,
                     };
                 }
@@ -160,17 +169,17 @@ export class KanbanController extends Component {
         useLayoutEffect(
             (isReady) => {
                 if (isReady) {
-                    if (this.env.isSmall && this.model.root.isGrouped) {
+                    if (this.uiService.isSmall && this.model.root.isGrouped) {
                         const { scrollPositions } = this.props.state || {};
                         if (scrollPositions) {
                             const { scrollLeft, columnScrollTops } = scrollPositions;
-                            this.rootRef.el.querySelector(".o_renderer").scrollLeft = scrollLeft;
+                            this.rootRef().querySelector(".o_renderer").scrollLeft = scrollLeft;
                             const groups = this.model.root.groups;
                             for (const [serverValue, scrollTop] of columnScrollTops) {
                                 const group = groups.find((g) => g.serverValue === serverValue);
                                 if (group) {
                                     const sel = `.o_kanban_group[data-id=${group.id}]`;
-                                    this.rootRef.el.querySelector(sel).scrollTop = scrollTop;
+                                    this.rootRef().querySelector(sel).scrollTop = scrollTop;
                                 }
                             }
                         }
@@ -334,7 +343,7 @@ export class KanbanController extends Component {
     }
 
     get className() {
-        if (this.env.isSmall && this.model.root.isGrouped) {
+        if (this.uiService.isSmall && this.model.root.isGrouped) {
             const classList = (this.props.className || "").split(" ");
             classList.push("o_action_delegate_scroll");
             return classList.join(" ");
@@ -352,7 +361,9 @@ export class KanbanController extends Component {
 
     getExportableFields() {
         return Object.keys(this.model.root.config.activeFields)
-            .map((e) => this.props.fields[e])
+            .map((e) => this.model.root.fields[e])
+            .filter(Boolean)
+            .filter((field) => field.exportable !== false)
             .filter((field) => field.type !== "properties");
     }
 
@@ -368,21 +379,21 @@ export class KanbanController extends Component {
             export: {
                 isAvailable: () => this.isExportEnable,
                 sequence: 10,
-                icon: "fa fa-upload",
+                icon: "upload",
                 description: _t("Export"),
                 callback: () => this.exportRecords(),
             },
             duplicate: {
                 isAvailable: () => this.props.archInfo.activeActions.duplicate,
                 sequence: 30,
-                icon: "fa fa-clone",
+                icon: "content_copy",
                 description: _t("Duplicate"),
                 callback: () => this.model.root.duplicateRecords(),
             },
             archive: {
                 isAvailable: () => this.archiveEnabled,
                 sequence: 40,
-                icon: "oi oi-archive",
+                icon: "archive",
                 description: _t("Archive"),
                 callback: () =>
                     this.model.root.toggleArchiveWithConfirmation(true, this.archiveDialogProps),
@@ -390,14 +401,15 @@ export class KanbanController extends Component {
             unarchive: {
                 isAvailable: () => this.archiveEnabled,
                 sequence: 45,
-                icon: "oi oi-unarchive",
+                icon: "unarchive",
                 description: _t("Unarchive"),
                 callback: () => this.model.root.toggleArchiveWithConfirmation(false),
             },
             delete: {
                 isAvailable: () => this.props.archInfo.activeActions.delete,
                 sequence: 50,
-                icon: "fa fa-trash-o",
+                icon: "delete",
+                iconClass: "oi-filled",
                 description: _t("Delete"),
                 class: "text-danger",
                 callback: () =>
@@ -459,7 +471,7 @@ export class KanbanController extends Component {
     get isNewButtonAvailableOffline() {
         const { onCreate } = this.props.archInfo;
         if (this.canQuickCreate && onCreate === "quick_create") {
-            return this.offlineService.isAvailableOffline(
+            return this.offlinePlugin.isAvailableOffline(
                 this.env.config.actionId,
                 "kanban_quick_create",
                 false
@@ -470,7 +482,7 @@ export class KanbanController extends Component {
             return false;
         }
 
-        return this.offlineService.isAvailableOffline(this.env.config.actionId, "form", false);
+        return this.offlinePlugin.isAvailableOffline(this.env.config.actionId, "form", false);
     }
 
     get isNewButtonDisabled() {
@@ -512,11 +524,11 @@ export class KanbanController extends Component {
     }
 
     onPageChange() {
-        if (this.rootRef && this.rootRef.el) {
-            if (this.env.isSmall) {
-                this.rootRef.el.scrollTop = 0;
+        if (this.rootRef()) {
+            if (this.uiService.isSmall) {
+                this.rootRef().scrollTop = 0;
             } else {
-                this.rootRef.el.querySelector(".o_content").scrollTop = 0;
+                this.rootRef().querySelector(".o_content").scrollTop = 0;
             }
         }
     }
@@ -526,7 +538,7 @@ export class KanbanController extends Component {
     async afterExecuteActionButton(clickParams) {}
 
     scrollTop() {
-        this.rootRef.el.querySelector(".o_content").scrollTo({ top: 0 });
+        this.rootRef().querySelector(".o_content").scrollTo({ top: 0 });
     }
 
     isQuickCreateField(field) {

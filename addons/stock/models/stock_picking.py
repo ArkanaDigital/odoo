@@ -1,6 +1,5 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import json
-import math
 from ast import literal_eval
 from datetime import date, timedelta, UTC
 from collections import defaultdict
@@ -14,6 +13,7 @@ from odoo.fields import Domain, Command
 from odoo.tools import format_datetime, format_date, groupby, OrderedSet, SQL
 from odoo.tools.float_utils import float_compare, float_is_zero
 from odoo.tools.misc import clean_context
+from odoo.tools.translate import mark_as_copy
 
 
 class StockPickingType(models.Model):
@@ -21,10 +21,10 @@ class StockPickingType(models.Model):
     _description = "Picking Type"
     _explanation = "Defines the type of stock operation (e.g., Receipts, Deliveries, Internal Transfers) and contains configuration for how these operations should behave in the warehouse."
     _order = 'is_favorite desc, sequence, id'
-    _rec_names_search = ['name', 'warehouse_id.name']
+    _rec_names_search = ('name', 'warehouse_id.name')
     _check_company_auto = True
 
-    name = fields.Char('Operation Type', required=True, translate=True)
+    name = fields.Char('Operation Type', required=True, translate=True, copy=mark_as_copy('name'))
     color = fields.Integer('Color')
     sequence = fields.Integer('Sequence', help="Used to order the 'All Operations' kanban view")
     sequence_id = fields.Many2one(
@@ -39,10 +39,15 @@ class StockPickingType(models.Model):
         'stock.location', 'Destination Location', compute='_compute_default_location_dest_id',
         check_company=True, store=True, readonly=False, precompute=True, required=True,
         help="This is the default destination location when this operation is manually created. However, it is possible to change it afterwards or that the routes use another one by default.")
+    allocated_location_id = fields.Many2one(
+        'stock.location', 'Location for allocation', check_company=True,
+        domain="[('usage', '=', 'internal')]",
+        help="Allow to define the location where allocated products should be sent."
+    )
     code = fields.Selection([
         ('incoming', 'Receipt'),
         ('outgoing', 'Delivery'),
-        ('internal', 'Internal Transfer')], 'Operation Category', default='incoming', required=True)
+        ('internal', 'Internal Transfer')], 'Type of Operation', default='incoming', required=True)
     return_picking_type_id = fields.Many2one(
         'stock.picking.type', 'Operation Type for Returns',
         index='btree_not_null',
@@ -74,9 +79,9 @@ class StockPickingType(models.Model):
         help="How products in transfers of this operation type should be reserved.")
     reservation_days_before = fields.Integer('Days', help="Maximum number of days before scheduled date that products should be reserved.")
     reservation_days_before_priority = fields.Integer('Days when starred', help="Maximum number of days before scheduled date that priority picking products should be reserved.")
-    auto_show_reception_report = fields.Boolean(
-        "Show Reception Report at Validation",
-        help="If this checkbox is ticked, Odoo will automatically show the reception report (if there are moves to allocate to) when validating.")
+    auto_show_allocation_report = fields.Boolean(
+        "Show Allocation",
+        help="If this checkbox is ticked, Odoo will automatically show the allocation report (if there are moves to allocate to) when validating.")
     auto_print_delivery_slip = fields.Boolean(
         "Auto Print Delivery Slip",
         help="If this checkbox is ticked, Odoo will automatically print the delivery slip of a picking when it is validated.")
@@ -179,8 +184,6 @@ class StockPickingType(models.Model):
         default = dict(default or {})
         vals_list = super().copy_data(default=default)
         for picking, vals in zip(self, vals_list):
-            if 'name' not in default:
-                vals['name'] = _("%s (copy)", picking.name)
             if 'sequence_code' not in default and 'sequence_id' not in default:
                 vals['sequence_code'] = _("%s (copy)", picking.sequence_code)
         return vals_list
@@ -606,7 +609,7 @@ class StockPicking(models.Model):
         check_company=True, required=True)
     location_dest_id = fields.Many2one(
         'stock.location', "Destination Location",
-        compute="_compute_location_id", store=True, precompute=True, readonly=False,
+        compute="_compute_location_dest_id", store=True, precompute=True, readonly=False, domain="[('usage','!=','view')]",
         check_company=True, required=True)
     move_ids = fields.One2many('stock.move', 'picking_id', string="Stock Moves", domain=[('is_scrap', '=', False)], copy=True)
     has_scrap_move = fields.Boolean(
@@ -638,7 +641,7 @@ class StockPicking(models.Model):
     package_history_ids = fields.Many2many('stock.package.history', string='Transfered Packages', copy=False)
     show_check_availability = fields.Boolean(
         compute='_compute_show_check_availability',
-        help='Technical field used to compute whether the button "Check Availability" should be displayed.')
+        help='Technical field used to compute whether the button "Reserve" should be displayed.')
     show_allocation = fields.Boolean(
         compute='_compute_show_allocation',
         help='Technical Field used to decide whether the button "Allocation" should be displayed.')
@@ -927,13 +930,14 @@ class StockPicking(models.Model):
                 volume += move.uom_id._compute_quantity(move.quantity, move.product_id.uom_id) * move.product_id.volume
             picking.shipping_volume = volume
 
-    @api.depends('move_ids.date_deadline', 'move_type')
+    @api.depends('move_ids.date_deadline', 'move_ids.state', 'move_type')
     def _compute_date_deadline(self):
         for picking in self:
+            moves = picking.move_ids.filtered(lambda m: m.state != 'cancel' and m.date_deadline)
             if picking.move_type == 'direct':
-                picking.date_deadline = min(picking.move_ids.filtered('date_deadline').mapped('date_deadline'), default=False)
+                picking.date_deadline = min(moves.mapped('date_deadline'), default=False)
             else:
-                picking.date_deadline = max(picking.move_ids.filtered('date_deadline').mapped('date_deadline'), default=False)
+                picking.date_deadline = max(moves.mapped('date_deadline'), default=False)
 
     def _set_scheduled_date(self):
         for picking in self:
@@ -976,7 +980,7 @@ class StockPicking(models.Model):
 
     @api.depends('state', 'move_ids.product_uom_qty', 'picking_type_code')
     def _compute_show_check_availability(self):
-        """ According to `picking.show_check_availability`, the "check availability" button will be
+        """ According to `picking.show_check_availability`, the "Reserve" button will be
         displayed in the form view of a picking.
         """
         for picking in self:
@@ -995,10 +999,9 @@ class StockPicking(models.Model):
     @api.depends('state', 'move_ids', 'picking_type_id')
     def _compute_show_allocation(self):
         self.show_allocation = False
-        if not self.env.user.has_group('stock.group_reception_report'):
-            return
         for picking in self:
-            picking.show_allocation = picking._get_show_allocation(picking.picking_type_id)
+            if picking.picking_type_id.auto_show_allocation_report:
+                picking.show_allocation = picking._get_show_allocation(picking.picking_type_id)
 
     @api.depends('picking_type_id', 'partner_id')
     def _compute_location_id(self):
@@ -1010,10 +1013,18 @@ class StockPicking(models.Model):
                 location_src = picking.picking_type_id.default_location_src_id
                 if location_src.usage == 'supplier' and picking.partner_id:
                     location_src = picking.partner_id.property_stock_supplier
+                picking.location_id = location_src.id
+
+    @api.depends('picking_type_id', 'partner_id')
+    def _compute_location_dest_id(self):
+        for picking in self:
+            if picking.state in ('cancel', 'done') or picking.return_id:
+                continue
+            picking = picking.with_company(picking.company_id)
+            if picking.picking_type_id:
                 location_dest = picking.picking_type_id.default_location_dest_id
                 if location_dest.usage == 'customer' and picking.partner_id:
                     location_dest = picking.partner_id.property_stock_customer
-                picking.location_id = location_src.id
                 picking.location_dest_id = location_dest.id
 
     @api.depends('return_ids')
@@ -1228,7 +1239,7 @@ class StockPicking(models.Model):
             key=lambda move: (-int(move.priority), not bool(move.date_deadline), move.date_deadline, move.date, move.id)
         )
         if not moves:
-            raise UserError(_('Nothing to check the availability for.'))
+            raise UserError(self.env._('There is nothing to reserve.'))
         moves._action_assign()
         return True
 
@@ -1457,8 +1468,22 @@ class StockPicking(models.Model):
         done_incoming_moves = self.filtered(lambda p: p.picking_type_id.code in ('incoming', 'internal')).move_ids.filtered(lambda m: m.state == 'done')
         done_incoming_moves._trigger_assign()
 
+        self._intercompany_unpack()
         self._send_confirmation_email()
         return True
+
+    def _intercompany_unpack(self):
+        if not self.env.user.has_group('stock.group_tracking_lot') or\
+           not self.env['ir.config_parameter'].sudo().get_bool('stock.intercompany_auto_unpack'):
+            return
+        for picking in self:
+            if not picking.partner_id:
+                continue
+            destination_company = self.env['res.company'].sudo().search([('partner_id', 'parent_of', picking.partner_id.id)], limit=1)
+            if destination_company == picking.company_id:
+                continue
+            moves = picking.move_ids.filtered(lambda m: m.location_dest_id.usage == 'transit')
+            moves.move_line_ids.result_package_id.unpack()
 
     def _send_confirmation_email(self):
         subtype_id = self.env['ir.model.data']._xmlid_to_res_id('mail.mt_comment')
@@ -1611,24 +1636,26 @@ class StockPicking(models.Model):
             pickings_to_backorder.with_context(cancel_backorder=False)._action_done()
         report_actions = self._get_autoprint_report_actions()
         another_action = False
-        if self.env.user.has_group('stock.group_reception_report'):
-            pickings_show_report = self.filtered(lambda p: p.picking_type_id.auto_show_reception_report)
-            lines = pickings_show_report.move_ids.filtered(lambda m: m.product_id.is_storable and m.state != 'cancel' and m.quantity and not m.move_dest_ids)
-            if lines:
-                # don't show reception report if all already assigned/nothing to assign
-                wh_location_ids = self.env['stock.location']._search([('id', 'child_of', pickings_show_report.picking_type_id.warehouse_id.view_location_id.ids), ('usage', '!=', 'supplier')])
-                if self.env['stock.move'].search_count([
-                        ('state', 'in', ['confirmed', 'partially_available', 'waiting', 'assigned']),
-                        ('product_qty', '>', 0),
-                        ('location_id', 'in', wh_location_ids),
-                        ('move_orig_ids', '=', False),
-                        ('picking_id', 'not in', pickings_show_report.ids),
-                        ('product_id', 'in', lines.product_id.ids)], limit=1):
-                    action = pickings_show_report.action_view_reception_report()
-                    action['context'] = {'default_picking_ids': pickings_show_report.ids}
-                    if not report_actions:
-                        return action
-                    another_action = action
+        pickings_show_report = self.filtered(lambda p: p.picking_type_id.auto_show_allocation_report)
+        moves = pickings_show_report.move_ids.filtered(lambda m: m.product_id.is_storable and m.state != 'cancel' and m.quantity and not m.move_dest_ids)
+        if moves:
+            # don't show reception report if all already assigned/nothing to assign
+            wh_location_ids = self.env['stock.location']._search([
+                ('id', 'child_of', pickings_show_report.picking_type_id.warehouse_id.view_location_id.ids),
+                ('usage', '!=', 'supplier'),
+            ])
+            if self.env['stock.move'].search_count([
+                    ('state', 'in', ['confirmed', 'partially_available', 'waiting', 'assigned']),
+                    ('product_qty', '>', 0),
+                    ('location_id', 'in', wh_location_ids),
+                    ('move_orig_ids', '=', False),
+                    ('picking_id', 'not in', pickings_show_report.ids),
+                    ('product_id', 'in', moves.product_id.ids)], limit=1):
+                action = pickings_show_report.action_view_allocation_report()
+                action['context'] = {'default_picking_ids': pickings_show_report.ids}
+                if not report_actions:
+                    return action
+                another_action = action
         if report_actions:
             return {
                 'type': 'ir.actions.client',
@@ -1641,6 +1668,8 @@ class StockPicking(models.Model):
         return True
 
     def action_split_transfer(self):
+        if self.state == 'done':
+            return
         if all(m.uom_id.is_zero(m.quantity) for m in self.move_ids):
             raise UserError(_("%s: Nothing to split. Fill the quantities you want in a new transfer in the done quantities", self.display_name))
         if all(m.uom_id.compare(m.quantity, m.product_uom_qty) == 0 for m in self.move_ids):
@@ -2196,22 +2225,11 @@ class StockPicking(models.Model):
         action['domain'] = [('picking_id', 'in', self.ids)]
         return action
 
-    def action_view_reception_report(self):
-        return self.env["ir.actions.actions"]._for_xml_id("stock.stock_reception_action")
+    def action_view_allocation_report(self):
+        return self.env["ir.actions.actions"]._for_xml_id("stock.allocation_report_action")
 
     def action_open_label_layout(self):
-        view = self.env.ref('stock.product_label_layout_form_picking')
-        return {
-            'name': _('Choose Labels Layout'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'product.label.layout',
-            'views': [(view.id, 'form')],
-            'target': 'new',
-            'context': {
-                'default_product_ids': self.move_ids.product_id.ids,
-                'default_move_ids': self.move_ids.ids,
-                'default_move_quantity': 'move'},
-        }
+        return self.move_ids.action_open_label_layout()
 
     def action_open_label_type(self):
         if self.env.user.has_group('stock.group_production_lot') and self.move_line_ids.lot_id:
@@ -2261,6 +2279,10 @@ class StockPicking(models.Model):
     def _get_report_lang(self):
         return self.move_ids and self.move_ids[0].partner_id.lang or self.partner_id.lang or self.env.lang
 
+    def _get_deliveryslip_report_title(self):
+        self.ensure_one()
+        return self.picking_type_id._get_code_report_name()
+
     def _get_autoprint_report_actions(self):
         report_actions = []
         pickings_to_print = self.filtered(lambda p: p.picking_type_id.auto_print_delivery_slip)
@@ -2274,29 +2296,25 @@ class StockPicking(models.Model):
             clean_action(action, self.env)
             report_actions.append(action)
 
-        if self.env.user.has_group('stock.group_reception_report'):
-            reception_reports_to_print = self.filtered(
-                lambda p: p.picking_type_id.auto_print_reception_report
-                          and p.picking_type_id.code != 'outgoing'
-                          and p.move_ids.move_dest_ids
-            )
-            if reception_reports_to_print:
-                action = self.env.ref('stock.stock_reception_report_action').report_action(reception_reports_to_print, config=False)
-                clean_action(action, self.env)
-                report_actions.append(action)
-            reception_labels_to_print = self.filtered(lambda p: p.picking_type_id.auto_print_reception_report_labels and p.picking_type_id.code != 'outgoing')
-            if reception_labels_to_print:
-                moves_to_print = reception_labels_to_print.move_ids.move_dest_ids
-                if moves_to_print:
-                    # needs to be string to support python + js calls to report
-                    quantities = ','.join(str(qty) for qty in moves_to_print.mapped(lambda m: math.ceil(m.product_uom_qty)))
-                    data = {
-                        'docids': moves_to_print.ids,
-                        'quantity': quantities,
-                    }
-                    action = self.env.ref('stock.label_picking').report_action(moves_to_print, data=data, config=False)
-                    clean_action(action, self.env)
-                    report_actions.append(action)
+        # Filters pickings and their dest. moves to print reception report and labels.
+        pickings_to_print_reception_report = self.env['stock.picking']
+        moves_to_print_label = self.env['stock.move']
+        for picking in self:
+            if not picking.picking_type_id.auto_show_allocation_report or not picking.move_ids.move_dest_ids:
+                continue
+            if picking.picking_type_id.auto_print_reception_report:
+                pickings_to_print_reception_report |= picking
+            if picking.picking_type_id.auto_print_reception_report_labels:
+                moves_to_print_label |= picking.move_ids.move_dest_ids
+        if pickings_to_print_reception_report:
+            action = self.env.ref('stock.action_report_picking').report_action(pickings_to_print_reception_report, config=False)
+            clean_action(action, self.env)
+            report_actions.append(action)
+        if moves_to_print_label:
+            action = moves_to_print_label.action_print_reception_report()
+            clean_action(action, self.env)
+            report_actions.append(action)
+
         pickings_print_product_label = self.filtered(lambda p: p.picking_type_id.auto_print_product_labels)
         pickings_by_print_formats = pickings_print_product_label.grouped(lambda p: p.picking_type_id.product_label_format)
         for print_format in pickings_print_product_label.picking_type_id.mapped("product_label_format"):

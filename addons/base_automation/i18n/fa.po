@@ -10,30 +10,33 @@
 # Martin Trigaux, 2023
 # Hamed Mohammadi <hamed@dehongi.com>, 2023
 # Hanna Kheradroosta, 2023
-# Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 15.5alpha1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:37+0000\n"
-"PO-Revision-Date: 2025-11-09 15:10+0000\n"
+"POT-Creation-Date: 2026-07-26 19:09+0000\n"
+"PO-Revision-Date: 2026-06-20 07:23+0000\n"
 "Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
-"Language-Team: Persian <https://translate.odoo.com/projects/odoo-19/"
+"Language-Team: Persian <https://translate.odoo.com/projects/odoo-master/"
 "base_automation/fa/>\n"
 "Language: fa\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n > 1;\n"
-"X-Generator: Weblate 5.12.2\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid ""
 "\"\n"
 "                (ID:"
 msgstr ""
+"\"\n"
+"                (ID:"
 
 #. module: base_automation
 #. odoo-javascript
@@ -97,28 +100,32 @@ msgstr ""
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_kanban
-msgid "<i class=\"fa fa-2x fa-arrow-right text-primary\" title=\"Actions\"/>"
-msgstr "<i class=\"fa fa-2x fa-arrow-right text-primary\" title=\"اقدامات\"/>"
+msgid ""
+"<i class=\"oi oi-2x text-primary\" data-icon=\"arrow_forward\" "
+"title=\"Actions\"/>"
+msgstr ""
+"<i class=\"oi oi-2x text-primary\" data-icon=\"arrow_forward\" "
+"title=\"اقدامات\"/>"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
 msgid ""
-"<i class=\"fa fa-info-circle\"/> The default target record getter will work "
-"out-of-the-box for any webhook coming from another Odoo instance."
+"<i class=\"oi\" data-icon=\"info\"/> The default target record getter will "
+"work out-of-the-box for any webhook coming from another Odoo instance."
 msgstr ""
-"<i class=\"fa fa-info-circle\"/> ابزار پیش‌فرض دریافت‌ رکورد هدف به‌صورت خودکار "
-"برای هر وبهوکی که از یک نمونه دیگر اُدوو می‌آید، کار خواهد کرد."
+"<i class=\"oi\" data-icon=\"info\"/> ابزار پیش‌فرض دریافت‌ رکورد هدف به‌صورت "
+"خودکار برای هر وبهوکی که از یک نمونه دیگر اُدوو می‌آید، کار خواهد کرد."
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
 msgid ""
-"<i class=\"fa fa-warning\"/> Automation rules triggered by UI changes will "
-"be executed <em>every time</em> the watched fields change, <em>whether you "
-"save or not</em>."
+"<i class=\"oi\" data-icon=\"warning\"/> Automation rules triggered by UI "
+"changes will be executed <em>every time</em> the watched fields change, "
+"<em>whether you save or not</em>."
 msgstr ""
-"<i class=\"fa fa-warning\"/> قوانین خودکارسازی که با تغییرات رابط کاربری "
-"فعال می‌شوند، <em>هر بار</em> که فیلدهای مشاهده شده تغییر کنند، اجرا خواهند "
-"شد، <em>خواه ذخیره کنید یا نه</em>."
+"<i class=\"oi\" data-icon=\"warning\"/> قوانین خودکارسازی که با تغییرات رابط "
+"کاربری فعال می‌شوند، <em>هر بار</em> که فیلدهای مشاهده شده تغییر کنند، اجرا "
+"خواهند شد، <em>خواه ذخیره کنید یا نه</em>."
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_server_action_form
@@ -162,8 +169,9 @@ msgstr "دکوراسیون استثنایی فعالیت"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__activity_plans_ids
+#, fuzzy
 msgid "Activity Plans"
-msgstr ""
+msgstr "برنامه های فعالیت"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__activity_state
@@ -376,11 +384,6 @@ msgid "Following child actions have warnings: %(children)s"
 msgstr ""
 
 #. module: base_automation
-#: model:ir.model.fields,help:base_automation.field_base_automation__activity_type_icon
-msgid "Font awesome icon e.g. fa-tasks"
-msgstr "آیکون فونت عالی به عبارتی fa-tasks"
-
-#. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__model_is_mail_thread
 msgid "Has Mail Thread"
 msgstr "دارای رشته پیام"
@@ -496,6 +499,11 @@ msgstr ""
 "گفتگو دارند، قابل استفاده هستند."
 
 #. module: base_automation
+#: model:ir.model.fields,help:base_automation.field_base_automation__activity_type_icon
+msgid "Material Symbols icon e.g. checklist"
+msgstr ""
+
+#. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__message_has_error
 msgid "Message Delivery error"
 msgstr "خطای تحویل پیام"
@@ -524,8 +532,8 @@ msgstr "نام مدل"
 #. odoo-python
 #: code:addons/base_automation/models/ir_actions_server.py:0
 msgid ""
-"Model of action %(action_name)s should match the one from automated rule %"
-"(rule_name)s."
+"Model of action %(action_name)s should match the one from automated rule "
+"%(rule_name)s."
 msgstr ""
 "مدل عملیات %(action_name)s باید با مدل قانون خودکار %(rule_name)s مطابقت "
 "داشته باشد."
@@ -810,11 +818,11 @@ msgstr "مدل هدف اقدامات %(action_names)s با مدل قاعده م�
 #. odoo-python
 #: code:addons/base_automation/models/base_automation.py:0
 msgid ""
-"The \"%(trigger_value)s\" %(trigger_label)s can only be used with the \"%"
-"(state_value)s\" action type"
+"The \"%(trigger_value)s\" %(trigger_label)s can only be used with the "
+"\"%(state_value)s\" action type"
 msgstr ""
-"\"%(trigger_value)s\" %(trigger_label)s تنها می‌تواند با نوع عمل \"%"
-"(state_value)s\" استفاده شود"
+"\"%(trigger_value)s\" %(trigger_label)s تنها می‌تواند با نوع عمل "
+"\"%(state_value)s\" استفاده شود"
 
 #. module: base_automation
 #: model:ir.model.fields,help:base_automation.field_base_automation__trigger_field_ids
@@ -828,10 +836,13 @@ msgstr ""
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid ""
 "The error occurred during the execution of the automation rule\n"
 "                \""
 msgstr ""
+"خطا در حین اجرای قانون اتوماسیون اتفاق افتاد\n"
+"                \""
 
 #. module: base_automation
 #. odoo-python
@@ -948,16 +959,6 @@ msgstr "گزارشات وبهوک"
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__webhook_uuid
 msgid "Webhook UUID"
 msgstr "شناسه منحصر به فرد وب‌هوک"
-
-#. module: base_automation
-#: model:ir.model.fields,field_description:base_automation.field_base_automation__website_message_ids
-msgid "Website Messages"
-msgstr "پیام های وب سایت"
-
-#. module: base_automation
-#: model:ir.model.fields,help:base_automation.field_base_automation__website_message_ids
-msgid "Website communication history"
-msgstr "تاریخچه ارتباط با وبسایت"
 
 #. module: base_automation
 #: model:ir.model.fields,help:base_automation.field_base_automation__trg_date_calendar_id

@@ -28,9 +28,9 @@ const IMAGE_SIZE = [
 ];
 
 const IMAGE_ALIGNMENT = [
-    { icon: "oi-text-inline", value: "", title: _t("Inline") },
-    { icon: "oi-text-wrap", value: "float-start", title: _t("Wrap text") },
-    { icon: "oi-text-break", value: "d-block", title: _t("Break text") },
+    { icon: "format_image_inline_left", value: "", title: _t("Inline") },
+    { icon: "format_image_left", value: "float-start", title: _t("Wrap text") },
+    { icon: "format_image_front", value: "d-block", title: _t("Break text") },
 ];
 
 /**
@@ -55,14 +55,15 @@ export class ImagePlugin extends Plugin {
             {
                 id: "deleteImage",
                 description: _t("Remove (DELETE) image"),
-                icon: "fa-trash text-danger",
+                icon: "delete",
+                iconClass: "oi-filled text-danger",
                 run: this.deleteImage.bind(this),
                 isAvailable: isHtmlContentSupported,
             },
             {
                 id: "previewImage",
                 description: _t("Preview image"),
-                icon: "fa-search-plus",
+                icon: "fullscreen",
                 run: this.previewImage.bind(this),
                 isAvailable: isHtmlContentSupported,
             },
@@ -84,16 +85,11 @@ export class ImagePlugin extends Plugin {
         ],
         toolbar_groups: [
             withSequence(26, { id: "image_modifiers", namespaces: ["image"] }),
-            withSequence(26, { id: "image_size", namespaces: ["image"] }),
-            withSequence(32, { id: "image_delete", namespaces: ["image"] }),
+            withSequence(28, { id: "image_actions", namespaces: ["image"] }),
+            withSequence(34, { id: "image_delete", namespaces: ["image"] }),
         ],
         toolbar_items: [
-            {
-                id: "image_preview",
-                groupId: "image_actions",
-                commandId: "previewImage",
-            },
-            {
+            withSequence(10, {
                 id: "image_alignment",
                 description: _t("Set image alignment"),
                 groupId: "image_modifiers",
@@ -107,15 +103,15 @@ export class ImagePlugin extends Plugin {
                     },
                 },
                 isAvailable: isHtmlContentSupported,
-            },
-            {
+            }),
+            withSequence(30, {
                 id: "image_padding",
                 groupId: "image_modifiers",
                 description: _t("Set image padding"),
                 Component: ImageToolbarDropdown,
                 props: {
                     name: "image_padding",
-                    icon: "html_editor.ImagePaddingIcon",
+                    icon: "padding",
                     items: IMAGE_PADDING,
                     focusEditable: () => this.dependencies.selection.focusEditable(),
                     onSelected: (item) => {
@@ -123,10 +119,10 @@ export class ImagePlugin extends Plugin {
                     },
                 },
                 isAvailable: isHtmlContentSupported,
-            },
+            }),
             {
                 id: "image_size",
-                groupId: "image_size",
+                groupId: "image_actions",
                 description: _t("Resize image"),
                 Component: ImageToolbarDropdown,
                 props: {
@@ -134,7 +130,7 @@ export class ImagePlugin extends Plugin {
                     getDisplay: () => this.imageSize,
                     items: IMAGE_SIZE,
                     focusEditable: () => this.dependencies.selection.focusEditable(),
-                    icon: "fa-expand",
+                    icon: "expand_content",
                     onSelected: (item) => {
                         this.resizeImage({ size: item.value });
                         this.updateImageParams();
@@ -142,6 +138,11 @@ export class ImagePlugin extends Plugin {
                 },
                 isAvailable: (selection) =>
                     isHtmlContentSupported(selection) && (this.config.allowImageResize ?? true),
+            },
+            {
+                id: "image_preview",
+                groupId: "image_actions",
+                commandId: "previewImage",
             },
             {
                 id: "image_delete",
@@ -172,7 +173,7 @@ export class ImagePlugin extends Plugin {
                 this.setSelectionAroundImage(e.target);
             }
         });
-        this.imageAlignment = proxy({ displayIcon: "oi-text-inline" });
+        this.imageAlignment = proxy({ displayIcon: "format_image_inline_left" });
         this.addDomListener(this.editable, "click", (e) => {
             if (e.target.tagName === "IMG") {
                 this.setSelectionAroundImage(e.target);
@@ -205,7 +206,7 @@ export class ImagePlugin extends Plugin {
                 }
             }
         }
-        return "oi-text-inline";
+        return "format_image_inline_left";
     }
 
     setImageAlignment(alignment) {
@@ -306,7 +307,7 @@ export class ImagePlugin extends Plugin {
             return {
                 title: _t("Embed Image"),
                 description: _t("Embed the image in the document."),
-                icon: "fa-image",
+                icon: "image",
                 run: () => {
                     this.trigger(
                         "on_will_paste_handlers",

@@ -1,7 +1,9 @@
-from odoo import fields, models, api, _
-from odoo.exceptions import ValidationError, UserError
-from datetime import datetime, timedelta
 from collections import defaultdict
+from datetime import timedelta
+
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools.translate import mark_as_copy
 
 
 class PosPreset(models.Model):
@@ -9,7 +11,7 @@ class PosPreset(models.Model):
     _inherit = ['pos.load.mixin']
     _description = 'Easily load a set of configuration options'
 
-    name = fields.Char(string='Label', required=True, translate=True)
+    name = fields.Char(string='Label', required=True, translate=True, copy=mark_as_copy('name'))
     pricelist_id = fields.Many2one('product.pricelist', string='Pricelist')
     fiscal_position_id = fields.Many2one('account.fiscal.position', string='Fiscal Position')
     identification = fields.Selection([('none', 'Not required'), ('address', 'Address'), ('name', 'Name')], default="none", string='Identification', required=True)
@@ -20,6 +22,25 @@ class PosPreset(models.Model):
     has_image = fields.Boolean(compute='_compute_has_image')
     count_linked_orders = fields.Integer(compute='_compute_count_linked_orders')
     count_linked_config = fields.Integer(compute='_compute_count_linked_config')
+
+    # Service Fee
+    service_fee = fields.Boolean(string='Service Fee', default=False)
+    service_fee_product_id = fields.Many2one('product.product', string='Service Fee Product', default=lambda self: self.env.ref('point_of_sale.product_product_service_fee', raise_if_not_found=False))
+    service_fee_type = fields.Selection([('fixed', 'Fixed Price'), ('percent', 'Percent')], string='Type', default='percent')
+    service_fee_amount = fields.Float(string='Amount', default=0.0)
+    service_fee_based_on = fields.Selection([('pre_discount', 'Order total before discount(s)'), ('post_discount', 'Order total after discount(s)')], string='Based on', default='pre_discount')
+
+    @api.constrains('service_fee', 'service_fee_amount', 'service_fee_type', 'service_fee_product_id')
+    def _check_service_fee(self):
+        for preset in self:
+            if not preset.service_fee:
+                continue
+            if not preset.service_fee_product_id:
+                raise ValidationError(_("A service fee requires a service fee product."))
+            if preset.service_fee_type == 'percent' and not (0 <= preset.service_fee_amount <= 1):
+                raise ValidationError(_("A percentage service fee must be between 0% and 100%."))
+            if preset.service_fee_amount < 0:
+                raise ValidationError(_("A service fee requires a non-negative amount."))
 
     # Timing options
     use_timing = fields.Boolean(string='Manage orders by time', default=False)
@@ -36,14 +57,20 @@ class PosPreset(models.Model):
                     raise ValidationError(_('The start time must be before the end time.'))
 
     @api.model
-    def _load_pos_data_domain(self, data, config):
-        preset_ids = config.available_preset_ids.ids + [config.default_preset_id.id]
-        return [('id', 'in', preset_ids)]
+    def _load_pos_data_domain(self, data):
+        config = data['pos.config']
+        preset_ids = config.available_preset_ids + config.default_preset_id
+        return [('id', 'in', preset_ids.ids)]
+
+    @api.model
+    def _load_pos_data_dependencies(self):
+        return ['account.fiscal.position', 'product.pricelist', 'resource.calendar.attendance']
 
     @api.model
     def _load_pos_data_fields(self, config):
         return ['id', 'name', 'pricelist_id', 'fiscal_position_id', 'is_return', 'color', 'has_image', 'write_date', 'identification',
-            'use_timing', 'slots_per_interval', 'interval_time', 'attendance_ids']
+            'use_timing', 'slots_per_interval', 'interval_time', 'attendance_ids',
+            'service_fee', 'service_fee_product_id', 'service_fee_type', 'service_fee_amount', 'service_fee_based_on']
 
     def _compute_count_linked_orders(self):
         for record in self:
@@ -75,10 +102,10 @@ class PosPreset(models.Model):
         usage = defaultdict(int)
         orders = self.env['pos.order'].search([
             ('preset_id', '=', self.id),
-            ('session_id.state', '=', 'opened'),
+            ('session_id.state', '!=', 'closed'),
             ('preset_time', '!=', False),
             ('state', 'in', ['draft', 'paid']),
-            ('create_date', '>=', fields.Datetime.now() - timedelta(days=1))
+            ('create_date', '>=', fields.Datetime.now() - timedelta(days=1)),
         ])
         for order in orders:
             sql_datetime_str = order.preset_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -89,14 +116,6 @@ class PosPreset(models.Model):
             usage[sql_datetime_str].append(order.id)
 
         return usage
-
-    def copy_data(self, default=None):
-        default = dict(default or {})
-        vals_list = super().copy_data(default=default)
-        if 'name' not in default:
-            for preset, vals in zip(self, vals_list):
-                vals['name'] = _("%s (copy)", preset.name)
-        return vals_list
 
     def action_open_linked_orders(self):
         self.ensure_one()

@@ -1,7 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import logging
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 
 import werkzeug
 
@@ -11,6 +11,7 @@ from odoo.http import request
 from odoo.modules import Manifest
 from odoo.tools import SQL, split_every
 from odoo.tools.constants import PREFETCH_MAX
+from odoo.tools.translate import StoredTranslations
 
 _logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class IrModuleModule(models.Model):
     _theme_translated_fields = {
         'theme.ir.ui.view': [('theme.ir.ui.view,arch', 'ir.ui.view,arch_db')],
         'theme.website.menu': [('theme.website.menu,name', 'website.menu,name')],
+        'theme.website.page': [('theme.website.page,url', 'website.page,url')],
     }
 
     image_ids = fields.One2many('ir.attachment', 'res_id',
@@ -48,7 +50,7 @@ class IrModuleModule(models.Model):
             which would be confusing for the user.
         """
         for module in self:
-            module.is_installed_on_current_website = module == self.env['website'].get_current_website().theme_id
+            module.is_installed_on_current_website = module == self.env.website.theme_id
 
     def write(self, vals):
         """
@@ -89,8 +91,8 @@ class IrModuleModule(models.Model):
 
                     if module.state == 'to upgrade' and request:
                         Website = self.env['website']
-                        current_website = Website.get_current_website()
-                        websites_to_update = current_website if current_website in websites_to_update else Website
+                        website = request.env.website
+                        websites_to_update = website if website in websites_to_update else Website
 
                     for website in websites_to_update:
                         module._theme_load(website)
@@ -208,7 +210,7 @@ class IrModuleModule(models.Model):
             if dst_mname != new_rec._name:
                 continue
             old_field = old_rec._fields[src_fname]
-            old_stored_translations = old_field._get_stored_translations(old_rec)
+            old_stored_translations = old_rec._get_stored_translations(src_fname)
             if not old_stored_translations:
                 continue
             if old_field.translate is True:
@@ -218,22 +220,13 @@ class IrModuleModule(models.Model):
                     k: v for k, v in old_stored_translations.items() if k in valid_langs and k != cur_lang
                 })
             else:
-                old_translations = {
-                    k: old_stored_translations.get(f'_{k}', v)
-                    for k, v in old_stored_translations.items()
-                    if k in valid_langs
-                }
-                # {from_lang_term: {lang: to_lang_term}
-                translation_dictionary = old_field.get_translation_dictionary(
-                    old_translations.pop(cur_lang, old_translations['en_US']),
-                    old_translations
+                # {lang: {old_term: new_term}}
+                translations = old_stored_translations.extract_term_translations(
+                    self.env, old_field, 'en_US',
                 )
-                # {lang: {old_term: new_term}
-                translations = defaultdict(dict)
-                for from_lang_term, to_lang_terms in translation_dictionary.items():
-                    for lang, to_lang_term in to_lang_terms.items():
-                        translations[lang][from_lang_term] = to_lang_term
-                new_rec.with_context(install_filename='dummy').update_field_translations(dst_fname, translations)
+                new_rec.with_context(install_filename='dummy').update_field_translations(
+                    dst_fname, translations, source_lang='en_US',
+                )
 
     def _theme_load(self, website):
         """
@@ -408,7 +401,8 @@ class IrModuleModule(models.Model):
             :return: dict with the next action to execute
         """
         self.ensure_one()
-        website = self.env['website'].get_current_website()
+        website = self.env.website or self.env['website'].browse(self.env.context.get('host_id'))
+        website.ensure_one()
 
         self._theme_remove(website)
 
@@ -417,16 +411,15 @@ class IrModuleModule(models.Model):
 
         # this will install 'self' if it is not installed yet
         if request:
-            request.update_context(apply_new_theme=True)
-        self._theme_upgrade_upstream()
+            request.update_context(website_id=website.id, apply_new_theme=True)
+        self.with_context(website_id=website.id, apply_new_theme=True)._theme_upgrade_upstream()
 
         result = website.button_go_website()
         return result
 
     def button_remove_theme(self):
         """Remove the current theme of the current website."""
-        website = self.env['website'].get_current_website()
-        self._theme_remove(website)
+        self._theme_remove(self.env.website)
 
     def button_refresh_theme(self):
         """
@@ -435,8 +428,7 @@ class IrModuleModule(models.Model):
             To refresh it, we only need to upgrade the modules.
             Indeed the (re)loading of the theme will be done automatically on ``write``.
         """
-        website = self.env['website'].get_current_website()
-        website.theme_id._theme_upgrade_upstream()
+        self.env.website.theme_id._theme_upgrade_upstream()
 
     @api.model
     def update_list(self):
@@ -508,7 +500,8 @@ class IrModuleModule(models.Model):
 
         # use the translation dic of the generic to translate the specific
         self.env.cr.flush()
-        View = self.env['ir.ui.view']
+        View = self.env['ir.ui.view'].with_context(lang='en_US')
+        env_en = View.env
         field = self.env['ir.ui.view']._fields['arch_db']
         batch_size = PREFETCH_MAX // 10
         self.env.cr.execute(""" SELECT generic.arch_db, specific.arch_db, specific.id
@@ -525,26 +518,16 @@ class IrModuleModule(models.Model):
                 langs_update = (langs & generic_arch_db.keys()) - {'en_US'}
                 if not langs_update:
                     continue
-                # get dictionaries limited to the requested languages
-                generic_arch_db_en = generic_arch_db.get('_en_US', generic_arch_db.get('en_US'))
-                specific_arch_db_en = specific_arch_db.get('_en_US', specific_arch_db.get('en_US'))
-                generic_arch_db_update = {k: generic_arch_db.get('_' + k, generic_arch_db[k]) for k in langs_update}
-                specific_arch_db_update = {k: specific_arch_db.get('_' + k, specific_arch_db.get(k, specific_arch_db_en)) for k in langs_update}
-                generic_translation_dictionary = field.get_translation_dictionary(generic_arch_db_en, generic_arch_db_update)
-                specific_translation_dictionary = field.get_translation_dictionary(specific_arch_db_en, specific_arch_db_update)
-                # update specific_translation_dictionary
-                for term_en, specific_term_langs in specific_translation_dictionary.items():
-                    if term_en not in generic_translation_dictionary:
-                        continue
-                    for lang, generic_term_lang in generic_translation_dictionary[term_en].items():
-                        if overwrite or term_en == specific_term_langs[lang]:
-                            specific_term_langs[lang] = generic_term_lang
-                for lang in langs_update:
-                    if specific_arch_db.get('_' + lang) == specific_arch_db.get(lang):
-                        specific_arch_db.pop('_' + lang, None)
-                    specific_arch_db[('_' + lang) if ('_' + lang) in specific_arch_db else lang] = field.translate(
-                        lambda term: specific_translation_dictionary.get(term, {lang: None})[lang], specific_arch_db_en)
-                field._update_cache(View.with_context(prefetch_langs=True).browse(specific_id), specific_arch_db, dirty=True)
+                generic_arch_db = StoredTranslations(generic_arch_db)
+                specific_arch_db = StoredTranslations(specific_arch_db)
+                # extract {lang: {src_term: translated_term}} from the generic view
+                term_updates = generic_arch_db.extract_term_translations(env_en, field, 'en_US', target_langs=langs_update)
+                new_specific_arch_db = specific_arch_db.translated(
+                    env_en, field, 'en_US', term_updates, overwrite=overwrite,
+                    delay_translations=True,
+                )
+                # like `Translaitonimporter.save()` we bypass the ORM(`View.write()`)
+                field._update_cache(View.with_context(prefetch_langs=True).browse(specific_id), new_specific_arch_db, dirty=True)
         default_menu = self.env.ref('website.main_menu', raise_if_not_found=False)
         if not default_menu:
             return res
@@ -559,7 +542,7 @@ class IrModuleModule(models.Model):
                SET name = %(o_menu_name)s
               FROM website_menu o_menu
              INNER JOIN website_menu s_menu
-                ON o_menu.name->>'en_US' = s_menu.name->>'en_US' AND o_menu.url = s_menu.url
+                ON o_menu.name->>'en_US' = s_menu.name->>'en_US'
              INNER JOIN website_menu root_menu
                 ON s_menu.parent_id = root_menu.id AND root_menu.parent_id IS NULL
              WHERE o_menu.website_id IS NULL AND o_menu.parent_id = %(default_menu_id)s
@@ -681,18 +664,34 @@ class IrModuleModule(models.Model):
         # ------------------------------------------------------------
 
         configurator_snippets = dict(manifest.get('configurator_snippets', {}))
-        addons = manifest.get('configurator_snippets_addons', {})
         installed_modules = self.env['ir.module.module']._installed()
 
-        # Add addon snippets to the main snippet list for batch generation
-        for module_name, pages in addons.items():
-            # generate snippet only if the module is installed
-            if module_name not in installed_modules and module_name != self.name:
-                continue
-            for page, snippets_to_insert in pages.items():
-                snippets = configurator_snippets.setdefault(page, [])
-                dynamic_snippets = [snippet for snippet, *_ in snippets_to_insert]
-                configurator_snippets[page] = list(dict.fromkeys(snippets + dynamic_snippets))
+        def add_addons_snippets(addons):
+            """ Add installable addon snippets to the configurator snippets. """
+            for module_name, pages in addons.items():
+                # A snippet such as `website_sale.x` can only be generated
+                # once `website_sale` exists, or while installing it.
+                if module_name not in installed_modules and module_name != self.name:
+                    continue
+                for page, snippets_to_insert in pages.items():
+                    snippets = configurator_snippets.setdefault(page, [])
+                    dynamic_snippets = [snippet for snippet, *_ in snippets_to_insert]
+                    configurator_snippets[page] = list(dict.fromkeys(snippets + dynamic_snippets))
+
+        # This covers themes being installed while optional addon modules such
+        # as `website_sale` are already installed.
+        add_addons_snippets(manifest.get('configurator_snippets_addons', {}))
+
+        website = self.env.website or self.env['website'].browse(self.env.context.get('host_id'))
+        theme = website.theme_id
+        if theme and theme.name != self.name:
+            # Another module is being installed after the theme was selected.
+            # Only include the theme addon snippets targeting this module.
+            theme_manifest = Manifest.for_addon(theme.name)
+            if theme_manifest:
+                theme_addons = theme_manifest.get('configurator_snippets_addons', {})
+                addons = {self.name: theme_addons.get(self.name, {})}
+                add_addons_snippets(addons)
 
         # Generate general configurator snippet templates
         create_values = []

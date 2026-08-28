@@ -6,16 +6,16 @@ from odoo import models
 class PortalEntryPayment(models.Model):
     _inherit = "portal.entry"
 
-    def should_show_portal_card(self):
-        res = super().should_show_portal_card()
-        external_id = self.get_external_id().get(self.id, "")
-        if external_id == "payment.payment_methods_portal_entry":
+    def _filter_visible_portal_cards(self):
+        visible_entries = super()._filter_visible_portal_cards()
+        payment_methods_entry = self.env.ref("payment.payment_methods_portal_entry", raise_if_not_found=False)
+        if payment_methods_entry and payment_methods_entry in self:
             partner_sudo = self.env.user.partner_id.sudo()
             providers_sudo = (
                 self
                 .env["payment.provider"]
                 .sudo()
-                ._get_compatible_providers(
+                ._find_available_providers(
                     self.env.company.id,
                     partner_sudo.id,
                     0.0,
@@ -23,17 +23,13 @@ class PortalEntryPayment(models.Model):
                     is_validation=True,
                 )
             )
-            methods_allowing_tokenization = (
-                self
-                .env["payment.method"]
-                .sudo()
-                ._get_compatible_payment_methods(
-                    providers_sudo.ids, partner_sudo.id, force_tokenization=True
-                )
+            methods_allowing_tokenization = providers_sudo._find_available_payment_methods(
+                partner_sudo.id, force_tokenization=True
             )
-            existing_tokens = (
-                partner_sudo.payment_token_ids
-                + partner_sudo.commercial_partner_id.payment_token_ids
+            existing_tokens = partner_sudo._get_payment_tokens(
+                force_tokenization=True,
+                is_validation=True
             )
-            res &= bool(methods_allowing_tokenization or existing_tokens)
-        return res
+            if not (methods_allowing_tokenization or existing_tokens):
+                visible_entries -= payment_methods_entry
+        return visible_entries

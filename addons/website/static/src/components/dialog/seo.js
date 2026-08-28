@@ -1,4 +1,4 @@
-import { reactive, useLayoutEffect, useRef } from "@web/owl2/utils";
+import { useLayoutEffect } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { deduceURLfromText } from "@html_editor/main/link/utils";
 import { pyToJsLocale, jsToPyLocale } from "@web/core/l10n/utils";
@@ -11,7 +11,18 @@ import { CheckBox } from "@web/core/checkbox/checkbox";
 import { MediaDialog } from "@html_editor/main/media/media_dialog/media_dialog";
 import { getMimetype } from "@html_editor/utils/image";
 import { WebsiteDialog } from "./dialog";
-import { Component, onMounted, onWillStart, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillStart,
+    onWillUnmount,
+    proxy,
+    props,
+    signal,
+    t,
+    useApp,
+    useEffect,
+} from "@odoo/owl";
 import wUtils from "@website/js/utils";
 
 // This replaces \b, because accents(e.g. à, é) are not seen as word boundaries.
@@ -19,7 +30,7 @@ import wUtils from "@website/js/utils";
 const WORD_SEPARATORS_REGEX =
     "([\\u2000-\\u206F\\u2E00-\\u2E7F'!\"#\\$%&\\(\\)\\*\\+,\\-\\.\\/:;<=>\\?¿¡@\\[\\]\\^_`\\{\\|\\}~\\s]+|^|$)";
 
-export const seoContext = reactive({
+export const seoContext = proxy({
     description: "",
     keywords: [],
     title: "",
@@ -177,6 +188,29 @@ const getSeo = async (self, onlyKeywords = false) => {
         self.seoContext.description = extractDescription();
     }
 };
+
+/**
+ * Render the given page with `edit_translations`, which marks the terms whose
+ * translation is delayed, and tell whether it has any.
+ *
+ * @param {string} pageUrl
+ * @returns {Promise<boolean>}
+ */
+async function fetchDelayedTranslations(pageUrl) {
+    const url = new URL(pageUrl);
+    url.searchParams.set("edit_translations", "1");
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`${response.status} ${response.statusText}`);
+        }
+        const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+        return !!doc.querySelector("#wrap .o_delay_translation");
+    } catch (error) {
+        console.warn(`Could not load delayed translations for ${url}`, error);
+        return true;
+    }
+}
 
 class MetaImage extends Component {
     static template = "website.MetaImage";
@@ -560,11 +594,12 @@ export class TitleDescription extends Component {
     static components = {
         SEOPreview,
     };
+    autofocusRef = signal.ref();
 
     setup() {
         this.seoContext = proxy(seoContext);
         this.website = useService("website");
-        useAutofocus();
+        useAutofocus({ ref: this.autofocusRef });
 
         this.state = proxy({
             language: this.getLanguage(),
@@ -588,13 +623,11 @@ export class TitleDescription extends Component {
         );
 
         // Restore the original title when unmounting the component
-        useLayoutEffect(
-            () => {
-                const initialTitle = document.title;
-                return () => (document.title = initialTitle);
-            },
-            () => []
-        );
+        let initialTitle;
+        onMounted(() => {
+            initialTitle = document.title;
+        });
+        onWillUnmount(() => (document.title = initialTitle));
     }
 
     //--------------------------------------------------------------------------
@@ -674,40 +707,34 @@ export class TitleDescription extends Component {
 export class BrokenLink extends Component {
     static template = "website.BrokenLink";
 
-    static props = {
-        link: Object,
-    };
+    props = props({ link: t.object() });
+
+    urlInputRef = signal.ref();
 
     setup() {
         this.website = useService("website");
-        this.urlInputRef = useRef("url-input");
         this.link = this.props.link;
 
         this.state = proxy({
             checkingLink: false,
         });
 
-        useLayoutEffect(
-            (input) => {
-                if (!input) {
-                    return;
-                }
-                const options = {
-                    body: this.website.pageDocument.body,
-                    position: "bottom-fit",
-                    urlChosen: () => {
-                        this.link.newLink = input.value;
-                    },
-                };
-                const unmountAutocompleteWithPages = wUtils.autocompleteWithPages(
-                    input,
-                    options,
-                    this.env
-                );
-                return () => unmountAutocompleteWithPages();
-            },
-            () => [this.urlInputRef.el]
-        );
+        const app = useApp();
+        useEffect(() => {
+            const input = this.urlInputRef();
+            if (!input) {
+                return;
+            }
+            const options = {
+                body: this.website.pageDocument.body,
+                position: "bottom-fit",
+                urlChosen: () => {
+                    this.link.newLink = input.value;
+                },
+            };
+            const unmountAutocompleteWithPages = wUtils.autocompleteWithPages(app, input, options);
+            return () => unmountAutocompleteWithPages();
+        });
     }
 
     async modifyLink(link) {
@@ -757,13 +784,15 @@ export class SeoChecks extends Component {
         CheckBox,
         BrokenLink,
     };
-    static props = {};
+    static props = {
+        isDefaultLang: Boolean,
+    };
 
     async setup() {
         this.website = useService("website");
         this.seoContext = proxy(seoContext);
         const {
-            metadata: { mainObject, seoObject },
+            metadata: { mainObject, seoObject, path },
         } = this.website.currentWebsite;
         this.object = seoObject || mainObject;
         this.state = proxy({
@@ -777,9 +806,14 @@ export class SeoChecks extends Component {
         onWillStart(async () => {
             this.state.altAttributes = await this.getAltAttributes();
             this.seoContext.updatedAlts = [];
+            if (!this.props.isDefaultLang) {
+                this.hasDelayedTranslation = await fetchDelayedTranslations(path);
+            }
         });
         onMounted(() => {
-            this.getBrokenLinks();
+            if (this.props.isDefaultLang) {
+                this.getBrokenLinks();
+            }
         });
     }
 
@@ -869,7 +903,7 @@ export class SeoChecks extends Component {
                     if (imgLinkEl?.src) {
                         label = imgLinkEl.src.split("/").pop();
                         isImageLink = true;
-                    } else if (el.querySelector(".fa")) {
+                    } else if (el.querySelector(".oi")) {
                         label =
                             el.ariaLabel || el.title || el.href.split("/").filter(Boolean).pop();
                         isImageLink = true;
@@ -1131,7 +1165,31 @@ export class OptimizeSEODialog extends Component {
                 })
             );
         }
-        if (seoContext.updatedAlts?.length) {
+        if (!this.isDefaultLang) {
+            const translationsByRecord = {};
+            for (const img of seoContext.updatedAlts || []) {
+                const key = `${img.res_model}::${img.res_id}::${img.field}`;
+                translationsByRecord[key] ??= {
+                    model: img.res_model,
+                    id: img.res_id,
+                    fieldName: img.field,
+                    translations: {},
+                };
+                translationsByRecord[key].translations[img.source_sha] = (img.alt || "").trim();
+            }
+            for (const record of Object.values(translationsByRecord)) {
+                rpcCalls.push(
+                    rpc("/website/field/translation/update", {
+                        model: record.model,
+                        record_id: [record.id],
+                        field_name: record.fieldName,
+                        translations: {
+                            [currentLang]: record.translations,
+                        },
+                    })
+                );
+            }
+        } else if (seoContext.updatedAlts?.length) {
             rpcCalls.push(
                 rpc("/website/update_alt_images", {
                     imgs: seoContext.updatedAlts,

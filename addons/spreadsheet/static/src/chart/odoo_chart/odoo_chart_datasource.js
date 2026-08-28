@@ -41,13 +41,12 @@ chartDataSourceRegistry.add("odoo", {
         const { datasets, labels } = getters.getChartDataSource(chartId).getData();
         for (const ds of datasets) {
             if (ds.cumulatedStart) {
-                ds.data[0] += ds.cumulatedStart;
+                ds.data[0].value += ds.cumulatedStart;
             }
         }
         return {
             dataSetsValues: datasets.map((ds) => ({
                 ...ds,
-                data: ds.data.map((d) => ({ value: d })),
                 dataSetId: generateDataSetId(dataSource, ds),
             })),
             labelValues: labels.map((l) => ({ value: l })),
@@ -61,10 +60,10 @@ chartDataSourceRegistry.add("odoo", {
                 data: ds.data.map((d) => ({ value: d })),
                 dataSetId: generateDataSetId(dataSource, ds),
             })),
-            labelValues: labels.map((l) => ({ value: l })),
+            labelValues: labels,
         };
     },
-    onDataSetHover: (chartType, event, items, chart) => {
+    onDataSetHover: (chartType, chartId, event, items, chartJSChart) => {
         if (!event.native) {
             return;
         }
@@ -75,7 +74,7 @@ chartDataSourceRegistry.add("odoo", {
         const item = items[0];
         switch (chartType) {
             case "geo": {
-                const data = chart.data.datasets?.[item.datasetIndex]?.data?.[item.index];
+                const data = chartJSChart.data.datasets?.[item.datasetIndex]?.data?.[item.index];
                 if (
                     typeof data === "object" &&
                     data &&

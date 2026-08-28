@@ -1,5 +1,5 @@
-import { onWillRender, useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { onWillRender } from "@web/owl2/utils";
+import { Component, onWillStart, proxy, signal, t, useEffect, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { sortBy } from "@web/core/utils/arrays";
 import { KeepLast } from "@web/core/utils/concurrency";
@@ -105,26 +105,28 @@ class Page {
     }
 }
 
+export const modelFieldSelectorPopoverProps = {
+    close: t.function(),
+    filter: t
+        .function()
+        .optional(
+            () => (value) => value.searchable && value.type != "json" && value.type !== "separator"
+        ),
+    sort: t.function().optional(),
+    followRelation: t.or([t.boolean(), t.function()]).optional(true),
+    showDebugInput: t.boolean().optional(),
+    isDebugMode: t.boolean().optional(false),
+    path: t.any().optional(),
+    readProperty: t.boolean().optional(),
+    resModel: t.string(),
+    showSearchInput: t.boolean().optional(),
+    update: t.function(),
+};
+
 export class ModelFieldSelectorPopover extends Component {
     static template = "web.ModelFieldSelectorPopover";
-    static props = {
-        close: Function,
-        filter: { type: Function, optional: true },
-        sort: { type: Function, optional: true },
-        followRelation: { type: [Boolean, Function], optional: true },
-        showDebugInput: { type: Boolean, optional: true },
-        isDebugMode: { type: Boolean, optional: true },
-        path: { optional: true },
-        readProperty: { type: Boolean, optional: true },
-        resModel: String,
-        showSearchInput: { type: Boolean, optional: true },
-        update: Function,
-    };
-    static defaultProps = {
-        filter: (value) => value.searchable && value.type != "json" && value.type !== "separator",
-        isDebugMode: false,
-        followRelation: true,
-    };
+    props = useProps(modelFieldSelectorPopoverProps);
+    rootRef = signal.ref();
 
     setup() {
         this.fieldService = useService("field");
@@ -147,27 +149,32 @@ export class ModelFieldSelectorPopover extends Component {
             }
         });
 
-        const rootRef = useRef("root");
-        useLayoutEffect(() => {
-            const focusedElement = rootRef.el.querySelector(
+        let focusedPage;
+        useEffect(() => {
+            const root = this.rootRef();
+            if (!root) {
+                return;
+            }
+            // re-run whenever the active item moves (page change, navigation or search)
+            const page = this.state.page;
+            void page?.focusedFieldName;
+            const focusedElement = root.querySelector(
                 ".o_model_field_selector_popover_item.active"
             );
             if (focusedElement) {
                 // current page can be empty (e.g. after a search)
                 focusedElement.scrollIntoView({ block: "center" });
             }
-        });
-        useLayoutEffect(
-            () => {
+            if (page !== focusedPage) {
+                focusedPage = page;
                 if (this.props.showSearchInput) {
-                    const searchInput = rootRef.el.querySelector(
+                    const searchInput = root.querySelector(
                         ".o_model_field_selector_popover_search .o_input"
                     );
                     searchInput.focus();
                 }
-            },
-            () => [this.state.page]
-        );
+            }
+        });
     }
 
     get fieldNames() {

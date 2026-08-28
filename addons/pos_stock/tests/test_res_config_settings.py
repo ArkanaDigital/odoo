@@ -5,13 +5,14 @@ from odoo.addons.pos_stock.tests.common import TestPosStockCommon
 
 class TestPosStockResConfigSettings(TestPosStockCommon):
     """Settings-related tests that need stock models (see pos_stock dependency)."""
+    _test_user_groups = None  # FIXME list needed groups
 
     def test_warehouse_synced_with_picking_type(self):
         """Changing the operation type should update the warehouse on the POS config."""
         warehouse_1 = self.env['stock.warehouse'].search(
             self.env['stock.warehouse']._check_company_domain(self.env.company), limit=1
         )
-        warehouse_2 = self.env['stock.warehouse'].create({
+        warehouse_2 = self.env['stock.warehouse'].sudo().create({
             'name': 'Second Warehouse',
             'code': 'WH2',
             'company_id': self.env.company.id,

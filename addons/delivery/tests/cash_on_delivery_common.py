@@ -5,8 +5,13 @@ from odoo.addons.payment_custom.tests.common import PaymentCustomCommon
 
 
 class CashOnDeliveryCommon(PaymentCustomCommon, DeliveryCommon):
+    _test_user_groups = ('sales_team.group_sale_salesman',)
+
+    _test_user_name = 'Test Sales User'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.sale_order = cls._create_so(order_line=[])
         cls.cod_provider = cls._prepare_provider(code="custom", custom_mode="cash_on_delivery")
+        cls.cod_provider.with_context(active_test=False).payment_method_ids.active = True

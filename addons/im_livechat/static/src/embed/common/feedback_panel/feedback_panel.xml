@@ -18,7 +18,7 @@
             </t>
         </div>
         <div t-if="this.state.rating and this.state.step === this.STEP.RATING" class="d-flex flex-column mb-5">
-            <textarea t-custom-model="this.state.feedback" class="form-control my-2" placeholder="Explain your note"/>
+            <textarea t-model.proxy="this.state.feedback" class="form-control my-2" placeholder="Explain your note"/>
             <button class="btn btn-primary align-self-end" t-on-click="this.onClickSendFeedback">Send</button>
         </div>
         <label class="mb-5 w-100" t-if="this.store.self_user?.share === false">
@@ -30,7 +30,7 @@
                 <button class="btn btn-outline-secondary" t-on-click="this.props.onClickClose">Close</button>
                 <button t-if="this.allowNewSession" class="btn btn-outline-secondary" t-on-click="this.props.onClickNewSession">New Session</button>
             </div>
-            <a t-if="this.store.can_download_transcript" class="btn btn-outline-secondary" title="Download a copy of this conversation" target="_blank" t-att-href="this.props.thread.channel?.transcriptUrl"><i class="pe-2 fa fa-download"/>Download Conversation</a>
+            <a t-if="this.store.can_download_transcript" class="btn btn-outline-secondary" title="Download a copy of this conversation" target="_blank" t-att-href="this.props.thread.channel?.transcriptUrl"><i class="pe-2 oi" data-icon="download"/>Download Conversation</a>
         </div>
     </div>
 </div>

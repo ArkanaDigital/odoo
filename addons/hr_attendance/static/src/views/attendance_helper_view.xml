@@ -4,7 +4,7 @@
         <div class="o_view_nocontent">
             <div class="o_nocontent_help">
                 <t t-if="this.hasAttendanceRight and this.isHrUser">
-                    <t t-if="this.env.isSmall">
+                    <t t-if="this.uiService.isSmall">
                         <t t-call="hr_attendance.AttendanceActionHelperMobileScreen"/>
                     </t>
                     <t t-else="">
@@ -40,7 +40,7 @@
                 <img src="/hr_attendance/static/img/attendance_dot.gif" height="180" class="mb-2"/>
                 <h3 class="mt-2">
                     <em>Try the top
-                        <i class="fa fa-circle text-danger" role="img" aria-label="Attendance"/>
+                        <i class="oi oi-filled text-danger" data-icon="circle" role="img" aria-label="Attendance"/>
                         icon (e.g for work from home)
                     </em>
                 </h3>
@@ -82,7 +82,7 @@
                 <div class="mx-5" >
                         <img src="/hr_attendance/static/img/attendance_dot.gif" height="180" class="mb-2"/>
                     <h3 class="mt-2"><em>Try the top
-                        <i class="fa fa-circle text-danger" role="img" aria-label="Attendance"/>
+                        <i class="oi oi-filled text-danger" data-icon="circle" role="img" aria-label="Attendance"/>
                     icon (e.g for work from home)</em></h3>
                 </div>
             </div>

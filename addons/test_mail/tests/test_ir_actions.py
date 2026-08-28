@@ -7,6 +7,7 @@ from odoo.addons.base.tests.test_ir_actions import TestServerActionsBase
 from odoo.addons.mail.tests.common import MailCommon
 from odoo.tests import Form, RecordCapturer, tagged
 from odoo.tools import mute_logger
+from odoo import Command
 
 
 @tagged('ir_actions')
@@ -30,11 +31,10 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
 
         # update action: send an email
         self.action.write({
-            'mail_post_method': 'email',
             'state': 'mail_post',
             'template_id': self.template.id,
         })
-        self.assertFalse(self.action.mail_post_autofollow, 'Email action does not support autofollow')
+        self.assertFalse(self.action.mail_post_autofollow, 'Email action does not support autofollow by default')
 
         with self.mock_mail_app():
             self.action.with_context(self.context).run()
@@ -43,13 +43,12 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
         mail = self.env['mail.mail'].sudo().search([('subject', '=', 'About TestingPartner')])
         self.assertEqual(len(mail), 1)
         self.assertTrue(mail.auto_delete)
-        self.assertEqual(mail.body_html, '<p>Hello TestingPartner</p>')
-        self.assertFalse(mail.is_notification)
+        self.assertTrue('<p>Hello TestingPartner</p>' in mail.body_html)
+        self.assertTrue(mail.is_notification)
         with self.mock_mail_gateway(mail_unlink_sent=True):
             mail.send()
 
-        # no archive (message)
-        self.assertEqual(len(self.test_partner.message_ids), 1,
+        self.assertEqual(len(self.test_partner.message_ids), 2,
                          'Contains Contact created message')
         self.assertFalse(self.test_partner.message_partner_ids)
 
@@ -83,7 +82,6 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
         # test without autofollow and comment
         self.action.write({
             'mail_post_autofollow': False,
-            'mail_post_method': 'comment',
             'state': 'mail_post',
             'template_id': self.template.id
         })
@@ -106,19 +104,20 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
         # test with autofollow and note
         self.action.write({
             'mail_post_autofollow': True,
-            'mail_post_method': 'note'
+            'state': 'log_note',
+            'log_note_note': 'Hello %s' % self.test_partner.name
         })
         with self.assertSinglePostNotifications(
-                [{'partner': self.test_partner, 'type': 'email', 'status': 'ready'}],
+                [],
                 message_info={'content': 'Hello %s' % self.test_partner.name,
-                              'message_type': 'auto_comment',
+                              'message_type': 'notification',
                               'subtype': 'mail.mt_note',
                              }
             ):
             self.action.with_context(self.context).run()
         self.assertEqual(len(self.test_partner.message_ids), 3,
                          '2 new messages produced')
-        self.assertEqual(self.test_partner.message_partner_ids, self.test_partner)
+        self.assertFalse(self.test_partner.message_partner_ids, "No autofollow in log note")
 
     def test_action_next_activity(self):
         self.action.write({
@@ -162,7 +161,7 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
         self.assertEqual(self.env['mail.activity'].search_count([('summary', '=', 'TestNew')]), 1)
 
     def test_action_next_activity_from_x2m_user(self):
-        self.test_partner.user_ids = self.user_demo | self.user_admin
+        self.test_partner.user_ids = self.user_employee | self.user_admin
         self.action.write({
             'state': 'next_activity',
             'activity_user_type': 'generic',
@@ -178,7 +177,7 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
             self.env['mail.activity'].search([('res_model', '=', 'res.partner'), ('res_id', '=', self.test_partner.id)]),
             [{
                 'summary': 'TestNew',
-                'user_id': self.user_demo.id,  # the first user found
+                'user_id': self.user_employee.id,  # the first user found
             }],
         )
 
@@ -206,7 +205,7 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
             action_form.activity_note = 'Hello world'
             action_form.activity_date_deadline_range = 3
             action_form.activity_date_deadline_range_type = 'weeks'
-            action_form.activity_user_id = self.user_demo
+            action_form.activity_user_id = self.user_employee
             action_form.activity_type_id = email_activity_type
             self.assertEqual(action_form.activity_summary, 'Email', 'activity_summary should be changed to "Email"')
             self.assertEqual(action_form.activity_note, '<p>Default note for email</p>', 'activity_note should be changed to default note of email activity')
@@ -214,7 +213,7 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
             self.assertEqual(action_form.activity_date_deadline_range_type, 'weeks')
             self.assertEqual(action_form.activity_type_id, email_activity_type)
             self.assertEqual(action_form.activity_user_type, 'specific')
-            self.assertEqual(action_form.activity_user_id, self.user_demo)
+            self.assertEqual(action_form.activity_user_id, self.user_employee)
 
             action_form.activity_user_type = 'generic'
             self.assertFalse(action_form.activity_user_id)
@@ -355,7 +354,6 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
 
         # update action: send an email
         self.action.write({
-            'mail_post_method': 'email',
             'state': 'mail_post',
             'model_id': self.env['ir.model'].search([('model', '=', 'mail.test.nothread')], limit=1).id,
             'model_name': 'mail.test.nothread',
@@ -379,3 +377,44 @@ class TestServerActionsEmail(MailCommon, TestServerActionsBase):
             }
         )
         self.assertNotIn('Powered by', mail.body_html, 'Body should contain the notification layout')
+
+    def test_action_followers_subtypes(self):
+        new_partner = self.env['res.partner'].create({'name': 'Ada Lovelace'})
+        mt_note = self.env.ref('mail.mt_note')
+
+        self.action.write({
+            'state': 'followers',
+            'partner_ids': [Command.set(new_partner.ids)],
+            'subtype_ids': [Command.set(mt_note.ids)],
+        })
+
+        self.action.with_context(self.context).run()
+
+        follower = self.test_partner.message_follower_ids.filtered(
+            lambda f: f.partner_id == new_partner
+        )
+        self.assertTrue(follower, "Partner should have been added as a follower")
+        self.assertEqual(follower.subtype_ids, mt_note, "Partner should only follow the 'Notes' subtype")
+
+    def test_action_followers_default_subtypes(self):
+        new_partner = self.env['res.partner'].create({'name': 'Ada Lovesubtypes'})
+
+        self.action.write({
+            'state': 'followers',
+            'partner_ids': [Command.set(new_partner.ids)],
+            'subtype_ids': [Command.clear()],
+        })
+
+        self.action.with_context(self.context).run()
+
+        follower = self.test_partner.message_follower_ids.filtered(
+            lambda f: f.partner_id == new_partner
+        )
+        self.assertTrue(follower, "Partner should have been added as a follower")
+        self.assertEqual(
+            follower.subtype_ids,
+            self.env["mail.message.subtype"].search([
+                ('default', '=', True),
+                '|', ('res_model', '=', False), ('res_model', '=', self.action.model_name)
+            ]),
+            "Partner should follow default subtypes")

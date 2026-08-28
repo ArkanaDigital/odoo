@@ -15,7 +15,7 @@ from odoo.addons.phone_validation.tools import phone_validation
 from odoo.exceptions import UserError, AccessError, ValidationError
 from odoo.fields import Domain
 from odoo.tools.translate import _
-from odoo.tools import email_normalize_all, is_html_empty, groupby, parse_contact_from_email, SQL
+from odoo.tools import clean_context, email_normalize_all, is_html_empty, groupby, parse_contact_from_email, SQL
 from odoo.tools.misc import get_lang
 
 from . import crm_stage
@@ -984,19 +984,18 @@ class CrmLead(models.Model):
 
     @api.model
     def _read_group_stage_ids(self, stages, domain):
-        # retrieve team_id from the context and write the domain
-        # - ('id', 'in', stages.ids): add columns that should be present
-        # - OR ('fold', '=', False): add default columns that are not folded
-        # - OR ('team_ids', '=', team_id), ('fold', '=', False) if team_id: add team columns that are not folded
-        team_id = self.env.context.get('default_team_id')
-        team_ids = self.env.user.crm_team_ids._ids if self.env.context.get('show_user_team_stages') else ()
-        team_ids += (team_id,) if team_id else ()
-        search_domain = ['|', ('id', 'in', stages.ids), ('team_ids', '=', False)]
-        if team_ids:
-            search_domain = ['|', ('id', 'in', stages.ids), '|', ('team_ids', '=', False), ('team_ids', 'in', team_ids)]
+        default_team_id = self.env.context.get('default_team_id')
+        if self.env.context.get('show_team_switcher') and default_team_id:
+            team_ids = [default_team_id]
+        else:
+            team_ids = self.env.user.crm_team_ids.ids if self.env.context.get('show_user_team_stages') else []
+            team_ids += [default_team_id] if default_team_id else []
 
         # perform search
-        stage_ids = stages.sudo()._search(search_domain, order=stages._order)
+        stage_ids = stages.sudo()._search(
+            Domain('id', 'in', stages.ids) | self.env['crm.stage']._get_visible_stages_domain(team_ids),
+            order=stages._order
+        )
         return stages.browse(stage_ids)
 
     def _stage_find(self, team_id=False, domain=None, order='sequence, id', limit=1):
@@ -1119,12 +1118,12 @@ class CrmLead(models.Model):
         if len(self.message_ids) >= 25:
             return _('Phew, that took some effort — but you nailed it. Good job!')
 
-        team_condition = f'team_id = {self.team_id.id}' if self.team_id else 'team_id IS NULL'
-        source_case = f'source_id = {self.source_id.id} AND {team_condition}' if self.source_id else 'false'
-        country_case = f'country_id = {self.country_id.id} AND {team_condition}' if self.country_id else 'false'
+        team_condition = SQL('team_id = %s', self.team_id.id) if self.team_id else SQL('team_id IS NULL')
+        source_case = SQL('source_id = %s AND %s', self.source_id.id, team_condition) if self.source_id else SQL('FALSE')
+        country_case = SQL('country_id = %s AND %s', self.country_id.id, team_condition) if self.country_id else SQL('FALSE')
         tz_midnight = fields.Datetime.now().astimezone(ZoneInfo(self.env.user.tz or self.user_id.tz or 'UTC')).replace(hour=0, minute=0, second=0)
         tz_midnight_in_utc = tz_midnight.astimezone(UTC).replace(tzinfo=None)
-        query = f"""
+        query = SQL("""
         SELECT
             MAX(CASE WHEN team_id = %(team_id)s AND COALESCE(date_closed, create_date) >= %(tz_midnight)s - INTERVAL '31 days' AND id <> %(lead_id)s THEN expected_revenue ELSE 0 END) AS max_team_31,
             MAX(CASE WHEN team_id = %(team_id)s AND COALESCE(date_closed, create_date) >= %(tz_midnight)s - INTERVAL '7 days'  AND id <> %(lead_id)s THEN expected_revenue ELSE 0 END) AS max_team_7,
@@ -1136,8 +1135,8 @@ class CrmLead(models.Model):
             COUNT(CASE WHEN user_id = %(user_id)s AND COALESCE(date_closed, create_date) >= %(tz_midnight)s - INTERVAL '2 days' AND COALESCE(date_closed, create_date) < %(tz_midnight)s - INTERVAL '1 days' THEN 1 ELSE NULL END) AS count_user_closed_minus2day,
             COUNT(CASE WHEN user_id = %(user_id)s AND COALESCE(date_closed, create_date) >= %(tz_midnight)s - INTERVAL '1 days' AND COALESCE(date_closed, create_date) < %(tz_midnight)s THEN 1 ELSE NULL END) AS count_user_closed_yesterday,
             COUNT(CASE WHEN user_id = %(user_id)s AND COALESCE(date_closed, create_date) >= %(tz_midnight)s THEN 1 ELSE NULL END) AS count_user_closed_today,
-            COUNT(CASE WHEN {source_case} THEN 1 ELSE NULL END) AS count_source_closed_year,
-            COUNT(CASE WHEN {country_case} THEN 1 ELSE NULL END) AS count_country_closed_year
+            COUNT(CASE WHEN %(source_case)s THEN 1 ELSE NULL END) AS count_source_closed_year,
+            COUNT(CASE WHEN %(country_case)s THEN 1 ELSE NULL END) AS count_country_closed_year
             FROM crm_lead
             WHERE
                 type = 'opportunity'
@@ -1149,14 +1148,15 @@ class CrmLead(models.Model):
                 DATE_TRUNC('year', COALESCE(date_closed, create_date)) = DATE_TRUNC('year', %(tz_midnight)s)
             AND
                 (user_id = %(user_id)s OR team_id = %(team_id)s)
-        """
-        self.env.cr.execute(query, {
-            'user_id': self.env.user.id,
-            'team_id': self.team_id.id or -1,
-            'lead_id': self.id,
-            'tz_midnight': tz_midnight_in_utc,
-        })
-        query_result = self.env.cr.dictfetchone()
+            """,
+            user_id=self.env.user.id,
+            team_id=self.team_id.id or -1,
+            lead_id=self.id,
+            tz_midnight=tz_midnight_in_utc,
+            source_case=source_case,
+            country_case=country_case,
+        )
+        query_result = self.env.execute_query_dict(query)[0]
 
         def _is_lower_than_expected_revenue(value):
             return self.expected_revenue and value is not None and value < self.expected_revenue
@@ -1968,7 +1968,8 @@ class CrmLead(models.Model):
 
         :return: newly-created partner browse record
         """
-        Partner = self.env['res.partner']
+        # Avoid propagating lead default values to res.partner creation.
+        Partner = self.env['res.partner'].with_context(clean_context(self.env.context))
         contact_name = self.contact_name
         if not contact_name:
             contact_name = parse_contact_from_email(self.email_from)[0] if self.email_from else False

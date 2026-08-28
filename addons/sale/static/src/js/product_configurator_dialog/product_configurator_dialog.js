@@ -1,5 +1,5 @@
 import { useSubEnv } from "@web/owl2/utils";
-import { Component, onMounted, onWillStart, onWillUnmount, proxy } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, useProps, proxy, t } from "@odoo/owl";
 import { Dialog } from '@web/core/dialog/dialog';
 import { _t } from "@web/core/l10n/translation";
 import { rpc } from "@web/core/network/rpc";
@@ -7,57 +7,46 @@ import { ProductList } from "../product_list/product_list";
 import { formatCurrency } from '@web/core/currency';
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 
+export const productConfiguratorDialogOptionsShape = {
+    canChangeVariant: t.boolean().optional(),
+    showQuantity: t.boolean().optional(),
+    showPrice: t.boolean().optional(),
+};
+
+export const productConfiguratorDialogProps = {
+    productTemplateId: t.number(),
+    products: t.array(),
+    optionalProducts: t.array(),
+    customPtavs: t.array(
+        t.object({
+            id: t.number(),
+            value: t.string(),
+        })
+    ),
+    companyId: t.number().optional(),
+    pricelistId: t.number().optional(),
+    currencyId: t.number().optional(),
+    selectedComboItems: t
+        .array(
+            t.object({
+                name: t.string(),
+            })
+        )
+        .optional(),
+    soDate: t.string(),
+    size: t.selection(["sm", "md", "lg", "xl", "fs", "fullscreen"]).optional(),
+    edit: t.boolean().optional(false),
+    options: t.object(productConfiguratorDialogOptionsShape).optional(),
+    save: t.function(),
+    discard: t.function(),
+    close: t.function(), // This is the close from the env of the Dialog Component
+};
+
 export class ProductConfiguratorDialog extends Component {
     static components = { Dialog, ProductList};
     static template = 'sale.ProductConfiguratorDialog';
-    static props = {
-        productTemplateId: Number,
-        ptavIds: { type: Array, element: Number },
-        customPtavs: {
-            type: Array,
-            element: Object,
-            shape: {
-                id: Number,
-                value: String,
-            }
-        },
-        quantity: Number,
-        productUOMId: { type: Number, optional: true },
-        companyId: { type: Number, optional: true },
-        pricelistId: { type: Number, optional: true },
-        currencyId: { type: Number, optional: true },
-        selectedComboItems: {
-            type: Array,
-            element: Object,
-            shape: {
-                name: String,
-            },
-            optional: true,
-        },
-        soDate: String,
-        size: {
-            type: String,
-            optional: true,
-            validate: (s) => ["sm", "md", "lg", "xl", "fs", "fullscreen"].includes(s),
-        },
-        edit: { type: Boolean, optional: true },
-        options: {
-            type: Object,
-            optional: true,
-            shape: {
-                canChangeVariant: { type: Boolean, optional: true },
-                showQuantity : { type: Boolean, optional: true },
-                showPrice : { type: Boolean, optional: true },
-                showPackaging: { type: Boolean, optional: true },
-            },
-        },
-        save: Function,
-        discard: Function,
-        close: Function, // This is the close from the env of the Dialog Component
-    };
-    static defaultProps = {
-        edit: false,
-    }
+    static props = productConfiguratorDialogProps;
+    props = useProps(this.constructor.props);
 
     setup() {
         this.title = _t("Configure your product");
@@ -66,10 +55,6 @@ export class ProductConfiguratorDialog extends Component {
             products: [],
             optionalProducts: [],
         });
-        // Nest the currency id in an object so that it stays up to date in the `env`, even if we
-        // modify it in `onWillStart` afterwards.
-        this.currency = { id: this.props.currencyId };
-        this.getValuesUrl = '/sale/product_configurator/get_values';
         this.createProductUrl = '/sale/product_configurator/create_product';
         this.updateCombinationUrl = '/sale/product_configurator/update_combination';
         this.getOptionalProductsUrl = '/sale/product_configurator/get_optional_products';
@@ -78,10 +63,9 @@ export class ProductConfiguratorDialog extends Component {
 
         useSubEnv({
             mainProductTmplId: this.props.productTemplateId,
-            currency: this.currency,
+            currencyId: this.props.currencyId,
             canChangeVariant: this.props.options?.canChangeVariant ?? true,
             showQuantity: this.props.options?.showQuantity ?? true,
-            showPackaging: this.props.options?.showPackaging ?? true,
             showPrice: this.props.options?.showPrice ?? true,
             addProduct: this._addProduct.bind(this),
             removeProduct: this._removeProduct.bind(this),
@@ -92,32 +76,23 @@ export class ProductConfiguratorDialog extends Component {
             isPossibleCombination: this._isPossibleCombination,
         });
 
-        onWillStart(async () => {
-            const {
-                products,
-                optional_products,
-                currency_id,
-            } = await this._loadData(this.props.edit);
+        // If the product configurator is opened after the combo configurator (which happens if
+        // a combo product has optional products), props.products will contain a single product
+        // (i.e. the combo product), which should be linked to the previously selected combo
+        // items.
 
-            // If the product configurator is opened after the combo configurator (which happens if
-            // a combo product has optional products), `_loadData` will return a single product
-            // (i.e. the combo product), which should be linked to the previously selected combo
-            // items.
-            products[0].selectedComboItems = this.props.selectedComboItems || [];
+        this.props.products[0].selectedComboItems = this.props.selectedComboItems || [];
 
-            this.state.products = products;
-            this.state.optionalProducts = optional_products;
-            for (const customPtav of this.props.customPtavs) {
-                this._updatePTAVCustomValue(
-                    this.env.mainProductTmplId,
-                    customPtav.id,
-                    customPtav.value
-                );
-            }
-            this._checkExclusions(this.state.products[0]);
-            // Use the currency id retrieved from the server if none was provided in the props.
-            this.currency.id ??= currency_id;
-        });
+        this.state.products = this.props.products;
+        this.state.optionalProducts = this.props.optionalProducts;
+        for (const customPtav of this.props.customPtavs) {
+            this._updatePTAVCustomValue(
+                this.env.mainProductTmplId,
+                customPtav.id,
+                customPtav.value
+            );
+        }
+        this._checkExclusions(this.state.products[0]);
 
         onMounted(() => this.env.bus.trigger("FORM-CONTROLLER:FORM-IN-DIALOG:ADD"));
         onWillUnmount(() => this.env.bus.trigger("FORM-CONTROLLER:FORM-IN-DIALOG:REMOVE"));
@@ -137,28 +112,12 @@ export class ProductConfiguratorDialog extends Component {
             (sum, product) => sum + product.price * product.quantity,
             0
         );
-        return formatCurrency(total, this.currency.id);
+        return formatCurrency(total, this.props.currencyId);
     }
 
     //--------------------------------------------------------------------------
     // Data Exchanges
     //--------------------------------------------------------------------------
-
-    async _loadData(onlyMainProduct) {
-        return rpc(this.getValuesUrl, {
-            product_template_id: this.props.productTemplateId,
-            quantity: this.props.quantity,
-            currency_id: this.currency.id,
-            so_date: this.props.soDate,
-            product_uom_id: this.props.productUOMId,
-            company_id: this.props.companyId,
-            pricelist_id: this.props.pricelistId,
-            ptav_ids: this.props.ptavIds,
-            only_main_product: onlyMainProduct,
-            show_packaging: this.env.showPackaging,
-            ...this._getAdditionalRpcParams(),
-        });
-    }
 
     async _createProduct(product) {
         return rpc(this.createProductUrl, {
@@ -171,7 +130,7 @@ export class ProductConfiguratorDialog extends Component {
         return rpc(this.updateCombinationUrl, {
             product_template_id: product.product_tmpl_id,
             ptav_ids: this._getCombination(product),
-            currency_id: this.currency.id,
+            currency_id: this.props.currencyId,
             so_date: this.props.soDate,
             quantity: quantity,
             product_uom_id: uomId,
@@ -184,7 +143,7 @@ export class ProductConfiguratorDialog extends Component {
     async _getOptionalProducts(product) {
         return rpc(this.getOptionalProductsUrl, {
             product_template_id: product.product_tmpl_id,
-            currency_id: this.currency.id,
+            currency_id: this.props.currencyId,
             so_date: this.props.soDate,
             company_id: this.props.companyId,
             pricelist_id: this.props.pricelistId,
@@ -289,11 +248,22 @@ export class ProductConfiguratorDialog extends Component {
         if (product.uom.id === uomId) {
             return false;
         }
-        const { price } = await this._updateCombination(product, product.quantity, uomId);
-        product.price = parseFloat(price);
-        product.uom = product.available_uoms.find((uom) => uom.id === uomId);
+        const combination = await this._updateCombination(product, product.quantity, uomId);
+        this._handleUnitOfMeasureUpdate(product, combination, uomId);
 
         return true;
+    }
+
+    /**
+     * Apply the update after changing the product uom.
+     *
+     * @param {Object} product - The product for which the uom was changed.
+     * @param {Object} combination - The result of the `_updateCombination`.
+     * @param {Number} uomId - The new uom of the product, as an `uom.uom` id.
+     */
+    _handleUnitOfMeasureUpdate(product, combination, uomId) {
+        product.price = parseFloat(combination.price);
+        product.uom = product.available_uoms.find((uom) => uom.id === uomId);
     }
 
     /**

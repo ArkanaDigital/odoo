@@ -3,10 +3,11 @@ import { registry } from "@web/core/registry";
 import { PRODUCT_PAGE_OPTION_SELECTOR } from "./product_page_option";
 import { rpc } from "@web/core/network/rpc";
 import { isImageCorsProtected } from "@html_editor/utils/image";
-import { TABS } from "@html_editor/main/media/media_dialog/media_dialog_utils";
 import { WebsiteConfigAction, PreviewableWebsiteConfigAction } from "@website/builder/plugins/customize_website_plugin";
 import { BuilderAction } from "@html_builder/core/builder_action";
 import { generateImageVariants } from "@web/core/utils/image_library";
+import { withSequence } from "@html_editor/utils/resource";
+import { _t } from "@web/core/l10n/translation";
 import wSaleUtils from "@website_sale/js/website_sale_utils";
 import { getDataURLFromFile } from "@web/core/utils/urls";
 
@@ -25,9 +26,6 @@ export class ProductPageOptionPlugin extends Plugin {
             ProductPageImageRoundnessAction,
             ProductPageImageGridSpacingAction,
             ProductPageImageGridColumnsAction,
-            ProductReplaceMainImageAction,
-            ProductAddExtraImageAction,
-            ProductRemoveAllExtraImagesAction,
         },
         clean_for_save_processors: (el) => {
             // TODO the content of this clean_for_save_processors should probably
@@ -47,15 +45,15 @@ export class ProductPageOptionPlugin extends Plugin {
 
             const mainEl = el.querySelector(PRODUCT_PAGE_OPTION_SELECTOR);
             if (!mainEl) {
-                return;
+                return el;
             }
             const productDetailMain = mainEl.querySelector("#product_detail_main");
             if (!productDetailMain) {
-                return;
+                return el;
             }
             const accordionEl = productDetailMain.querySelector("#product_accordion");
             if (!accordionEl) {
-                return;
+                return el;
             }
 
             const accordionItemsEls = accordionEl.querySelectorAll(".accordion-item");
@@ -68,10 +66,35 @@ export class ProductPageOptionPlugin extends Plugin {
                     accordionCollapseEl.classList.remove("show");
                 }
             });
+            return el;
         },
         builder_options_render_context: {
             productPageOptionSelector: PRODUCT_PAGE_OPTION_SELECTOR,
-        }
+        },
+        floating_snippet_scope_providers: [
+            withSequence(30, {
+                label: _t("This product"),
+                containerSelector: "#product_full_description",
+                isThisPage: true,
+            }),
+            withSequence(30, {
+                label: _t("This page"),
+                containerSelector: "#oe_structure_products_header_shop",
+                isThisPage: true,
+            }),
+            withSequence(20, {
+                label: _t("This category"),
+                containerSelector: "#category_header, #category_footer",
+            }),
+            withSequence(10, {
+                label: _t("All categories"),
+                containerSelector: "#oe_structure_website_sale_products_2, #oe_structure_website_sale_products_1",
+            }),
+            withSequence(5, {
+                label: _t("All products"),
+                containerSelector: "#oe_structure_website_sale_product_2, #oe_structure_website_sale_product_1",
+            }),
+        ],
     };
 
     setup() {
@@ -278,111 +301,6 @@ export class ProductPageImageGridColumnsAction extends BaseProductPageAction {
         await rpc("/shop/config/website", {
             product_page_grid_columns: value,
         });
-    }
-}
-export class ProductReplaceMainImageAction extends BaseProductPageAction {
-    static id = "productReplaceMainImage";
-    static dependencies = [...super.dependencies, "media"];
-    setup() {
-        super.setup();
-        this.reload = false;
-        this.canTimeout = false;
-    }
-    async apply({ editingElement }) {
-        await this.dependencies.media.openMediaDialog(this.getMediaDialogProps({ editingElement }));
-    }
-
-    getMediaDialogProps({ editingElement: productDetailMainEl }){
-        // Emulate click on the main image of the carousel.
-        const image = productDetailMainEl.querySelector(
-            `[data-oe-model="${this.model}"][data-oe-field=image_1920] img`
-        );
-        return {
-            multiImages: false,
-            visibleTabs: ["IMAGES"],
-            node: image,
-            save: (imgEl, selectedMedia) => {
-                const attachment = selectedMedia[0];
-                if (["image/gif", "image/svg+xml"].includes(attachment.mimetype)) {
-                    image.src = attachment.image_src;
-                    return;
-                }
-                const originalSize = Math.max(imgEl.width, imgEl.height);
-                const ratio = Math.min(originalSize, 1920) / originalSize;
-                const canvas = document.createElement("canvas");
-                canvas.width = parseInt(imgEl.width * ratio);
-                canvas.height = parseInt(imgEl.height * ratio);
-                const ctx = canvas.getContext("2d")
-                ctx.fillStyle = "transparent";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(imgEl, 0, 0);
-                image.src = canvas.toDataURL("image/webp");
-                const { model, productProductID: productID, productTemplateID: templateID } = this;
-                const resID = parseInt(model === "product.product" ? productID : templateID);
-                this.services.orm.write(model, [resID], {
-                    image_1920: image.src.split(",")[1],
-                });
-            },
-        }
-    }
-}
-
-export class ProductAddExtraImageAction extends BaseProductPageAction {
-    static id = "productAddExtraImage";
-    static dependencies = [...super.dependencies, "media"];
-    setup() {
-        super.setup();
-        this.canTimeout = false;
-    }
-    async load({ editingElement: el }) {
-        if (this.model === "product.template") {
-            this.services.notification.add(
-                'Pictures will be added to the main image. Use "Instant" attributes to set pictures on each variants',
-                { type: "info" }
-            );
-        }
-        return new Promise((resolve) => {
-            const onClose = this.dependencies.media.openMediaDialog(this.getMediaDialogProps({ editingElement: el, loadPromiseResolveFunction: resolve }));
-            // Make sure to resolve with a Falsy value when the mediaDialog is closed without selecting an image so that
-            // loadResult is Falsy and apply() cancels the reload of the page.
-            onClose.then(() => resolve());
-        });
-    }
-
-    getMediaDialogProps({ editingElement, loadPromiseResolveFunction }) {
-        return {
-            addFieldImage: true,
-            multiImages: true,
-            visibleTabs: ["IMAGES", "VIDEOS"],
-            node: editingElement,
-            // Kinda hack-ish but the regular save does not get the information we need
-            save: async (imgEls, selectedMedia, activeTab) => {
-                if (selectedMedia.length) {
-                    const type =
-                        activeTab === TABS["IMAGES"].id ? "image" : "video";
-                    loadPromiseResolveFunction({ imgEls, selectedMedia, type });
-                }
-            },
-        };
-    }
-    async apply({ editingElement: el, loadResult }) {
-        if (!loadResult) {
-            return BuilderAction.cancelReload;
-        }
-        const { imgEls, selectedMedia, type } = loadResult;
-        await this.extraMediaSave(el, type, selectedMedia, imgEls);
-    }
-}
-export class ProductRemoveAllExtraImagesAction extends BaseProductPageAction {
-    static id = "productRemoveAllExtraImages";
-    async apply({ editingElement: el }) {
-        // Removes all extra-images from the product.
-        await rpc(`/shop/product/clear-images`, {
-            model: this.model,
-            product_product_id: this.productProductID,
-            product_template_id: this.productTemplateID,
-            combination_ids: this.getSelectedVariantValues(el),
-        })
     }
 }
 

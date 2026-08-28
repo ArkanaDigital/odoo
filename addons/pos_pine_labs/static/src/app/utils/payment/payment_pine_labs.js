@@ -126,6 +126,12 @@ export class PaymentPineLabs extends PaymentInterface {
             this._showError(response?.error || _t("Pine Labs payment cancellation request failed"));
             return false;
         } else if (response.notification) {
+            if (!line) {
+                // This can happen if the payment line was processed or reset
+                // while waiting for the cancellation response from Pine Labs
+                this._removePaymentHandler();
+                return false;
+            }
             line.setPaymentStatus("retry");
             if (this.payment_stopped) {
                 this._showError(_t("Transaction failed due to inactivity"));
@@ -208,7 +214,7 @@ export class PaymentPineLabs extends PaymentInterface {
             clearTimeout(this.pollingTimeout);
 
             // If the user navigates to another screen, stop the polling
-            if (this.pos.router.state.current !== "PaymentScreen") {
+            if (this.pos.router.currentScreen() !== "PaymentScreen") {
                 this._removePaymentHandler();
                 return;
             }

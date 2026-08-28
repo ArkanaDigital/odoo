@@ -1,6 +1,6 @@
-import { CallDropdown } from "@mail/discuss/call/common/call_dropdown";
 import { attClassObjectToString } from "@mail/utils/common/format";
-import { Component, onWillUnmount, props, types } from "@odoo/owl";
+import { propSignal } from "@mail/utils/common/hooks";
+import { Component, computed, onWillUnmount, t, useProps } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { Action as ActionModel } from "@mail/core/common/action";
@@ -15,11 +15,11 @@ const actionListProps = [
 ];
 
 const actionListPropsSchema = {
-    "dropdown?": types.boolean(),
-    "fw?": types.boolean(),
-    "hasBtnBg?": types.boolean(),
-    "inline?": types.boolean(),
-    "odooControlPanelSwitchStyle?": types.boolean(),
+    dropdown: t.boolean().optional(),
+    fw: t.boolean().optional(true),
+    hasBtnBg: t.boolean().optional(),
+    inline: t.boolean().optional(),
+    odooControlPanelSwitchStyle: t.boolean().optional(),
 };
 
 class Action extends Component {
@@ -31,24 +31,18 @@ class Action extends Component {
     }
 
     get Dropdown() {
-        if (this.env.inDiscussCallView?.isPip) {
-            return CallDropdown;
-        }
         return Dropdown;
     }
 
     setup() {
         super.setup();
-        this.props = props(
-            {
-                action: types.instanceOf(ActionModel),
-                "isFirstInGroup?": types.boolean(),
-                "isLastInGroup?": types.boolean(),
-                "style?": types.string(),
-                ...actionListPropsSchema,
-            },
-            { fw: true }
-        );
+        this.props = useProps({
+            action: t.instanceOf(ActionModel),
+            isFirstInGroup: t.boolean().optional(),
+            isLastInGroup: t.boolean().optional(),
+            style: t.string().optional(),
+            ...actionListPropsSchema,
+        });
         this.store = useService("mail.store");
         this.ui = useService("ui");
         this.attClassObjectToString = attClassObjectToString;
@@ -115,14 +109,12 @@ export class ActionList extends Component {
 
     setup() {
         super.setup();
-        this.props = props({
-            actions: types.array(
-                types.or([
-                    types.instanceOf(ActionModel),
-                    types.array(types.instanceOf(ActionModel)),
-                ])
-            ),
-            "groupClass?": types.string(),
+        this.actions = propSignal(
+            "actions",
+            t.array(t.or([t.instanceOf(ActionModel), t.array(t.instanceOf(ActionModel))]))
+        );
+        this.props = useProps({
+            groupClass: t.string().optional(),
             ...actionListPropsSchema,
         });
         this.store = useService("mail.store");
@@ -130,15 +122,16 @@ export class ActionList extends Component {
         this.actionListProps = actionListProps;
     }
 
-    get groups() {
+    groups = computed(() => {
+        const actions = this.actions();
         let groups;
-        if (this.props.actions.find((i) => Array.isArray(i))) {
-            groups = this.props.actions;
+        if (actions.find((i) => Array.isArray(i))) {
+            groups = actions;
         } else {
-            groups = [this.props.actions];
+            groups = [actions];
         }
         return groups.filter((group) => group.length); // don't show empty groups
-    }
+    });
 
     get hasBtnBg() {
         return this.props.odooControlPanelSwitchStyle || this.props.hasBtnBg;

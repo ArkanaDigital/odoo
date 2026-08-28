@@ -15,7 +15,7 @@ describe("pos.order restaurant patches", () => {
         order.setCustomerCount(3);
         expect(order.getCustomerCount()).toBe(3);
         order.setCustomerCount(4);
-        expect(order.amountPerGuest()).toBe(4.4625);
+        expect(order.amountPerGuest()).toBe(148.75);
     });
 
     test("isDirectSale", async () => {
@@ -62,7 +62,7 @@ describe("pos.order restaurant patches", () => {
         expect(name).toBe("T 1 - 1001");
         child.parent_id = table;
         name = order.getName();
-        expect(name).toBe("T 1 & 2 - 1001");
+        expect(name).toBe("T 1 & 3 - 1001");
     });
 
     test("preparationChanges after split order", async () => {
@@ -277,15 +277,15 @@ describe("pos.order restaurant patches", () => {
         expect(sodaLine.prep_line_ids[0].quantity).toBe(1);
         expect(friesLine.prep_line_ids[0].quantity).toBe(1);
 
-        patchWithCleanup(store, {
-            async createComboFromLines(productTmpl, combinations) {
-                return super.createComboFromLines(productTmpl, combinations.slice(0, 1));
+        patchWithCleanup(store.comboSuggestion, {
+            getPotentialCombos(order) {
+                return super.getPotentialCombos(order).slice(0, 1);
             },
         });
 
         const orderSummary = await mountWithCleanup(OrderSummary);
 
-        expect(orderSummary.state.potentialCombos.length).toBe(1);
+        expect(orderSummary.potentialCombos().length).toBe(1);
         await orderSummary.applyBestCombo();
         const comboParent = order.lines.find((l) => l.combo_line_ids.length > 0);
         const sodaComboLine = comboParent.combo_line_ids.find((l) => l.product_id.id === 22);
@@ -315,5 +315,17 @@ describe("pos.order restaurant patches", () => {
         course2.fired = true;
         order.ensureCourseSelection();
         expect(order.getSelectedCourse().uuid).toBe(course1.uuid);
+    });
+
+    test("isTippedAfterPayment", async () => {
+        const store = await setupPosEnv();
+        const order = await getFilledOrder(store);
+        order.config_id.set_tip_after_payment = true;
+        order.state = "paid";
+        order.amount_paid = order.priceIncl - 1;
+        expect(order.isTippedAfterPayment).toBe(true);
+
+        order.amount_paid = order.priceIncl;
+        expect(order.isTippedAfterPayment).toBe(false);
     });
 });

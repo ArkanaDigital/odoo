@@ -7,6 +7,13 @@ from odoo.tests import tagged, Form
 
 class TestReturnPicking(TestStockCommon):
 
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'stock.group_stock_user',
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     def test_stock_return_picking_line_creation(self):
         picking_out = self.PickingObj.create({
             'picking_type_id': self.picking_type_out.id,
@@ -127,7 +134,7 @@ class TestReturnPicking(TestStockCommon):
         """
             Test returns of incoming pickings have the same partner assigned to them
         """
-        partner = self.env['res.partner'].create({'name': 'Jean'})
+        partner = self.env['res.partner'].sudo().create({'name': 'Jean'})
         receipt = self.env['stock.picking'].create({
             'picking_type_id': self.picking_type_in.id,
             'location_id': self.supplier_location.id,
@@ -147,6 +154,8 @@ class TestReturnPicking(TestStockCommon):
         return_picking.move_ids.product_uom_qty = 1.0
         return_picking.button_validate()
         self.assertEqual(return_picking.move_ids[0].partner_id.id, receipt.partner_id.id)
+        self.assertEqual(return_picking.move_ids.reference, return_picking.name)
+        self.assertEqual(return_picking.move_line_ids.reference, return_picking.name)
 
     def test_stock_return_for_exchange(self):
         '''

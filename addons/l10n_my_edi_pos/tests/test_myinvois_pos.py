@@ -20,6 +20,8 @@ CONTACT_PROXY_METHOD = 'odoo.addons.l10n_my_edi.models.account_edi_proxy_user.Ac
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestMyInvoisPoS(TestPoSCommon, HttpCase):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @AccountTestInvoicingCommon.setup_country('my')
     def setUpClass(cls):
@@ -34,6 +36,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
         })
         cash_payment = cls.env['pos.payment.method'].create({
             'name': 'Cash Payment',
+            'type': 'cash',
             'journal_id': cash_journal.id,
             'receivable_account_id': cls.pos_receivable_cash.id,
             'company_id': cls.env.company.id,
@@ -87,7 +90,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
         pos_journal = cls.env['account.journal'].create({
             "name": "Point of Sale",
             "code": "POSUSD",
-            "type": "general",
+            "type": "sale",
             "company_id": cls.env.company.id,
             "currency_id": cls.foreign_currency.id,
         })
@@ -98,6 +101,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
         })
         cash_payment_usd = cls.env['pos.payment.method'].create({
             'name': 'Cash Payment',
+            'type': 'cash',
             'journal_id': cash_journal_usd.id,
             'receivable_account_id': cls.pos_receivable_cash.id,
             'company_id': cls.env.company.id,
@@ -221,7 +225,8 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
 
     @mute_logger('odoo.addons.point_of_sale.models.pos_order')
     def test_consolidate_invoices_prepayment_unlink(self):
-        """Ensure that consolidated invoices have a PaidAmount of 0.00 and the correct PayableAmount."""
+        """Ensure that consolidated invoices omit the PrepaidPayment node entirely and report the correct
+        PayableAmount."""
         with freeze_time("2025-01-01"):
             with self.with_pos_session():
                 first_order = self._create_order({'pos_order_lines_ui_args': [(self.product_one, 1.0)]})
@@ -243,12 +248,13 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
             self.assertTrue(tax_inclusive_node, "TaxInclusiveAmount node is missing from the XML.")
             expected_total = tax_inclusive_node[0].text
 
-            self._assert_node_values(xml_tree, "cac:PrepaidPayment/cbc:PaidAmount", '0.00')
+            self.assertFalse(xml_tree.xpath("cac:PrepaidPayment", namespaces=NS_MAP), "PrepaidPayment node should be omitted when there is no genuine prepayment.")
             self._assert_node_values(xml_tree, "cac:LegalMonetaryTotal/cbc:PayableAmount", expected_total)
 
     @mute_logger('odoo.addons.point_of_sale.models.pos_order')
     def test_individual_invoice_prepayment_unlink(self):
-        """Ensure that individual POS e-invoices have a PaidAmount of 0.00 and the correct PayableAmount."""
+        """Ensure that individual POS e-invoices with no genuine prepayment omit the PrepaidPayment node
+        entirely and report the correct PayableAmount."""
         with freeze_time("2025-01-01"):
             with self.with_pos_session(), patch(CONTACT_PROXY_METHOD, new=self._mock_successful_submission):
                 order = self._create_order({'pos_order_lines_ui_args': [(self.product_two, 1.0)], 'customer': self.invoicing_customer, 'is_invoiced': True})
@@ -259,7 +265,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
             self.assertTrue(tax_inclusive_node, "TaxInclusiveAmount node is missing from the XML.")
             expected_total = tax_inclusive_node[0].text
 
-            self._assert_node_values(xml_tree, "cac:PrepaidPayment/cbc:PaidAmount", '0.00')
+            self.assertFalse(xml_tree.xpath("cac:PrepaidPayment", namespaces=NS_MAP), "PrepaidPayment node should be omitted when there is no genuine prepayment.")
             self._assert_node_values(xml_tree, "cac:LegalMonetaryTotal/cbc:PayableAmount", expected_total)
 
     @mute_logger('odoo.addons.point_of_sale.models.pos_order')
@@ -328,6 +334,62 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
             }])
 
     @mute_logger('odoo.addons.point_of_sale.models.pos_order')
+    def test_myinvois_state_on_consolidated_order(self):
+        """ The state of the active consolidated invoice is mirrored on its PoS orders. """
+        with freeze_time("2025-01-01"):
+            with self.with_pos_session():
+                first_order = self._create_order({'pos_order_lines_ui_args': [(self.product_one, 1.0)]})
+                second_order = self._create_order({'pos_order_lines_ui_args': [(self.product_two, 1.0)]})
+            orders = first_order | second_order
+
+            # Not consolidated yet.
+            self.assertEqual(orders.mapped('l10n_my_edi_state'), [False, False])
+
+            self.env['myinvois.consolidate.invoice.wizard'].create({
+                'date_from': '2025-01-01',
+                'date_to': '2025-01-31',
+                'consolidation_type': 'pos',
+            }).button_consolidate()
+
+            # The consolidated invoice exists but has not been sent yet: still no state.
+            consolidated_invoice = orders.consolidated_invoice_ids
+            self.assertEqual(len(consolidated_invoice), 1)
+            self.assertFalse(consolidated_invoice.myinvois_state)
+            self.assertEqual(orders.mapped('l10n_my_edi_state'), [False, False])
+
+            with patch(CONTACT_PROXY_METHOD, new=self._mock_pending_submission):
+                # Sent, but MyInvois has not validated it yet.
+                consolidated_invoice.action_submit_to_myinvois()
+                self.assertEqual(consolidated_invoice.myinvois_state, 'in_progress')
+                self.assertEqual(orders.mapped('l10n_my_edi_state'), ['in_progress', 'in_progress'])
+
+                # The status is fetched again later on, and is now final.
+                consolidated_invoice.action_update_submission_status()
+                self.assertEqual(consolidated_invoice.myinvois_state, 'valid')
+                self.assertEqual(orders.mapped('l10n_my_edi_state'), ['valid', 'valid'])
+
+    @mute_logger('odoo.addons.point_of_sale.models.pos_order')
+    def test_myinvois_state_on_singly_invoiced_order(self):
+        """ Test that an order invoiced on its own takes the state of its invoice """
+        with freeze_time("2025-01-01"):
+            with self.with_pos_session(), patch(CONTACT_PROXY_METHOD, new=self._mock_successful_submission):
+                uninvoiced_order = self._create_order({'pos_order_lines_ui_args': [(self.product_one, 1.0)]})
+                invoiced_order = self._create_order({
+                    'pos_order_lines_ui_args': [(self.product_two, 1.0)],
+                    'customer': self.invoicing_customer,
+                    'is_invoiced': True,
+                })
+
+            self.assertEqual(invoiced_order.account_move.l10n_my_edi_state, 'valid')
+            self.assertEqual(invoiced_order.l10n_my_edi_state, 'valid')
+            self.assertFalse(invoiced_order.consolidated_invoice_ids)
+
+            # A non invoiced order still has an invoice from the session's closing entry but no state.
+            self.assertTrue(uninvoiced_order.account_move)
+            self.assertFalse(uninvoiced_order.account_move.l10n_my_edi_state)
+            self.assertFalse(uninvoiced_order.l10n_my_edi_state)
+
+    @mute_logger('odoo.addons.point_of_sale.models.pos_order')
     def test_delete_consolidated_invoice(self):
         with freeze_time("2025-01-01"):
             with self.with_pos_session():
@@ -389,6 +451,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                 first_order = self._create_order({'pos_order_lines_ui_args': [(self.product_one, 1.0)]})
                 second_order = self._create_order({'pos_order_lines_ui_args': [(self.product_two, 1.0)]})
             # Consolidate them
+            self.config.journal_id.currency_id = self.env.ref('base.USD')
             wizard = self.env['myinvois.consolidate.invoice.wizard'].create({
                 'date_from': '2025-01-01',
                 'date_to': '2025-01-31',
@@ -586,6 +649,9 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                             'refunded_orderline_id': first_order.lines[0].id,
                         },
                     ],
+                    'pos_order_ui_args': {
+                        'is_refund': True,
+                    },
                 })
             wizard = self.env['myinvois.consolidate.invoice.wizard'].create({
                 'date_from': '2025-01-01',
@@ -617,6 +683,9 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                             'refunded_orderline_id': first_order.lines[0].id,
                         },
                     ],
+                    'pos_order_ui_args': {
+                        'is_refund': True,
+                    },
                 })
             wizard = self.env['myinvois.consolidate.invoice.wizard'].create({
                 'date_from': '2025-01-01',
@@ -662,7 +731,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                         ],
                     })
                 # If it is, it will work
-                self.invoicing_customer.vat = 'EI00000000010'
+                self.invoicing_customer.write({'vat': 'EI00000000010', 'l10n_my_identification_number': 'NA'})
                 self._create_order({
                     'pos_order_ui_args': {
                         'is_refund': True,
@@ -722,6 +791,9 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                 # Fails, you shouldn't invoice an order that hasn't been sent to myinvois yet.
                 with self.assertRaises(UserError):
                     self._create_order({
+                        'pos_order_ui_args': {
+                            'is_refund': True,
+                        },
                         'pos_order_lines_ui_args': [
                             {
                                 'product': self.product_one,
@@ -731,6 +803,9 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                         ], 'customer': self.invoicing_customer, 'is_invoiced': True,
                     })
                 self._create_order({
+                    'pos_order_ui_args': {
+                        'is_refund': True,
+                    },
                     'pos_order_lines_ui_args': [
                         {
                             'product': self.product_one,
@@ -818,6 +893,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                 fifth_order = self._create_order({'pos_order_lines_ui_args': [(product_1, 1.0), (product_2, 1.0)]})
 
             # Consolidate them
+            self.config.journal_id.currency_id = self.env.ref('base.USD')
             wizard = self.env['myinvois.consolidate.invoice.wizard'].create({
                 'date_from': '2025-01-01',
                 'date_to': '2025-01-31',
@@ -869,13 +945,16 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                 fifth_order = self._create_order({'pos_order_lines_ui_args': [(product_1, 1.0), (product_2, 1.0)]})
 
             # Consolidate them
+            self.config.journal_id.currency_id = self.env.ref('base.USD')  # Crappy patch
             wizard = self.env['myinvois.consolidate.invoice.wizard'].create({
                 'date_from': '2025-01-01',
                 'date_to': '2025-01-31',
                 'consolidation_type': 'pos',
             })
             wizard.button_consolidate()
-            consolidated_invoice = (first_order | second_order | third_order | fourth_order | fifth_order).consolidated_invoice_ids
+            orders = (first_order | second_order | third_order | fourth_order | fifth_order)
+            self.assertEqual(orders.currency_id.name, 'USD')
+            consolidated_invoice = orders.consolidated_invoice_ids
             # We expect a single invoice
             self.assertEqual(len(consolidated_invoice), 1)
             # Add an export custom number; it doesn't make much sense in this flow but supporting it may be useful.
@@ -912,7 +991,7 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
                 "pos_order_lines_ui_args": [(self.product_one, 1.0)],
             })
 
-        self.assertFalse(order.account_move)
+        self.assertFalse(order.is_singly_invoiced)
 
         url = f"/pos/ticket/validate?access_token={order.access_token}"
         response = self.url_open(url)  # GET request to get csrf token
@@ -1012,6 +1091,27 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
             }
         raise UserError('Unexpected endpoint called during a test: %s with params %s.' % (endpoint, params))
 
+    def _mock_pending_submission(self, endpoint, params):
+        """ Mock a successful submission for which MyInvois did not return a final status yet.
+        A later single document status fetch returns 'valid'. """
+        if endpoint == 'api/l10n_my_edi/1/get_submission_statuses':
+            return {
+                'statuses': {
+                    f'12345897451351{8 + i}': {
+                        'status': 'in_progress',
+                        'reason': '',
+                    } for i in range(10)
+                },
+                'document_count': 10,
+            }
+        if endpoint == 'api/l10n_my_edi/1/get_status':
+            return {
+                'status': 'valid',
+                'long_id': '123-789-654',
+                'valid_datetime': '2025-01-01T01:00:00Z',
+            }
+        return self._mock_successful_submission(endpoint, params)
+
     #########
     # Helpers
     #########
@@ -1020,8 +1120,10 @@ class TestMyInvoisPoS(TestPoSCommon, HttpCase):
     def with_pos_session(self):
         session = self.open_new_session(0.0)
         yield session
-        session.post_closing_cash_details(0.0)
-        session.close_session_from_ui()
+        cash_pm = self.config._get_cash_payment_method()
+        session.close_session_from_ui({
+            cash_pm.id: 0,
+        })
 
     def _create_order(self, ui_data):
         return next(iter(self._create_orders([ui_data]).values()))

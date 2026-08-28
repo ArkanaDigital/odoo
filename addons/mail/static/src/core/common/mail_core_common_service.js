@@ -32,14 +32,18 @@ export class MailCoreCommon {
                 message.delete();
             }
         });
-        this.busService.subscribe("res.users.settings", (payload) => {
-            if (payload) {
-                this.store.settings.update(payload);
-            }
-        });
         this.busService.subscribe("mail.record/insert", (payload) => {
             this.store.insert(payload);
         });
+        this.env.bus.addEventListener(
+            "discuss.channel/new_message",
+            ({ detail: { channel, message, silent } }) => {
+                if (this.env.services.ui.isSmall || message.isSelfAuthored || silent) {
+                    return;
+                }
+                channel.notifyMessageToUser(message);
+            }
+        );
     }
 }
 

@@ -1,11 +1,14 @@
-import { useLayoutEffect } from "@web/owl2/utils";
-import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
+import { onMounted, useProps, t } from "@odoo/owl";
+import {
+    ConfirmationDialog,
+    confirmationDialogProps,
+} from "@web/core/confirmation_dialog/confirmation_dialog";
 
 export class InputConfirmationDialog extends ConfirmationDialog {
-    static props = {
-        ...ConfirmationDialog.props,
-        onInput: { type: Function, optional: true },
-    };
+    props = useProps({
+        ...confirmationDialogProps,
+        onInput: t.function().optional(),
+    });
     static template = "portal.InputConfirmationDialog";
 
     setup() {
@@ -22,21 +25,14 @@ export class InputConfirmationDialog extends ConfirmationDialog {
                 this._confirm();
             }
         };
-        useLayoutEffect(
-            (inputEl) => {
-                this.inputEl = inputEl;
-                if (this.inputEl) {
-                    this.inputEl.focus();
-                    this.inputEl.addEventListener("keydown", onKeydown);
-                    this.inputEl.addEventListener("input", onInput);
-                    return () => {
-                        this.inputEl.removeEventListener("keydown", onKeydown);
-                        this.inputEl.removeEventListener("input", onInput);
-                    };
-                }
-            },
-            () => [this.modalRef.el?.querySelector("input")]
-        );
+        onMounted(() => {
+            this.inputEl = this.modalRef()?.querySelector("input");
+            if (this.inputEl) {
+                this.inputEl.focus();
+                this.inputEl.addEventListener("keydown", onKeydown);
+                this.inputEl.addEventListener("input", onInput);
+            }
+        });
     }
 
     _confirm() {

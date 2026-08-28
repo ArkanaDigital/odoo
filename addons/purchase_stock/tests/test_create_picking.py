@@ -11,6 +11,8 @@ from odoo.addons.product.tests.common import ProductVariantsCommon
 @tagged('at_install', '-post_install')  # LEGACY at_install
 class TestCreatePicking(ProductVariantsCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -45,6 +47,7 @@ class TestCreatePicking(ProductVariantsCommon):
         """
 
         # Draft purchase order created
+        self.po_vals['priority'] = '1'
         self.po = self.env['purchase.order'].create(self.po_vals)
         self.assertTrue(self.po, 'Purchase: no purchase order created')
 
@@ -53,6 +56,7 @@ class TestCreatePicking(ProductVariantsCommon):
         self.assertEqual(self.po.state, 'purchase', 'Purchase: PO state should be "Purchase')
         self.assertEqual(self.po.incoming_picking_count, 1, 'Purchase: one picking should be created')
         self.assertEqual(len(self.po.order_line.move_ids), 1, 'One move should be created')
+        self.assertEqual(self.po.picking_ids.priority, '1', 'The po priority should be propagated to the picking')
         # Change purchase order line product quantity
         self.po.order_line.write({'product_qty': 7.0})
         self.assertEqual(len(self.po.order_line.move_ids), 1, 'The two moves should be merged in one')
@@ -142,10 +146,13 @@ class TestCreatePicking(ProductVariantsCommon):
             'name': 'Roger'
         })
 
+        routes = self.env.ref('stock.route_warehouse0_mto') + self.env.ref('purchase_stock.route_warehouse0_buy')
+        routes.product_selectable = True
+
         product = self.env['product.product'].create({
             'name': 'product',
             'is_storable': True,
-            'route_ids': [(4, self.ref('stock.route_warehouse0_mto')), (4, self.ref('purchase_stock.route_warehouse0_buy'))],
+            'route_ids': routes,
             'supplier_taxes_id': [(6, 0, [])],
         })
 
@@ -278,10 +285,12 @@ class TestCreatePicking(ProductVariantsCommon):
         mto_route = self.env.ref('stock.route_warehouse0_mto')
         mto_route.active = True
         mto_route.rule_ids.procure_method = 'mts_else_mto'
+        routes = mto_route + self.env.ref('purchase_stock.route_warehouse0_buy')
+        routes.product_selectable = True
         self.product_id_1 = self.env['product.product'].create({
             'name': 'ProductA',
             'is_storable': True,
-            'route_ids': [(4, self.ref('stock.route_warehouse0_mto')), (4, self.ref('purchase_stock.route_warehouse0_buy'))],
+            'route_ids': routes,
             'seller_ids': [Command.create({
                 'partner_id': self.partner_id.id,
                 'min_qty': 5,
@@ -897,6 +906,37 @@ class TestCreatePicking(ProductVariantsCommon):
         po.button_confirm()
         self.assertEqual(po.picking_ids.move_ids.description_picking, ('No variant: extra\n' if product_matrix_installed else '') + '[123] ABC\nReceive with care')
 
+    def test_receipt_return_type_change_qty_received(self):
+        """
+        Purchase, receive and return 1 unit of a product. Change the return operation type to be a delivery
+        in one step. Check that the qty_received is udpated accordingly.
+        """
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)], limit=1)
+        warehouse.delivery_steps = 'pick_ship'
+        warehouse.in_type_id.return_picking_type_id = warehouse.pick_type_id
+
+        po = self.env['purchase.order'].create({
+            'partner_id': self.partner_id.id,
+            'order_line': [Command.create({
+                'product_id': self.product_id_1.id,
+                'product_qty': 1.0,
+                'uom_id': self.product_id_1.uom_id.id,
+                'price_unit': 100.0,
+            })],
+        })
+        po.button_confirm()
+        receipt = po.picking_ids
+        receipt.move_ids.quantity = 1.0
+        receipt.button_validate()
+        self.assertEqual(po.order_line.qty_received, 1.0)
+
+        return_pick = receipt._create_return()
+        return_pick.picking_type_id = warehouse.out_type_id
+        return_pick.move_ids.quantity = 1.0
+        return_pick.button_validate()
+
+        self.assertEqual(po.order_line.qty_received, 0.0)
+
     def test_average_cost_updated_after_po_with_discount(self):
         """
         Check the product price update from receiving discounted goods.
@@ -947,3 +987,15 @@ class TestCreatePicking(ProductVariantsCommon):
         move = po.picking_ids.move_ids
 
         self.assertEqual(move.description_picking, "[P01] Product 1", f'The vendor reference "{move.description_picking}" is not the expected one.')
+
+    def test_vendor_reference_in_receipt_origin(self):
+        """Ensure the vendor reference is propagated to the receipt source document.
+        """
+        po = self.env['purchase.order'].create(self.po_vals)
+        po.partner_ref = "VEN1-REF"
+        po.button_confirm()
+        self.assertEqual(
+            po.picking_ids.origin,
+            f"{po.name} - VEN1-REF",
+            "The vendor reference should be propagated to the receipt source document.",
+        )

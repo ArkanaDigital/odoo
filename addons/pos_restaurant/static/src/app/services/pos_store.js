@@ -48,20 +48,16 @@ patch(PosStore.prototype, {
         }
         return super.defaultPage;
     },
-    get idleTimeout() {
-        return [
-            ...super.idleTimeout,
-            {
-                timeout: 180000, // 3 minutes
-                action: () =>
-                    this.dialog.closeAll() &&
-                    this.config.module_pos_restaurant &&
-                    !["PaymentScreen", "TicketScreen", "ActionScreen", "LoginScreen"].includes(
-                        this.router.state.current
-                    ) &&
-                    this.navigate("FloorScreen"),
-            },
-        ];
+    saveIfOrder() {
+        if (!this.config.module_pos_restaurant) {
+            return super.saveIfOrder(...arguments);
+        }
+        const currentOrder = this.getOrder();
+        if (currentOrder) {
+            this.addPendingOrder([currentOrder.id]);
+        }
+        this.syncAllOrders();
+        return true;
     },
     createNewOrder() {
         const order = super.createNewOrder(...arguments);
@@ -149,7 +145,7 @@ patch(PosStore.prototype, {
             const firstCourse = order.getFirstCourse();
             if (firstCourse && !firstCourse.fired) {
                 firstCourse.fired = true;
-                this.getOrder().deselectCourse();
+                order.deselectCourse();
             }
         }
 
@@ -165,9 +161,75 @@ patch(PosStore.prototype, {
             prepLine.pos_order_line_id = destLine;
         }
     },
+    _assignCoursesToOrderLines(order, affectedLines) {
+        for (const line of affectedLines) {
+            const { course } = this.autoCourseAllocation(line.product_id) || {};
+            if (course) {
+                line.course_id = course;
+            }
+        }
+    },
+    breakCombo(orderline) {
+        if (!this.isSelectedLineCombo || !this.config.use_course_allocation) {
+            return super.breakCombo(...arguments);
+        }
+        const order = this.getOrder();
+        const comboLines = orderline.combo_line_ids;
+        const result = super.breakCombo(...arguments);
+
+        this._assignCoursesToOrderLines(order, comboLines);
+        order.cleanCourses();
+
+        return result;
+    },
+    autoCourseAllocation(product) {
+        const config = this.config;
+        if (!config.module_pos_restaurant || !config.use_course_allocation) {
+            return null;
+        }
+
+        const order = this.getOrder();
+
+        const categories = product.pos_categ_ids
+            .map((c) => c.id)
+            .includes(this.selectedCategory?.id)
+            ? [this.selectedCategory]
+            : product.pos_categ_ids;
+
+        const courseCandidate = categories
+            .map((c) => c.course_id)
+            .filter(Boolean)
+            .sort((a, b) => a.sequence - b.sequence);
+
+        if (courseCandidate.length === 0) {
+            return null;
+        }
+
+        let isNew = false;
+        let course = order.course_ids.find((c) => c.name === courseCandidate[0].name);
+        if (!course) {
+            isNew = true;
+            course = this.addCourse({ backendCourse: courseCandidate[0] });
+        }
+
+        order.selectCourse(course);
+        return { course, isNew };
+    },
+    cleanAutoCourseAllocation(result, allocation) {
+        if (!result && allocation?.isNew) {
+            allocation.course.delete();
+        }
+    },
     async mergeOrders(sourceOrder, destOrder) {
         let whileGuard = 0;
+        // The merged order takes the destination's preset, so the source's fee lines
+        // are stale: drop them, the recompute below re-applies the fee on the merged
+        // base. A refund order keeps its own (see recomputeServiceFees).
+        if (!sourceOrder.isRefund && !destOrder.isRefund) {
+            sourceOrder.removeAllServiceFeeLines();
+        }
         const mergedCourses = this.mergeCourses(sourceOrder, destOrder);
+        const sourceLastPrint = sourceOrder.lastPrints.at(-1);
         // Sum the guest counts from both orders
         const totalGuests = sourceOrder.getCustomerCount() + destOrder.getCustomerCount();
         destOrder.setCustomerCount(totalGuests);
@@ -222,7 +284,43 @@ patch(PosStore.prototype, {
                 });
             }
         }
-
+        const destLastPrint = destOrder.lastPrints.at(-1);
+        const combinedPrint = {
+            addedQuantity: [
+                ...(destLastPrint?.addedQuantity || []),
+                ...(sourceLastPrint?.addedQuantity || []),
+            ],
+            removedQuantity: [
+                ...(destLastPrint?.removedQuantity || []),
+                ...(sourceLastPrint?.removedQuantity || []),
+            ],
+            noteUpdate: [
+                ...(destLastPrint?.noteUpdate || []),
+                ...(sourceLastPrint?.noteUpdate || []),
+            ],
+            noteChange: destLastPrint?.noteChange || sourceLastPrint?.noteChange || false,
+        };
+        if (destLastPrint?.internal_note || sourceLastPrint?.internal_note) {
+            combinedPrint.internal_note =
+                destLastPrint?.internal_note || sourceLastPrint?.internal_note;
+        }
+        if (destLastPrint?.general_customer_note || sourceLastPrint?.general_customer_note) {
+            combinedPrint.general_customer_note =
+                destLastPrint?.general_customer_note || sourceLastPrint?.general_customer_note;
+        }
+        if (
+            combinedPrint.addedQuantity.length ||
+            combinedPrint.removedQuantity.length ||
+            combinedPrint.noteUpdate.length ||
+            combinedPrint.noteChange ||
+            combinedPrint.internal_note ||
+            combinedPrint.general_customer_note
+        ) {
+            destOrder.pushLastPrints(combinedPrint);
+        }
+        // Re-apply the fee on the merged base before syncing. The courses are only
+        // settled above, so the fee can be pinned to the last one.
+        destOrder.recomputeServiceFees();
         if (typeof destOrder.id === "number") {
             await this.syncAllOrders({ orders: [destOrder] });
         }
@@ -285,7 +383,7 @@ patch(PosStore.prototype, {
             hasBeenRemoved &&
             wasCurrentOrder &&
             this.config.module_pos_restaurant &&
-            this.router.state.current !== "TicketScreen"
+            this.router.currentScreen() !== "TicketScreen"
         );
     },
     async closingSessionNotification(data) {
@@ -326,8 +424,8 @@ patch(PosStore.prototype, {
     },
     async handleUrlParams(event) {
         await super.handleUrlParams(...arguments);
-        if (this.config.module_pos_restaurant && this.router.state.current === "ProductScreen") {
-            const orderUuid = this.router.state.params.orderUuid;
+        if (this.config.module_pos_restaurant && this.router.currentScreen() === "ProductScreen") {
+            const orderUuid = this.router.currentScreenParams().orderUuid;
             const order = this.models["pos.order"].getBy("uuid", orderUuid);
             if (order && order.table_id) {
                 this.setTable(order.table_id);
@@ -353,7 +451,9 @@ patch(PosStore.prototype, {
     },
     createOrderIfNeeded(data) {
         if (this.config.module_pos_restaurant && !data["table_id"]) {
-            let order = this.models["pos.order"].find((order) => order.isDirectSale);
+            let order = this.models["pos.order"].find(
+                (order) => order.isDirectSale && !order.isSynced
+            );
             if (!order) {
                 order = this.createNewOrder(data);
             }
@@ -392,9 +492,16 @@ patch(PosStore.prototype, {
     async submitOrder() {
         const order = this.getOrder();
         await this.ensureGuestCustomerCount(order);
+        this.showDefault();
         await this.sendOrderInPreparationUpdateLastChange(order);
         this.addPendingOrder([order.id]);
-        this.showDefault();
+        if (order.isDirty()) {
+            // showDefault() triggers unsetTable() which calls syncAllOrders(),
+            // but sendOrderInPreparationUpdateLastChange holds the order in syncingOrders,
+            // preventing that sync from picking it up. Sync only if still dirty after the lock
+            // is released.
+            await this.syncAllOrders({ orders: [order] });
+        }
     },
     async reprintOrder() {
         const order = this.getOrder();
@@ -432,7 +539,14 @@ patch(PosStore.prototype, {
             this.setOrder(currentOrder);
         } else {
             const potentialsOrders = this.models["pos.order"].filter(
-                (o) => !o.table_id && !o.finalized && o.lines.length === 0
+                (o) =>
+                    !o.table_id &&
+                    !o.finalized &&
+                    o.lines.length === 0 &&
+                    !o.isSynced &&
+                    !o.floating_order_name &&
+                    !o.preset_time &&
+                    (!o.preset_id || o.preset_id.id === this.config.default_preset_id?.id)
             );
 
             if (potentialsOrders.length) {
@@ -495,6 +609,9 @@ patch(PosStore.prototype, {
         return false;
     },
     async setTableFromUi(table, orderUuid = null) {
+        if (this.isOrderSyncing(table.getOrder())) {
+            return;
+        }
         try {
             if (!orderUuid && this.getOrder()?.isFilledDirectSale) {
                 this.transferOrder(this.getOrder().uuid, table);
@@ -597,7 +714,7 @@ patch(PosStore.prototype, {
             }
 
             // Transferring order to another order from FloorScreen
-            if (this.router.state.current === "FloorScreen") {
+            if (this.router.currentScreen() === "FloorScreen") {
                 const tableElement = ev.target.closest(".table");
                 if (!tableElement) {
                     return;
@@ -622,7 +739,7 @@ patch(PosStore.prototype, {
                 } finally {
                     this.ui.unblock();
                 }
-            } else if (this.router.state.current === "TicketScreen") {
+            } else if (this.router.currentScreen() === "TicketScreen") {
                 const orderElement = ev.target.closest(".order-row");
                 if (!orderElement) {
                     return;
@@ -728,8 +845,13 @@ patch(PosStore.prototype, {
         });
         let selectedCourse = course;
         if (order.course_ids.length === 1 && order.lines.length > 0) {
-            // Assign order lines to the first course
-            order.lines.forEach((line) => (line.course_id = course));
+            // Assign order lines to the first course, except the service fees:
+            // they are pinned to the last course below.
+            order.lines.forEach((line) => {
+                if (!line.isServiceFeeLine()) {
+                    line.course_id = course;
+                }
+            });
             // Create a second empty course
             if (!this.config.use_course_allocation) {
                 selectedCourse = this.data.models["restaurant.order.course"].create({
@@ -740,6 +862,8 @@ patch(PosStore.prototype, {
             }
         }
         order.selectCourse(selectedCourse);
+        // Keep the fee in the last course so it stays at the bottom of the order.
+        order.serviceFeeLines.forEach((line) => (line.course_id = order.getLastCourse()));
         return course;
     },
     async fireCourse(course) {
@@ -751,19 +875,24 @@ patch(PosStore.prototype, {
     },
     async printCourseTicket(course) {
         try {
+            const order = this.getOrder();
+            const showItems = this.config.use_show_items_on_course_ticket;
             const changes = {
                 quantity: 0,
                 categoryCount: [],
                 addedQuantity: [],
                 removedQuantity: [],
-                noteUpdate: course.line_ids.map((line) => ({
-                    product_id: line.getProduct().id,
-                })),
+                noteUpdate: course.line_ids.map(
+                    (line) =>
+                        order.dataMaker(line, line.getQuantity(), {
+                            hideCourse: showItems,
+                        }).data
+                ),
                 noteUpdateTitle: `${course.name} ${_t("fired")}`,
-                printNoteUpdateData: false,
+                printNoteUpdateData: showItems,
             };
             await this.ticketPrinter.printOrderChanges({
-                order: this.getOrder(),
+                order: order,
                 opts: { orderChange: changes },
             });
         } catch (e) {

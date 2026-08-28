@@ -1,7 +1,4 @@
-import { onRendered } from "@web/owl2/utils";
-import { expect, test } from "@odoo/hoot";
-import { queryAllTexts } from "@odoo/hoot-dom";
-import { Deferred, animationFrame, mockDate } from "@odoo/hoot-mock";
+import { animationFrame, expect, mockDate, queryAllTexts, test } from "@odoo/hoot";
 import {
     contains,
     defineModels,
@@ -46,6 +43,7 @@ import {
     setupChartJsForTests,
 } from "./graph_test_helpers";
 
+import { onPatched } from "@odoo/owl";
 import { DEFAULT_BG, getBorderWhite, getColors, lightenColor } from "@web/core/colors/colors";
 import { Domain } from "@web/core/domain";
 import { SampleServer } from "@web/model/sample_server";
@@ -218,7 +216,7 @@ test("simple bar chart rendering", async () => {
 
     checkLabels(view, ["Total"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label", "stack"], {
-        backgroundColor: "#4EA7F2",
+        backgroundColor: "#36A2EBFF",
         borderColor: undefined,
         data: [8],
         label: "Count",
@@ -254,7 +252,7 @@ test("simple bar chart rendering (one groupBy)", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["false", "true"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label"], {
-        backgroundColor: "#4EA7F2",
+        backgroundColor: "#36A2EBFF",
         borderColor: undefined,
         data: [5, 3],
         label: "Count",
@@ -285,13 +283,13 @@ test("simple bar chart rendering (two groupBy)", async () => {
         ["backgroundColor", "borderColor", "data", "label"],
         [
             {
-                backgroundColor: "#4EA7F2",
+                backgroundColor: "#36A2EBFF",
                 borderColor: undefined,
                 data: [1, 3],
                 label: "xphone",
             },
             {
-                backgroundColor: "#EA6175",
+                backgroundColor: "#FF6384FF",
                 borderColor: undefined,
                 data: [4, 0],
                 label: "xpad",
@@ -326,7 +324,7 @@ test("bar chart many2many groupBy", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["black", "red", "None"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label"], {
-        backgroundColor: "#4EA7F2",
+        backgroundColor: "#36A2EBFF",
         borderColor: undefined,
         data: [10, 13, 8],
         label: "Revenue",
@@ -356,7 +354,7 @@ test("differentiate many2many values with same label", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["black", "red", "red (2)", "None"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label"], {
-        backgroundColor: "#4EA7F2",
+        backgroundColor: "#36A2EBFF",
         borderColor: undefined,
         data: [10, 13, 14, 8],
         label: "Revenue",
@@ -378,8 +376,8 @@ test("line chart rendering (no groupBy)", async () => {
     expect(getGraphModelMetaData(view).mode).toBe("line");
     checkLabels(view, ["", "Total", ""]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label", "stack"], {
-        backgroundColor: "#a7d3f9",
-        borderColor: "#4EA7F2",
+        backgroundColor: "#9bd1f5",
+        borderColor: "#36A2EBFF",
         data: [undefined, 8],
         label: "Count",
         stack: undefined,
@@ -403,8 +401,8 @@ test("line chart rendering (one groupBy)", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["false", "true"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label"], {
-        backgroundColor: "#a7d3f9",
-        borderColor: "#4EA7F2",
+        backgroundColor: "#9bd1f5",
+        borderColor: "#36A2EBFF",
         data: [5, 3],
         label: "Count",
     });
@@ -433,14 +431,14 @@ test("line chart rendering (two groupBy)", async () => {
         ["backgroundColor", "borderColor", "data", "label"],
         [
             {
-                backgroundColor: "#a7d3f9",
-                borderColor: "#4EA7F2",
+                backgroundColor: "#9bd1f5",
+                borderColor: "#36A2EBFF",
                 data: [1, 3],
                 label: "xphone",
             },
             {
-                backgroundColor: "#f5b0ba",
-                borderColor: "#EA6175",
+                backgroundColor: "#ffb1c2",
+                borderColor: "#FF6384FF",
                 data: [4, 0],
                 label: "xpad",
             },
@@ -484,8 +482,8 @@ test("line chart many2many groupBy", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["black", "red"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label"], {
-        backgroundColor: "#a7d3f9",
-        borderColor: "#4EA7F2",
+        backgroundColor: "#9bd1f5",
+        borderColor: "#36A2EBFF",
         data: [10, 13],
         label: "Revenue",
     });
@@ -603,9 +601,9 @@ test("Stacked button visible in the line chart", async () => {
     expect(getScaleY(view).stacked).toBe(true, {
         message: "The y axes should have stacked property set to true",
     });
-    expect(`button.o_graph_button[data-tooltip="Stacked"]`).toHaveCount(1);
+    expect(`#switchStacked`).toHaveCount(1);
 
-    await contains(`button.o_graph_button[data-tooltip="Stacked"]`).click();
+    await contains(`#switchStacked`).click();
 
     expect(model.metaData.stacked).toBe(false, {
         message: "graph should be a classic line chart.",
@@ -627,7 +625,7 @@ test("Stacked line prop click false", async () => {
         `,
     });
 
-    await contains(`button.o_graph_button[data-tooltip="Stacked"]`).click();
+    await contains(`#switchStacked`).click();
 
     expect(getGraphModel(view).metaData.stacked).toBe(false, {
         message: "graph should be a classic line chart.",
@@ -642,14 +640,14 @@ test("Stacked line prop click false", async () => {
 
     const expectedDatasets = [
         {
-            backgroundColor: "#a7d3f9",
-            borderColor: "#4EA7F2",
-            pointBackgroundColor: "#4EA7F2",
+            backgroundColor: "#9bd1f5",
+            borderColor: "#36A2EBFF",
+            pointBackgroundColor: "#36A2EBFF",
         },
         {
-            backgroundColor: "#f5b0ba",
-            borderColor: "#EA6175",
-            pointBackgroundColor: "#EA6175",
+            backgroundColor: "#ffb1c2",
+            borderColor: "#FF6384FF",
+            pointBackgroundColor: "#FF6384FF",
         },
     ];
     const keysToEvaluate = ["backgroundColor", "borderColor", "pointBackgroundColor"];
@@ -717,7 +715,7 @@ test("Cumulative prop and default line chart", async () => {
         message: "should not be cumulative by default.",
     });
 
-    await contains('[data-tooltip="Cumulative"]').click();
+    await contains('#switchCumulated').click();
 
     expect(getGraphModel(view).metaData.cumulated).toBe(true, {
         message: "should be in cumulative",
@@ -825,7 +823,7 @@ test("pie chart rendering (no groupBy)", async () => {
     expect(getGraphModelMetaData(view).mode).toBe("pie");
     checkLabels(view, ["Total"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label", "stack"], {
-        backgroundColor: ["#4EA7F2"],
+        backgroundColor: ["#36A2EBFF"],
         borderColor: getBorderWhite(),
         data: [8],
         label: "",
@@ -849,7 +847,7 @@ test("pie chart rendering (one groupBy)", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["false", "true"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data"], {
-        backgroundColor: ["#4EA7F2", "#EA6175"],
+        backgroundColor: ["#36A2EBFF", "#FF6384FF"],
         borderColor: getBorderWhite(),
         data: [5, 3],
     });
@@ -873,7 +871,7 @@ test("pie chart many2many groupby", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["black", "red", "None"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data"], {
-        backgroundColor: ["#4EA7F2", "#EA6175", "#43C5B1"],
+        backgroundColor: ["#36A2EBFF", "#FF6384FF", "#4BC0C0FF"],
         borderColor: getBorderWhite(),
         data: [10, 13, 8],
     });
@@ -898,7 +896,7 @@ test("pie chart rendering (two groupBy)", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["false / xphone", "false / xpad", "true / xphone"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label"], {
-        backgroundColor: ["#4EA7F2", "#EA6175", "#43C5B1"],
+        backgroundColor: ["#36A2EBFF", "#FF6384FF", "#4BC0C0FF"],
         borderColor: getBorderWhite(),
         data: [1, 4, 3],
         label: "",
@@ -955,7 +953,7 @@ test("pie chart rendering (mix of positive and negative values)", async () => {
     expect(".o_view_nocontent").toHaveCount(0);
     expect(".o_graph_canvas_container").toHaveCount(1);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label", "stack"], {
-        backgroundColor: ["#4EA7F2"],
+        backgroundColor: ["#36A2EBFF"],
         borderColor: getBorderWhite(),
         data: [2],
         label: "",
@@ -1000,7 +998,7 @@ test("field id not in groupBy", async () => {
 
     checkLabels(view, ["Total"]);
     checkDatasets(view, ["backgroundColor", "data", "label", "stack"], {
-        backgroundColor: "#4EA7F2",
+        backgroundColor: "#36A2EBFF",
         data: [8],
         label: "Count",
         stack: "",
@@ -2202,48 +2200,48 @@ test("graph view sort by measure", async () => {
         `,
     });
 
-    expect(".fa-sort-amount-asc").toHaveCount(1);
-    expect(".fa-sort-amount-desc").toHaveCount(1);
+    expect("[data-icon='north']").toHaveCount(1);
+    expect("[data-icon='south']").toHaveCount(1);
 
     checkLegend(view, []);
     checkMeasure("Count");
-    expect(".fa-sort-amount-desc").toHaveClass("active");
+    expect("[data-icon='south']").toHaveClass("active");
     checkDatasets(view, "data", { data: [4, 3, 1] });
 
     await clickSort("asc");
 
-    expect(".fa-sort-amount-asc").toHaveClass("active");
+    expect("[data-icon='north']").toHaveClass("active");
     checkDatasets(view, "data", { data: [1, 3, 4] });
 
     await clickSort("desc");
 
-    expect(".fa-sort-amount-desc").toHaveClass("active");
+    expect("[data-icon='south']").toHaveClass("active");
     checkDatasets(view, "data", { data: [4, 3, 1] });
 
     // again click on descending button to deactivate order
     await clickSort("desc");
 
-    expect(".fa-sort-amount-desc").not.toHaveClass("active");
+    expect("[data-icon='south']").not.toHaveClass("active");
     checkDatasets(view, "data", { data: [4, 1, 3] });
 
     // set line mode
     await selectMode("line");
-    expect(".fa-sort-amount-asc").toHaveCount(1);
-    expect(".fa-sort-amount-desc").toHaveCount(1);
+    expect("[data-icon='north']").toHaveCount(1);
+    expect("[data-icon='south']").toHaveCount(1);
 
     checkLegend(view, []);
     checkMeasure("Count");
-    expect(".fa-sort-amount-desc").not.toHaveClass("active");
+    expect("[data-icon='south']").not.toHaveClass("active");
     checkDatasets(view, "data", { data: [4, 1, 3] });
 
     await clickSort("asc");
 
-    expect(".fa-sort-amount-asc").toHaveClass("active");
+    expect("[data-icon='north']").toHaveClass("active");
     checkDatasets(view, "data", { data: [1, 3, 4] });
 
     await clickSort("desc");
 
-    expect(".fa-sort-amount-desc").toHaveClass("active");
+    expect("[data-icon='south']").toHaveClass("active");
     checkDatasets(view, "data", { data: [4, 3, 1] });
 });
 
@@ -2268,18 +2266,18 @@ test("graph view sort by measure for grouped data", async () => {
 
     await clickSort("asc");
 
-    expect(".fa-sort-amount-asc").toHaveClass("active");
+    expect("[data-icon='north']").toHaveClass("active");
     checkDatasets(view, "data", [{ data: [1, 3, 1] }, { data: [0, 0, 3] }, { data: [1, 3, 4] }]);
 
     await clickSort("desc");
 
-    expect(".fa-sort-amount-desc").toHaveClass("active");
+    expect("[data-icon='south']").toHaveClass("active");
     checkDatasets(view, "data", [{ data: [1, 3, 1] }, { data: [3, 0, 0] }, { data: [4, 3, 1] }]);
 
     // again click on descending button to deactivate order
     await clickSort("desc");
 
-    expect(".fa-sort-amount-desc").not.toHaveClass("active");
+    expect("[data-icon='south']").not.toHaveClass("active");
     checkDatasets(view, "data", [{ data: [1, 1, 3] }, { data: [3, 0, 0] }, { data: [4, 1, 3] }]);
 });
 
@@ -2317,7 +2315,7 @@ test("graph view sort by measure for multiple grouped data", async () => {
 
     await clickSort("asc");
 
-    expect(".fa-sort-amount-asc").toHaveClass("active");
+    expect("[data-icon='north']").toHaveClass("active");
     checkDatasets(view, "data", [
         { data: [1, 1, 2, 2] },
         { data: [0, 1, 0, 0] },
@@ -2327,7 +2325,7 @@ test("graph view sort by measure for multiple grouped data", async () => {
 
     await clickSort("desc");
 
-    expect(".fa-sort-amount-desc").toHaveClass("active");
+    expect("[data-icon='south']").toHaveClass("active");
     checkDatasets(view, "data", [
         { data: [1, 0, 0, 0] },
         { data: [2, 1, 2, 1] },
@@ -2338,7 +2336,7 @@ test("graph view sort by measure for multiple grouped data", async () => {
     // again click on descending button to deactivate order
     await clickSort("desc");
 
-    expect(".fa-sort-amount-desc").not.toHaveClass("active");
+    expect("[data-icon='south']").not.toHaveClass("active");
     checkDatasets(view, "data", [
         { data: [1, 0, 0, 0] },
         { data: [1, 2, 1, 2] },
@@ -2499,11 +2497,11 @@ test("change mode, stacked, or order via the graph buttons does not reload datap
     await selectMode("bar");
 
     checkModeIs(view, "bar");
-    expect(`[data-tooltip="Stacked"]`).toHaveClass("active");
+    expect(`#switchStacked`).toBeChecked();
 
-    await contains(`[data-tooltip="Stacked"]`).click();
+    await contains(`#switchStacked`).click();
 
-    expect(`[data-tooltip="Stacked"]`).not.toHaveClass("active");
+    expect(`#switchStacked`).not.toBeChecked();
     expect(`[data-tooltip="Ascending"]`).not.toHaveClass("active");
 
     await contains(`[data-tooltip="Ascending"]`).click();
@@ -2521,7 +2519,7 @@ test("change mode, stacked, or order via the graph buttons does not reload datap
 
 test("concurrent reloads: add a filter, and directly toggle a measure", async () => {
     let def;
-    onRpc("formatted_read_group", () => def);
+    onRpc("formatted_read_group", () => def?.promise);
     const view = await mountView({
         type: "graph",
         resModel: "foo",
@@ -2543,7 +2541,7 @@ test("concurrent reloads: add a filter, and directly toggle a measure", async ()
     });
 
     // Set a domain (this reload is delayed)
-    def = new Deferred();
+    def = Promise.withResolvers();
     await toggleSearchBarMenu();
     await toggleMenuItem("My Filter");
 
@@ -2572,7 +2570,7 @@ test("concurrent reloads: add a filter, and directly toggle a measure", async ()
 
 test("change graph mode while loading a filter", async () => {
     let def;
-    onRpc("formatted_read_group", () => def);
+    onRpc("formatted_read_group", () => def?.promise);
     const view = await mountView({
         type: "graph",
         resModel: "foo",
@@ -2595,7 +2593,7 @@ test("change graph mode while loading a filter", async () => {
     checkModeIs(view, "line");
 
     // Set a domain (this reload is delayed)
-    def = new Deferred();
+    def = Promise.withResolvers();
     await toggleSearchBarMenu();
     await toggleMenuItem("My Filter");
 
@@ -2626,7 +2624,7 @@ test("change graph mode while loading a filter", async () => {
 
 test("only process most recent data for concurrent groupby", async () => {
     let def;
-    onRpc(() => def);
+    onRpc(() => def?.promise);
     const view = await mountView({
         type: "graph",
         resModel: "foo",
@@ -2647,7 +2645,7 @@ test("only process most recent data for concurrent groupby", async () => {
     checkLabels(view, ["xphone", "xpad"]);
     checkDatasets(view, "data", { data: [82, 157] });
 
-    def = new Deferred();
+    def = Promise.withResolvers();
     await toggleSearchBarMenu();
     await toggleMenuItem("Color");
     await toggleMenuItem("Color");
@@ -2831,7 +2829,7 @@ test("single chart rendering on search", async () => {
         setup() {
             super.setup();
 
-            onRendered(() => expect.step("rendering"));
+            onPatched(() => expect.step("patched"));
         },
     });
 
@@ -2840,11 +2838,11 @@ test("single chart rendering on search", async () => {
         resModel: "foo",
     });
 
-    expect.verifySteps(["rendering"]);
+    expect.verifySteps([]);
 
     await validateSearch();
 
-    expect.verifySteps(["rendering"]);
+    expect.verifySteps(["patched"]);
 });
 
 test("missing property field definition is fetched", async function () {
@@ -2995,8 +2993,8 @@ test("display the field's falsy_value_label for false group, if defined", async 
 
 test.tags("desktop");
 test("graph views make their control panel available directly", async () => {
-    const def = new Deferred();
-    onRpc("formatted_read_group", () => def);
+    const def = Promise.withResolvers();
+    onRpc("formatted_read_group", () => def?.promise);
     await mountView({
         type: "graph",
         resModel: "foo",
@@ -3042,7 +3040,7 @@ test("monetary chart rendering with multiple currencies", async () => {
     expect(".o_graph_canvas_container canvas").toHaveCount(1);
     checkLabels(view, ["false", "true"]);
     checkDatasets(view, ["backgroundColor", "borderColor", "data", "label"], {
-        backgroundColor: "#4EA7F2",
+        backgroundColor: "#36A2EBFF",
         borderColor: undefined,
         data: [1200, 1000],
         label: "Amount",
@@ -3090,7 +3088,7 @@ test("monetary chart rendering with a single foreign currency", async () => {
                 ],
                 __count: 1,
                 "currency_id:array_agg_distinct": [1],
-                "amount:sum_currency": 300,
+                "amount:sum_currency": 300 * 0.8, // in eur
                 "amount:sum": 300,
             },
             {
@@ -3112,7 +3110,7 @@ test("monetary chart rendering with a single foreign currency", async () => {
                 ],
                 __count: 1,
                 "currency_id:array_agg_distinct": [1],
-                "amount:sum_currency": 400,
+                "amount:sum_currency": 400 * 0.8, // in eur
                 "amount:sum": 400,
             },
         ];

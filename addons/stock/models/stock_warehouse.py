@@ -161,6 +161,8 @@ class StockWarehouse(models.Model):
 
     @api.model
     def _warehouse_redirect_warning(self):
+        if not self.env.registry.ready:  # don't raise warning during module installation
+            return
         warehouse_action = self.env.ref('stock.action_warehouse_form')
         msg = _('Please create a warehouse for company %s.', self.env.company.display_name)
         if not self.env.user.has_group('stock.group_stock_manager'):
@@ -315,12 +317,14 @@ class StockWarehouse(models.Model):
             if max_count <= 1 and group_stock_multi_warehouses in group_user.implied_ids:
                 group_user.write({'implied_ids': [(3, group_stock_multi_warehouses.id)]})
                 group_stock_multi_warehouses.write({'user_ids': [(3, user.id) for user in group_user.all_user_ids]})
+                self.env.user._bus_send("stock_group_sync", {})
             if max_count > 1 and group_stock_multi_warehouses not in group_user.implied_ids:
                 if group_stock_multi_locations not in group_user.implied_ids:
                     self.env['res.config.settings'].create({
                         'group_stock_multi_locations': True,
                     }).execute()
                 group_user.write({'implied_ids': [(4, group_stock_multi_warehouses.id), (4, group_stock_multi_locations.id)]})
+                self.env.user._bus_send("stock_group_sync", {})
 
     def _create_or_update_sequences_and_picking_types(self):
         """ Create or update existing picking types for a warehouse.
@@ -396,6 +400,7 @@ class StockWarehouse(models.Model):
                 raise UserError(_('Can\'t find any generic route %s.', route_name))
             elif data_route and create:
                 route = data_route.copy({'name': route_name, 'company_id': company.id, 'rule_ids': False})
+        route.product_selectable = True
         return route
 
     def _get_global_route_rules_values(self):
@@ -983,6 +988,7 @@ class StockWarehouse(models.Model):
                 'use_existing_lots': False,
                 'sequence': max_sequence + 1,
                 'company_id': self.company_id.id,
+                'auto_show_allocation_report': True,
             }, 'out_type_id': {
                 'name': _('Delivery Orders'),
                 'code': 'outgoing',

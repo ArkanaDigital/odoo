@@ -20,8 +20,8 @@ class TestOptionalHoliday(TestHrHolidaysCommon):
             'code': 'Indian Leave Type',
             'requires_allocation': False,
             'count_as': 'absence',
-            'request_unit': 'hour',
-            'unit_of_measure': 'hour',
+            'request_unit': 'day',
+            'unit_of_measure': 'day',
             'l10n_in_is_limited_to_optional_days': True,
         })
 

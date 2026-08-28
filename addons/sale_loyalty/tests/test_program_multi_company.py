@@ -8,6 +8,8 @@ from odoo.addons.sale_loyalty.tests.common import TestSaleCouponCommon
 
 @tagged("post_install", "-at_install")
 class TestSaleCouponMultiCompany(TestSaleCouponCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
 
@@ -21,27 +23,19 @@ class TestSaleCouponMultiCompany(TestSaleCouponCommon):
             "applies_on": "current",
             "company_id": self.company_b.id,
             "rule_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "product_ids": self.product_A,
-                        "reward_point_amount": 1,
-                        "reward_point_mode": "order",
-                    },
-                )
+                Command.create({
+                    "product_ids": self.product_A,
+                    "reward_point_amount": 1,
+                    "reward_point_mode": "order",
+                })
             ],
             "reward_ids": [
-                (
-                    0,
-                    0,
-                    {
-                        "reward_type": "product",
-                        "reward_product_id": self.product_B.id,
-                        "reward_product_qty": 1,
-                        "required_points": 1,
-                    },
-                )
+                Command.create({
+                    "reward_type": "product",
+                    "reward_product_id": self.product_B.id,
+                    "reward_product_qty": 1,
+                    "required_points": 1,
+                })
             ],
         })
 
@@ -54,24 +48,16 @@ class TestSaleCouponMultiCompany(TestSaleCouponCommon):
 
         order = self._create_so(
             order_line=[
-                (
-                    0,
-                    False,
-                    {
-                        "product_id": self.product_A.id,
-                        "name": "1 Product A",
-                        "product_uom_qty": 1.0,
-                    },
-                ),
-                (
-                    0,
-                    False,
-                    {
-                        "product_id": self.product_B.id,
-                        "name": "2 Product B",
-                        "product_uom_qty": 1.0,
-                    },
-                ),
+                Command.create({
+                    "product_id": self.product_A.id,
+                    "name": "1 Product A",
+                    "product_uom_qty": 1.0,
+                }),
+                Command.create({
+                    "product_id": self.product_B.id,
+                    "name": "2 Product B",
+                    "product_uom_qty": 1.0,
+                }),
             ]
         )
         order._update_programs_and_rewards()
@@ -85,24 +71,16 @@ class TestSaleCouponMultiCompany(TestSaleCouponCommon):
         })
         order_b.write({
             "order_line": [
-                (
-                    0,
-                    False,
-                    {
-                        "product_id": self.product_A.id,
-                        "name": "1 Product A",
-                        "product_uom_qty": 1.0,
-                    },
-                ),
-                (
-                    0,
-                    False,
-                    {
-                        "product_id": self.product_B.id,
-                        "name": "2 Product B",
-                        "product_uom_qty": 1.0,
-                    },
-                ),
+                Command.create({
+                    "product_id": self.product_A.id,
+                    "name": "1 Product A",
+                    "product_uom_qty": 1.0,
+                }),
+                Command.create({
+                    "product_id": self.product_B.id,
+                    "name": "2 Product B",
+                    "product_uom_qty": 1.0,
+                }),
             ]
         })
         self.assertNotIn(self.immediate_promotion_program, self._get_applicable_programs(order_b))

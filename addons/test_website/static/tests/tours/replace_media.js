@@ -76,7 +76,7 @@ registerWebsitePreviewTour(
             trigger: ".o_customize_tab [data-container-title='Image'] span[title='Size']",
         },
         {
-            trigger: ".o-hb-image-size-info[title=Size]:contains(0.5 kB)",
+            trigger: ".o-hb-image-size-info[title=Size]:contains(0.6 kB)",
         },
         {
             content: "replace image",
@@ -91,7 +91,7 @@ registerWebsitePreviewTour(
         {
             content: "select an icon",
             trigger:
-                ".o_select_media_dialog:has(.nav-link.active:contains('Icons')) .tab-content span.fa-heart",
+                ".o_select_media_dialog:has(.nav-link.active:contains('Icons')) .tab-content span[data-icon='favorite']",
             run: "click",
         },
         {
@@ -105,7 +105,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "select icon",
-            trigger: ":iframe .s_picture figure span.fa-heart",
+            trigger: ":iframe .s_picture figure span[data-icon='favorite']",
             run: "click",
         },
         {
@@ -156,7 +156,7 @@ registerWebsitePreviewTour(
         {
             content: "select an icon",
             trigger:
-                ".o_select_media_dialog:has(.nav-link.active:contains('Icons')) .tab-content span.fa-heart",
+                ".o_select_media_dialog:has(.nav-link.active:contains('Icons')) .tab-content span[data-icon='favorite']",
             run: "click",
         },
         {
@@ -170,7 +170,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "select icon",
-            trigger: ":iframe .s_picture figure span.fa-heart",
+            trigger: ":iframe .s_picture figure span[data-icon='favorite']",
             run: "click",
         },
         {

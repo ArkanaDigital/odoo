@@ -1,15 +1,14 @@
-import { useExternalListener, useRef } from "@web/owl2/utils";
+import { PLATFORMS } from "@html_editor/main/media/media_dialog/video_selector";
 import {
     getEmbeddedProps,
     StateChangeManager,
     useEmbeddedState,
 } from "@html_editor/others/embedded_component_utils";
-import { Component, onMounted, onWillDestroy, onWillUnmount } from "@odoo/owl";
+import { ReadonlyEmbeddedVideoComponent } from "@html_editor/others/embedded_components/core/video/readonly_video";
+import { Component, onMounted, onWillDestroy, onWillUnmount, signal, useListener } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
-import { ReadonlyEmbeddedVideoComponent } from "@html_editor/others/embedded_components/core/video/readonly_video";
-import { PLATFORMS } from "@html_editor/main/media/media_dialog/video_selector";
 
 export class EmbeddedVideoComponent extends ReadonlyEmbeddedVideoComponent {
     static template = "html_editor.EmbeddedVideo";
@@ -31,6 +30,8 @@ export class EmbeddedVideoComponent extends ReadonlyEmbeddedVideoComponent {
         commit: { type: Function, optional: true },
         openVideoSelectorDialog: { type: Function, optional: true },
     };
+
+    iframeRef = signal.ref();
 
     setup() {
         super.setup();
@@ -62,9 +63,8 @@ export class EmbeddedVideoComponent extends ReadonlyEmbeddedVideoComponent {
             className: "video-overlay",
             closeOnPointerdown: false,
         });
-        this.iframeRef = useRef("iframeRef");
 
-        useExternalListener(this.videoBlock, "pointerenter", () => {
+        useListener(this.videoBlock, "pointerenter", () => {
             this.videoSettingsOverlay.open({
                 target: this.videoBlock,
                 props: {
@@ -73,7 +73,7 @@ export class EmbeddedVideoComponent extends ReadonlyEmbeddedVideoComponent {
                     replaceVideo: () => {
                         this.props.openVideoSelectorDialog((media) => {
                             this.replaceVideo(media);
-                        }, this.iframeRef.el);
+                        }, this.iframeRef());
                     },
                     removeVideo: () => {
                         this.videoBlock.remove();
@@ -85,7 +85,7 @@ export class EmbeddedVideoComponent extends ReadonlyEmbeddedVideoComponent {
             });
         });
 
-        useExternalListener(this.videoBlock, "pointerleave", (e) => {
+        useListener(this.videoBlock, "pointerleave", (e) => {
             if (this.dropdown.isOpen || e.relatedTarget?.closest(".video-overlay")) {
                 return;
             }
@@ -142,18 +142,18 @@ export class VideoSettings extends Component {
         dropdown: { type: Object },
     };
 
-    setup() {
-        this.menuRef = useRef("menuRef");
+    menuRef = signal.ref();
 
+    setup() {
         onMounted(() => {
-            this.menuRef.el.addEventListener("pointerleave", () => {
+            this.menuRef()?.addEventListener("pointerleave", () => {
                 if (!this.props.dropdown.isOpen) {
                     this.props.overlay.close();
                 }
             });
         });
 
-        useExternalListener(document, "pointerdown", (ev) => {
+        useListener(document, "pointerdown", (ev) => {
             if (this.props.dropdown.isOpen) {
                 return;
             }

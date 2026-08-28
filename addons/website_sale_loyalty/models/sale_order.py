@@ -7,6 +7,7 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 from odoo.fields import Domain
 from odoo.http import request
+from odoo.tools import html_sanitize
 
 
 class SaleOrder(models.Model):
@@ -162,6 +163,8 @@ class SaleOrder(models.Model):
         error = request.session.get("error_promo_code")
         if error and delete:
             request.session.pop("error_promo_code")
+        if error:
+            return html_sanitize(error)
         return error
 
     def get_promo_code_success_message(self, delete=True):
@@ -181,12 +184,7 @@ class SaleOrder(models.Model):
         self._update_programs_and_rewards()
 
     def _cart_update_order_line(self, order_line, quantity, **kwargs):
-        if (
-            quantity <= 0
-            and order_line.coupon_id
-            and order_line.reward_id
-            and order_line.reward_id.reward_type == "discount"
-        ):
+        if quantity <= 0 and order_line.coupon_id and order_line.reward_id:
             # When a reward line is deleted we remove it from the auto claimable rewards
             order_line = order_line.with_context(website_sale_loyalty_delete=True)
 
@@ -207,8 +205,30 @@ class SaleOrder(models.Model):
         self.ensure_one()
         return self.order_line.filtered(lambda line: line.reward_id.reward_type == "shipping")
 
+    def _get_no_effect_on_threshold_lines(self):
+        lines = super()._get_no_effect_on_threshold_lines()
+        return lines + self.order_line.filtered("is_donation")
+
+    def _get_order_tracking_info(self):
+        result = super()._get_order_tracking_info()
+        if coupon := self._get_applied_coupon_codes():
+            result["coupon"] = coupon
+        return result
+
+    def _get_applied_coupon_codes(self):
+        """Return applied coupon/promotion codes as a comma-separated string for GA4 tracking.
+
+        :rtype: str
+        """
+        self.ensure_one()
+        return ",".join(self.order_line.coupon_id.mapped("code"))
+
+    def _get_order_tracking_lines(self):
+        """Override to exclude loyalty reward lines from GA4 tracking."""
+        return super()._get_order_tracking_lines().filtered(lambda line: not line.is_reward_line)
+
     def _allow_nominative_programs(self):
-        website = self.env["website"].get_current_website(fallback=False)
+        website = self.env.website
         if not website:
             return super()._allow_nominative_programs()
         return not website.is_public_user() and super()._allow_nominative_programs()
@@ -355,9 +375,7 @@ class SaleOrder(models.Model):
 
         # --- Compute order-line data only for unapplied programs ---
         # Mirrors the logic in _program_check_compute_points.
-        order_lines = self._get_not_rewarded_order_lines().filtered(
-            lambda line: not line.combo_item_id
-        )
+        order_lines = self._get_not_rewarded_order_lines()
         products = order_lines.product_id
         products_qties = dict.fromkeys(products, 0)
         for line in order_lines:

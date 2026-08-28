@@ -690,7 +690,7 @@ class CrmTeam(models.Model):
         for team, leads_to_assign_ids in leads_per_team.items():
             members_to_assign = list(team.crm_team_member_ids.filtered(lambda member:
                 member.assignment_max != 0 and quota_per_member.get(member, 0) > 0
-            ).sorted(key=lambda member: quota_per_member.get(member, 0), reverse=True))
+            ).sorted(key=lambda member: (quota_per_member.get(member, 0), random.random()), reverse=True))
             if not members_to_assign:
                 continue
             result_data.update({
@@ -768,7 +768,9 @@ class CrmTeam(models.Model):
         return action
 
     def action_open_unassigned_opportunities(self):
+        """Open opportunities action without the opportunity domain as users want to see anything unassigned."""
         action = self.action_open_opportunities()
+        action['domain'] = []
         context = self.env['crm.lead'].with_context(force_active_id=self.id)._evaluate_context_from_action(action)
         action['context'] = context | {'search_default_unassigned': True}
         return action
@@ -783,3 +785,41 @@ class CrmTeam(models.Model):
         if self.use_opportunities:
             return self.action_open_opportunities()
         return super().action_primary_channel_button()
+
+    # ------------------------------------------------------------
+    # UTILS
+    # ------------------------------------------------------------
+
+    @api.model
+    def get_team_switcher_teams_data(self):
+        """ Retrieve the teams and their data for the team switcher.
+        Only considering the teams using opportunities.
+        Limited to own teams if the user doesn't have "All Leads" access.
+        """
+        domain = Domain("use_opportunities", "=", True)
+        if not self.env.user.has_group("sales_team.group_sale_salesman_all_leads"):
+            domain &= Domain("id", "in", self.env.user.crm_team_ids.ids)
+        teams = self.env["crm.team"].search(domain, order="sequence, id")
+
+        team_stages_mapping = self.env["crm.stage"]._read_group(
+            self.env["crm.stage"]._get_visible_stages_domain(teams.ids),
+            groupby=["team_ids"],
+            aggregates=["id:recordset"],
+        )
+        stage_ids_by_team = {team.id: stages.ids for team, stages in team_stages_mapping}
+        shared_stage_ids = stage_ids_by_team.get(False, [])
+        return [
+            {
+                'id': team.id,
+                'name': team.name,
+                # Domain applied when this team will be selected in the team switcher.
+                # Showing all "crm.lead" records assigned to the team + the unassigned ones which
+                # happens to be part of the team visible stages.
+                'switcher_domain': list(
+                    Domain("team_id", "=", team.id) | (
+                        Domain("team_id", "=", False) &
+                        Domain("stage_id", "in", stage_ids_by_team.get(team.id, []) + shared_stage_ids)
+                    )
+                ),
+            } for team in teams
+        ]

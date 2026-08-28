@@ -7,22 +7,30 @@ from odoo.addons.website_sale_collect.tests.common import ClickAndCollectCommon
 
 @tagged("post_install", "-at_install")
 class TestOnSitePaymentProvider(HttpCase, ClickAndCollectCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     def test_on_site_provider_available_when_in_store_delivery_is_chosen(self):
         order = self._create_in_store_delivery_order()
         PaymentProvider = self.env["payment.provider"].sudo()
-        compatible_providers = PaymentProvider._get_compatible_providers(
+        available_providers = PaymentProvider._find_available_providers(
             self.company.id, self.partner.id, self.amount, sale_order_id=order.id
         )
         self.assertTrue(
-            any(p.code == "custom" and p.custom_mode == "on_site" for p in compatible_providers)
+            any(p.code == "custom" and p.custom_mode == "on_site" for p in available_providers)
         )
 
     def test_on_site_provider_unavailable_when_no_in_store_delivery(self):
         order = self._create_in_store_delivery_order(carrier_id=self.free_delivery.id)
         PaymentProvider = self.env["payment.provider"].sudo()
-        compatible_providers = PaymentProvider._get_compatible_providers(
+        available_providers = PaymentProvider._find_available_providers(
             self.company.id, self.partner.id, self.amount, sale_order_id=order.id
         )
         self.assertFalse(
-            any(p.code == "custom" and p.custom_mode == "on_site" for p in compatible_providers)
+            any(p.code == "custom" and p.custom_mode == "on_site" for p in available_providers)
         )

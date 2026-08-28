@@ -1,5 +1,6 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import base64
+import colorsys
 import datetime
 import logging
 import math
@@ -29,7 +30,10 @@ from odoo.http.session import SessionExpiredException
 from odoo.http.stream import STATIC_CACHE_LONG
 from odoo.tools import OrderedSet, py_to_js_locale
 from odoo.tools import html_escape as escape
+from odoo.tools.image import hex_to_rgb
 from odoo.tools.json import scriptsafe as json
+from odoo.tools.mimetypes import guess_mimetype
+from odoo.tools.misc import file_open
 from odoo.tools.sql import escape_like_value
 from odoo.tools.translate import LazyTranslate, TRANSLATED_ELEMENTS
 
@@ -38,7 +42,9 @@ from odoo.addons.portal.controllers.portal import pager as portal_pager
 from odoo.addons.portal.controllers.web import Home
 from odoo.addons.web.controllers.binary import Binary
 from odoo.addons.web.controllers.session import Session
-from odoo.addons.website.tools import get_base_domain
+from odoo.addons.html_editor.controllers.svg_utils import get_shape_svg, make_shaped_image
+from odoo.addons.html_editor.models.ir_attachment import SUPPORTED_IMAGE_MIMETYPES
+from odoo.addons.website.tools import adapt_dark_palette_content, get_base_domain
 
 _lt = LazyTranslate(__name__)
 logger = logging.getLogger(__name__)
@@ -50,6 +56,66 @@ SITEMAP_CACHE_TIME = datetime.timedelta(hours=12)
 MAX_FONT_FILE_SIZE = 10 * 1024 * 1024
 SUPPORTED_FONT_EXTENSIONS = ['ttf', 'woff', 'woff2', 'otf']
 FORCE_SHOW_FIELDS = ['name', 'search_item_metadata', 'tags']
+API_WEBSITE_IMAGES_URL = 'https://website-image.api.odoo.com/images/'
+CONFIGURATOR_PREVIEW_FALLBACK_IMAGES = {
+    f'website.{image_name}': f'website.{fallback_image_name}'
+    for image_name, fallback_image_name in [
+        ('s_intro_pill_default_image', 'library_image_10'),
+        ('s_intro_pill_default_image_2', 'library_image_14'),
+        ('s_banner_default_image_2', 's_image_text_default_image'),
+        ('s_banner_default_image_3', 's_product_list_default_image_1'),
+        ('s_striped_top_default_image', 's_picture_default_image'),
+        ('s_text_cover_default_image', 's_cover_default_image'),
+        ('s_showcase_default_image', 's_image_text_default_image'),
+        ('s_image_hexagonal_default_image', 's_cover_default_image'),
+        ('s_image_hexagonal_default_image_1', 's_company_team_image_1'),
+        ('s_accordion_image_default_image', 's_image_text_default_image'),
+        ('s_pricelist_boxed_default_background', 's_product_catalog_default_image'),
+        ('s_image_title_default_image', 's_cover_default_image'),
+        ('s_key_images_default_image_1', 's_media_list_default_image_1'),
+        ('s_key_images_default_image_2', 's_image_text_default_image'),
+        ('s_key_images_default_image_3', 's_media_list_default_image_2'),
+        ('s_key_images_default_image_4', 's_text_image_default_image'),
+        ('s_kickoff_default_image', 's_cover_default_image'),
+        ('s_quadrant_default_image_1', 'library_image_03'),
+        ('s_quadrant_default_image_2', 'library_image_10'),
+        ('s_quadrant_default_image_3', 'library_image_13'),
+        ('s_quadrant_default_image_4', 'library_image_05'),
+        ('s_sidegrid_default_image_1', 'library_image_03'),
+        ('s_sidegrid_default_image_2', 'library_image_10'),
+        ('s_sidegrid_default_image_3', 'library_image_13'),
+        ('s_sidegrid_default_image_4', 'library_image_05'),
+        ('s_cta_box_default_image', 'library_image_02'),
+        ('s_image_punchy_default_image', 's_cover_default_image'),
+        ('s_image_frame_default_image', 's_carousel_default_image_2'),
+        ('s_carousel_intro_default_image_1', 's_cover_default_image'),
+        ('s_carousel_intro_default_image_2', 's_image_text_default_image'),
+        ('s_carousel_intro_default_image_3', 's_text_image_default_image'),
+        ('s_website_form_overlay_default_image', 's_cover_default_image'),
+        ('s_website_form_cover_default_image', 's_cover_default_image'),
+        ('s_split_intro_default_image', 's_cover_default_image'),
+        ('s_framed_intro_default_image', 's_cover_default_image'),
+        ('s_splash_intro_default_image', 's_cover_default_image'),
+        ('s_wavy_grid_default_image_1', 's_cover_default_image'),
+        ('s_wavy_grid_default_image_2', 's_image_text_default_image'),
+        ('s_wavy_grid_default_image_3', 's_text_image_default_image'),
+        ('s_wavy_grid_default_image_4', 's_carousel_default_image_1'),
+        ('s_timeline_images_default_image_1', 's_media_list_default_image_1'),
+        ('s_timeline_images_default_image_2', 's_media_list_default_image_2'),
+        ('s_carousel_cards_default_image_1', 's_carousel_default_image_1'),
+        ('s_carousel_cards_default_image_2', 's_carousel_default_image_2'),
+        ('s_carousel_cards_default_image_3', 's_carousel_default_image_3'),
+        ('s_banner_connected_default_image', 's_cover_default_image'),
+    ]
+}
+
+# Matches the translation marker inside attribute values
+# (e.g. alt="<span data-oe-translation-source-sha="...">term</span>")
+# when a record is read with edit_translations=True.
+_TRANSLATION_MARKER_MATCHER = re.compile(
+    r'<span [^>]*data-oe-translation-source-sha="([^"]+)"[^>]*>(.*?)</span>',
+    re.DOTALL,
+)
 
 
 class QueryURL:
@@ -151,6 +217,29 @@ class Website(Home):
 
         raise request.not_found()
 
+    def system_page_http_error(env):
+        template_codes = ['403', '404']
+        debug_mode = request and request.session.debug
+        if debug_mode:
+            template_codes += ['4xx', '400', '415', '422']
+
+        return [
+            {
+                'route_title': _lt("Error Page %s", code),
+                'route_url': f'/website/http_error/{code}',
+            } for code in template_codes
+        ]
+
+    @http.route("/website/http_error/<string:status_code>", type="http", auth="public", website=True, list_as_website_content=system_page_http_error)
+    def website_http_error_page(self, status_code):
+        """
+        Generic error page renderer for 4xx, 403, 404, 500, etc.
+        """
+        template = f"http_routing.{status_code}"
+        if not request.env.user.has_group('website.group_website_designer') or not request.env.ref(template, raise_if_not_found=False):
+            template = "http_routing.404"
+        return request.render(template)
+
     @http.route('/website/force/<int:website_id>', type='http', auth="user", website=True, sitemap=False, multilang=False, readonly=True)
     def website_force(self, website_id, path='/', isredir=False, **kw):
         """ To switch from a website to another, we need to force the website in
@@ -183,6 +272,10 @@ class Website(Home):
                 return request.redirect(url_to)
         website._force()
         return request.redirect(path)
+
+    @http.route('/website/get_current_website_id', type='jsonrpc', auth="user", readonly=True)
+    def get_current_website(self):
+        return self.env.context.get('host_id')
 
     @http.route(['/@/', '/@/<path:path>'], type='http', auth='public', website=True, sitemap=False, multilang=False, readonly=True)
     def client_action_redirect(self, path='', **kw):
@@ -290,6 +383,16 @@ class Website(Home):
             'allowed_routes': self._get_allowed_robots_routes(),
             'url_root': request.httprequest.url_root,
         }, mimetype='text/plain')
+
+    @http.route('/llms.txt', type='http', auth='public', website=True, multilang=False, sitemap=False)
+    def llms_txt(self):
+        website = request.env.website
+        llms_txt = website.llms_txt
+
+        if not llms_txt or not llms_txt.strip():
+            raise request.not_found()
+
+        return request.make_response(llms_txt, headers=[('Content-Type', 'text/plain; charset=utf-8')])
 
     @http.route('/sitemap.xml', type='http', auth="public", website=True, multilang=False, sitemap=False)
     def sitemap_xml_index(self, **kwargs):
@@ -405,6 +508,418 @@ class Website(Home):
         url = self.env.website.cookie_policy_id.sudo().url or '/cookie-policy'
         return request.redirect(url)
 
+    def _load_configurator_preview_html(self, preview_url):
+        """Load the static HTML used by the configurator theme preview.
+
+        :param str preview_url: local static file path
+        :return: preview HTML
+        :rtype: str
+        """
+        if not preview_url.startswith('/'):
+            raise NotFound()
+        try:
+            with tools.file_open(preview_url.lstrip('/'), 'rb') as file:
+                return file.read().decode('utf-8')
+        except FileNotFoundError as exc:
+            raise NotFound() from exc
+
+    def _get_configurator_preview_images_map(self, theme_name, industry_id):
+        """Fetch the industry image replacements for a theme preview.
+
+        :param str theme_name: name of the previewed theme
+        :param int industry_id: selected website industry id
+        :return: mapping from original image names to replacement URLs
+        :rtype: dict
+        """
+        if not theme_name or industry_id <= 0:
+            return {}
+        return request.env['website'].configurator_get_images(industry_id, theme_name)
+
+    def _get_theme_static_preview_image_url(self, theme_name, image_name):
+        """Find an image directly in the theme static preview files.
+
+        :param str theme_name: name of the previewed theme
+        :param str image_name: original image name or URL segment
+        :return: static URL to the theme image, if found
+        :rtype: str | None
+        """
+        if not theme_name:
+            return None
+        image_name = urllib.parse.unquote(image_name).split('?', 1)[0]
+        image_basename = image_name.split('.', 1)[1] if '.' in image_name else image_name
+        image_basename = image_basename.rsplit('/', 1)[-1]
+        image_extension_index = image_basename.rfind('.')
+        image_stem = image_basename[:image_extension_index] if image_extension_index > 0 else image_basename
+        image_ext = image_basename[image_extension_index:] if image_extension_index > 0 else ''
+        candidate_names = [image_basename] if image_ext else [
+            f'{image_basename}.{ext}'
+            for ext in ('png', 'jpg', 'jpeg', 'webp', 'svg', 'gif')
+        ]
+        image_folders = ('configurator', 'content', 'backgrounds', 'pictures', 'snippets')
+        for folder in image_folders:
+            for candidate_name in candidate_names:
+                candidate_path = f'{theme_name}/static/src/img/{folder}/{candidate_name}'
+                try:
+                    with tools.file_open(candidate_path, 'rb'):
+                        return f'/{candidate_path}'
+                except FileNotFoundError:
+                    continue
+        if image_stem and image_stem != image_basename:
+            for folder in image_folders:
+                for ext in ('png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'):
+                    candidate_path = f'{theme_name}/static/src/img/{folder}/{image_stem}.{ext}'
+                    try:
+                        with tools.file_open(candidate_path, 'rb'):
+                            return f'/{candidate_path}'
+                    except FileNotFoundError:
+                        continue
+        return None
+
+    def _get_configurator_industry_image_url(self, images_map, image_name):
+        """Return the IAP industry image replacing a preview image, if any.
+
+        :param dict images_map: industry image replacement mapping
+        :param str image_name: original image name or URL segment
+        :return: replacement image URL, if any
+        :rtype: str | None
+        """
+        image_name = urllib.parse.unquote(image_name).split('?', 1)[0]
+        if image_name not in images_map:
+            image_name = CONFIGURATOR_PREVIEW_FALLBACK_IMAGES.get(image_name, image_name)
+        image_url = images_map.get(image_name)
+        if image_url:
+            return image_url.replace('/small/', '/')
+        return None
+
+    def _get_configurator_preview_image_url(self, theme_name, images_map, image_name):
+        """Return the replacement URL for a preview image.
+
+        :param str theme_name: name of the previewed theme
+        :param dict images_map: industry image replacement mapping
+        :param str image_name: original image name or URL segment
+        :return: replacement image URL, if any
+        :rtype: str | None
+        """
+        image_url = self._get_configurator_industry_image_url(images_map, image_name)
+        if image_url:
+            return image_url
+        image_name = urllib.parse.unquote(image_name).split('?', 1)[0]
+        image_name = CONFIGURATOR_PREVIEW_FALLBACK_IMAGES.get(image_name, image_name)
+        return self._get_theme_static_preview_image_url(theme_name, image_name)
+
+    def _apply_configurator_preview_images(self, final_html, theme_name, images_map):
+        """Replace preview image URLs with industry-specific images.
+
+        :param str final_html: preview HTML
+        :param str theme_name: name of the previewed theme
+        :param dict images_map: industry image replacement mapping
+        :return: preview HTML with updated image URLs
+        :rtype: str
+        """
+        shape_urls = set(re.findall(r'/html_editor/image_shape/([^/"\']+)/([^"\'\s)]+)', final_html))
+        for image_name, shape_path in shape_urls:
+            mapped_image_url = self._get_configurator_preview_image_url(theme_name, images_map, image_name)
+            if not mapped_image_url:
+                continue
+            if (
+                not mapped_image_url.startswith(API_WEBSITE_IMAGES_URL)
+                and not re.match(r'^/[^/]+/static/', mapped_image_url)
+            ):
+                continue
+            shape_src = f'/html_editor/image_shape/{image_name}/{shape_path}'
+            shape_file_path, _, shape_query = shape_path.partition('?')
+            module, _, shape_filename = shape_file_path.partition('/')
+            if not shape_filename:
+                continue
+            if not mapped_image_url.startswith(API_WEBSITE_IMAGES_URL):
+                try:
+                    with file_open(
+                        urllib.parse.unquote(mapped_image_url).lstrip('/'),
+                        'rb',
+                        filter_ext=tuple(SUPPORTED_IMAGE_MIMETYPES.values()),
+                    ) as file:
+                        image = file.read()
+                except (FileNotFoundError, ValueError):
+                    continue
+                mimetype = guess_mimetype(image)
+                if mimetype not in SUPPORTED_IMAGE_MIMETYPES:
+                    continue
+                shape_svg = get_shape_svg(module, 'image_shapes', shape_filename)
+                shape_options = dict(urllib.parse.parse_qsl(shape_query.replace('&amp;', '&'), keep_blank_values=True))
+                shape_svg = make_shaped_image(request.env, shape_svg, image, mimetype, shape_options)
+                shape_data_uri = 'data:image/svg+xml;base64,%s' % base64.b64encode(shape_svg.encode()).decode()
+                final_html = final_html.replace(shape_src, shape_data_uri)
+                continue
+            shaped_url = f'/html_editor/image_shape_url/{module}/{shape_filename}'
+            image_query = werkzeug.urls.url_encode({'image_url': mapped_image_url})
+            shaped_url = f'{shaped_url}?{shape_query}&{image_query}' if shape_query else f'{shaped_url}?{image_query}'
+            final_html = final_html.replace(shape_src, shaped_url)
+
+        # The preview generator keeps theme images local (in src or in a
+        # style url()) and stores their attachment key in the
+        # industry_image_key attribute: replace the local image when an IAP
+        # industry image matches the key.
+        def replace_keyed_image(match):
+            el = match.group(0)
+            image_url = self._get_configurator_industry_image_url(images_map, match.group(1))
+            if not image_url:
+                return el
+            el = re.sub(r'src="[^"]*"', lambda _m: f'src="{image_url}"', el)
+            return re.sub(r'url\((["\']?)[^)]*?\1\)', lambda m: f'url({m.group(1)}{image_url}{m.group(1)})', el)
+
+        final_html = re.sub(r'<[^>]*\bindustry_image_key="([^"]*)"[^>]*>', replace_keyed_image, final_html)
+
+        def replace_image_url(match):
+            image_url = match.group(0)
+            mapped_image_url = self._get_configurator_preview_image_url(
+                theme_name,
+                images_map,
+                image_url.replace('/web/image/', '', 1),
+            )
+            return mapped_image_url or image_url
+
+        final_html = re.sub(r'/web/image/[^"\'\s,)]+', replace_image_url, final_html)
+        return final_html
+
+    def _get_configurator_preview_shape_url(self, shape_url, palette_map):
+        """Replace palette references in a shape URL query string.
+
+        :param str shape_url: original shape URL
+        :param dict palette_map: mapping from ``o-color-X`` names to hex colors
+        :return: shape URL with resolved palette colors
+        :rtype: str
+        """
+        decoded_shape_url = shape_url.replace('&amp;', '&')
+        parsed_shape_url = urllib.parse.urlsplit(decoded_shape_url)
+        shape_query_items = urllib.parse.parse_qsl(
+            parsed_shape_url.query, keep_blank_values=True
+        )
+        has_palette_color = False
+        updated_shape_query_items = []
+        for key, value in shape_query_items:
+            palette_color = palette_map.get(value)
+            if palette_color:
+                value = palette_color
+                has_palette_color = True
+            updated_shape_query_items.append((key, value))
+        if not has_palette_color:
+            return shape_url
+        updated_shape_url = urllib.parse.urlunsplit(
+            (
+                parsed_shape_url.scheme,
+                parsed_shape_url.netloc,
+                parsed_shape_url.path,
+                urllib.parse.urlencode(updated_shape_query_items),
+                parsed_shape_url.fragment,
+            )
+        )
+        return updated_shape_url.replace('&', '&amp;') if '&amp;' in shape_url else updated_shape_url
+
+    def _apply_configurator_preview_shape_colors(self, final_html, palette_map):
+        """Apply selected palette colors to preview shape URLs.
+
+        :param str final_html: preview HTML
+        :param dict palette_map: mapping from ``o-color-X`` names to hex colors
+        :return: preview HTML with updated shape URLs
+        :rtype: str
+        """
+        for shape_url in set(re.findall(r'/(?:html_editor|web_editor)/(?:image_)?shape/[^"\'\s)]+', final_html)):
+            updated_shape_url = self._get_configurator_preview_shape_url(shape_url, palette_map)
+            if updated_shape_url != shape_url:
+                final_html = final_html.replace(shape_url, updated_shape_url)
+        return final_html
+
+    def _get_configurator_preview_contrast_color(self, background_color):
+        """Pick a readable text color for a preview background color.
+
+        :param str background_color: background color as a ``#RRGGBB`` value
+        :return: dark or light text color, or an empty string for invalid input
+        :rtype: str
+        """
+        background_color = background_color.strip()
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}', background_color):
+            return ''
+        background_rgb = hex_to_rgb(background_color)
+        _, _, value = colorsys.rgb_to_hsv(*(channel / 255 for channel in background_rgb))
+        # Preview-only fallback to avoid dark text on dark generated previews.
+        return '#212529' if value > 0.5 else '#FFFFFF'
+
+    def _get_configurator_preview_color_combination_text_variables(self, final_html, palette_map):
+        """Build text color variables for preview color combinations.
+
+        :param str final_html: preview HTML containing the color-combination
+            background variables
+        :param dict palette_map: mapping from ``o-color-X`` names to hex colors
+        :return: CSS variable declarations for color-combination text colors
+        :rtype: str
+        """
+        color_combination_backgrounds = {}
+        background_regex = (
+            r'--o-cc([1-5])-bg\s*:\s*'
+            r'(?:var\(--(o-color-[1-5])\)|(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?))\s*;'
+        )
+        for color_combination, color_name, color_value in re.findall(background_regex, final_html):
+            background_color = palette_map.get(color_name) if color_name else color_value
+            if background_color:
+                color_combination_backgrounds[color_combination] = background_color
+
+        text_variables = []
+        for color_combination, background_color in sorted(color_combination_backgrounds.items()):
+            text_color = self._get_configurator_preview_contrast_color(background_color)
+            if text_color:
+                text_variables.append(f'--o-cc{color_combination}-text:{text_color};')
+        return ''.join(text_variables)
+
+    def _get_configurator_preview_overrides(self, palette, final_html, is_dark=False):
+        """Return the CSS variables injected into static configurator previews.
+
+        The selected palette overrides the preview's base colors. Text color
+        variables are derived from the preview color-combination backgrounds to
+        keep text readable after the palette changes.
+
+        :param list[str] palette: selected palette colors ordered from
+            ``o-color-1`` to ``o-color-5``
+        :param str final_html: static preview HTML used to read the original
+            color-combination backgrounds
+        :param bool is_dark: whether the selected palette uses a dark base
+        :return: style tag containing the configurator preview CSS variables
+        :rtype: str
+        """
+        palette_map = {
+            f'o-color-{index}': color
+            for index, color in enumerate(palette, start=1)
+            if color
+        }
+        root_variables = ''.join(
+            f'--o-color-{index}: {color};'
+            for index, color in enumerate(palette, start=1)
+            if color
+        )
+        root_variables += self._get_configurator_preview_color_combination_text_variables(
+            final_html,
+            palette_map,
+        )
+        dark_mode_overrides = ''
+        if is_dark:
+            root_variables += (
+                '--body-bg:var(--o-color-4);'
+                '--body-color:var(--o-color-5);'
+            )
+            dark_mode_overrides = (
+                '#wrapwrap>main,#wrapwrap.o_footer_effect_enable>main{'
+                'background-color:var(--o-color-4);'
+                'color:var(--o-color-5);'
+                '}'
+            )
+            for area_name, area_selector in (
+                ('menu', '#wrapwrap header .navbar'),
+                ('footer', '#wrapwrap footer'),
+            ):
+                background_match = re.search(
+                    rf'--{area_name}\s*:\s*'
+                    r'(?:var\(--(o-color-[1-5])\)|(#[0-9a-fA-F]{6}))\s*;',
+                    final_html,
+                )
+                if not background_match:
+                    continue
+                color_name, color_value = background_match.groups()
+                background_color = palette_map.get(color_name) if color_name else color_value
+                if not background_color:
+                    continue
+                text_color = self._get_configurator_preview_contrast_color(background_color)
+                dark_mode_overrides += (
+                    f'{area_selector},'
+                    f'{area_selector} :is('
+                    'h1,h2,h3,h4,h5,h6,a:not(.btn),.btn-link,.text-muted'
+                    f'){{color:{text_color}!important;}}'
+                )
+        # Chrome may show thin gaps between sections in scaled iframes. The
+        # `.o_we_shape` and `section` rules overlap them to hide those gaps.
+        return (
+            '<style id="o_configurator_theme_preview_overrides">'
+            f':root{{{root_variables}}}'
+            f'{dark_mode_overrides}'
+            '.o_we_shape{top:-2px;bottom:-2px;}'
+            'section{margin-top:-2px;}'
+            '</style>'
+        )
+
+    def _inject_configurator_preview_overrides(self, final_html, preview_url, preview_overrides):
+        """Inject the preview base URL and CSS overrides into the HTML head.
+
+        :param str final_html: preview HTML
+        :param str preview_url: original preview URL used as the document base
+        :param str preview_overrides: style tag with configurator CSS variables
+        :return: preview HTML with the base tag and CSS overrides
+        :rtype: str
+        """
+        base_tag = f'<base href="{markup_escape(preview_url)}">'
+        head_match = re.search(r'<head\b[^>]*>', final_html, flags=re.IGNORECASE)
+        if head_match:
+            final_html = final_html[:head_match.end()] + base_tag + final_html[head_match.end():]
+            head_end_match = re.search(r'</head>', final_html, flags=re.IGNORECASE)
+            if head_end_match:
+                return (
+                    final_html[:head_end_match.start()]
+                    + preview_overrides
+                    + final_html[head_end_match.start():]
+                )
+            return final_html + preview_overrides
+        return base_tag + preview_overrides + final_html
+
+    @http.route('/website/configurator/preview', type='http', auth="user", website=True, multilang=False)
+    def website_configurator_preview(
+        self,
+        preview_url,
+        theme_name=None,
+        industry_id=-1,
+        color1='',
+        color2='',
+        color3='',
+        color4='',
+        color5='',
+        is_dark='0',
+        **kwargs,
+    ):
+        if not preview_url:
+            raise NotFound()
+
+        industry_id = int(industry_id)
+        palette = [color1, color2, color3, color4, color5]
+        palette_map = {
+            f'o-color-{index}': color
+            for index, color in enumerate(palette, start=1)
+            if color
+        }
+        images_map = self._get_configurator_preview_images_map(theme_name, industry_id)
+
+        final_html = self._load_configurator_preview_html(preview_url)
+        final_html = self._apply_configurator_preview_shape_colors(final_html, palette_map)
+        final_html = self._apply_configurator_preview_images(final_html, theme_name, images_map)
+        if is_dark == '1':
+            preview_doc = html.document_fromstring(final_html)
+            preview_doctype = preview_doc.getroottree().docinfo.doctype
+            adapt_dark_palette_content(preview_doc)
+            final_html = etree.tostring(
+                preview_doc,
+                encoding='unicode',
+                method='html',
+                doctype=preview_doctype or None,
+            )
+        # Add palette variables to make static previews reflect the current configurator selection.
+        preview_overrides = self._get_configurator_preview_overrides(
+            palette,
+            final_html,
+            is_dark=is_dark == '1',
+        )
+        final_html = self._inject_configurator_preview_overrides(
+            final_html,
+            preview_url,
+            preview_overrides,
+        )
+
+        return request.make_response(final_html, [('Content-Type', 'text/html; charset=utf-8')])
+
     @http.route('/website/get_suggested_links', type='jsonrpc', auth="user", website=True, readonly=True)
     def get_suggested_link(self, needle, limit=10):
         matching_pages = []
@@ -455,6 +970,17 @@ class Website(Home):
 
     @http.route('/website/snippet/filters', type='jsonrpc', auth='public', website=True, readonly=True)
     def get_dynamic_filter(self, filter_id, **kwargs):
+        """Render records from an existing website.snippet.filter as HTML cards.
+
+        :param int filter_id: id of the `website.snippet.filter` to use as data source.
+        :param str template_key: MANDATORY.
+        :param int limit: MANDATORY. max records to render (capped at 16).
+        :param list search_domain: extra domain ANDed with the filter's base domain.
+        :param str res_model: with res_id and limit=1, render that one record instead.
+        :param int res_id: id of the single record to render, see res_model.
+        :return: one HTML string per rendered record.
+        :rtype: list[str]
+        """
         dynamic_filter_sudo = request.env['website.snippet.filter'].sudo()
         if filter_id:
             dynamic_filter_sudo = dynamic_filter_sudo.search(
@@ -478,13 +1004,21 @@ class Website(Home):
                 Domain('filter_id.model_id', '=', model_name)
                 | Domain('action_server_id.model_id.model', '=', model_name)
             )
-        dynamic_filter = request.env['website.snippet.filter'].sudo().search_read(
+        dynamic_filter = request.env['website.snippet.filter'].with_context(lang=request.env.user.lang).sudo().search_read(
             domain, ['id', 'name', 'limit', 'model_name', 'help'], order='id asc'
         )
         return dynamic_filter
 
     @http.route('/website/snippet/filter_templates', type='jsonrpc', auth='public', website=True, readonly=True)
     def get_dynamic_snippet_templates(self, filter_name=False):
+        """List the QWeb card templates usable with /website/snippet/filters' template_key.
+
+        :param str filter_name: only return templates whose key contains this - leave
+            empty to list all of them.
+        :return: one dict per template with at least its `key` (the template_key to pass to
+            /website/snippet/filters) and `name`.
+        :rtype: list[dict]
+        """
         domain = [['key', 'ilike', '.dynamic_filter_template_'], ['type', '=', 'qweb']]
         if filter_name:
             domain.append(['key', 'ilike', escape_like_value('_%s_' % filter_name)])
@@ -506,6 +1040,12 @@ class Website(Home):
 
     @http.route('/website/get_current_currency', type='jsonrpc', auth="public", website=True, readonly=True)
     def get_current_currency(self, **kwargs):
+        """Return the currency the prices of the current website are expressed in.
+
+        :return: the currency's `id`, its `symbol` and the `position` of that symbol
+            relative to the amount ('before' or 'after').
+        :rtype: dict
+        """
         currency_id = self.env.website.company_id.currency_id
         return {
             'id': currency_id.id,
@@ -616,8 +1156,10 @@ class Website(Home):
         Returns list of results according to the term and options
 
         :param str search_type: indicates what to search within, 'all' matches all available types
-        :param str term: search term written by the user
-        :param str order:
+        :param str term: search term written by the user, empty to match everything
+        :param str order: order of the results, as an ORM order string over the searched
+            model's own fields, e.g. 'create_date desc'. Defaults to 'name ASC'. Published
+            records always come first, whatever this is set to.
         :param int offset: number of results to skip, defaults to 0
         :param int limit: number of results to consider, defaults to 6
         :param int max_nb_chars: max number of characters for text fields
@@ -632,9 +1174,22 @@ class Website(Home):
                             - 'groupName' (str): the name of the group of results
                             - 'searchCount' (int): the number of results in this group
                             - 'data' (list of dict): the actual results (only their needed field values)
+                                    Which keys are present depends on what is being
+                                    searched: they are the ones that model declares in
+                                    its `_search_get_detail` mapping, so they vary per
+                                    search_type and any module may extend them. No record
+                                    id is among them - a result carries what it takes to
+                                    display the record and a URL to reach it, not a
+                                    handle to pass to a route that expects an id.
                     - str: rendered HTML template (if `renderTemplate=True`)
                     note: the monetary fields will be strings properly formatted and
                     already containing the currency
+                    note: a field the term was found in does NOT come back as plain
+                    text. The matching segments are wrapped in
+                    `<span class="o_search_matching_text">` so the caller can highlight
+                    them, which turns that field into HTML - the same field is plain
+                    text on a record where the term did not match, so the two arrive
+                    mixed in a single response.
             - 'results_count' (int): the number of results in the database
                     that matched the search query
             - 'parts' (dict): presence of fields across all results
@@ -700,7 +1255,7 @@ class Website(Home):
             for record in search_result['results_data']:
                 mapping = record['_mapping']
                 mapped = {
-                    '_fa': record.get('_fa'),
+                    '_icon': record.get('_icon'),
                 }
                 skip_matching_area = False
                 for mapped_name, field_meta in mapping.items():
@@ -908,9 +1463,9 @@ class Website(Home):
                         snippet = section_el.attrib['data-snippet']
                         # Because the templates are generated from specific
                         # t-snippet-calls such as:
-                        # "website.new_page_template_about_0_s_text_block",
+                        # "website.new_page_template_about_us_0_s_text_block",
                         # the generated data-snippet looks like:
-                        # "new_page_template_about_0_s_text_block"
+                        # "new_page_template_about_us_0_s_text_block"
                         # while it should be "s_text_block" only.
                         if '_s_' in snippet:
                             section_el.attrib['data-snippet'] = f's_{snippet.split("_s_")[-1]}'
@@ -1010,27 +1565,46 @@ class Website(Home):
     @http.route(['/website/get_alt_images'], type='jsonrpc', auth="user", website=True)
     def get_alt_images(self, models):
         result = []
+        current_lang = self.env.context.get('lang')
+        is_translated = current_lang != self.env.website.default_lang_id.code
         for model in models:
             record = request.env[model['model']].browse(model['id'])
-            model['field'] = 'arch_db' if model['field'] == 'arch' else model['field']
-            tree = html.fromstring(str(record[model['field']]))
+            field_name = 'arch_db' if model['field'] == 'arch' else model['field']
+            record = record.with_context(edit_translations=True) if is_translated else record
+            tree = html.fromstring(str(record[field_name]))
             # Only process static img elements (with src) - skip dynamic
             # template images (t-att*)
             for index, el in enumerate(tree.xpath('//img[@src]')):
                 role = el.get('role')
                 decorative = role == "presentation"
-                alt = el.get('alt')
-                if not decorative or alt is None:
-                    result.append({
-                        "src": el.get("src"),
-                        "alt": alt or "",
-                        "decorative": False,
-                        "updated": False,
-                        "res_model": model['model'],
-                        "res_id": model['id'],
-                        "id": f"{model['model']}-{model['id']}-{index}",
-                        "field": model.get('field'),
-                    })
+                raw_alt = el.get('alt')
+                if decorative and raw_alt is not None:
+                    continue
+                source_sha = None
+                if is_translated:
+                    # The alt attribute carries the translation marker
+                    # instead of plain text; extract the sha of the base
+                    # language term (the translation key) and the term as
+                    # currently rendered in this language.
+                    match = _TRANSLATION_MARKER_MATCHER.search(raw_alt or '')
+                    if not match:
+                        # No source term to translate from, skip.
+                        continue
+                    source_sha, raw_alt = match.group(1), match.group(2)
+                alt = (raw_alt or '').strip()
+                values = {
+                    "src": el.get("src"),
+                    "alt": alt,
+                    "decorative": False,
+                    "updated": False,
+                    "res_model": model['model'],
+                    "res_id": model['id'],
+                    "id": self._get_image_id(model['model'], model['id'], field_name, index),
+                    "field": field_name,
+                }
+                if is_translated:
+                    values["source_sha"] = source_sha
+                result.append(values)
         return json.dumps(result)
 
     @http.route(['/website/update_alt_images'], type='jsonrpc', auth="user", website=True)
@@ -1045,7 +1619,7 @@ class Website(Home):
             tree = html.fromstring(str(record[img['field']]))
             modified = False
             for index, element in enumerate(tree.xpath('//img')):
-                imgId = f"{img['res_model']}-{img['res_id']}-{index!s}"
+                imgId = self._get_image_id(img['res_model'], img['res_id'], img['field'], str(index))
                 if imgId == img['id']:
                     if (img['decorative']):
                         element.set('alt', '')
@@ -1057,6 +1631,10 @@ class Website(Home):
             if modified:
                 new_html_content = html.tostring(tree, encoding='unicode', method='html')
                 record.write({img['field']: new_html_content})
+
+    @staticmethod
+    def _get_image_id(model, model_id, field, index):
+        return f"{model}-{model_id}-{field}-{index}"
 
     @http.route(['/website/update_broken_links'], type='jsonrpc', auth="user", website=True)
     def update_broken_links(self, links):
@@ -1120,7 +1698,8 @@ class Website(Home):
             field = record._fields.get(field_name)
             if not field.store:
                 return record[field_name] or ''
-            translations = field._get_stored_translations(record) or {}
+
+            translations = dict(record._get_stored_translations(field_name) or {})
             return translations.get(lang_code or request.lang.code, '')
 
         # Access checks

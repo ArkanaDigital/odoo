@@ -9,17 +9,16 @@ import { PLATFORMS } from "@html_editor/main/media/media_dialog/video_selector";
 
 import {
     EMBEDDED_COMPONENT_PLUGINS,
-    MAIN_PLUGINS,
     NO_EMBEDDED_COMPONENTS_FALLBACK_PLUGINS,
 } from "@html_editor/plugin_sets";
 import { MAIN_EMBEDDINGS } from "@html_editor/others/embedded_components/embedding_sets";
 import { getContent } from "../_helpers/selection";
 import { contains } from "../../../../web/static/tests/_framework/dom_test_helpers";
 const NO_EMBEDDED_COMPONENTS_CONFIG = {
-    Plugins: [...MAIN_PLUGINS, ...NO_EMBEDDED_COMPONENTS_FALLBACK_PLUGINS],
+    includePlugins: NO_EMBEDDED_COMPONENTS_FALLBACK_PLUGINS,
 };
 const EMBEDDED_COMPONENTS_CONFIG = {
-    Plugins: [...MAIN_PLUGINS, ...EMBEDDED_COMPONENT_PLUGINS],
+    includePlugins: EMBEDDED_COMPONENT_PLUGINS,
     resources: { embedded_components: MAIN_EMBEDDINGS },
 };
 
@@ -134,6 +133,47 @@ describe("media dialod video", () => {
             expect(iframeContainerData.videoId).toBe("dQw4w9WgXcQ");
             expect(iframeContainerData.embedUrl).toBe(iframe.src);
             expect(getContent(el)).toBe(`<p>ab</p>${getMediaHtml("dQw4w9WgXcQ")}<p>[]cd</p>`);
+        });
+        test("Should insert an instagram video verticaly", async () => {
+            const { editor } = await setupEditor("<p>ab[]cd</p>", {
+                config: NO_EMBEDDED_COMPONENTS_CONFIG,
+            });
+            mockFetch(() => '{"data": "mockFetch api result data"}');
+            // Open the media dialog with the /video command
+            await insertText(editor, "/video");
+            await animationFrame();
+            await expectElementCount(".o-we-powerbox", 1);
+            await press("Enter");
+
+            // Ensure the video tab is selected by default
+            const selectedTab = await waitFor(`div.modal .nav-tabs button.active`);
+            expect(selectedTab.textContent).toBe("Videos");
+            await waitFor(`div.modal #o_video_text`);
+
+            // Insert a valid instagram video URL
+            await click("#o_video_text");
+            await edit("https://www.instagram.com/reel/B6dXGTxggTG/");
+            // We manualy advanceTime for `refreshVideoData()` to be triggered (the call is debounced).
+            await advanceTime(100);
+            await waitForNone(`div.modal .o_video_preview .alert`);
+
+            // Click on save button
+            await click(`div.modal .modal-footer button.btn-primary`);
+            await animationFrame();
+            await waitForNone(`div.modal`);
+
+            const iframeContainer = await waitFor(`div.media_iframe_video`);
+            const iframe = await waitFor(`div.media_iframe_video iframe`);
+            const iframeContainerData = iframeContainer?.dataset || {};
+
+            expect(iframeContainerData.platform).toBe("instagram");
+            expect(iframeContainerData.baseUrl).toBe("https://www.instagram.com/reel/B6dXGTxggTG/");
+            expect(iframeContainerData.embedUrl).toBe(
+                "https://www.instagram.com/p/B6dXGTxggTG/embed/"
+            );
+            expect(iframeContainerData.isVertical).toBe("true");
+            expect(iframeContainerData.videoId).toBe("B6dXGTxggTG");
+            expect(iframeContainerData.embedUrl).toBe(iframe.src);
         });
     });
 
@@ -494,7 +534,7 @@ describe("media dialod video", () => {
             // QWeb templates rendered during unit test store src in data-src
             // @see: addons/web/static/tests/_framework/mock_templates.hoot.js :: replaceAttributes()
             expect(iframe.dataset.src).toBe(
-                "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&enablejsapi=1&fs=0&loop=1&mute=1&rel=0&start=83"
+                "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&enablejsapi=1&fs=0&loop=1&mute=1&playlist=dQw4w9WgXcQ&rel=0&start=83"
             );
             // In order to test the media dialog edition, we need to provide a real src for the iframe;
             // otherwise the media dialog won't recognize the existing video as valid.
@@ -521,6 +561,54 @@ describe("media dialod video", () => {
             }
             // ensure all the options that should be active have been verified
             expect(`${activeOptions.toSorted()}`).toBe(`${verifiedOptions.toSorted()}`);
+        });
+
+        test("YouTube: toggles loop off without stale playlist parameter", async () => {
+            // Playlist is a linkedParam, not a param, so it is not parsed as independent state.
+            const { editor } = await setupEditor("<p>ab[]cd</p>", {
+                config: NO_EMBEDDED_COMPONENTS_CONFIG,
+            });
+            mockFetch(() => '{"data": "mockFetch api result data"}');
+
+            await insertText(editor, "/video");
+            await animationFrame();
+            await expectElementCount(".o-we-powerbox", 1);
+            await press("Enter");
+
+            const videoId = "dQw4w9WgXcQ";
+            const mediaModal = await waitFor(`div.modal`);
+            await waitFor(`div.modal #o_video_text`);
+            await click(`#o_video_text`);
+            await edit(`https://www.youtube.com/embed/${videoId}?loop=1&playlist=${videoId}`);
+            await advanceTime(100);
+            await animationFrame();
+
+            const iframe = await waitFor(`div.modal .o_video_preview iframe`);
+            expect(iframe.dataset.src || iframe.src).toInclude(`playlist=${videoId}`);
+
+            let loopToggle = null;
+            for (const switchEl of mediaModal.querySelectorAll(
+                ".o_video_dialog_options .o_switch"
+            )) {
+                const label = switchEl.querySelector("span.ms-2")?.textContent.trim();
+                if (label === "Loop") {
+                    loopToggle = switchEl.querySelector("input");
+                    break;
+                }
+            }
+            expect(loopToggle).not.toBe(null);
+            expect(loopToggle).toBeChecked();
+
+            await click(loopToggle.closest("label"));
+            await advanceTime(100);
+            await animationFrame();
+
+            expect(loopToggle).not.toBeChecked();
+
+            const iframeAfter = await waitFor(`div.modal .o_video_preview iframe`);
+            const regeneratedUrl = iframeAfter.dataset.src || iframeAfter.src;
+            expect(regeneratedUrl).not.toInclude("playlist=");
+            expect(regeneratedUrl).not.toInclude("loop=");
         });
     });
 });

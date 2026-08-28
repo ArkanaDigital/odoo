@@ -2,10 +2,10 @@ import { after, beforeEach, expect, runAllTimers, test } from "@odoo/hoot";
 import {
     animationFrame,
     click,
-    Deferred,
     edit,
     pointerDown,
     press,
+    queryOne,
     queryAll,
     queryAllProperties,
     queryAllTexts,
@@ -17,20 +17,20 @@ import {
 } from "@odoo/hoot-dom";
 import { disableAnimations, mockDate, mockTimeZone } from "@odoo/hoot-mock";
 import { editTime } from "@web/../tests/core/datetime/datetime_test_helpers";
+import { _makeUser, user } from "@web/core/user";
 import { resetDateFieldWidths } from "@web/views/list/column_width_hook";
 import {
     clickSave,
     contains,
     defineModels,
     fields,
-    getMockEnv,
+    isSmall,
     models,
     mountView,
     onRpc,
     pagerNext,
     patchWithCleanup,
 } from "../../web_test_helpers";
-import { _makeUser, user } from "@web/core/user";
 
 const { DateTime } = luxon;
 
@@ -43,7 +43,7 @@ function assertTimePickerInput() {
 
     for (let i = 0; i < expectedTimes.length; i++) {
         expect(queryAll(".o_time_picker_input")[i].value).toBe(
-            getMockEnv().isSmall
+            isSmall()
                 ? DateTime.fromFormat(expectedTimes[i], "H:mm").toFormat("HH:mm")
                 : expectedTimes[i]
         );
@@ -187,7 +187,9 @@ test("Datetime field - interaction with the datepicker (same initial dates)", as
     expect("input[data-field=datetime]").toBeFocused();
     await contains(getPickerCell("8").at(0)).click();
     await animationFrame();
-    expect("input[data-field=datetime_end]").toBeFocused();
+    if (!queryOne(".o_datetime_picker").matches(".o_bottom_sheet *")) {
+        expect("input[data-field=datetime_end]").toBeFocused();
+    }
     await contains(getPickerCell("10").at(0)).click();
     await animationFrame();
     expect("input[data-field=datetime]").toHaveValue("02/08/2017 15:30:00");
@@ -589,8 +591,14 @@ test("Datetime field - open datepicker and toggle range with optional start date
     // Range mode: on (add a end date)
     await contains(".o_toggle_range").click();
     await animationFrame();
-    expect("input[data-field=datetime]").toHaveValue("03/12/2017 23:00:00");
-    expect("button[data-field=datetime_end]").toHaveValue("03/13/2017 00:00:00");
+
+    if (queryOne(".o_datetime_picker").matches(".o_bottom_sheet *")) {
+        expect("button[data-field=datetime]").toHaveValue("03/12/2017 23:00:00");
+        expect("input[data-field=datetime_end]").toHaveValue("03/13/2017 00:00:00");
+    } else {
+        expect("input[data-field=datetime]").toHaveValue("03/12/2017 23:00:00");
+        expect("button[data-field=datetime_end]").toHaveValue("03/13/2017 00:00:00");
+    }
 
     // Range mode: off
     await contains(".o_toggle_range").click();
@@ -1003,7 +1011,7 @@ test("related start date, required, both start date and end date set", async () 
     });
 
     expect(".o_field_daterange button:eq(0)").toHaveValue("02/03/2017");
-    expect(".fa-long-arrow-right").toHaveCount(1);
+    expect("[data-icon='east']").toHaveCount(1);
     expect(".o_field_daterange button:eq(1)").toHaveValue("02/03/2017");
 });
 
@@ -1020,7 +1028,7 @@ test("list daterange with start date and empty end date", async () => {
     });
 
     expect(".o_field_daterange").toHaveText("Feb 3, 2017");
-    expect(".o_field_daterange .fa-long-arrow-right").toHaveCount(0);
+    expect(".o_field_daterange [data-icon='east']").toHaveCount(0);
 });
 
 test("list daterange with empty start date and end date", async () => {
@@ -1038,7 +1046,7 @@ test("list daterange with empty start date and end date", async () => {
     });
 
     expect(".o_field_daterange").toHaveText("Feb 3, 2017");
-    expect(".o_field_daterange .fa-long-arrow-right").toHaveCount(0);
+    expect(".o_field_daterange [data-icon='east']").toHaveCount(0);
 });
 
 test("list daterange: column widths", async () => {
@@ -1085,7 +1093,7 @@ test("list daterange: column widths (numeric format)", async () => {
         arch: /* xml */ `
             <list>
                 <field name="date" widget="daterange" options="{'end_date_field': 'date_end', 'numeric': true}" />
-                <field name="datetime" widget="daterange" options="{'end_date_field': 'datetime_end', 'numeric': true}" />
+                <field name="datetime" widget="daterange" options="{'end_date_field': 'datetime_end', 'numeric': true, 'show_seconds': true}" />
                 <field name="char_field" />
             </list>`,
     });
@@ -1163,7 +1171,7 @@ test("list daterange: start date input width matches its span counterpart", asyn
         resModel: "partner",
         arch: /* xml */ `
             <list multi_edit="1">
-                <field name="datetime" widget="daterange" options="{'end_date_field': 'datetime_end', 'numeric': true}" />
+                <field name="datetime" widget="daterange" options="{'end_date_field': 'datetime_end', 'numeric': true, 'show_seconds': true}" />
             </list>`,
     });
 
@@ -1205,7 +1213,7 @@ test(`list daterange in x2many: open/close picker`, async () => {
     await contains(getPickerCell("15")).click();
     await contains(getPickerCell("20")).click();
 
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         // Close the bottom sheet
         await click(".o_bottom_sheet_backdrop");
     } else {
@@ -1282,7 +1290,7 @@ test("there is no arrow between the dates with option always_range if nothing is
     await contains(".o_form_button_save").click();
     await animationFrame();
     expect(".o_datetime_picker").toHaveCount(0);
-    expect(".fa-long-arrow-right").toHaveCount(1);
+    expect("[data-icon='east']").toHaveCount(1);
 });
 
 test("invalid empty date with optional end date", async () => {
@@ -1337,9 +1345,9 @@ test.tags("desktop");
 test("date values are selected eagerly and do not flicker", async () => {
     Partner._onChanges.datetime = () => {};
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     onRpc("onchange", async () => {
-        await def;
+        await def.promise;
         expect.step("onchange");
     });
 
@@ -1390,7 +1398,11 @@ test("update the selected input date after removing the existing date", async ()
     await contains(getPickerCell("12")).click();
     await animationFrame();
 
-    expect("button[data-field=date]").toHaveValue("02/12/2017");
+    if (queryOne(".o_datetime_picker").matches(".o_bottom_sheet *")) {
+        expect("input[data-field=date]").toHaveValue("02/12/2017");
+    } else {
+        expect("button[data-field=date]").toHaveValue("02/12/2017");
+    }
 });
 
 test("daterange with inverted start date and end date", async () => {
@@ -1460,7 +1472,7 @@ test("updating time keeps selected dates", async () => {
 
     await click(getPickerCell("16").at(-1));
     await animationFrame();
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await runAllTimers();
         await editTime("05:05", 1);
     } else {
@@ -1476,7 +1488,7 @@ test("updating time keeps selected dates", async () => {
 
     await contains(".o_time_picker:eq(0) .o_time_picker_input").click();
     await animationFrame();
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await editTime("15:35");
     } else {
         await edit("15:35", { confirm: "enter" });
@@ -1535,6 +1547,6 @@ test("DateRangeField contains a calendar icon on touch devices", async () => {
         resId: 1,
     });
     expect(".o_field_daterange .o_input").toHaveCount(2);
-    expect(".fa-calendar").toHaveCount(1);
-    expect(".fa-calendar").toBeVisible();
+    expect("[data-icon='calendar_today']").toHaveCount(1);
+    expect("[data-icon='calendar_today']").toBeVisible();
 });

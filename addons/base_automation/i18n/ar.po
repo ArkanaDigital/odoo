@@ -6,15 +6,15 @@
 # Martin Trigaux, 2022
 # Malaz Abuidris <msea@odoo.com>, 2023
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 15.5alpha1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:37+0000\n"
-"PO-Revision-Date: 2025-11-09 15:10+0000\n"
+"POT-Creation-Date: 2026-07-26 19:09+0000\n"
+"PO-Revision-Date: 2026-06-19 23:12+0000\n"
 "Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
-"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-19/"
+"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-master/"
 "base_automation/ar/>\n"
 "Language: ar\n"
 "MIME-Version: 1.0\n"
@@ -22,15 +22,18 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
 "&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
-"X-Generator: Weblate 5.12.2\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid ""
 "\"\n"
 "                (ID:"
 msgstr ""
+"\"\n"
+"                (المعرف:"
 
 #. module: base_automation
 #. odoo-javascript
@@ -94,29 +97,32 @@ msgstr ""
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_kanban
-msgid "<i class=\"fa fa-2x fa-arrow-right text-primary\" title=\"Actions\"/>"
+msgid ""
+"<i class=\"oi oi-2x text-primary\" data-icon=\"arrow_forward\" "
+"title=\"Actions\"/>"
 msgstr ""
-"<i class=\"fa fa-2x fa-arrow-right text-primary\" title=\"الإجراءات \"/>"
+"<i class=\"oi oi-2x text-primary\" data-icon=\"arrow_forward\" "
+"title=\"الإجراءات \"/>"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
 msgid ""
-"<i class=\"fa fa-info-circle\"/> The default target record getter will work "
-"out-of-the-box for any webhook coming from another Odoo instance."
+"<i class=\"oi\" data-icon=\"info\"/> The default target record getter will "
+"work out-of-the-box for any webhook coming from another Odoo instance."
 msgstr ""
-"<i class=\"fa fa-info-circle\"/> ستعمل أداة إحضار السجل المستهدف الافتراضي "
-"مباشرة مع أي ويبهوك قادم من مثيل أودو آخر."
+"<i class=\"oi\" data-icon=\"info\"/> ستعمل أداة إحضار السجل المستهدف "
+"الافتراضي مباشرة مع أي ويبهوك قادم من مثيل أودو آخر."
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
 msgid ""
-"<i class=\"fa fa-warning\"/> Automation rules triggered by UI changes will "
-"be executed <em>every time</em> the watched fields change, <em>whether you "
-"save or not</em>."
+"<i class=\"oi\" data-icon=\"warning\"/> Automation rules triggered by UI "
+"changes will be executed <em>every time</em> the watched fields change, "
+"<em>whether you save or not</em>."
 msgstr ""
-"<i class=\"fa fa-warning\"/> سيتم تنفيذ قواعد الأتمتة الناتجة عن تغييرات "
-"واجهة المستخدم <em>في كل مرة</em> تتغير فيها الحقول المراقَبة <em>سواءً قمت "
-"بالحفظ أم لا</em>."
+"<i class=\"oi\" data-icon=\"warning\"/> سيتم تنفيذ قواعد الأتمتة الناتجة عن "
+"تغييرات واجهة المستخدم <em>في كل مرة</em> تتغير فيها الحقول المراقَبة "
+"<em>سواءً قمت بالحفظ أم لا</em>."
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_server_action_form
@@ -160,8 +166,9 @@ msgstr "زخرفة استثناء النشاط"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__activity_plans_ids
+#, fuzzy
 msgid "Activity Plans"
-msgstr ""
+msgstr "خطط النشاط"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__activity_state
@@ -375,11 +382,6 @@ msgid "Following child actions have warnings: %(children)s"
 msgstr "تتضمن الإجراءات التابعة التالية بعض التحذيرات: %(children)s"
 
 #. module: base_automation
-#: model:ir.model.fields,help:base_automation.field_base_automation__activity_type_icon
-msgid "Font awesome icon e.g. fa-tasks"
-msgstr "أيقونة من Font awesome مثال: fa-tasks"
-
-#. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__model_is_mail_thread
 msgid "Has Mail Thread"
 msgstr "يحتوي على محادثة البريد الإلكتروني"
@@ -498,6 +500,11 @@ msgstr ""
 "على خاصية المناقشة فقط."
 
 #. module: base_automation
+#: model:ir.model.fields,help:base_automation.field_base_automation__activity_type_icon
+msgid "Material Symbols icon e.g. checklist"
+msgstr ""
+
+#. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__message_has_error
 msgid "Message Delivery error"
 msgstr "خطأ في تسليم الرسائل"
@@ -526,8 +533,8 @@ msgstr "اسم النموذج"
 #. odoo-python
 #: code:addons/base_automation/models/ir_actions_server.py:0
 msgid ""
-"Model of action %(action_name)s should match the one from automated rule %"
-"(rule_name)s."
+"Model of action %(action_name)s should match the one from automated rule "
+"%(rule_name)s."
 msgstr ""
 "يجب أن يطابق نموذج الإجراء %(action_name)sنموذج الإجراء الموجود في القاعدة "
 "المؤتمتة %(rule_name)s."
@@ -811,8 +818,8 @@ msgstr "النموذج المستهدف للإجراءات %(action_names)s مخ
 #. odoo-python
 #: code:addons/base_automation/models/base_automation.py:0
 msgid ""
-"The \"%(trigger_value)s\" %(trigger_label)s can only be used with the \"%"
-"(state_value)s\" action type"
+"The \"%(trigger_value)s\" %(trigger_label)s can only be used with the "
+"\"%(state_value)s\" action type"
 msgstr ""
 "لا يمكن استخدام \"%(trigger_value)s\" %(trigger_label)s إلا مع نوع الإجراء "
 "\"%(state_value)s\""
@@ -829,10 +836,13 @@ msgstr ""
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid ""
 "The error occurred during the execution of the automation rule\n"
 "                \""
 msgstr ""
+"حدث الخطأ أثناء تنفيذ قاعدة الأتمتة\n"
+"                \""
 
 #. module: base_automation
 #. odoo-python
@@ -952,16 +962,6 @@ msgid "Webhook UUID"
 msgstr "Webhook UUID"
 
 #. module: base_automation
-#: model:ir.model.fields,field_description:base_automation.field_base_automation__website_message_ids
-msgid "Website Messages"
-msgstr "رسائل الموقع الإلكتروني"
-
-#. module: base_automation
-#: model:ir.model.fields,help:base_automation.field_base_automation__website_message_ids
-msgid "Website communication history"
-msgstr "سجل تواصل الموقع الإلكتروني"
-
-#. module: base_automation
 #: model:ir.model.fields,help:base_automation.field_base_automation__trg_date_calendar_id
 msgid ""
 "When calculating a day-based timed condition, it is possible to use a "
@@ -1003,8 +1003,9 @@ msgstr ""
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid "You can ask an administrator to disable or fix this automation."
-msgstr ""
+msgstr "يمكنك أن تطلب من أحد المدراء تعطيل أو إصلاح نظام التشغيل الآلي هذا."
 
 #. module: base_automation
 #. odoo-python

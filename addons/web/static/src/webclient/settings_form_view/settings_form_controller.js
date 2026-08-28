@@ -1,5 +1,5 @@
-import { proxy } from "@odoo/owl";
-import { useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
+import { onMounted, onPatched, proxy, signal } from "@odoo/owl";
+import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { useAutofocus } from "@web/core/utils/hooks";
 import { pick } from "@web/core/utils/objects";
@@ -9,6 +9,7 @@ import { SettingsFormRenderer } from "./settings_form_renderer";
 import { normalize } from "@web/core/l10n/utils";
 import { useDebounced } from "@web/core/utils/timing";
 import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
+import { useViewButtonHandler } from "@web/views/view_button/view_button_hook";
 
 export class SettingsFormController extends formView.Controller {
     static template = "web.SettingsFormView";
@@ -17,28 +18,31 @@ export class SettingsFormController extends formView.Controller {
         Renderer: SettingsFormRenderer,
     };
 
+    autofocusRef = signal.ref();
+
     setup() {
         super.setup();
-        this.inputRef = useAutofocus({ mobile: this.ui.isSmall }); // only force the focus on touch devices on small screens
+        this.handleViewButton = useViewButtonHandler();
+        // only force the focus on touch devices on small screens
+        this.inputRef = useAutofocus({ ref: this.autofocusRef, mobile: this.ui.isSmall });
         this.state = proxy({ displayNoContent: false });
         this.searchState = proxy({
             value: "",
             clearSearch: () => {
-                if (this.inputRef.el) {
-                    this.inputRef.el.value = "";
+                if (this.inputRef()) {
+                    this.inputRef().value = "";
                 }
                 this.searchState.value = "";
             },
         });
-        this.rootRef = useRef("root");
         this.canCreate = false;
         useSubEnv({ searchState: this.searchState });
         useLayoutEffect(
             () => {
                 if (this.searchState.value) {
                     if (
-                        this.rootRef.el.querySelector(".o_settings_container:not(.d-none)") ||
-                        this.rootRef.el.querySelector(
+                        this.rootRef().querySelector(".o_settings_container:not(.d-none)") ||
+                        this.rootRef().querySelector(
                             ".settings .o_settings_container:not(.d-none) .o_setting_box.o_searchable_setting"
                         )
                     ) {
@@ -52,11 +56,13 @@ export class SettingsFormController extends formView.Controller {
             },
             () => [this.searchState.value]
         );
-        useLayoutEffect(() => {
+        const removeLocalStateGetter = () => {
             if (this.env.__getLocalState__) {
                 this.env.__getLocalState__.remove(this);
             }
-        });
+        };
+        onMounted(removeLocalStateGetter);
+        onPatched(removeLocalStateGetter);
 
         this.searchBarToggler = useSearchBarToggler();
         this.initialApp = "module" in this.props.context ? this.props.context.module : "";
@@ -113,7 +119,7 @@ export class SettingsFormController extends formView.Controller {
     beforeVisibilityChange() {}
 
     async save() {
-        await this.env.onClickViewButton({
+        await this.handleViewButton({
             clickParams: {
                 name: "execute",
                 type: "object",
@@ -124,7 +130,7 @@ export class SettingsFormController extends formView.Controller {
     }
 
     discard() {
-        this.env.onClickViewButton({
+        this.handleViewButton({
             clickParams: {
                 name: "cancel",
                 type: "object",

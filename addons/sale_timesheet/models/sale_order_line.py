@@ -2,7 +2,6 @@
 
 from odoo import api, fields, models, _
 from odoo.fields import Domain
-from odoo.tools import format_duration
 
 
 class SaleOrderLine(models.Model):
@@ -27,7 +26,6 @@ class SaleOrderLine(models.Model):
             unit_label = ''
             if encoding_uom == self.env.ref('uom.product_uom_hour'):
                 is_hour = True
-                unit_label = _('remaining')
             elif encoding_uom == self.env.ref('uom.product_uom_day'):
                 is_day = True
                 unit_label = _('days remaining')
@@ -35,7 +33,16 @@ class SaleOrderLine(models.Model):
                 if line.remaining_hours_available:
                     remaining_time = ''
                     if is_hour:
-                        remaining_time = f' ({format_duration(line.remaining_hours)} {unit_label})'
+                        hours, mins = divmod(round(abs(line.remaining_hours) * 60), 60)
+                        sign = '-' if line.remaining_hours < 0 else ''
+                        kwargs = {'sign': sign, 'hours': hours, 'minutes': mins}
+                        if hours and mins:
+                            time_part = self.env._("%(sign)s%(hours)sh %(minutes)sm", **kwargs)
+                        elif hours:
+                            time_part = self.env._("%(sign)s%(hours)sh", **kwargs)
+                        else:
+                            time_part = self.env._("%(sign)s%(minutes)sm", **kwargs)
+                        remaining_time = f' ({time_part})'
                     elif is_day:
                         remaining_days = company.project_time_mode_id._compute_quantity(line.remaining_hours, encoding_uom, round=False)
                         remaining_time = f' ({remaining_days:.02f} {unit_label})'
@@ -159,7 +166,11 @@ class SaleOrderLine(models.Model):
             :param start_date: the start date of the period
             :param end_date: the end date of the period
         """
-        lines_by_timesheet = self.filtered(lambda sol: sol.product_id and sol.product_id._is_delivered_timesheet())
+        lines_by_timesheet = self.filtered(
+            lambda sol:
+            sol.product_id
+            and sol.product_id._is_delivered_timesheet()
+            and sol.invoice_status == 'to invoice')
         domain = Domain(lines_by_timesheet._timesheet_compute_delivered_quantity_domain())
         refund_account_moves = self.order_id.invoice_ids.filtered(lambda am: am.state == 'posted' and am.move_type == 'out_refund').reversed_entry_id
         timesheet_domain = Domain('reinvoice_move_id', '=', False) | Domain('reinvoice_move_id.state', '=', 'cancel') & Domain('reinvoice_move_id.payment_state', '!=', 'invoicing_legacy')
@@ -174,10 +185,15 @@ class SaleOrderLine(models.Model):
         mapping = lines_by_timesheet.sudo()._get_delivered_quantity_by_analytic(domain)
 
         for line in lines_by_timesheet:
-            qty_to_invoice = mapping.get(line.id, 0.0)
+            # A period only selects which delivered hours are candidates; qty_delivered
+            # - qty_invoiced remains the authoritative quantity still due.
+            qty_to_invoice = max(0.0, min(
+                mapping.get(line.id, 0.0),
+                line.qty_delivered - line.qty_invoiced,
+            ))
             if qty_to_invoice:
                 line.qty_to_invoice = qty_to_invoice
-            else:
+            elif start_date or end_date:
                 prev_inv_status = line.invoice_status
                 line.qty_to_invoice = qty_to_invoice
                 line.invoice_status = prev_inv_status

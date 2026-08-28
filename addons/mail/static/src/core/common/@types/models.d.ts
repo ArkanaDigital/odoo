@@ -23,12 +23,14 @@ declare module "models" {
     import { MessageReactions as MessageReactionsClass } from "@mail/core/common/message_reactions_model";
     import { Notification as NotificationClass } from "@mail/core/common/notification_model";
     import { ResCompany as ResCompanyClass } from "@mail/core/common/res_company_model";
+    import { ResCurrency as ResCurrencyClass } from "@mail/core/common/res_currency_model";
     import { ResGroups as ResGroupsClass } from "@mail/core/common/res_groups_model";
     import { ResGroupsPrivilege as ResGroupsPrivilegeClass } from "@mail/core/common/res_groups_privilege_model";
     import { ResLang as ResLangClass } from "@mail/core/common/res_lang_model";
     import { ResPartner as ResPartnerClass } from "@mail/core/common/res_partner_model";
     import { ResRole as ResRoleClass } from "@mail/core/common/res_role_model";
     import { ResUsers as ResUsersClass } from "@mail/core/common/res_users_model";
+    import { ResUsersSettings as ResUsersSettingsClass } from "@mail/core/common/res_users_settings_model";
     import { Settings as SettingsClass } from "@mail/core/common/settings_model";
     import { Store as StoreClass } from "@mail/core/common/store_service";
     import { Thread as ThreadClass } from "@mail/core/common/thread_model";
@@ -58,19 +60,21 @@ declare module "models" {
     export interface MessageReactions extends MessageReactionsClass {}
     export interface Notification extends NotificationClass {}
     export interface ResCompany extends ResCompanyClass {}
+    export interface ResCurrency extends ResCurrencyClass {}
     export interface ResGroups extends ResGroupsClass {}
     export interface ResGroupsPrivilege extends ResGroupsPrivilegeClass {}
     export interface ResLang extends ResLangClass {}
     export interface ResPartner extends ResPartnerClass {}
     export interface ResRole extends ResRoleClass {}
     export interface ResUsers extends ResUsersClass, ResPartner {}
+    export interface ResUsersSettings extends ResUsersSettingsClass {}
     export interface Settings extends SettingsClass {}
     export interface Store extends StoreClass {}
     export interface Thread extends ThreadClass {}
     export interface Volume extends VolumeClass {}
 
-    type StaticMailRecord<ClassInterface, JSClassType> = Omit<JSClassType, "Class" | "get" | "insert" | "records"> & {
-        Class: Pick<JSClassType, keyof JSClassType> & { new (...args: any[]): ClassInterface };
+    type StaticMailRecord<ClassInterface, JSClassType> = Omit<JSClassType, "get" | "insert" | "records"> & {
+        new (...args: any[]): ClassInterface;
         get: (data: any) => ClassInterface;
         insert: <D extends object | object[]>(data: D, options?: object) => D extends object[] ? ClassInterface[] : ClassInterface;
         records: { [localId: string]: ClassInterface };
@@ -102,15 +106,17 @@ declare module "models" {
         MessageReactions: StaticMailRecord<MessageReactions, typeof MessageReactionsClass>;
         "res.company": StaticMailRecord<ResCompany, typeof ResCompanyClass>;
         "res.country": StaticMailRecord<Country, typeof CountryClass>;
+        "res.currency": StaticMailRecord<ResCurrency, typeof ResCurrencyClass>;
         "res.groups": StaticMailRecord<ResGroups, typeof ResGroupsClass>;
         "res.groups.privilege": StaticMailRecord<ResGroupsPrivilege, typeof ResGroupsPrivilegeClass>;
         "res.lang": StaticMailRecord<ResLang, typeof ResLangClass>;
         "res.partner": StaticMailRecord<ResPartner, typeof ResPartnerClass>;
         "res.role": StaticMailRecord<ResRole, typeof ResRoleClass>;
         "res.users": StaticMailRecord<ResUsers, typeof ResUsersClass>;
+        "res.users.settings": StaticMailRecord<ResUsersSettings, typeof ResUsersSettingsClass>;
+        "res.users.settings.volumes": StaticMailRecord<Volume, typeof VolumeClass>;
         Settings: StaticMailRecord<Settings, typeof SettingsClass>;
         Store: StaticMailRecord<Store, typeof StoreClass>;
-        Volume: StaticMailRecord<Volume, typeof VolumeClass>;
     }
 
     export interface Models {
@@ -139,14 +145,16 @@ declare module "models" {
         MessageReactions: MessageReactions;
         "res.company": ResCompany;
         "res.country": Country;
+        "res.currency": ResCurrency;
         "res.groups": ResGroups;
         "res.groups.privilege": ResGroupsPrivilege;
         "res.lang": ResLang;
         "res.partner": ResPartner;
         "res.role": ResRole;
         "res.users": ResUsers;
+        "res.users.settings": ResUsersSettings;
+        "res.users.settings.volumes": Volume;
         Settings: Settings;
         Store: Store;
-        Volume: Volume;
     }
 }

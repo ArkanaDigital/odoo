@@ -42,6 +42,7 @@ export class ProductTemplateAttributeLine extends Component {
             validate: type => ["always", "dynamic", "no_variant"].includes(type),
         },
         customValue: {type: [{value: false}, String], optional: true},
+        show_extra_price: { type: Boolean },
     };
 
     //--------------------------------------------------------------------------
@@ -116,7 +117,7 @@ export class ProductTemplateAttributeLine extends Component {
     getPTAVSelectName(ptav) {
         if (ptav.price_extra) {
             const sign = ptav.price_extra > 0 ? '+' : '-';
-            const price = formatCurrency(Math.abs(ptav.price_extra), this.env.currency.id);
+            const price = formatCurrency(Math.abs(ptav.price_extra), this.env.currencyId);
             return ptav.name +" ("+ sign + " " + price + ")";
         } else {
             return ptav.name;

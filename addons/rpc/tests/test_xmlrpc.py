@@ -65,12 +65,13 @@ class TestXMLRPC(common.HttpCase):
     def test_xmlrpc_datetime(self):
         """ Test that native datetime can be sent over xmlrpc
         """
-        m = self.env.ref('base.model_res_device_log')
-        self.env['ir.model.access'].create({
+        model = self.env.ref('base.model_res_device_log')
+        group = self.env.ref('base.group_user')
+        self.env['ir.access'].create({
             'name': "w/e",
-            'model_id': m.id,
-            'perm_read': True,
-            'perm_create': True,
+            'model_id': model.id,
+            'group_id': group.id,
+            'operation': 'cr',
         })
 
         now = datetime.datetime.now()
@@ -171,10 +172,10 @@ class TestXMLRPC(common.HttpCase):
 
     def test_xmlrpc_attachment_raw(self):
         ids = self.env['ir.attachment'].create({'name': 'n', 'raw': b'\x01\x09'}).ids
-        [att] = self.xmlrpc_object.execute(
+        [att] = self.xmlrpc_object.execute_kw(
             common.get_db_name(), self.admin_uid, 'admin',
-            'ir.attachment', 'read', ids, [])
-        self.assertEqual(att['raw'], 'AQk=',
+            'ir.attachment', 'read', [ids, []])
+        self.assertEqual(att['raw'], {'content': 'AQk=', 'filename': 'n', 'size': 2},
             "on read, binary data should be base64 encoded")
 
 # really just for the test cursor
@@ -305,7 +306,7 @@ class TestAPIKeys(common.HttpCase):
     def test_renew_apikey(self):
         self.env['ir.config_parameter'].set_bool('base.enable_programmatic_api_keys', True)
         env = self.env(user=self._user)
-        key = env['res.users.apikeys.description'].create({'name': 'a'}).make_key()['context']['default_key']
+        key = env['res.users.apikeys.description'].create({'name': 'a', 'scope': 'rpc'}).make_key()['context']['default_key']
         apikey = self.env['res.users.apikeys'].search([('user_id', '=', self._user.id)])
 
         in_ten_minutes = datetime.datetime.now() + datetime.timedelta(minutes=10)
@@ -314,19 +315,19 @@ class TestAPIKeys(common.HttpCase):
         # an API key can be used to create a new one
         key2 = model.dispatch('execute_kw', [
             self.env.cr.dbname, self._user.id, key,
-            'res.users.apikeys', 'generate', [key, None, 'Second key', in_ten_minutes]
+            'res.users.apikeys', 'generate', [key, 'rpc', 'Second key', in_ten_minutes]
         ])
 
         apikeys = self.env['res.users.apikeys'].search([('user_id', '=', self._user.id)])
         self.assertIn(apikey, apikeys)
         self.assertRecordValues(apikeys - apikey, [
-            {'name': 'Second key', 'scope': False, 'expiration_date': in_ten_minutes},
+            {'name': 'Second key', 'scope': 'rpc', 'expiration_date': in_ten_minutes},
         ])
 
         # the new key can be used to create a new one
         model.dispatch('execute_kw', [
             self.env.cr.dbname, self._user.id, key2,
-            'res.users.apikeys', 'generate', [key2, 'api', 'Third key', in_twenty_minutes]
+            'res.users.apikeys', 'generate', [key2, 'rpc', 'Third key', in_twenty_minutes]
         ])
 
         # revoke the previous one
@@ -345,5 +346,5 @@ class TestAPIKeys(common.HttpCase):
         apikeys = self.env['res.users.apikeys'].search([('user_id', '=', self._user.id)])
         self.assertIn(apikey, apikeys)
         self.assertRecordValues(apikeys - apikey, [
-            {'name': 'Third key', 'scope': 'api', 'expiration_date': in_twenty_minutes},
+            {'name': 'Third key', 'scope': 'rpc', 'expiration_date': in_twenty_minutes},
         ])

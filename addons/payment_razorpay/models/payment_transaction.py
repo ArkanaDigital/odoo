@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 
 from dateutil.relativedelta import relativedelta
+from werkzeug.exceptions import Forbidden
 from werkzeug.urls import url_encode
 
 from odoo import api, fields, models
@@ -264,7 +265,7 @@ class PaymentTransaction(models.Model):
             },
         }
         response_content = self._send_api_request(
-            "POST", f"payments/{self.provider_reference}/refund", json=payload
+            "POST", f"payments/{self.source_transaction_id.provider_reference}/refund", json=payload
         )
         response_content.update(entity_type="refund")
         self._record(response_content)
@@ -277,7 +278,7 @@ class PaymentTransaction(models.Model):
         converted_amount = payment_utils.to_minor_currency_units(self.amount, self.currency_id)
         payload = {"amount": converted_amount, "currency": self.currency_id.name}
         response_content = self._send_api_request(
-            "POST", f"payments/{self.provider_reference}/capture", json=payload
+            "POST", f"payments/{self.source_transaction_id.provider_reference}/capture", json=payload
         )
 
         # Process the capture request response.
@@ -374,6 +375,11 @@ class PaymentTransaction(models.Model):
                 self._set_error(str(e))
                 return
 
+        reference = entity_data.get("description") or entity_data["notes"]["reference"]
+        if self.reference != reference:
+            _logger.warning("Received payment data with incorrect reference")
+            raise Forbidden()
+
         # Update the provider reference.
         entity_id = entity_data.get("id")
         if not entity_id:
@@ -390,7 +396,7 @@ class PaymentTransaction(models.Model):
         payment_method_type = entity_data.get("method", "")
         if payment_method_type == "card":
             payment_method_type = entity_data.get("card", {}).get("network", "").lower()
-        payment_method = self.env["payment.method"]._get_from_code(
+        payment_method = self.provider_id._get_pm_from_code(
             payment_method_type, mapping=const.PAYMENT_METHODS_MAPPING
         )
         if allowed_to_modify and payment_method:
@@ -426,11 +432,7 @@ class PaymentTransaction(models.Model):
                 self.reference,
                 entity_data.get("error_description"),
             )
-            self._set_error(
-                self.env._(
-                    "An error occurred during the processing of your payment. Please try again."
-                )
-            )
+            self._set_error("")
         else:  # Classify unsupported payment status as the `error` tx state.
             _logger.warning(
                 "Received data for transaction %s with invalid payment status: %s.",

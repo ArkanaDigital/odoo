@@ -1,32 +1,40 @@
-import { useExternalListener, useLayoutEffect, useRef } from "@web/owl2/utils";
 import { scrollTo } from "@html_builder/utils/scrolling";
-import { Component, onMounted, onWillStart, onWillUnmount } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onPatched,
+    onWillStart,
+    onWillUnmount,
+    useProps,
+    signal,
+    t,
+    useListener,
+} from "@odoo/owl";
 
 export class ImagePositionOverlay extends Component {
     static template = "html_builder.ImagePositionOverlay";
-    static props = {
-        targetEl: { validate: (p) => p.nodeType === Node.ELEMENT_NODE },
-        close: { type: Function },
-        onDrag: { type: Function },
-        getPosition: { type: Function },
+    props = useProps({
+        targetEl: t.customValidator(t.any(), (p) => p.nodeType === Node.ELEMENT_NODE),
+        close: t.function(),
+        onDrag: t.function(),
+        getPosition: t.function(),
         /**
          * `getDelta` should return the difference between the image container
          * dimensions and the image rendered dimensions. Effectively giving the
          * room the image has to move around in each x and y directions.
          */
-        getDelta: { type: Function },
-        editable: { validate: (p) => p.nodeType === Node.ELEMENT_NODE },
-        history: { type: Object, optional: true },
-        scrollToElement: { type: Boolean, optional: true },
-    };
-    static defaultProps = { scrollToElement: true };
+        getDelta: t.function(),
+        editable: t.customValidator(t.any(), (p) => p.nodeType === Node.ELEMENT_NODE),
+        history: t.object().optional(),
+        scrollToElement: t.boolean().optional(true),
+    });
+
+    overlayRef = signal.ref();
+    overlayMaskRef = signal.ref();
+    overlayContentRef = signal.ref();
+    draggerRef = signal.ref();
 
     setup() {
-        this.overlayRef = useRef("overlay");
-        this.overlayMaskRef = useRef("overlayMask");
-        this.overlayContentRef = useRef("overlayContent");
-        this.draggerRef = useRef("dragger");
-
         this.iframeEl = this.props.editable.ownerDocument.defaultView.frameElement;
         this.builderOverlayContainerEl = document.querySelector(
             "[data-oe-local-overlay-id='builder-overlay-container']"
@@ -36,12 +44,12 @@ export class ImagePositionOverlay extends Component {
 
         // Discard when clicking anywhere on the page
         const editableDocument = this.props.editable.ownerDocument;
-        useExternalListener(editableDocument, "pointerdown", this.discard.bind(this));
-        useExternalListener(document, "pointerdown", this.discard.bind(this));
+        useListener(editableDocument, "pointerdown", this.discard.bind(this));
+        useListener(document, "pointerdown", this.discard.bind(this));
 
-        useExternalListener(window, "resize", this._dimensionOverlay);
-        useExternalListener(this.iframeEl.contentWindow, "resize", this._dimensionOverlay);
-        useExternalListener(this.iframeEl.contentWindow, "scroll", this._dimensionOverlay);
+        useListener(window, "resize", this._dimensionOverlay);
+        useListener(this.iframeEl.contentWindow, "resize", this._dimensionOverlay);
+        useListener(this.iframeEl.contentWindow, "scroll", this._dimensionOverlay);
 
         onWillStart(async () => {
             const position = this.props
@@ -70,18 +78,16 @@ export class ImagePositionOverlay extends Component {
             }
         });
 
+        this.reloadSavePoint = () => {};
         onMounted(() => {
             this.reloadSavePoint = this.props.history?.makeSavePoint() ?? (() => {});
             this.dimensionOverlay();
             this.props.targetEl.classList.add("o_we_image_positioning");
+            this.refreshTooltip();
         });
 
-        useLayoutEffect(() => {
-            this.tooltip = window.Tooltip.getOrCreateInstance(this.draggerRef.el, {
-                trigger: "manual",
-                container: this.overlayRef.el,
-            });
-            this.tooltip.show();
+        onPatched(() => {
+            this.refreshTooltip();
         });
 
         onWillUnmount(() => {
@@ -89,6 +95,14 @@ export class ImagePositionOverlay extends Component {
             this.builderOverlayContainerEl.style.clipPath = "";
             this.tooltip.dispose();
         });
+    }
+
+    refreshTooltip() {
+        this.tooltip = window.Tooltip.getOrCreateInstance(this.draggerRef(), {
+            trigger: "manual",
+            container: this.overlayRef(),
+        });
+        this.tooltip.show();
     }
 
     apply() {
@@ -110,14 +124,14 @@ export class ImagePositionOverlay extends Component {
     }
 
     onDragStart() {
-        this.overlayRef.el.classList.add("o_we_grabbing");
+        this.overlayRef().classList.add("o_we_grabbing");
         const documentEl = window.document;
         const onDragMove = this.onDragMove.bind(this);
         documentEl.addEventListener("mousemove", onDragMove);
         documentEl.addEventListener(
             "mouseup",
             () => {
-                this.overlayRef.el.classList.remove("o_we_grabbing");
+                this.overlayRef().classList.remove("o_we_grabbing");
                 documentEl.removeEventListener("mousemove", onDragMove);
             },
             { once: true }
@@ -157,6 +171,10 @@ export class ImagePositionOverlay extends Component {
     }
 
     dimensionOverlay() {
+        if (!this.overlayRef()) {
+            return;
+        }
+
         const iframeRect = this.iframeEl.getBoundingClientRect();
         const targetContainerRect = this.props.targetEl.getBoundingClientRect();
         const scale = this.getIframeContainerScale();
@@ -178,13 +196,13 @@ export class ImagePositionOverlay extends Component {
             ${scaledRect.left}px ${scaledRect.bottom}px,
             ${scaledRect.left}px ${scaledRect.top}px)
         `;
-        this.overlayMaskRef.el.style.clipPath = clipPath;
+        this.overlayMaskRef().style.clipPath = clipPath;
         if (this.builderOverlayContainerEl) {
             this.builderOverlayContainerEl.style.clipPath = clipPath;
         }
 
         // The overlay covers the whole iframe excluding the scrollbar.
-        Object.assign(this.overlayRef.el.style, {
+        Object.assign(this.overlayRef().style, {
             left: `${iframeRect.left}px`,
             top: `${iframeRect.top}px`,
             height: `${this.props.editable.ownerDocument.body.clientHeight * scale}px`,
@@ -192,14 +210,14 @@ export class ImagePositionOverlay extends Component {
         });
 
         // The overlay content covers the editing element.
-        Object.assign(this.overlayContentRef.el.style, {
+        Object.assign(this.overlayContentRef().style, {
             left: `${scaledRect.left}px`,
             top: `${scaledRect.top}px`,
         });
-        const overlayButtonsEl = this.overlayContentRef.el.querySelector(".o_we_overlay_buttons");
+        const overlayButtonsEl = this.overlayContentRef().querySelector(".o_we_overlay_buttons");
         overlayButtonsEl.style.top = `${Math.max(0, -scaledRect.top)}px`;
-        this.draggerRef.el.style.setProperty("width", `${scaledRect.width}px`, "important");
-        this.draggerRef.el.style.setProperty("height", `${scaledRect.height}px`, "important");
+        this.draggerRef().style.setProperty("width", `${scaledRect.width}px`, "important");
+        this.draggerRef().style.setProperty("height", `${scaledRect.height}px`, "important");
 
         // Refresh tooltip position after overlay reposition
         if (this.tooltip) {

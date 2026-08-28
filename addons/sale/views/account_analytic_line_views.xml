@@ -30,14 +30,6 @@
         <field name="arch" type="xml">
             <list string="Services &amp; Material" editable="top" multi_edit="1">
                 <field
-                    name="order_id"
-                    string="Customer Order"
-                    context="{'sale_show_partner_name': True}"
-                    domain="[('company_id', '=', company_id), ('locked', '=', False)]"
-                    required="True"
-                    width="250px"
-                />
-                <field
                     name="product_id"
                     domain="[('reinvoice_policy', '!=', 'no')]"
                     context="{
@@ -46,6 +38,14 @@
                     }"
                     required="True"
                     width="350px"
+                />
+                <field
+                    name="order_id"
+                    string="Customer Order"
+                    context="{'sale_show_partner_name': True}"
+                    domain="[('company_id', '=', company_id), ('locked', '=', False)]"
+                    required="True"
+                    width="250px"
                 />
                 <field name="unit_amount" string="Quantity" optional="show"/>
                 <field
@@ -88,6 +88,14 @@
             'default_unit_amount': 1,
         }</field>
         <field name="domain">[('product_id.reinvoice_policy', '!=', 'no'), ('order_id', '!=', False)]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_services_and_material mb-1">
+                Bill for the work you deliver
+            </p>
+            <p>
+                Log your services deliveries, additional materials and expenses to invoice accurately.
+            </p>
+        </field>
     </record>
 
 </odoo>

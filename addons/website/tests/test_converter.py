@@ -65,7 +65,7 @@ class TestTitleToSlug(BaseCase):
 
     def test_unicode(self):
         self.assertEqual(
-            "heterogeneite",
+            "hétérogénéité",
             self._slugify("hétérogénéité")
         )
 
@@ -83,13 +83,13 @@ class TestTitleToSlug(BaseCase):
 
     def test_special_chars(self):
         self.assertEqual(
-            "hello",
+            "h-e-l-l-o",
             self._slugify("^h☺e$#!l(%l}o☞☞")
         )
 
     def test_str_to_unicode(self):
         self.assertEqual(
-            "espana",
+            "españa",
             self._slugify("España")
         )
 
@@ -131,6 +131,30 @@ class TestTitleToSlug(BaseCase):
 
     def test_all(self):
         self.assertEqual(
-            "do-you-know-馬丁娜-a-la-海灘",
+            "do-you-know-馬丁娜-à-la-海灘",
             self._slugify(" Do (YOU) ☞☞ know '馬丁娜 à la 海灘' ? ")
+        )
+
+    def test_slash_separator(self):
+        self.assertEqual(
+            "foo-bar",
+            self._slugify("foo/bar")
+        )
+
+    def test_backslash_separator(self):
+        self.assertEqual(
+            "foo-bar",
+            self._slugify(r"foo\bar")
+        )
+
+    def test_brackets(self):
+        self.assertEqual(
+            "black-chair-premium-with-matte-gold",
+            self._slugify("Black chair(Premium, with matte gold)")
+        )
+
+    def test_combining_characters(self):
+        self.assertEqual(
+            "চোখের-হেফাজত-একজন-মুমিনের-চরিত্রের-প্রতিচ্ছবি",
+            self._slugify("চোখের হেফাজত একজন মুমিনের চরিত্রের প্রতিচ্ছবি")
         )

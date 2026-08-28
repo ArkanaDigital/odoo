@@ -1,5 +1,5 @@
-import { Component, onWillUpdateProps, onWillDestroy, proxy } from "@odoo/owl";
-import { useChildRef, useService } from "@web/core/utils/hooks";
+import { Component, onWillDestroy, useProps, proxy, signal, t, useEffect } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
 import { useCachedModel } from "@html_builder/core/cached_model_utils";
 import { _t } from "@web/core/l10n/translation";
 import { SelectMenu } from "@web/core/select_menu/select_menu";
@@ -26,30 +26,21 @@ class SelectMany2XCreate extends Component {
 
 export class SelectMany2X extends Component {
     static template = "html_builder.SelectMany2X";
-    static props = {
-        model: String,
-        fields: { type: Array, element: String, optional: true },
-        domain: { type: Array, optional: true },
-        limit: { type: Number, optional: true },
-        selected: {
-            type: Array,
-            element: { type: Object, shape: { id: [Number, String], "*": true } },
-        },
-        select: Function,
-        preview: { type: Function, optional: true },
-        revert: { type: Function, optional: true },
-        closeOnEnterKey: { type: Boolean, optional: true },
-        message: { type: String, optional: true },
-        create: { type: Function, optional: true },
-        nullText: { type: String, optional: true },
-    };
-    static defaultProps = {
-        fields: [],
-        domain: [],
-        limit: 5,
-        closeOnEnterKey: true,
-        message: _t("Choose a record..."),
-    };
+    props = useProps({
+        model: t.string(),
+        fields: t.array(t.string()).optional([]),
+        domain: t.array().optional([]),
+        limit: t.number().optional(5),
+        selected: t.array(t.object({ id: t.or([t.number(), t.string()]) })),
+        select: t.function(),
+        preview: t.function().optional(),
+        revert: t.function().optional(),
+        closeOnEnterKey: t.boolean().optional(true),
+        message: t.string().optional(_t("Choose a record...")),
+        create: t.function().optional(),
+        nullText: t.string().optional(),
+        displayNameField: t.string().optional("display_name"),
+    });
     static components = { SelectMenu, SelectMany2XCreate };
 
     setup() {
@@ -62,18 +53,17 @@ export class SelectMany2X extends Component {
             searchResults: [],
             limit: this.props.limit,
         });
-        onWillUpdateProps(async (newProps) => {
-            if (this.searchInvalidationKey(this.props) !== this.searchInvalidationKey(newProps)) {
-                this.prevSelectedIds = undefined;
-                this.prevSearchValue = undefined;
-                this.state.searchResults = [];
-            }
+        useEffect(() => {
+            this.searchInvalidationKey(this.props);
+            this.prevSelectedIds = undefined;
+            this.prevSearchValue = undefined;
+            this.state.searchResults = [];
         });
-        this.menuRef = useChildRef();
+        this.menuRef = signal.ref();
         onWillDestroy(() => this.removeListeners?.());
     }
     onOpened() {
-        const menuEl = this.menuRef.el;
+        const menuEl = this.menuRef();
         if (menuEl) {
             this.removeListeners?.();
             const onNavigatedAway = this.onNavigatedAway.bind(this);
@@ -92,7 +82,7 @@ export class SelectMany2X extends Component {
         this.onNavigatedAway();
     }
     searchInvalidationKey(props) {
-        return JSON.stringify([props.model, props.fields, props.domain]);
+        return JSON.stringify([props.model, props.fields, props.domain, props.displayNameField]);
     }
     searchMore(searchValue) {
         this.state.limit += this.props.limit;
@@ -116,13 +106,13 @@ export class SelectMany2X extends Component {
         const results = await this.cachedModel.ormRead(
             this.props.model,
             tuples.map(([id, _name]) => id),
-            [...new Set(this.props.fields).add("display_name").add("name")]
+            [...new Set(this.props.fields).add(this.props.displayNameField).add("name")]
         );
         if (this.props.nullText && (!results.length || results[0].id)) {
             results.unshift({
                 id: 0,
                 name: this.props.nullText,
-                display_name: this.props.nullText,
+                [this.props.displayNameField]: this.props.nullText,
             });
         }
         this.state.searchResults = results;

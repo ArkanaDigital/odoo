@@ -1,17 +1,16 @@
-import { Component, onWillStart } from "@odoo/owl";
-import { useService } from "@web/core/utils/hooks";
+import { Component, onWillStart, usePlugin } from "@odoo/owl";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 
 export class OfflineActionHelper extends Component {
     static template = "web.OfflineActionHelper";
-    static props = [];
 
     setup() {
-        const offlineService = useService("offline");
+        const offlinePlugin = usePlugin(OfflinePlugin);
 
         this.searches = null;
         onWillStart(async () => {
             const { actionId, viewType } = this.env.config;
-            this.searches = await offlineService.getAvailableSearches(actionId, viewType);
+            this.searches = await offlinePlugin.getAvailableSearches(actionId, viewType);
         });
     }
 

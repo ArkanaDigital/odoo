@@ -114,9 +114,10 @@ class SaleOrder(models.Model):
         else:
             name = self.env._("Add a delivery method")
             shipping_partner_id = self.with_company(self.company_id).partner_shipping_id
-            carrier_property = (
-                shipping_partner_id.property_delivery_carrier_id.filtered("active")
-                or shipping_partner_id.commercial_partner_id.property_delivery_carrier_id.filtered("active")
+            carrier_property = shipping_partner_id.property_delivery_carrier_id.filtered(
+                "active"
+            ) or shipping_partner_id.commercial_partner_id.property_delivery_carrier_id.filtered(
+                "active"
             )
             carrier = carrier_property.available_carriers(self.partner_shipping_id, self)
         return {
@@ -212,14 +213,7 @@ class SaleOrder(models.Model):
         return weight
 
     def _update_order_line_info(self, *args, **kwargs):
-        """Override of `sale` to recompute the delivery prices.
-
-        :param object product_id: Recordset of `product.product`.
-        :return: The unit price of the product, based on the pricelist of the sale order and
-                 the quantity selected.
-        :rtype: float
-        """
-        price_unit = super()._update_order_line_info(*args, **kwargs)
-        if self:
-            self.onchange_order_line()
-        return price_unit
+        """Override of `sale` to recompute the delivery prices."""
+        vals = super()._update_order_line_info(*args, **kwargs)
+        self.onchange_order_line()
+        return vals

@@ -1,14 +1,16 @@
-import { onRendered, reactive, useChildEnv, useLayoutEffect } from "@web/owl2/utils";
 import {
     Component,
     immediateEffect,
     onMounted,
     onWillDestroy,
-    onWillUpdateProps,
+    signal,
     status,
-    untrack,
+    t,
+    useEffect,
+    useProps,
     xml,
 } from "@odoo/owl";
+import { hasTouch } from "@web/core/browser/feature_detection";
 import { useDropdownGroup } from "@web/core/dropdown/_behaviours/dropdown_group_hook";
 import { useDropdownNesting } from "@web/core/dropdown/_behaviours/dropdown_nesting";
 import { DropdownPopover } from "@web/core/dropdown/_behaviours/dropdown_popover";
@@ -16,9 +18,9 @@ import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { useNavigation } from "@web/core/navigation/navigation";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { mergeClasses } from "@web/core/utils/classname";
-import { useChildRef, useService } from "@web/core/utils/hooks";
+import { useService } from "@web/core/utils/hooks";
 import { deepMerge } from "@web/core/utils/objects";
-import { hasTouch } from "@web/core/browser/feature_detection";
+import { useLayoutEffect } from "@web/owl2/utils";
 
 export function getFirstElementOfNode(node) {
     if (!node) {
@@ -49,90 +51,76 @@ export function getFirstElementOfNode(node) {
  * also allowed as items to be able to create nested
  * dropdown menus.
  */
+export const dropdownProps = {
+    menuClass: t.any().optional(""),
+    position: t.string().optional(),
+    slots: t.object({
+        default: t.any().optional(),
+        content: t.any().optional(),
+    }),
+
+    items: t
+        .array(
+            t.object({
+                label: t.string(),
+                onSelected: t.function(),
+                class: t.any().optional(),
+            })
+        )
+        .optional(),
+
+    disabled: t.boolean().optional(false),
+    holdOnHover: t.boolean().optional(false),
+    focusToggleOnClosed: t.boolean().optional(true),
+
+    beforeOpen: t.function().optional(),
+    onOpened: t.function().optional(),
+    onStateChanged: t.function().optional(),
+
+    /** Manual state handling, @see useDropdownState */
+    state: t
+        .object({
+            isOpen: t.boolean(),
+            close: t.function(),
+            open: t.function(),
+        })
+        .optional(),
+    manual: t.boolean().optional(),
+
+    /** When true, do not add optional styling css classes on the target*/
+    noClasses: t.boolean().optional(false),
+
+    /**
+     * Override the internal navigation hook options
+     * @type {import("@web/core/navigation/navigation").NavigationOptions}
+     */
+    navigationOptions: t.object().optional({}),
+    bottomSheet: t.boolean().optional(true),
+};
+
 export class Dropdown extends Component {
     static template = xml`<t t-call-slot="default"/>`;
-    static components = {};
-    static props = {
-        menuClass: { optional: true },
-        position: { type: String, optional: true },
-        slots: {
-            type: Object,
-            shape: {
-                default: { optional: true },
-                content: { optional: true },
-            },
-        },
 
-        items: {
-            optional: true,
-            type: Array,
-            element: {
-                type: Object,
-                shape: {
-                    label: String,
-                    onSelected: Function,
-                    class: { optional: true },
-                    "*": true,
-                },
-            },
-        },
+    props = useProps(dropdownProps);
 
-        menuRef: { type: Function, optional: true }, // to be used with useChildRef
-        disabled: { type: Boolean, optional: true },
-        holdOnHover: { type: Boolean, optional: true },
-        focusToggleOnClosed: { type: Boolean, optional: true },
-
-        beforeOpen: { type: Function, optional: true },
-        onOpened: { type: Function, optional: true },
-        onStateChanged: { type: Function, optional: true },
-
-        /** Manual state handling, @see useDropdownState */
-        state: {
-            type: Object,
-            shape: {
-                isOpen: Boolean,
-                close: Function,
-                open: Function,
-                "*": true,
-            },
-            optional: true,
-        },
-        manual: { type: Boolean, optional: true },
-
-        /** When true, do not add optional styling css classes on the target*/
-        noClasses: { type: Boolean, optional: true },
-
-        /**
-         * Override the internal navigation hook options
-         * @type {import("@web/core/navigation/navigation").NavigationOptions}
-         */
-        navigationOptions: { type: Object, optional: true },
-        bottomSheet: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        disabled: false,
-        holdOnHover: false,
-        focusToggleOnClosed: true,
-        menuClass: "",
-        state: undefined,
-        noClasses: false,
-        navigationOptions: {},
-        bottomSheet: true,
-    };
+    // The menu element lives in the popover/bottom sheet, which fills this ref.
+    // It is either owned by the parent (`menuRef` prop) or local.
+    menuRef = useProps.static(
+        "menuRef",
+        t.signal(t.ref()).optional(() => signal.ref())
+    );
 
     setup() {
-        this.menuRef = this.props.menuRef || useChildRef();
-
         this.state = this.props.state || useDropdownState();
         this.nesting = useDropdownNesting(this.state);
-        this.group = useDropdownGroup();
+        this.group = useDropdownGroup(this.state);
 
         this.navigation = useNavigation(this.menuRef, {
             shouldRegisterHotkeys: false,
             isNavigationAvailable: () => this.state.isOpen,
             getItems: () => {
-                if (this.state.isOpen && this.menuRef.el) {
-                    return this.menuRef.el.querySelectorAll(
+                if (this.state.isOpen && this.menuRef()) {
+                    return this.menuRef().querySelectorAll(
                         ":scope .o-navigable, :scope .o-dropdown"
                     );
                 } else {
@@ -151,7 +139,6 @@ export class Dropdown extends Component {
             arrow: false,
             closeOnClickAway: (target) => this.popoverCloseOnClickAway(target),
             closeOnEscape: false, // Handled via navigation and prevents closing root of nested dropdown
-            env: useChildEnv(),
             holdOnHover: this.props.holdOnHover,
             onClose: () => this.state.close(),
             onPositioned: (el, { direction }) => this.setTargetDirectionClass(direction),
@@ -167,6 +154,7 @@ export class Dropdown extends Component {
             ref: this.menuRef,
             shrink: true,
             setActiveElement: false,
+            withScope: true,
         };
         if (this.isBottomSheet) {
             Object.assign(options, {
@@ -175,12 +163,6 @@ export class Dropdown extends Component {
             });
         }
         this.popover = usePopover(DropdownPopover, options);
-
-        // As the popover is in another context we need to force
-        // its re-rendering when the dropdown re-renders
-        onRendered(() =>
-            untrack(() => (this.popoverRefresher ? this.popoverRefresher.token++ : null))
-        );
 
         let mounted = false;
         onMounted(() => {
@@ -201,9 +183,8 @@ export class Dropdown extends Component {
             (target) => this.setTargetElement(target),
             () => [this.target]
         );
-
-        onWillUpdateProps(({ disabled }) => {
-            if (disabled) {
+        useEffect(() => {
+            if (this.props.disabled) {
                 this.closePopover();
             }
         });
@@ -287,6 +268,9 @@ export class Dropdown extends Component {
         if (!this.activeEl?.isConnected) {
             return true;
         }
+        if (target.ownerDocument !== this.activeEl?.ownerDocument) {
+            return true;
+        }
         const targetActiveEl = this.uiService.getActiveElementOf(target);
         return targetActiveEl === this.activeEl || targetActiveEl?.contains(this.activeEl);
     }
@@ -366,12 +350,10 @@ export class Dropdown extends Component {
             return;
         }
 
-        this.popoverRefresher = reactive({ token: 0 });
         const props = {
             beforeOpen: () => this.props.beforeOpen?.(),
             onOpened: () => this.onOpened(),
             onClosed: () => this.onClosed(),
-            refresher: this.popoverRefresher,
             items: this.props.items,
             slots: this.props.slots,
         };
@@ -399,7 +381,7 @@ export class Dropdown extends Component {
             this.target.classList.add("show");
         }
 
-        const menuEl = this.menuRef.el;
+        const menuEl = this.menuRef();
         if (menuEl) {
             this.observer = new MutationObserver(() => this.navigation.update());
             this.observer.observe(menuEl, {

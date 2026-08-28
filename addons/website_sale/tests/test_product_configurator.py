@@ -13,6 +13,15 @@ from odoo.addons.website_sale.tests.common import MockRequest, WebsiteSaleCommon
 
 @tagged("post_install", "-at_install")
 class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+        'website.group_website_designer',  # website create/config
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -125,16 +134,18 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             ],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=False
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=False
             )
 
         self.assertTrue(show_configurator)
 
     def test_optional_products_not_visible_on_other_websites(self):
         """Optional products assigned to a different website should not be shown."""
-        second_website = self.env["website"].create({"name": "second website"})
+        second_website = self.env["website"].sudo().create({"name": "second website"})
         optional_product = self.env["product.template"].create({
             "name": "Optional product",
             "website_published": True,
@@ -147,9 +158,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             "optional_product_ids": [Command.set(optional_product.ids)],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=False
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=False
             )
 
         self.assertFalse(show_configurator)
@@ -171,9 +184,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             ],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=False
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=False
             )
 
         self.assertFalse(show_configurator)
@@ -199,9 +214,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             ],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=True
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=True
             )
 
         self.assertFalse(show_configurator)
@@ -226,9 +243,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             ],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=False
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=False
             )
 
         self.assertTrue(show_configurator)
@@ -253,9 +272,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             ],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=False
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=False
             )
 
         self.assertTrue(show_configurator)
@@ -279,9 +300,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             ],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=False
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=False
             )
 
         self.assertTrue(show_configurator)
@@ -299,9 +322,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             "optional_product_ids": [Command.set(optional_product.ids)],
         })
 
+        single_product_variant_dict = main_product.get_single_product_variant()
+
         with self.mock_request():
-            show_configurator = self.pc_controller.website_sale_should_show_product_configurator(
-                product_template_id=main_product.id, is_product_configured=False
+            show_configurator = self.pc_controller.should_show_product_configurator(
+                single_product_variant_dict, main_product, is_product_configured=False
             )
             configurator_values = self.pc_controller.website_sale_product_configurator_get_values(
                 product_template_id=main_product.id,
@@ -312,13 +337,15 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             )
 
         self.assertFalse(show_configurator)
-        self.assertListEqual(configurator_values["optional_products"], [])
+        self.assertFalse(configurator_values["has_optional_products"])
+        self.assertNotIn("products", configurator_values)
+        self.assertNotIn("optional_products", configurator_values)
 
     def test_product_configurator_extra_price_taxes(self):
         """Test that the product configurator applies taxes to PTAV extra prices."""
         self.website.show_line_subtotals_tax_selection = "tax_included"
-        tax = self.env["account.tax"].create({"name": "Tax", "amount": 10})
-        attribute = self.env["product.attribute"].create({
+        tax = self.env["account.tax"].sudo().create({"name": "Tax", "amount": 10})
+        attribute = self.env["product.attribute"].sudo().create({
             "name": "Attribute",
             "value_ids": [Command.create({"name": "A", "default_extra_price": 1})],
         })
@@ -375,9 +402,9 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
     def test_product_configurator_strikethrough_price(self):
         """Test that the product configurator displays the strikethrough price correctly."""
         self.pricelist = self._enable_pricelists()
-        self.env["res.config.settings"].create({"group_product_price_comparison": True}).execute()
+        self.env["res.config.settings"].sudo().create({"group_product_price_comparison": True}).execute()
         self.website.show_line_subtotals_tax_selection = "tax_included"
-        tax = self.env["account.tax"].create({"name": "Tax", "amount": 10})
+        tax = self.env["account.tax"].sudo().create({"name": "Tax", "amount": 10})
         optional_product = self.env["product.template"].create({
             "name": "Optional product",
             "website_published": True,
@@ -402,6 +429,24 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
         ]
         self.start_tour(
             main_product.website_url, "website_sale.product_configurator_strikethrough_price"
+        )
+
+    def test_product_configurator_strikethrough_price_uom_change(self):
+        """Test that the strikethrough price is updated when changing the packaging."""
+        self.env["res.config.settings"].sudo().create({
+            "group_product_price_comparison": True,
+            "group_uom": True,
+        }).execute()
+        self.env["product.template"].create({
+            "name": "Packaged product",
+            "website_published": True,
+            "list_price": 100,
+            "compare_list_price": 200,
+            "uom_ids": [Command.set(self.env.ref("uom.product_uom_pack_6").ids)],
+        })
+        self.start_tour(
+            "/shop?search=Packaged product",
+            "website_sale.product_configurator_strikethrough_price_uom_change",
         )
 
     def test_get_product_combination_multi_attribute_with_archived_variant_and_inactive_ptav(self):
@@ -443,9 +488,9 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
             lambda product: product.product_template_attribute_value_ids[1].name == "first"
         ).action_archive()
         main_product.attribute_line_ids[1].product_template_value_ids[0].ptav_active = False
-        with self.mock_request():
+        with self.mock_request() as request:
             product_values = self.pc_controller._prepare_product_values(
-                main_product, **{str(attribute_single.id): str(attribute_single.value_ids.id)}
+                main_product.with_context(request.env.context), **{str(attribute_single.id): str(attribute_single.value_ids.id)}
             )
         is_combination_possible = product_values["combination_info"]["is_combination_possible"]
         combination_product_id = product_values["combination_info"]["product_id"]
@@ -457,7 +502,7 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
         page breadcrumb should show the category accessible from the current website, not the one
         from another website.
         """
-        second_website = self.env["website"].create({"name": "Second Website"})
+        second_website = self.env["website"].sudo().create({"name": "Second Website"})
 
         categ_website_1 = self.env["product.public.category"].create({
             "name": "My Category",
@@ -475,11 +520,11 @@ class TestWebsiteSaleProductConfigurator(HttpCase, WebsiteSaleCommon):
         })
 
         # On website 1, the category from website 1 should be selected.
-        with MockRequest(self.website.env, website=self.website):
-            values = self.pc_controller._prepare_product_values(product_tmpl)
+        with MockRequest(self.website.env, website=self.website) as request:
+            values = self.pc_controller._prepare_product_values(product_tmpl.with_context(request.env.context))
         self.assertEqual(values["category"], categ_website_1)
 
         # On website 2, the category from website 2 should be selected.
-        with MockRequest(self.website.env, website=second_website):
-            values = self.pc_controller._prepare_product_values(product_tmpl)
+        with MockRequest(self.website.env, website=second_website) as request:
+            values = self.pc_controller._prepare_product_values(product_tmpl.with_context(request.env.context))
         self.assertEqual(values["category"], categ_website_2)

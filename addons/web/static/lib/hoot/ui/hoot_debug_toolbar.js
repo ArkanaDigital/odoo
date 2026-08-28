@@ -1,6 +1,6 @@
 /** @odoo-module */
 
-import { Component, computed, props, signal, types as t, useEffect, xml } from "@odoo/owl";
+import { Component, computed, signal, t, useEffect, useProps, xml } from "@odoo/owl";
 import { Test } from "../core/test";
 import { refresh } from "../core/url";
 import { formatTime, throttle } from "../hoot_utils";
@@ -184,7 +184,8 @@ export class HootDebugToolBar extends Component {
             <div class="flex flex-col w-full overflow-hidden rounded shadow bg-gray-200 dark:bg-gray-800">
                 <div class="flex items-center gap-2 px-2">
                     <i
-                        class="fa fa-bug text-cyan p-2"
+                        class="oi text-cyan p-2"
+                        data-icon="bug_report"
                         t-att-class="{ 'cursor-move': !this.isOpen() }"
                         t-ref="this.handleRef"
                     />
@@ -194,7 +195,7 @@ export class HootDebugToolBar extends Component {
                             title="Exit debug mode (Ctrl + Esc)"
                             t-on-click.stop="this.exitDebugMode"
                         >
-                            <i class="fa fa-sign-out" />
+                            <i class="oi" data-icon="logout" />
                         </button>
                         <t t-if="this.isTestFinished()">
                             <button
@@ -202,7 +203,7 @@ export class HootDebugToolBar extends Component {
                                 title="Restart test (F5)"
                                 t-on-click.stop="this.refresh"
                             >
-                                <i class="fa fa-refresh" />
+                                <i class="oi" data-icon="refresh" />
                             </button>
                         </t>
                     </div>
@@ -239,7 +240,7 @@ export class HootDebugToolBar extends Component {
                         />
                     </button>
                     <button class="p-2" t-on-click="this.toggleConfig">
-                        <i class="fa fa-cog" />
+                        <i class="oi oi-filled" data-icon="settings" />
                     </button>
                 </div>
                 <t t-if="this.isOpen()">
@@ -259,7 +260,7 @@ export class HootDebugToolBar extends Component {
     `;
 
     // Props & plugins
-    props = props({
+    props = useProps({
         test: t.instanceOf(Test),
     });
 
@@ -277,8 +278,8 @@ export class HootDebugToolBar extends Component {
             groupAssertions(lastResults?.getEvents("assertion"))
         );
     });
-    rootRef = signal(null, { type: t.ref(HTMLDivElement) });
-    handleRef = signal(null, { type: t.ref(HTMLElement) });
+    rootRef = signal.ref(HTMLDivElement);
+    handleRef = signal.ref(HTMLElement);
 
     // Other members
     formatTime = formatTime;

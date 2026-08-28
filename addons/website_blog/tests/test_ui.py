@@ -17,7 +17,7 @@ class TestWebsiteBlogUi(odoo.tests.HttpCase, TestWebsiteBlogCommon):
         blog = cls.env['blog.blog'].create({
             "name": 'aaa Blog Test',
             "subtitle": 'Blog Test Subtitle',
-            "cover_properties": """{"background-image": "url('/website_blog/static/src/img/blog_1.jpeg')", "resize_class": "o_record_has_cover o_half_screen_height", "opacity": "0.4"}""",
+            "cover_properties": """{"background-image": "url('/website_blog/static/src/img/blog_1.webp')", "resize_class": "o_record_has_cover o_half_screen_height", "opacity": "0.4"}""",
         })
 
         blog_tag = cls.env.ref('website_blog.blog_tag_2', raise_if_not_found=False)
@@ -30,7 +30,7 @@ class TestWebsiteBlogUi(odoo.tests.HttpCase, TestWebsiteBlogCommon):
             "author_id": cls.env.user.partner_id.id,
             "tag_ids": [(4, blog_tag.id)],
             "is_published": True,
-            "cover_properties": """{"background-image": "url('/website_blog/static/src/img/cover_1.jpg')", "resize_class": "o_record_has_cover o_half_screen_height", "opacity": "0"}""",
+            "cover_properties": """{"background-image": "url('/website_blog/static/src/img/cover_1.webp')", "resize_class": "o_record_has_cover o_half_screen_height", "opacity": "0"}""",
         })
 
     def test_admin(self):
@@ -56,23 +56,29 @@ class TestWebsiteBlogUi(odoo.tests.HttpCase, TestWebsiteBlogCommon):
 
     def test_autocomplete_with_date(self):
         self.env.ref('website_blog.opt_blog_sidebar_show').active = True
+        self.env.ref('website_blog.opt_sidebar_blog_index_archives').active = True
         self.env.ref('website_blog.opt_sidebar_blog_index_follow_us').active = False
         self.start_tour("/blog", 'blog_autocomplete_with_date')
 
     def test_blog_context_and_social_media(self):
+        # Create a second blog to make the blog navigation appear (only shows when len(blogs) > 1)
+        self.env['blog.blog'].create({'name': 'Second Blog'})
         self.env.ref('website_blog.opt_blog_sidebar_show').active = True
+        # Sidebar markup only renders when at least one sidebar block is enabled (see opt_blog_sidebar_show).
+        # Follow Us provides the s_social_media snippet exercised by the tour.
+        self.env.ref('website_blog.opt_sidebar_blog_index_follow_us').active = True
         self.start_tour(self.env["website"].get_client_action_url("/blog"), "blog_context_and_social_media", login="admin")
 
     def test_blog_social_image(self):
         with MockRequest(self.env, website=self.env.ref('base.default_website'), url_root='http://example.com'):
             meta = self.blog_post.get_website_meta()
-            self.assertEqual(meta['opengraph_meta']['og:image'], 'http://example.com/website_blog/static/src/img/cover_1.jpg')
-            self.blog_post.cover_properties = """{"background-image": "url(\\"/2.jpg\\")"}"""
+            self.assertEqual(meta['opengraph_meta']['og:image'], 'http://example.com/website_blog/static/src/img/cover_1.webp')
+            self.blog_post.cover_properties = """{"background-image": "url(\\"/2.webp\\")"}"""
             meta = self.blog_post.get_website_meta()
-            self.assertEqual(meta['opengraph_meta']['og:image'], 'http://example.com/2.jpg')
-            self.blog_post.cover_properties = """{"background-image": "url(/3.jpg)"}"""
+            self.assertEqual(meta['opengraph_meta']['og:image'], 'http://example.com/2.webp')
+            self.blog_post.cover_properties = """{"background-image": "url(/3.webp)"}"""
             meta = self.blog_post.get_website_meta()
-            self.assertEqual(meta['opengraph_meta']['og:image'], 'http://example.com/3.jpg')
+            self.assertEqual(meta['opengraph_meta']['og:image'], 'http://example.com/3.webp')
 
     def test_avatar_comment(self):
         mail_message = self.env['mail.message'].create({
@@ -116,7 +122,10 @@ class TestWebsiteBlogUi(odoo.tests.HttpCase, TestWebsiteBlogCommon):
         })
 
         self.env.ref("website_blog.opt_blog_sidebar_show").active = True
+        self.env.ref("website_blog.opt_sidebar_blog_index_archives").active = True
         self.env.ref("website_blog.opt_blog_post_sidebar").active = True
+        # Post sidebar "Add some" / #edit-in-backend lives in the Tags block (empty tags, managers).
+        self.env.ref("website_blog.opt_blog_post_tags_display").active = True
         self.start_tour(self.env["website"].get_client_action_url("/blog"), "blog_sidebar_with_date_and_tag", login="admin")
 
         blog_tag = self.env.ref('website_blog.blog_tag_5', raise_if_not_found=False)
@@ -125,7 +134,47 @@ class TestWebsiteBlogUi(odoo.tests.HttpCase, TestWebsiteBlogCommon):
         blog_post_1.write({'tag_ids': [(4, blog_tag.id)]})
         blog_post_2.write({'tag_ids': [(4, blog_tag.id)]})
 
+        # Activate tags in sidebar for blog_tags_with_date tour
+        self.env.ref("website_blog.opt_sidebar_blog_index_tags").active = True
         self.start_tour(self.env["website"].get_client_action_url("/blog"), "blog_tags_with_date", login="admin")
+
+    def test_sidebar_tags_are_filtered_by_blog_scope(self):
+        Blog = self.env['blog.blog']
+        Post = self.env['blog.post']
+        Tag = self.env['blog.tag']
+        TagCategory = self.env['blog.tag.category']
+
+        category = TagCategory.create({'name': 'Scoped Category'})
+        used_tag = Tag.create({'name': 'Scoped Used Tag', 'category_id': category.id})
+        unused_tag = Tag.create({'name': 'Scoped Unused Tag', 'category_id': category.id})
+        other_blog_tag = Tag.create({'name': 'Scoped Other Blog Tag', 'category_id': category.id})
+
+        blog = Blog.create({'name': 'Scoped Blog'})
+        other_blog = Blog.create({'name': 'Scoped Other Blog'})
+        Post.create({
+            'name': 'Scoped Blog Post',
+            'blog_id': blog.id,
+            'author_id': self.env.user.partner_id.id,
+            'tag_ids': [(4, used_tag.id)],
+            'is_published': True,
+        })
+        Post.create({
+            'name': 'Scoped Other Blog Post',
+            'blog_id': other_blog.id,
+            'author_id': self.env.user.partner_id.id,
+            'tag_ids': [(4, other_blog_tag.id)],
+            'is_published': True,
+        })
+
+        self.env.ref('website_blog.opt_blog_sidebar_show').active = True
+        # Activate tags in sidebar
+        self.env.ref("website_blog.opt_sidebar_blog_index_tags").active = True
+        response = self.url_open(blog.website_url)
+
+        self.assertIn(category.name, response.text)
+        self.assertIn(used_tag.name, response.text)
+        self.assertNotIn(unused_tag.name, response.text)
+        self.assertNotIn(other_blog_tag.name, response.text)
 
     def test_blog_access_rights(self):
         group_website_blog_manager_id = self.ref("website_blog.group_website_blog_manager")
@@ -197,4 +246,7 @@ class TestWebsiteBlogUi(odoo.tests.HttpCase, TestWebsiteBlogCommon):
 
                 mock_request.session.touch = lambda: None
                 mock_request.render = fake_render
-                controller.blog_post(blog1, current_post)
+                controller.blog_post(
+                    blog1.with_env(mock_request.env),
+                    current_post.with_env(mock_request.env),
+                )

@@ -29,7 +29,7 @@ export class EmojiPlugin extends Plugin {
                 id: "addEmoji",
                 title: _t("Emoji"),
                 description: _t("Add an emoji"),
-                icon: "fa-smile-o",
+                icon: "sentiment_satisfied",
                 run: this.showEmojiPicker.bind(this),
             },
         ],
@@ -81,7 +81,7 @@ export class EmojiPlugin extends Plugin {
      * @param {InputEvent} ev
      */
     onInput(ev) {
-        if (!emojiLoader.loaded) {
+        if (!emojiLoader.loaded || ev.inputType === "deleteContentBackward") {
             return;
         }
         const selection = this.dependencies.selection.getEditableSelection();
@@ -97,7 +97,7 @@ export class EmojiPlugin extends Plugin {
         const text = selection.anchorNode.textContent;
 
         for (let candidatePosition = start - 1; candidatePosition >= 0; candidatePosition--) {
-            const match = text.substring(candidatePosition);
+            const match = text.substring(candidatePosition, start);
             if (!emojiLoader.map.has(match)) {
                 continue;
             }

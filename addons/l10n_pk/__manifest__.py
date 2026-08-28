@@ -1,4 +1,3 @@
-# Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'Pakistan - Accounting',
     'website': 'https://www.odoo.com/documentation/latest/applications/finance/fiscal_localizations.html',
@@ -22,8 +21,13 @@ Activates:
         'account',
         'account_tax_python',
         'l10n_account_withholding_tax',
+        'product',
     ],
     'auto_install': ['account'],
+    'data': [
+        'data/res_country_data.xml',
+        'views/account_tax_views.xml',
+    ],
     'demo': [
         'demo/res_partner_demo.xml',
         'demo/demo_company.xml',

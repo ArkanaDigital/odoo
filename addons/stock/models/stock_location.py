@@ -8,6 +8,7 @@ from datetime import timedelta
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
+from odoo.tools.translate import mark_as_copy
 
 
 class StockLocation(models.Model):
@@ -16,7 +17,7 @@ class StockLocation(models.Model):
     _parent_name = "location_id"
     _parent_store = True
     _order = 'complete_name, id'
-    _rec_names_search = ['complete_name', 'barcode']
+    _rec_names_search = ('complete_name', 'barcode')
     _check_company_auto = True
 
     @api.model
@@ -250,18 +251,17 @@ class StockLocation(models.Model):
                             "You cannot archive location %(location)s because it is used by warehouse %(warehouse)s",
                             location=location.display_name, warehouse=warehouses.display_name))
 
-            if not self.env.context.get('do_not_check_quant'):
-                children_location = self.env['stock.location'].with_context(active_test=False).search([('id', 'child_of', self.ids)])
-                internal_children_locations = children_location.filtered(lambda l: l.usage == 'internal')
-                children_quants = self.env['stock.quant'].search(['&', '|', ('quantity', '!=', 0), ('reserved_quantity', '!=', 0), ('location_id', 'in', internal_children_locations.ids)])
-                if children_quants and not values['active']:
-                    raise UserError(_(
-                        "You can't disable locations %s because they still contain products.",
-                        ', '.join(children_quants.mapped('location_id.display_name'))))
-                else:
-                    super(StockLocation, children_location - self).with_context(do_not_check_quant=True).write({
-                        'active': values['active'],
-                    })
+            children_location = self.env['stock.location'].with_context(active_test=False).search([('id', 'child_of', self.ids)])
+            internal_children_locations = children_location.filtered(lambda l: l.usage == 'internal')
+            children_quants = self.env['stock.quant'].search(['&', '|', ('quantity', '!=', 0), ('reserved_quantity', '!=', 0), ('location_id', 'in', internal_children_locations.ids)])
+            if children_quants and not values['active']:
+                raise UserError(_(
+                    "You can't disable locations %s because they still contain products.",
+                    ', '.join(children_quants.mapped('location_id.display_name'))))
+
+            super(StockLocation, children_location - self).write({
+                'active': values['active'],
+            })
 
         res = super().write(values)
         self.invalidate_model(['warehouse_id'])
@@ -425,6 +425,23 @@ class StockLocation(models.Model):
         specified."""
         self.ensure_one()
         if self.storage_category_id:
+            positive_quant = self.quant_ids.filtered(lambda q: q.product_id.uom_id.compare(q.quantity, 0) > 0)
+            # check if only allow new product when empty
+            if self.storage_category_id.allow_new_product == "empty" and positive_quant:
+                return False
+            # check if only allow same product
+            if self.storage_category_id.allow_new_product == "same":
+                # In case it's a package, `product` is not defined, so try to get
+                # the package products from the context
+                product = product or self.env.context.get('products')
+                if (positive_quant and positive_quant.product_id != product) or len(product) > 1:
+                    return False
+                if self.env['stock.move.line'].search_count([
+                    ('product_id', '!=', product.id),
+                    ('state', 'not in', ('done', 'cancel')),
+                    ('location_dest_id', '=', self.id),
+                ], limit=1):
+                    return False
             forecast_weight = self._get_weight(self.env.context.get('exclude_sml_ids', set()))[self]['forecast_weight']
             # check if enough space
             if package and package.package_type_id:
@@ -445,23 +462,6 @@ class StockLocation(models.Model):
                 if product_capacity and location_qty >= product_capacity.quantity:
                     return False
                 if product_capacity and quantity + location_qty > product_capacity.quantity:
-                    return False
-            positive_quant = self.quant_ids.filtered(lambda q: q.product_id.uom_id.compare(q.quantity, 0) > 0)
-            # check if only allow new product when empty
-            if self.storage_category_id.allow_new_product == "empty" and positive_quant:
-                return False
-            # check if only allow same product
-            if self.storage_category_id.allow_new_product == "same":
-                # In case it's a package, `product` is not defined, so try to get
-                # the package products from the context
-                product = product or self.env.context.get('products')
-                if (positive_quant and positive_quant.product_id != product) or len(product) > 1:
-                    return False
-                if self.env['stock.move.line'].search_count([
-                    ('product_id', '!=', product.id),
-                    ('state', 'not in', ('done', 'cancel')),
-                    ('location_dest_id', '=', self.id),
-                ], limit=1):
                     return False
         return True
 
@@ -524,7 +524,7 @@ class StockRoute(models.Model):
     _order = 'sequence'
     _check_company_auto = True
 
-    name = fields.Char('Route', required=True, translate=True)
+    name = fields.Char('Route', required=True, translate=True, copy=mark_as_copy('name'))
     active = fields.Boolean('Active', default=True, help="If the active field is set to False, it will allow you to hide the route without removing it.")
     sequence = fields.Integer('Sequence', default=0)
     rule_ids = fields.One2many('stock.rule', 'route_id', 'Rules', copy=True)
@@ -546,14 +546,6 @@ class StockRoute(models.Model):
     warehouse_ids = fields.Many2many(
         'stock.warehouse', 'stock_route_warehouse', 'route_id', 'warehouse_id',
         'Warehouses', copy=False, domain="[('id', 'in', warehouse_domain_ids)]")
-
-    def copy_data(self, default=None):
-        default = dict(default or {})
-        vals_list = super().copy_data(default=default)
-        if 'name' not in default:
-            for route, vals in zip(self, vals_list):
-                vals['name'] = _("%s (copy)", route.name)
-        return vals_list
 
     @api.depends('company_id')
     def _compute_warehouses(self):

@@ -10,7 +10,7 @@
         'views/chatbot_script_step_views.xml',
         "views/crm_lead_views.xml",
         "views/discuss_channel_views.xml",
-        "security/crm_livechat_security.xml",
+        'security/ir.access.csv',
     ],
     'depends': [
         'crm',
@@ -26,6 +26,9 @@
         },
         'mail.assets_public': [
             'crm_livechat/static/src/core/common/**/*',
+        ],
+        "portal.assets_chatter_helpers": [
+            "crm_livechat/static/src/core/common/**/*",
         ],
         'web.assets_unit_tests': [
             'crm_livechat/static/tests/**/*',

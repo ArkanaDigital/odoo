@@ -1,7 +1,16 @@
-import { reactive, useRef } from "@web/owl2/utils";
 import { ThemeSelector } from "./theme_selector";
 import { assets, AssetsLoadingError, getBundle } from "@web/core/assets";
-import { Component, markup, onMounted, onWillUnmount, onWillUpdateProps, status, proxy } from "@odoo/owl";
+import {
+    Component,
+    markup,
+    onMounted,
+    onWillUnmount,
+    status,
+    proxy,
+    signal,
+    useApp,
+    useOnChange,
+} from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { renderToFragment } from "@web/core/utils/render";
 import { localization } from "@web/core/l10n/localization";
@@ -16,6 +25,10 @@ export class ThemeSelectorIframe extends Component {
         config: Object,
     };
 
+    app = useApp();
+
+    iframeRef = signal.ref();
+
     setup() {
         this.themeService = useService("mass_mailing.themes");
         this.orm = useService("orm");
@@ -23,11 +36,10 @@ export class ThemeSelectorIframe extends Component {
             show: false,
         });
         this.themeSelectorProps = {
-            favoriteThemes: reactive({
+            favoriteThemes: proxy({
                 promise: undefined,
             }),
         };
-        this.iframeRef = useRef("iframe");
         onMounted(() => {
             this.setupIframe();
         });
@@ -36,11 +48,13 @@ export class ThemeSelectorIframe extends Component {
                 this.themeSelectorRoot.destroy();
             }
         });
-        onWillUpdateProps((newProps) => {
-            if (newProps.config.mailingModelId !== this.props.config.mailingModelId) {
-                this.themeSelectorProps.favoriteThemes.promise = this.fetchFavoriteThemes(newProps);
-            }
-        });
+        useOnChange(
+            () => [this.props.config.mailingModelId],
+            () => {
+                this.themeSelectorProps.favoriteThemes.promise = this.fetchFavoriteThemes(this.props);
+            },
+            { initialRun: false }
+        );
     }
 
     get isBrowserSafari() {
@@ -88,22 +102,22 @@ export class ThemeSelectorIframe extends Component {
     async setupIframe() {
         let loadingError;
         try {
-            await loadIframe(this.iframeRef.el, async (iframe) => {
+            await loadIframe(this.iframeRef(), async (iframe) => {
                 iframe.contentDocument.head.appendChild(this.renderHeadContent());
                 iframe.contentDocument.body.style.setProperty("direction", localization.direction);
-                this.themeSelectorRoot = this.__owl__.app.createRoot(ThemeSelector, {
+                this.themeSelectorRoot = this.app.createRoot(ThemeSelector, {
                     env: this.env,
                     props: this.getThemeSelectorProps(),
                 });
                 return Promise.all([
                     this.loadIframeAssets(),
-                    this.themeSelectorRoot.mount(this.iframeRef.el.contentDocument.body),
+                    this.themeSelectorRoot.mount(this.iframeRef().contentDocument.body),
                 ]);
             });
         } catch (error) {
             loadingError = error;
         }
-        if (!status(this) === "destroyed") {
+        if (status(this) === "destroyed") {
             return;
         } else if (loadingError) {
             throw loadingError;
@@ -112,7 +126,7 @@ export class ThemeSelectorIframe extends Component {
     }
 
     loadIframeAssets() {
-        return loadIframeBundles(this.iframeRef.el, ["mass_mailing.assets_iframe_theme_selector"]);
+        return loadIframeBundles(this.iframeRef(), ["mass_mailing.assets_iframe_theme_selector"]);
     }
 
     /**
@@ -132,7 +146,8 @@ export class ThemeSelectorIframe extends Component {
         }
         const sheetPromises = [];
         for (const cssText of cssTexts) {
-            const sheet = new this.iframeRef.el.contentDocument.defaultView.CSSStyleSheet();
+            const win = this.iframeRef().contentDocument.defaultView;
+            const sheet = new win.CSSStyleSheet();
             sheetPromises.push(sheet.replace(cssText).then(() => sheet));
         }
         return Promise.all(sheetPromises);

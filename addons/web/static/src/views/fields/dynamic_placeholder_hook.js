@@ -1,12 +1,12 @@
-import { useComponent } from "@web/owl2/utils";
+import { useProps } from "@odoo/owl";
+import { _t } from "@web/core/l10n/translation";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { useService } from "@web/core/utils/hooks";
-import { _t } from "@web/core/l10n/translation";
 import { DynamicPlaceholderPopover } from "./dynamic_placeholder_popover";
 
 export function useDynamicPlaceholder(elementRef) {
     const TRIGGER_KEY = "#";
-    const ownerField = useComponent();
+    const props = useProps();
     const triggerKeyReplaceRegex = new RegExp(`${TRIGGER_KEY}$`);
     let closeCallback;
     let positionCallback;
@@ -19,7 +19,7 @@ export function useDynamicPlaceholder(elementRef) {
     let modelField = null;
 
     const onDynamicPlaceholderValidate = function (path, defaultValue) {
-        const element = elementRef?.el;
+        const element = elementRef();
         if (!element) {
             return;
         }
@@ -36,8 +36,8 @@ export function useDynamicPlaceholder(elementRef) {
                 splitedValue[0].replace(triggerKeyReplaceRegex, "") +
                 dynamicPlaceholder +
                 splitedValue[1];
-            const changes = { [ownerField.props.name]: newValue };
-            ownerField.props.record.update(changes);
+            const changes = { [props.name]: newValue };
+            props.record.update(changes);
             element.value = newValue;
 
             // -1 to take the removal of the trigger key char into account
@@ -47,7 +47,7 @@ export function useDynamicPlaceholder(elementRef) {
         }
     };
     const onDynamicPlaceholderClose = function () {
-        elementRef?.el.focus();
+        elementRef()?.focus();
     };
 
     /**
@@ -61,7 +61,7 @@ export function useDynamicPlaceholder(elementRef) {
      * @param {function} [opts.positionCallback]
      */
     async function open(opts) {
-        const recordData = ownerField.props.record.data;
+        const recordData = props.record.data;
         const model = (modelField && recordData[modelField]) || recordData.model;
         if (!model) {
             return notification.add(
@@ -71,13 +71,13 @@ export function useDynamicPlaceholder(elementRef) {
         }
         closeCallback = opts.closeCallback;
         positionCallback = opts.positionCallback;
-        popover.open(elementRef?.el, {
+        popover.open(elementRef(), {
             resModel: model,
             validate: opts.validateCallback,
         });
     }
     async function onKeydown(ev) {
-        const element = elementRef?.el;
+        const element = elementRef();
         if (ev.target === element && ev.key === TRIGGER_KEY) {
             const currentRangeIndex = element.selectionStart;
             // +1 to take the trigger key char into account

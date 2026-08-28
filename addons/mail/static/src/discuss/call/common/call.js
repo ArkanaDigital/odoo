@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
+import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { BlurPerformanceWarning } from "@mail/discuss/call/common/blur_performance_warning";
 import { CALL_GRID_LAYOUT } from "@mail/discuss/call/common/call_layout";
 import { CallActionList } from "@mail/discuss/call/common/call_action_list";
@@ -6,7 +6,16 @@ import { CallPresentationBar } from "@mail/discuss/call/common/call_presentation
 import { CallParticipantCard } from "@mail/discuss/call/common/call_participant_card";
 import { PttAdBanner } from "@mail/discuss/call/common/ptt_ad_banner";
 
-import { Component, onMounted, onPatched, onWillUnmount, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onPatched,
+    onWillUnmount,
+    proxy,
+    signal,
+    t,
+    useProps,
+} from "@odoo/owl";
 
 import { browser } from "@web/core/browser/browser";
 import { isMobileOS } from "@web/core/browser/feature_detection";
@@ -14,7 +23,6 @@ import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { useService } from "@web/core/utils/hooks";
 import { isEventHandled, markEventHandled } from "@web/core/utils/misc";
 import { useCallActions } from "@mail/discuss/call/common/call_actions";
-import { inDiscussCallViewProps, useInDiscussCallView } from "@mail/utils/common/hooks";
 
 /** @typedef {import("@mail/discuss/call/common/call_layout").CallLayout} CallLayout */
 
@@ -33,12 +41,6 @@ const MIN_TILED_TILE_WIDTH = 320;
  * @property {import("models").ChannelMember} [member]
  */
 
-/**
- * @typedef {Object} Props
- * @property {import("models").Thread} thread
- * @property {boolean} [compact]
- * @extends {Component<Props, Env>}
- */
 export class Call extends Component {
     static components = {
         BlurPerformanceWarning,
@@ -47,16 +49,14 @@ export class Call extends Component {
         CallParticipantCard,
         PttAdBanner,
     };
-    static props = ["channel?", "compact?", "hasOverlay?", ...inDiscussCallViewProps];
-    static defaultProps = { hasOverlay: true };
     static template = "discuss.Call";
 
     overlayTimeout;
+    gridRef = signal.ref();
+    rootRef = signal.ref();
 
     setup() {
         super.setup();
-        this.grid = useRef("grid");
-        this.root = useRef("root");
         this.notification = useService("notification");
         this.rtc = useService("discuss.rtc");
         this.isMobileOs = isMobileOS();
@@ -72,10 +72,19 @@ export class Call extends Component {
             insetCard: undefined,
         });
         this.store = useService("mail.store");
+        this.props = useProps({
+            channel: t.instanceOf(this.store["discuss.channel"]).optional(),
+            compact: t.boolean().optional(),
+            hasOverlay: t.boolean().optional(true),
+            isPip: t.boolean().optional(),
+        });
         this.callActions = useCallActions({ channel: () => this.channel });
         onMounted(() => {
             this.resizeObserver = new ResizeObserver(() => this.arrangeTiles());
-            this.resizeObserver.observe(this.grid.el);
+            const gridEl = this.gridRef();
+            if (gridEl) {
+                this.resizeObserver.observe(gridEl);
+            }
             this.arrangeTiles();
         });
         onPatched(() => this.arrangeTiles());
@@ -94,9 +103,9 @@ export class Call extends Component {
             ]
         );
         useHotkey("shift+d", () => this.rtc.toggleDeafen());
-        useHotkey("shift+m", () => this.rtc.toggleMicrophone());
+        useHotkey("shift+m", ({ target }) => this.rtc.toggleMicrophone({ rootRef: () => target }));
         useHotkey("shift+h", () => this.rtc.raiseHand(!this.rtc.selfSession.raisingHand));
-        useInDiscussCallView();
+        useSubEnv({ inDiscussCallView: true });
     }
 
     get isAnyonePresenting() {
@@ -169,7 +178,7 @@ export class Call extends Component {
     }
 
     get isActiveCall() {
-        return Boolean(this.channel.eq(this.rtc.channel));
+        return Boolean(this.channel?.eq(this.rtc.channel));
     }
 
     get minimized() {
@@ -288,6 +297,18 @@ export class Call extends Component {
         );
     }
 
+    get bottomNotifications() {
+        return this.hasCallNotifications
+            ? [...this.rtc.notifications.values()].filter((notif) => notif.position !== "top")
+            : [];
+    }
+
+    get topNotifications() {
+        return this.hasCallNotifications
+            ? [...this.rtc.notifications.values()].filter((notif) => notif.position === "top")
+            : [];
+    }
+
     get isControllerFloating() {
         return this.rtc.isFullscreen || (this.channel.activeRtcSession && !this.ui.isSmall);
     }
@@ -326,14 +347,15 @@ export class Call extends Component {
     }
 
     arrangeTiles() {
-        if (!this.grid.el) {
+        const gridEl = this.gridRef();
+        if (!gridEl) {
             return;
         }
-        this.grid.el.style.setProperty("--width", "0");
-        this.grid.el.style.setProperty("--height", "0");
-        const { width, height } = this.grid.el.getBoundingClientRect();
-        const aspectRatio = this.minimized && this.channel.videoCount === 0 ? 1 : 16 / 9;
-        const tileCount = this.grid.el.children.length;
+        gridEl.style.setProperty("--width", "0");
+        gridEl.style.setProperty("--height", "0");
+        const { width, height } = gridEl.getBoundingClientRect();
+        const aspectRatio = this.isActiveCall ? 16 / 9 : 1;
+        const tileCount = gridEl.children.length;
         // Column/row cap: how many tiles fit at MIN_TILED_TILE_WIDTH without shrinking further. Used
         // by "Prioritize tiles with video" to decide when video-less tiles must be dropped.
         const capColumns = Math.max(1, Math.floor(width / MIN_TILED_TILE_WIDTH));
@@ -381,7 +403,7 @@ export class Call extends Component {
             tileHeight: optimal.tileHeight,
             columnCount: optimal.columnCount,
         });
-        this.grid.el.style.setProperty("--width", `${this.state.tileWidth}px`);
-        this.grid.el.style.setProperty("--height", `${this.state.tileHeight}px`);
+        gridEl.style.setProperty("--width", `${this.state.tileWidth}px`);
+        gridEl.style.setProperty("--height", `${this.state.tileHeight}px`);
     }
 }

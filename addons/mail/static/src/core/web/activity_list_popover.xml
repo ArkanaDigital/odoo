@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
     <t t-name="mail.ActivityListPopover">
-        <div class="o-mail-ActivityListPopover d-flex flex-column" t-custom-ref="root">
+        <div class="o-mail-ActivityListPopover d-flex flex-column" t-ref="this.rootRef">
             <div class="overflow-y-auto d-flex flex-column flex-grow-1">
                 <span t-if="this.activities.length === 0" class="p-3 text-center fst-italic text-500 border-bottom fs-6">Schedule activities to help you get things done.</span>
                 <t t-if="this.overdueActivities.length > 0">
@@ -38,8 +38,8 @@
                 </t>
             </div>
             <button class="btn btn-secondary p-3 text-center" t-on-click="this.onClickAddActivityButton">
-                <t t-if="this.props.resIds"><i class="fa fa-plus fa-fw"/><strong>Schedule an activity on selected records</strong></t>
-                <t t-else=""><i class="fa fa-plus fa-fw"/><strong>Schedule an activity</strong></t>
+                <t t-if="this.props.resIds"><i class="oi oi-fw" data-icon="add"/><strong>Schedule an activity on selected records</strong></t>
+                <t t-else=""><i class="oi oi-fw" data-icon="add"/><strong>Schedule an activity</strong></t>
             </button>
         </div>
     </t>

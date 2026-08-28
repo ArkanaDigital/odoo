@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import { HtmlUpgradeManager } from "@html_editor/html_migrations/html_upgrade_manager";
 import { stripVersion } from "@html_editor/html_migrations/html_migrations_utils";
 import { stripHistoryIds } from "@html_editor/others/collaboration/collaboration_odoo_plugin";
@@ -15,7 +14,7 @@ import {
 } from "@html_editor/others/embedded_components/embedding_sets";
 import { normalizeHTML } from "@html_editor/utils/html";
 import { Wysiwyg } from "@html_editor/wysiwyg";
-import { Component, markup, status, proxy } from "@odoo/owl";
+import { Component, markup, useProps, signal, status, proxy, t, useApp } from "@odoo/owl";
 import { localization } from "@web/core/l10n/localization";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
@@ -23,12 +22,13 @@ import { Mutex } from "@web/core/utils/concurrency";
 import { useBus, useService } from "@web/core/utils/hooks";
 import { useRecordObserver } from "@web/model/relational_model/utils";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
-import { TranslationButton } from "@web/views/fields/translation_button";
+import { TranslationButton } from "@web/views/fields/translation/translation";
 import { HtmlViewer } from "@html_editor/components/html_viewer/html_viewer";
 import { EditorVersionPlugin } from "@html_editor/core/editor_version_plugin";
 import { withSequence } from "@html_editor/utils/resource";
 import { canRenderAsHTML, fixInvalidHTML, instanceofMarkup } from "@html_editor/utils/sanitize";
 import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
+import "@web/views/fields/html/html_field";
 
 const HTML_FIELD_METADATA_ATTRIBUTES = ["data-last-history-commits"];
 
@@ -48,35 +48,39 @@ function computeContainsComplexHTML(value) {
     return !!parsedOriginal.head.innerHTML.trim();
 }
 
+export const htmlFieldProps = {
+    ...standardFieldProps,
+    isCollaborative: t.boolean().optional(),
+    collaborativeTrigger: t.string().optional(),
+    dynamicField: t.boolean().optional(false),
+    dynamicFieldReferenceModel: t.string().optional(),
+    migrateHTML: t.boolean().optional(),
+    cssReadonlyAssetId: t.string().optional(),
+    sandboxedPreview: t.boolean().optional(),
+    codeview: t.boolean().optional(),
+    editorConfig: t.object().optional(),
+    embeddedComponents: t.boolean().optional(),
+};
+
 export class HtmlField extends Component {
     static template = "html_editor.HtmlField";
-    static props = {
-        ...standardFieldProps,
-        isCollaborative: { type: Boolean, optional: true },
-        collaborativeTrigger: { type: String, optional: true },
-        dynamicField: { type: Boolean, optional: true },
-        dynamicFieldReferenceModel: { type: String, optional: true },
-        migrateHTML: { type: Boolean, optional: true },
-        cssReadonlyAssetId: { type: String, optional: true },
-        sandboxedPreview: { type: Boolean, optional: true },
-        codeview: { type: Boolean, optional: true },
-        editorConfig: { type: Object, optional: true },
-        embeddedComponents: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        dynamicField: false,
-    };
     static components = {
         Wysiwyg,
         HtmlViewer,
         TranslationButton,
     };
 
+    app = useApp();
+    props = useProps(htmlFieldProps);
+    codeViewRef = signal.ref();
+
+    get classList() {
+        return ["o-html-field"];
+    }
+
     setup() {
         this.htmlUpgradeManager = new HtmlUpgradeManager();
         this.mutex = new Mutex();
-
-        this.codeViewRef = useRef("codeView");
 
         const { model } = this.props.record;
         useBus(model.bus, "WILL_SAVE_URGENTLY", () => this.commitChanges({ urgent: true }));
@@ -235,7 +239,7 @@ export class HtmlField extends Component {
         }
         if (this.isDirty) {
             if (this.state.showCodeView) {
-                await this.updateValue(this.codeViewRef.el.value);
+                await this.updateValue(this.codeViewRef().value);
                 return;
             }
             if (urgent) {
@@ -336,13 +340,15 @@ export class HtmlField extends Component {
             ...this.props.editorConfig,
         };
 
+        config.classList = [...(this.classList || []), ...(config.classList || [])];
+
         if (!("baseContainers" in config)) {
             config.baseContainers = ["DIV", "P"];
         }
 
         if (this.props.embeddedComponents) {
             config.resources.embedded_components = [...MAIN_EMBEDDINGS];
-            config.embeddedComponentInfo = { app: this.__owl__.app, env: this.env };
+            config.embeddedComponentInfo = { app: this.app, env: this.env };
         }
 
         const { sanitize_tags, sanitize } = this.props.record.fields[this.props.name];
@@ -360,7 +366,7 @@ export class HtmlField extends Component {
                     {
                         id: "codeview",
                         description: _t("Code view"),
-                        icon: "fa-code",
+                        icon: "code",
                         run: this.toggleCodeView.bind(this),
                         isAvailable: isHtmlContentSupported,
                     },

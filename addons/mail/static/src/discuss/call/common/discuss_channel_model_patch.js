@@ -17,23 +17,14 @@ export const CALL_PROMOTE_FULLSCREEN = Object.freeze({
 const DiscussChannelPatch = {
     setup() {
         super.setup(...arguments);
-        this.activeRtcSession = fields.One("discuss.channel.rtc.session", {
-            /** @this {import("models").Thread} */
-            onAdd(r) {
-                this.store.allActiveRtcSessions.add(r);
-            },
-            /** @this {import("models").Thread} */
-            onDelete(r) {
-                this.store.allActiveRtcSessions.delete(r);
-            },
-        });
+        this.activeRtcSession = fields.One("discuss.channel.rtc.session");
         /** @type {typeof CALL_PROMOTE_FULLSCREEN[keyof CALL_PROMOTE_FULLSCREEN]} */
         this.promoteFullscreen = CALL_PROMOTE_FULLSCREEN.DISABLED;
         this.hadSelfSession = false;
         /** @type {Set<number>} */
         this.lastSessionIds = new Set();
         /** @type {number|undefined} */
-        this.cancelRtcInvitationTimeout;
+        this.cancelRtcInvitationTimeout = undefined;
         this.rtc_session_ids = fields.Many("discuss.channel.rtc.session", {
             onDelete: (r) => r?.delete(),
             /** @this {import("models").Thread} */

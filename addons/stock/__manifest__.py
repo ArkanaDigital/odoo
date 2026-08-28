@@ -17,7 +17,6 @@
     ],
     'data': [
         'security/stock_security.xml',
-        'security/ir.model.access.csv',
 
         'data/digest_data.xml',
         'data/mail_message_subtype_data.xml',
@@ -42,13 +41,13 @@
         'report/picking_templates.xml',
         'report/product_templates.xml',
         'report/report_return_slip.xml',
+        'report/stock_allocation_report.xml',
         'data/mail_template_data.xml',
 
         'views/stock_menu_views.xml',
         'wizard/stock_inventory_conflict.xml',
         'wizard/stock_backorder_confirmation_views.xml',
         'wizard/stock_zero_demand_confirmation_views.xml',
-        'wizard/stock_quantity_history.xml',
         'wizard/stock_request_count.xml',
         'wizard/stock_replenishment_info.xml',
         'wizard/stock_rules_report_views.xml',
@@ -56,6 +55,7 @@
         'wizard/product_replenish_views.xml',
         'wizard/product_label_layout_views.xml',
         'wizard/stock_orderpoint_snooze_views.xml',
+        'wizard/stock_orderpoint_suggest.xml',
         'wizard/stock_package_destination_views.xml',
         'wizard/stock_inventory_adjustment_name.xml',
         'wizard/stock_inventory_warning.xml',
@@ -89,6 +89,7 @@
         'views/stock_reference_views.xml',
         'views/uom_uom_views.xml',
         'views/digest_digest_views.xml',
+        'security/ir.access.csv',
     ],
     'application': True,
     'pre_init_hook': 'pre_init_hook',
@@ -96,7 +97,6 @@
     'uninstall_hook': 'uninstall_hook',
     'assets': {
         'web.report_assets_common': [
-            'stock/static/src/scss/report_stock_reception.scss',
             'stock/static/src/scss/report_stock_rule.scss',
             'stock/static/src/scss/report_stockpicking_operations.scss',
         ],

@@ -38,10 +38,9 @@ export class AddToWishlist extends Interaction {
         wishlistUtils.updateWishlistNavBar();
         button.disabled = true;
         if (button.classList.contains('o_add_wishlist')) {
-            const iconEl = button.querySelector('.fa');
+            const iconEl = button.querySelector('.oi');
             if (iconEl) {
-                iconEl.classList.remove('fa-heart-o');
-                iconEl.classList.add('fa-heart');
+                iconEl.classList.add('oi-filled');
             }
         }
         const saveForLaterButton = document.querySelector('#wsale_save_for_later_button');
@@ -49,6 +48,14 @@ export class AddToWishlist extends Interaction {
         if (saveForLaterButton) {
             saveForLaterButton.classList.add('d-none');
             addedToWishListAlert.classList.remove('d-none');
+        }
+
+        const trackingEl = this.el.closest("[data-product-tracking-info]")
+            || document.querySelector("#product_detail[data-product-tracking-info]");
+        if (trackingEl) {
+            const trackingInfo = JSON.parse(trackingEl.dataset.productTrackingInfo);
+            const currency = trackingEl.dataset.productGaCurrency;
+            wSaleUtils.dispatchTrackingEvent("add_to_wishlist_event", { trackingInfo, currency });
         }
     }
 

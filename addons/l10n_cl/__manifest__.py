@@ -13,7 +13,6 @@ Plan contable chileno e impuestos de acuerdo a disposiciones vigentes.
     'category': 'Accounting/Localizations/Account Charts',
     'depends': [
         'contacts',
-        'base_vat',
         'l10n_latam_base',
         'l10n_latam_invoice_document',
         'uom',
@@ -45,7 +44,7 @@ Plan contable chileno e impuestos de acuerdo a disposiciones vigentes.
     ],
     'demo': [
         'demo/partner_demo.xml',
-        'demo/demo_company.xml',
+        'demo/company_demo.xml',
     ],
     'license': 'LGPL-3',
 }

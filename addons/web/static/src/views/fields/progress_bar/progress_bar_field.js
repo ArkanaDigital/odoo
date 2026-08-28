@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { evaluateBooleanExpr } from "@web/core/py_js/py";
 import { registry } from "@web/core/registry";
@@ -7,29 +6,28 @@ import { parseFloat } from "../parsers";
 import { useInputField } from "@web/views/fields/input_field_hook";
 import { standardFieldProps } from "../standard_field_props";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, signal, t, useProps } from "@odoo/owl";
 const formatters = registry.category("formatters");
 
 export class ProgressBarField extends Component {
     static template = "web.ProgressBarField";
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        maxValueField: { type: [String, Number], optional: true },
-        title: { type: String, optional: true },
-        decorations: { type: Object, optional: true },
-    };
-    static defaultProps = {
-        decorations: {},
-    };
+        maxValueField: t.or([t.string(), t.number()]).optional(),
+        title: t.string().optional(),
+        decorations: t.object().optional({}),
+    });
+
+    root = signal.ref();
+    currentValueRef = signal.ref();
 
     setup() {
-        useNumpadDecimal();
-        this.root = useRef("numpadDecimal");
+        useNumpadDecimal(this.root);
 
-        this.currentValueRef = useInputField({
+        useInputField({
+            ref: this.currentValueRef,
             getValue: () => this.formatCurrentValue(),
             parse: (v) => this.parseCurrentValue(v),
-            refName: "currentValue",
             fieldName: this.props.name,
             shouldSave: () => this.props.readonly,
         });
@@ -95,7 +93,7 @@ export class ProgressBarField extends Component {
 
     onProgressClick() {
         if (this.isEditable) {
-            const input = this.root.el?.querySelector(".o_progressbar_value input");
+            const input = this.root()?.querySelector(".o_progressbar_value input");
             if (input) {
                 input.focus();
             }

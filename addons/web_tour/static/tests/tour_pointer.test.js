@@ -29,7 +29,7 @@ class Counter extends Component {
     static template = xml/*html*/ `
         <div class="counter">
             <div class="interval">
-                <input type="number" t-custom-model.number="this.state.interval" />
+                <input type="number" t-model.proxy.number="this.state.interval" />
             </div>
             <div class="counter">
                 <span class="value" t-out="this.state.value" />
@@ -120,7 +120,7 @@ test("scrolling to next step should update the pointer's height", async (assert)
     // now the scroller pointer should be shown
     expect(".o_tour_pointer_tip").toHaveCount(1);
     await contains(".o_tour_pointer_tip").hover();
-    await animationFrame();
+    await waitFor(".o_tour_pointer_content span");
     expect(".o_tour_pointer span").toHaveText("Scroll up to reach the next step.");
     await contains(".o_tour_pointer_content").click();
 

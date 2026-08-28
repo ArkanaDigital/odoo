@@ -1,18 +1,19 @@
 import { useActionInfo, useSelectableLtrRtlComponent } from "@html_builder/core/utils";
-import { Component, onWillUpdateProps, proxy } from "@odoo/owl";
-import { omit } from "@web/core/utils/objects";
+import { Component, proxy, t, useEffect, useProps } from "@odoo/owl";
 
+/**
+ * @abstract
+ */
 export class BuilderSelectableWrapperComponent extends Component {
-    static template = "";
-    static props = {
-        ltrRtlMapping: { type: String, optional: true },
-        isLabelLinkedToContent: { type: Boolean, optional: true },
-        // All props available to the wrapped component.
-        "*": { optional: true },
-    };
+    static template;
+
+    selectableProps = useProps({
+        ltrRtlMapping: t.string().optional(),
+        isLabelLinkedToContent: t.boolean().optional(),
+    });
 
     setup() {
-        const info = useActionInfo({ stringify: false });
+        const info = useActionInfo(this.props, { raw: true });
         this.itemPropsState = proxy({
             className: this.props.className,
             label: this.props.label,
@@ -29,27 +30,23 @@ export class BuilderSelectableWrapperComponent extends Component {
             dataAttributeActionValue: info.dataAttributeActionValue,
         });
 
-        onWillUpdateProps((nextProps) => {
-            for (const prop of ["className", "label", "title", "slots"]) {
-                if (prop in nextProps) {
-                    this.itemPropsState[prop] = nextProps[prop];
-                }
-            }
+        useEffect(() => {
+            this.itemPropsState.className = this.props.className;
+            this.itemPropsState.label = this.props.label;
+            this.itemPropsState.title = this.props.title;
+            this.itemPropsState.slots = this.props.slots;
         });
 
-        if (this.props.ltrRtlMapping && !this.env.ignoreBuilderItem) {
+        if (this.selectableProps.ltrRtlMapping && !this.env.ignoreBuilderItem) {
             useSelectableLtrRtlComponent({
-                ltrRtlMapping: this.props.ltrRtlMapping,
-                isLabelLinkedToContent: this.props.isLabelLinkedToContent,
+                ltrRtlMapping: this.selectableProps.ltrRtlMapping,
+                isLabelLinkedToContent: this.selectableProps.isLabelLinkedToContent,
                 getItemState: () => this.itemPropsState,
             });
         }
     }
 
     get forwardedProps() {
-        return {
-            ...omit(this.props, "ltrRtlMapping", "isLabelLinkedToContent"),
-            ...this.itemPropsState,
-        };
+        return { ...this.props, ...this.itemPropsState };
     }
 }

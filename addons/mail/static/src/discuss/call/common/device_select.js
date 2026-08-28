@@ -1,4 +1,4 @@
-import { Component, onWillDestroy, onWillStart, proxy } from "@odoo/owl";
+import { Component, computed, onWillDestroy, onWillStart, signal, t, useProps } from "@odoo/owl";
 
 import { browser } from "@web/core/browser/browser";
 import { Dropdown } from "@web/core/dropdown/dropdown";
@@ -7,27 +7,7 @@ import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { isBrowserChrome } from "@web/core/browser/feature_detection";
 
-const deviceKind = new Set(["audioinput", "videoinput", "audiooutput"]);
-
 export class DeviceSelect extends Component {
-    static props = {
-        menuClass: {
-            type: String,
-            optional: true,
-        },
-        kind: {
-            type: String,
-            validate: (string) => deviceKind.has(string),
-        },
-        icon: {
-            type: String,
-            optional: true,
-        },
-        permissionDialogConfiguration: {
-            type: Object,
-            optional: true,
-        },
-    };
     static components = { Dropdown, DropdownItem };
     static template = "discuss.CallDeviceSelect";
     CLICK_TO_ACTIVATE = _t("Click to Activate");
@@ -35,15 +15,30 @@ export class DeviceSelect extends Component {
 
     setup() {
         super.setup();
+        this.props = useProps({
+            icon: t.string().optional(),
+            iconClass: t.string().optional(),
+            kind: t.selection(["audioinput", "videoinput", "audiooutput"]),
+            label: t.string().optional(),
+            menuClass: t.string().optional(),
+            permissionDialogConfiguration: t
+                .object({
+                    props: t.record().optional(),
+                    options: t.record().optional(),
+                })
+                .optional(),
+        });
         this.store = useService("mail.store");
         this.notification = useService("notification");
-        this.state = proxy({
-            userDevices: [],
-            selectedDevice: undefined,
-        });
+        /** @type {import("@odoo/owl").Signal<Element>} */
+        this.rootRef = signal();
+        this.userDevices = signal.Array([], { type: t.instanceOf(MediaDeviceInfo) });
+        this.selectedDevice = computed(() =>
+            this.userDevices().find((device) => this.isSelected(device.deviceId))
+        );
         this.abortController = new AbortController();
         this.isBrowserChrome = isBrowserChrome();
-        onWillStart(async () => {
+        onWillStart(() => {
             if (!browser.navigator.mediaDevices) {
                 // zxing-js: isMediaDevicesSuported or canEnumerateDevices is false.
                 this.notification.add(
@@ -53,10 +48,7 @@ export class DeviceSelect extends Component {
                 console.warn("Media devices unobtainable. SSL might not be set up properly.");
                 return;
             }
-            await this.updateDevicesList();
-            this.state.selectedDevice = this.state.userDevices.find((device) =>
-                this.isSelected(device.deviceId)
-            );
+            this.updateDevicesList();
             this.setupEventListeners();
         });
         onWillDestroy(() => {
@@ -65,11 +57,11 @@ export class DeviceSelect extends Component {
     }
 
     get selectLabel() {
-        return this.state.selectedDevice?.label;
+        return this.selectedDevice()?.label;
     }
 
     async updateDevicesList() {
-        this.state.userDevices = await browser.navigator.mediaDevices.enumerateDevices();
+        this.userDevices.set(await browser.navigator.mediaDevices.enumerateDevices());
     }
 
     async setupEventListeners() {
@@ -89,10 +81,14 @@ export class DeviceSelect extends Component {
     }
 
     showPermissionDialog(kind) {
-        this.store.rtc.showMediaPermissionDialog(
-            kind === "videoinput" ? "camera" : "microphone",
-            this.props.permissionDialogConfiguration
-        );
+        const config = this.props.permissionDialogConfiguration;
+        this.store.rtc.showMediaPermissionDialog(kind === "videoinput" ? "camera" : "microphone", {
+            ...config,
+            options: {
+                ...config?.options,
+                rootRef: this.rootRef,
+            },
+        });
     }
 
     isSelected(id) {
@@ -119,15 +115,31 @@ export class DeviceSelect extends Component {
         }
     }
 
-    onSelectAudioDevice(device) {
-        this.state.selectedDevice = device;
+    /**
+     * @param {MouseEvent} ev
+     * @param {Object} [param1={}]
+     * @param {MediaDeviceInfo} [param1.device]
+     */
+    onSelectAudioDevice(ev, { device } = {}) {
         const deviceId = device?.deviceId ?? "";
         switch (this.props.kind) {
             case "audioinput":
-                this.store.settings.audioInputDeviceId = deviceId;
+                this.store.rtc
+                    .askForBrowserPermission({ audio: true, deviceId })
+                    .then((granted) => {
+                        if (granted) {
+                            this.store.settings.audioInputDeviceId = deviceId;
+                        }
+                    });
                 return;
             case "videoinput":
-                this.store.settings.cameraInputDeviceId = deviceId;
+                this.store.rtc
+                    .askForBrowserPermission({ video: true, deviceId })
+                    .then((granted) => {
+                        if (granted) {
+                            this.store.settings.cameraInputDeviceId = deviceId;
+                        }
+                    });
                 return;
             case "audiooutput":
                 this.store.settings.audioOutputDeviceId = deviceId;

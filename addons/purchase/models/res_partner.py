@@ -44,12 +44,19 @@ class ResPartner(models.Model):
         help="Number of days to send reminder email before the promised receipt date")
     buyer_id = fields.Many2one('res.users', string='Buyer')
 
+    purchase_incoterm_location = fields.Char("Vendor Incoterm Location")
+    purchase_incoterm_id = fields.Many2one(
+        comodel_name="account.incoterms",
+        string="Vendor Incoterm",
+        help="International Commercial Terms are a series of predefined commercial terms used in international transactions.",
+    )
+
     def _compute_application_statistics_hook(self):
         data_list = super()._compute_application_statistics_hook()
         if not self.env.user.has_group('purchase.group_purchase_user'):
             return data_list
         for partner in self.filtered(lambda partner: partner.purchase_order_count):
-            stat_info = {'iconClass': 'fa-credit-card', 'value': partner.purchase_order_count, 'label': _('Purchases')}
+            stat_info = {'icon': 'credit_card', 'value': partner.purchase_order_count, 'label': _('Purchases')}
             data_list[partner.id].append(stat_info)
         return data_list
 

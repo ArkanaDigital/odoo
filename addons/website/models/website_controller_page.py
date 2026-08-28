@@ -11,6 +11,7 @@ class WebsiteControllerPage(models.Model):
         'website.published.multi.mixin',
         'website.searchable.mixin',
     ]
+    _check_inherits_access = False
     _description = 'Model Page'
     _order = 'website_id, id DESC'
     _unique_name_slugified = models.Constraint(

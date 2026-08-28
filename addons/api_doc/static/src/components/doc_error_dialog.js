@@ -1,21 +1,21 @@
-import { Component, xml, proxy } from "@odoo/owl";
+import { Component, signal, xml, proxy } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
 
 export class DocErrorDialog extends Component {
     static template = xml`
         <div class="alert error mt-1 d-flex flex-column" role="alert">
             <div class="d-flex align-items-center mb-2">
-                <i class="pe-2 fa fa-exclamation-triangle fa-lg" aria-hidden="true"/>
+                <i class="pe-2 oi oi-lg" data-icon="warning" aria-hidden="true"/>
                 <h5 class="m-0 text-danger">Error while loading models: <strong t-out="this.props.name"/></h5>
             </div>
             <t t-if="this.props.traceback">
                 <div t-if="this.state.showTraceback" class="overflow-auto position-relative" style="max-height: 500px;">
                     <button
                         class="btn bg-100 position-absolute top-0 end-0"
-                        t-custom-ref="copyButton"
+                        t-ref="this.copyButtonRef"
                         t-on-click="this.onClickClipboard"
                     >
-                        <span class="fa fa-clipboard"/>
+                        <span class="oi" data-icon="assignment"/>
                     </button>
                     <pre class="small text-break p-4" t-out="this.props.traceback"/>
                 </div>
@@ -28,14 +28,16 @@ export class DocErrorDialog extends Component {
         </div>
     `;
     static props = {
-        name: {type: String},
-        status: {type: Number, optional: true},
-        traceback: {type: String, optional: true},
+        name: { type: String },
+        status: { type: Number, optional: true },
+        traceback: { type: String, optional: true },
     };
+
+    copyButtonRef = signal.ref();
 
     setup() {
         this.state = proxy({
-            showTraceback: false
+            showTraceback: false,
         });
     }
 

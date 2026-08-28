@@ -14,7 +14,7 @@ from odoo import _, api, exceptions, fields, models
 from odoo.exceptions import AccessError
 from odoo.fields import Domain
 from odoo.http import request
-from odoo.tools import convert, format_datetime, format_duration, format_time
+from odoo.tools import convert, float_is_zero, format_datetime, format_duration, format_time
 from odoo.tools.date_utils import float_to_time, sum_intervals
 from odoo.tools.intervals import Intervals
 
@@ -48,11 +48,11 @@ class HrAttendance(models.Model):
     date = fields.Date(string="Date", compute='_compute_date', store=True, index=True, precompute=True, required=True)
     worked_hours = fields.Float(string='Worked Hours', compute='_compute_worked_hours', store=True, readonly=True)
     color = fields.Integer(compute='_compute_color')
-    overtime_hours = fields.Float(string="Over Time", compute='_compute_overtime_hours', store=True)
+    overtime_hours = fields.Float(string="Worked Extra Hours", compute='_compute_overtime_hours', store=True)
     overtime_status = fields.Selection(selection=[('to_approve', "To Approve"),
                                                   ('approved', "Approved"),
                                                   ('refused', "Refused")], compute="_compute_overtime_status", store=True, tracking=True, readonly=False)
-    validated_overtime_hours = fields.Float(string="Extra Hours", compute='_compute_validated_overtime_hours', tracking=True, store=True, readonly=True)
+    validated_overtime_hours = fields.Float(string="Validated Extra Hours", compute='_compute_validated_overtime_hours', tracking=True, store=True, readonly=True)
     in_latitude = fields.Float(string="Latitude", digits=(10, 7), readonly=True, aggregator=None)
     in_longitude = fields.Float(string="Longitude", digits=(10, 7), readonly=True, aggregator=None)
     in_location = fields.Char(help="Based on GPS-Coordinates if available or on IP Address")
@@ -78,7 +78,7 @@ class HrAttendance(models.Model):
                                            ('auto_check_out', 'Automatic Check-Out')],
                                 readonly=True,
                                 default='manual')
-    expected_hours = fields.Float(string="Theoretical Hours", compute="_compute_expected_hours", store=True, aggregator="sum")
+    expected_hours = fields.Float(string="Regular Hours", compute="_compute_expected_hours", store=True, aggregator="sum")
     device_tracking_enabled = fields.Boolean(related="employee_id.company_id.attendance_device_tracking")
     linked_overtime_ids = fields.One2many('hr.attendance.overtime.line', 'attendance_id', readonly=False)
     day_of_date = fields.Selection(
@@ -191,28 +191,9 @@ class HrAttendance(models.Model):
             between check_in and check_out, without taking into account the lunch_interval"""
         for attendance in self:
             if attendance.check_out and attendance.check_in and attendance.employee_id:
-                attendance.worked_hours = attendance._get_worked_hours_in_range(attendance.check_in, attendance.check_out)
+                attendance.worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
             else:
                 attendance.worked_hours = False
-
-    def _get_worked_hours_in_range(self, start_dt, end_dt):
-        """Returns the amount of hours worked because of this attendance during the
-        interval defined by [start_dt, end_dt]
-
-        :param start_dt: datetime starting the interval.
-        :param end_dt: datetime ending the interval.
-        :returns: float, hours worked
-        """
-        self.ensure_one()
-        tz = ZoneInfo(self.employee_id._get_tz(self.check_in))
-        start_dt_tz = max(self.check_in, start_dt).replace(tzinfo=UTC).astimezone(tz)
-        end_dt_tz = min(self.check_out, end_dt).replace(tzinfo=UTC).astimezone(tz)
-
-        if end_dt_tz < start_dt_tz:
-            return 0.0
-
-        attendance_intervals = Intervals([(start_dt_tz, end_dt_tz, self)])
-        return sum_intervals(attendance_intervals)
 
     @api.constrains('check_in', 'check_out')
     def _check_validity_check_in_check_out(self):
@@ -304,8 +285,8 @@ class HrAttendance(models.Model):
 
             domain_list.append(Domain.AND([
                 Domain('employee_id', '=', employee.id),
-                Domain('date', '<=', date_to),
-                Domain('date', '>=', date_from),
+                Domain('check_in', '<=', datetime.combine(date_to, datetime.max.time()).replace(tzinfo=tz).astimezone(UTC).replace(tzinfo=None)),
+                Domain('check_out', '>', datetime.combine(date_from, datetime.min.time()).replace(tzinfo=tz).astimezone(UTC).replace(tzinfo=None)),
             ]))
         if not domain_list:
             return Domain.FALSE
@@ -444,6 +425,11 @@ class HrAttendance(models.Model):
         # Calculate attendances records for the previous month and the current until today
         now = datetime.now()
         previous_month_datetime = (now - relativedelta(months=1))
+        # Ensure employees have a valid contract start date (so attendances render in the Gantt view)
+        employees = employee_sj | employee_mw | employee_eg
+        employees.write({
+            'contract_date_start': (now - relativedelta(months=2)).date(),
+        })
         date_range = now.day + monthrange(previous_month_datetime.year, previous_month_datetime.month)[1]
         city_coordinates = (50.27, 5.31)
         city_coordinates_exception = (51.01, 2.82)
@@ -622,8 +608,12 @@ class HrAttendance(models.Model):
                 current_attendance_duration = (now_datetime - check_in_datetime).total_seconds() / 3600
                 previous_attendances_duration = mapped_previous_duration[att.employee_id][check_in_datetime.date()]
 
-                expected_worked_hours = sum(
-                    att.employee_id.resource_calendar_id.get_attendances(check_in_datetime).mapped("duration_hours")
+                check_in_day_start = check_in_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+                expected_worked_hours = sum_intervals(
+                    att.employee_id._get_expected_attendances(
+                        check_in_day_start,
+                        check_in_day_start + timedelta(days=1),
+                    )
                 )
 
                 # Attendances where Last open attendance time + previously worked time on that day + tolerance greater than the attendances hours (including lunch) in his calendar
@@ -669,7 +659,7 @@ class HrAttendance(models.Model):
             })
 
         technical_attendances = self.env['hr.attendance'].create(technical_attendances_vals)
-        to_unlink = technical_attendances.filtered(lambda a: a.overtime_hours == 0)
+        to_unlink = technical_attendances.filtered(lambda a: float_is_zero(a.overtime_hours, 3))
 
         body = _('This attendance was automatically created to cover an unjustified absence on that day.')
         for technical_attendance in technical_attendances - to_unlink:

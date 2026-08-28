@@ -2,6 +2,7 @@
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from odoo.fields import Command
 
 
 class SaleOrderTemplateLine(models.Model):
@@ -10,12 +11,16 @@ class SaleOrderTemplateLine(models.Model):
     _order = "sale_order_template_id, sequence, id"
 
     _accountable_product_id_required = models.Constraint(
-        "CHECK(display_type IS NOT NULL OR (product_id IS NOT NULL AND product_uom_id IS NOT NULL))",  # noqa: E501
-        "Missing required product and UoM on accountable sale quote line.",
+        "CHECK(display_type IS NOT NULL OR product_uom_id IS NOT NULL)",
+        "Missing required UoM on accountable sale quote line.",
     )
     _non_accountable_fields_null = models.Constraint(
         "CHECK(display_type IS NULL OR (product_id IS NULL AND product_uom_qty = 0 AND product_uom_id IS NULL))",  # noqa: E501
         "Forbidden product, quantity and UoM on non-accountable sale quote line",
+    )
+    _section_fields_null = models.Constraint(
+        "CHECK(display_type IN ('line_section', 'line_subsection') OR (section_qty = 0 AND section_uom_id IS NULL))",  # noqa: E501
+        "Forbidden section quantity or section UoM on non section sale quote line",
     )
 
     sale_order_template_id = fields.Many2one(
@@ -40,14 +45,59 @@ class SaleOrderTemplateLine(models.Model):
         check_company=True,
         domain=lambda self: self._product_id_domain(),
     )
+    product_template_id = fields.Many2one(
+        string="Product Template",
+        comodel_name="product.template",
+        compute="_compute_product_template_id",
+        readonly=False,
+        search="_search_product_template_id",
+        # magic way to make sure the domain integrates the check_company _domain_product_id logics
+        # despite not being a check_company=True field
+        domain=lambda self: self._fields["product_id"]._description_domain(self.env),
+    )
 
-    name = fields.Text(string="Description", translate=True)
+    product_template_attribute_value_ids = fields.Many2many(
+        related="product_id.product_template_attribute_value_ids", depends=["product_id"]
+    )
+    product_custom_attribute_value_ids = fields.One2many(
+        comodel_name="product.attribute.custom.value",
+        inverse_name="sale_order_template_line_id",
+        string="Custom Values",
+        compute="_compute_custom_attribute_values",
+        store=True,
+        readonly=False,
+        precompute=True,
+        copy=True,
+    )
+    product_no_variant_attribute_value_ids = fields.Many2many(
+        comodel_name="product.template.attribute.value",
+        string="Extra Values",
+        compute="_compute_no_variant_attribute_values",
+        store=True,
+        readonly=False,
+        precompute=True,
+        ondelete="restrict",
+        init_storage=lambda model: None,
+    )
+    is_configurable_product = fields.Boolean(
+        string="Is the product configurable?",
+        related="product_template_id.has_configurable_attributes",
+        depends=["product_template_id"],
+    )
+    name = fields.Text(
+        string="Description",
+        compute="_compute_name",
+        store=True,
+        readonly=False,
+        precompute=True,
+        translate=True,
+    )
 
     allowed_uom_ids = fields.Many2many("uom.uom", compute="_compute_allowed_uom_ids")
     product_uom_id = fields.Many2one(
         comodel_name="uom.uom",
         string="Unit",
-        domain="[('id', 'in', allowed_uom_ids)]",
+        domain="[('id', 'in', allowed_uom_ids)] if allowed_uom_ids or mandatory_product else []",
         compute="_compute_product_uom_id",
         store=True,
         readonly=False,
@@ -71,20 +121,138 @@ class SaleOrderTemplateLine(models.Model):
     is_optional = fields.Boolean(string="Optional Line", copy=True, default=False)
     collapse_composition = fields.Boolean()
     collapse_prices = fields.Boolean()
+    section_qty = fields.Float(
+        string="Section Quantity",
+        digits="Product Unit",
+        compute="_compute_section_qty",
+        precompute=True,
+        store=True,
+        readonly=False,
+    )
+    section_uom_id = fields.Many2one(
+        comodel_name="uom.uom",
+        string="Section Unit of Measure",
+        compute="_compute_section_uom_id",
+        precompute=True,
+        store=True,
+        readonly=False,
+    )
+
+    # Technical fields which stores values for product SO line without product_id
+    discount = fields.Float(string="Discount (%)", digits="Discount")
+    price_unit = fields.Float(
+        string="Unit Price", digits="Product Price", min_display_digits="Product Price"
+    )
+    tax_ids = fields.Many2many(string="Taxes", comodel_name="account.tax", check_company=True)
+
+    mandatory_product = fields.Boolean(
+        string="Is Product Mandatory", compute="_compute_mandatory_product"
+    )
 
     # === COMPUTE METHODS ===#
 
-    @api.depends(
-        "product_id", "product_id.uom_id", "product_id.uom_ids", "product_id.extra_uom_ids"
-    )
+    @api.depends("product_id")
+    def _compute_product_template_id(self):
+        for line in self:
+            line.product_template_id = line.product_id.product_tmpl_id
+
+    def _search_product_template_id(self, operator, value):
+        return [("product_id.product_tmpl_id", operator, value)]
+
+    @api.depends("product_id")
+    def _compute_name(self):
+        for line in self:
+            if not line.product_id:
+                continue
+            line.name = line._get_default_description()
+
+    def _get_default_description(self):
+        """Compute the default description, without the product name (shown in its own column).
+
+        Also used by `_update_product_translations` to detect uncustomized lines.
+
+        :return: the default description
+        :rtype: str
+        """
+        self.ensure_one()
+        return (
+            (self.product_id.description_sale or "")
+            + self._get_sale_order_line_multiline_description_variants()
+        ).removeprefix("\n")
+
+    def _get_sale_order_line_multiline_description_variants(self):
+        no_variant_ptavs = self.product_no_variant_attribute_value_ids._origin.filtered(
+            lambda ptav: ptav.display_type == "multi" or ptav.attribute_line_id.value_count > 1
+        )
+        if not self.product_custom_attribute_value_ids and not no_variant_ptavs:
+            return ""
+        lines = []
+        custom_ptavs = (
+            self.product_custom_attribute_value_ids.custom_product_template_attribute_value_id
+        )
+        multi_ptavs = no_variant_ptavs.filtered(lambda ptav: ptav.display_type == "multi").sorted()
+        for ptav in no_variant_ptavs - multi_ptavs - custom_ptavs:
+            lines.append(ptav.display_name)
+        for pta, ptavs in multi_ptavs.grouped("attribute_id").items():
+            lines.append(
+                self.env._(
+                    "%(attribute)s: %(values)s",
+                    attribute=pta.name,
+                    values=", ".join(ptav.name for ptav in ptavs),
+                )
+            )
+        custom_values = self.product_custom_attribute_value_ids
+        sorted_custom_ptav = custom_values.custom_product_template_attribute_value_id.sorted()
+        for patv in sorted_custom_ptav:
+            pacv = self.product_custom_attribute_value_ids.filtered(
+                lambda pcav: pcav.custom_product_template_attribute_value_id == patv
+            )
+            lines.append(pacv.display_name)
+        return "\n" + "\n".join(lines)
+
+    @api.depends("product_id")
+    def _compute_custom_attribute_values(self):
+        for line in self:
+            if not line.product_id:
+                line.product_custom_attribute_value_ids = False
+                continue
+            if not line.product_custom_attribute_value_ids:
+                continue
+            valid_lines = line.product_id.product_tmpl_id.valid_product_template_attribute_line_ids
+            valid_values = valid_lines.product_template_value_ids
+            for pacv in line.product_custom_attribute_value_ids:
+                if pacv.custom_product_template_attribute_value_id not in valid_values:
+                    line.product_custom_attribute_value_ids -= pacv
+
+    @api.depends("product_id")
+    def _compute_no_variant_attribute_values(self):
+        for line in self:
+            if not line.product_id:
+                line.product_no_variant_attribute_value_ids = False
+                continue
+            if not line.product_no_variant_attribute_value_ids:
+                continue
+            valid_lines = line.product_id.product_tmpl_id.valid_product_template_attribute_line_ids
+            valid_values = valid_lines.product_template_value_ids
+            for ptav in line.product_no_variant_attribute_value_ids:
+                if ptav._origin not in valid_values:
+                    line.product_no_variant_attribute_value_ids -= ptav
+
+    @api.depends("product_id")
     def _compute_allowed_uom_ids(self):
         for option in self:
             option.allowed_uom_ids = option.product_id._get_available_uoms()
 
-    @api.depends("product_id")
+    @api.depends("product_id", "display_type")
     def _compute_product_uom_id(self):
+        unit_uom = self.env["product.template"]._default_uom_id()
         for option in self:
-            option.product_uom_id = option.product_id.uom_id
+            if option.display_type:
+                option.product_uom_id = False
+            elif not option.product_id:
+                option.product_uom_id = unit_uom
+            else:
+                option.product_uom_id = option.product_id.uom_id
 
     def _compute_parent_id(self):
         option_lines = set(self)
@@ -106,6 +274,28 @@ class SaleOrderTemplateLine(models.Model):
                     last_sub = line
                 elif line in option_lines:
                     line.parent_id = last_sub or last_section
+
+    def _compute_mandatory_product(self):
+        self.mandatory_product = (
+            self.env["ir.config_parameter"].sudo().get_bool("sale.mandatory_product")
+        )
+
+    @api.depends("display_type")
+    def _compute_section_qty(self):
+        for line in self:
+            if line.display_type in {"line_section", "line_subsection"}:
+                line.section_qty = 1.0
+            else:
+                line.section_qty = False
+
+    @api.depends("display_type")
+    def _compute_section_uom_id(self):
+        default_uom_id = self.env.ref("uom.product_uom_unit").id
+        for line in self:
+            if line.display_type in {"line_section", "line_subsection"}:
+                line.section_uom_id = default_uom_id
+            else:
+                line.section_uom_id = False
 
     # === CRUD METHODS ===#
 
@@ -135,8 +325,14 @@ class SaleOrderTemplateLine(models.Model):
         """Return the domain of the products that can be added to the template."""
         return [("sale_ok", "=", True), ("type", "!=", "combo")]
 
-    def _prepare_order_line_values(self):
-        """Give the values to create the corresponding order line.
+    def _prepare_order_line_values(self, fiscal_position, currency):
+        """Prepare values to create a sale order line from a template line.
+
+        Line without products take price, discount, taxes from itself otherwise compute it based on
+        product and related values.
+
+        :param account.fiscal.position fiscal_position_id: fiscal position to use
+        :param res.currency currency: target currency (of the order)
 
         :return: `sale.order.line` create values
         :rtype: dict
@@ -151,7 +347,38 @@ class SaleOrderTemplateLine(models.Model):
             "product_uom_qty": self.product_uom_qty,
             "product_uom_id": self.product_uom_id.id,
             "sequence": self.sequence,
+            "section_qty": self.section_qty,
+            "section_uom_id": self.section_uom_id.id,
+            "product_no_variant_attribute_value_ids": [
+                Command.set(self.product_no_variant_attribute_value_ids.ids)
+            ],
+            "product_custom_attribute_value_ids": [
+                Command.create({
+                    "custom_product_template_attribute_value_id": (
+                        pacv.custom_product_template_attribute_value_id.id
+                    ),
+                    "custom_value": pacv.custom_value,
+                })
+                for pacv in self.product_custom_attribute_value_ids
+            ],
         }
         if self.name:
             vals["name"] = self.name
+            if self.product_id:
+                vals["name"] = f"{self.product_id.display_name}\n{self.name}"
+
+        if not self.product_id:
+            taxes = self.tax_ids._filter_taxes_by_company()
+
+            if fiscal_position:
+                taxes = fiscal_position.map_tax(taxes)
+
+            vals.update({
+                "tax_ids": [Command.set(taxes.ids)],
+                "discount": self.discount,
+                "price_unit": self.sale_order_template_id.currency_id._convert(
+                    from_amount=self.price_unit, to_currency=currency
+                ),
+            })
+
         return vals

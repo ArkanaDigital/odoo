@@ -5,7 +5,7 @@ import { markup } from "@odoo/owl";
 import { rpc } from "@web/core/network/rpc";
 import { getTemplate } from "@web/core/templates";
 import { KeepLast } from "@web/core/utils/concurrency";
-import { utils as ui } from "@web/core/ui/ui_service";
+import { utils as ui } from "@web/core/ui/ui_utils";
 import { renderToElement } from "@web/core/utils/render";
 
 export class SearchBar extends Interaction {
@@ -38,7 +38,7 @@ export class SearchBar extends Interaction {
         this.inputEl = this.el.querySelector(".search-query");
         this.buttonEl = this.el.querySelector(".oe_search_button");
         this.resultsEl = this.buttonEl.querySelector(".o_search_found_results");
-        this.iconEl = this.buttonEl.querySelector(".oi-search");
+        this.iconEl = this.buttonEl.querySelector("[data-icon='search'],[data-icon='search']");
         this.spinnerEl = this.buttonEl.querySelector(".o_search_spinner");
         this.searchInputGroup = this.el.querySelector(".o_search_input_group");
         this.menuEl = null;

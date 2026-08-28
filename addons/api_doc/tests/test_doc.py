@@ -8,6 +8,7 @@ from odoo.fields import Command
 from odoo.models import Model
 from odoo.tests import new_test_user, tagged
 from odoo.tools import mute_logger
+from odoo.tools.misc import submap
 
 from .dummy_methods import DummyMethods
 from odoo.addons.api_doc.controllers.api_doc import (
@@ -26,6 +27,13 @@ class TestDoc(HttpCaseWithUserDemo):
         cls.user_demo.write({
             'group_ids': [Command.link(cls.env.ref('api_doc.group_allow_doc').id)],
         })
+
+    def url_open(self, url, *args, **kwargs):
+        # The time it takes to compute the index scales with the size of
+        # the registry. Adapt the timeout accordingly.
+        if '/index.json' in url:
+            kwargs.setdefault('timeout', 12 + 0.01 * len(self.env))
+        return super().url_open(url, *args, **kwargs)
 
     def test_doc_access(self):
         e = "This page is only accessible to Technical Documentation users."
@@ -125,7 +133,7 @@ class TestDoc(HttpCaseWithUserDemo):
         })
         self.assertGreater(set(fields), {'id', 'create_uid', 'lang', 'tz'})
         fields['id'].pop('ai', None)
-        self.assertEqual(fields['id'], {
+        fields_id = {
             'change_default': False,
             'company_dependent': False,
             'default_export_compatible': False,
@@ -142,7 +150,8 @@ class TestDoc(HttpCaseWithUserDemo):
             'store': True,
             'string': 'ID',
             'type': 'integer',
-        })
+        }
+        self.assertEqual(submap(fields['id'], fields_id), fields_id)
         self.assertGreater(set(methods), {'search'})
         self.assertEqual(methods['search'], {
             'model': 'core',

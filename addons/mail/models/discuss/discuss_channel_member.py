@@ -23,7 +23,7 @@ class DiscussChannelMember(models.Model):
     _name = 'discuss.channel.member'
     _inherit = ["bus.listener.mixin", "bus.sync.mixin"]
     _description = "Channel Member"
-    _rec_names_search = ["channel_id", "partner_id", "guest_id"]
+    _rec_names_search = ("channel_id", "partner_id", "guest_id")
     _bypass_create_check = {}
 
     # identity
@@ -45,10 +45,18 @@ class DiscussChannelMember(models.Model):
     seen_message_id = fields.Many2one('mail.message', string='Last Seen', index="btree_not_null")
     new_message_separator = fields.Integer(help="Message id before which the separator should be displayed", default=0, required=True)
     message_unread_counter = fields.Integer('Unread Messages Counter', compute='_compute_message_unread', compute_sudo=True)
+    is_unread = fields.Boolean(
+        "Has unread messages",
+        compute="_compute_is_unread", compute_sql="_compute_sql_is_unread", compute_sudo=True,
+    )
     custom_notifications = fields.Selection(
         [("all", "All Messages"), ("mentions", "Mentions Only"), ("no_notif", "Nothing")],
         "Customized Notifications",
         help="Use default from user settings if not specified. This setting will only be applied to channels.",
+    )
+    invitation_sent_dt = fields.Datetime(
+        "Invitation Sent On",
+        help="Date and time at which the invitation was last sent to this member. Cleared when the member joins, so a value means the invitation is still pending.",
     )
     mute_until_dt = fields.Datetime("Mute notifications until", help="If set, the member will not receive notifications from the channel until this date.")
     is_pinned = fields.Boolean("Is pinned on the interface", compute="_compute_is_pinned", search="_search_is_pinned")
@@ -176,16 +184,45 @@ class DiscussChannelMember(models.Model):
                  INNER JOIN discuss_channel_member
                          ON discuss_channel_member.channel_id = mail_message.res_id
                       WHERE mail_message.model = 'discuss.channel'
-                        AND mail_message.message_type NOT IN ('notification', 'user_notification')
+                        AND mail_message.message_type != 'user_notification'
+                        AND (
+                            mail_message.message_type != 'notification'
+                            OR mail_message.subtype_id = %(subtype_id)s
+                        )
                         AND mail_message.id >= discuss_channel_member.new_message_separator
                         AND discuss_channel_member.id IN %(ids)s
                    GROUP BY discuss_channel_member.id
-            """, {'ids': tuple(self.ids)})
+            """, {"ids": tuple(self.ids), "subtype_id": self.env["ir.model.data"]._xmlid_to_res_id("mail.mt_important_notification")})
             unread_counter_by_member = {res['id']: res['count'] for res in self.env.cr.dictfetchall()}
             for member in self:
                 member.message_unread_counter = unread_counter_by_member.get(member.id)
         else:
             self.message_unread_counter = 0
+
+    @api.depends("message_unread_counter")
+    def _compute_is_unread(self):
+        for member in self:
+            member.is_unread = member.message_unread_counter > 0
+
+    def _compute_sql_is_unread(self, table):
+        return SQL("""
+            EXISTS (
+                SELECT 1
+                  FROM mail_message
+                 WHERE mail_message.model = 'discuss.channel'
+                   AND mail_message.res_id = %(channel_id)s
+                    AND mail_message.message_type != 'user_notification'
+                    AND (
+                        mail_message.message_type != 'notification'
+                        OR mail_message.subtype_id = %(subtype_id)s
+                    )
+                   AND mail_message.id >= %(separator)s
+            )
+            """,
+            channel_id=table.channel_id,
+            separator=table.new_message_separator,
+            subtype_id=self.env["ir.model.data"]._xmlid_to_res_id("mail.mt_important_notification"),
+        )
 
     @api.depends("partner_id.name", "guest_id.name", "channel_id.display_name")
     def _compute_display_name(self):
@@ -275,6 +312,7 @@ class DiscussChannelMember(models.Model):
         super()._sync_field_names(res)
         # sudo: discuss.channel.member - reading channel ownership related to a member is considered acceptable
         res["channel_id", None].attr("channel_role", sudo=True)
+        res["channel_id", None].attr("invitation_sent_dt")
         res[None].extend(["custom_notifications", "is_favorite"])
         res[None].extend(["is_pinned", "last_interest_dt", "message_unread_counter"])
         res[None].extend(["mute_until_dt", "new_message_separator"])
@@ -435,7 +473,7 @@ class DiscussChannelMember(models.Model):
     def _store_member_fields(self, res: Store.FieldList):
         # sudo: discuss.channel.member - reading channel ownership related to a member is considered acceptable
         res.attr("channel_role", sudo=True)
-        res.extend(["create_date", "last_seen_dt", "seen_message_id"])
+        res.extend(["create_date", "invitation_sent_dt", "last_seen_dt", "seen_message_id"])
         self._store_persona_default_fields(res)
 
     # --------------------------------------------------------------------------
@@ -648,6 +686,9 @@ class DiscussChannelMember(models.Model):
         :param last_message_id: the id of the message to be marked as read.
         """
         self.ensure_one()
+        if self.invitation_sent_dt:
+            # Reading the channel is showing up: the invitation is no longer pending.
+            self.invitation_sent_dt = False
         domain = [
             ("model", "=", "discuss.channel"),
             ("res_id", "=", self.channel_id.id),
@@ -657,7 +698,8 @@ class DiscussChannelMember(models.Model):
         if not last_message:
             return
         self._set_last_seen_message(last_message)
-        self._set_new_message_separator(last_message.id + 1)
+        # Mark as read only moves forward.
+        self._set_new_message_separator(max(self.new_message_separator, last_message.id + 1))
 
     def _set_last_seen_message(self, message, notify=True):
         """

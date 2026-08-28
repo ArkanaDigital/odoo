@@ -15,7 +15,7 @@ patch(ProductScreen.prototype, {
         this.state.isValidBuffer = true;
         this.doSubmitOrder = useTrackedAsync(() => this.pos.submitOrder());
         this.doReprintOrder = useTrackedAsync(() => this.pos.reprintOrder());
-        useBus(this.numberBuffer, "buffer-update", ({ detail: value }) => {
+        useBus(this.numberBuffer.bus, "buffer-update", ({ detail: value }) => {
             this.checkIsValid(value);
         });
 
@@ -64,8 +64,10 @@ patch(ProductScreen.prototype, {
         this.numberBuffer.reset();
     },
     assignOrder() {
-        if (this.state.isValidBuffer) {
-            this.pos.searchOrder(this.state.tableBuffer);
+        const buffer = this.numberBuffer.get() || this.state.tableBuffer;
+        this.checkIsValid(buffer);
+        if (buffer && this.state.isValidBuffer) {
+            this.pos.searchOrder(buffer);
             this.numberBuffer.reset();
             this.pos.numpadMode = "quantity";
         }
@@ -76,40 +78,9 @@ patch(ProductScreen.prototype, {
         this.state.isValidBuffer = Boolean(res);
     },
     async addProductToOrder(product) {
-        const config = this.pos.config;
-        const order = this.pos.getOrder();
-
-        if (!config.module_pos_restaurant || !config.use_course_allocation) {
-            return await super.addProductToOrder(product);
-        }
-
-        const categories = product.pos_categ_ids
-            .map((c) => c.id)
-            .includes(this.pos.selectedCategory?.id)
-            ? [this.pos.selectedCategory]
-            : product.pos_categ_ids;
-        const courseCandidate = categories
-            .map((c) => c.course_id)
-            .filter(Boolean)
-            .sort((a, b) => a.sequence - b.sequence);
-
-        if (courseCandidate.length === 0) {
-            return await super.addProductToOrder(product);
-        }
-
-        let isNew = false;
-        let course = order.course_ids.find((c) => c.name === courseCandidate[0].name);
-        if (!course) {
-            isNew = true;
-            course = this.pos.addCourse({ backendCourse: courseCandidate[0] });
-        }
-
-        order.selectCourse(course);
+        const allocation = this.pos.autoCourseAllocation(product);
         const result = await super.addProductToOrder(product);
-        if (!result && isNew) {
-            course.delete();
-        }
-
+        this.pos.cleanAutoCourseAllocation(result, allocation);
         return result;
     },
 });

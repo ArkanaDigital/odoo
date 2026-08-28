@@ -120,6 +120,8 @@ export class RtcSession extends Record {
     dataChannel;
     audioError;
     videoError;
+    /** @type {number} value between 0 and 1 that represents volume in % */
+    talkingVolume = 0;
     isTalking = fields.Attr(false, {
         /** @this {import("models").RtcSession} */
         onUpdate() {
@@ -172,7 +174,7 @@ export class RtcSession extends Record {
     raisingHand;
     videoComponentCount = 0;
     /** @type {Map<import("@mail/discuss/call/common/rtc_service").VideoType, MediaStream>} */
-    videoStreams = new Map();
+    videoStreams = fields.Attr(new Map(), { asProxy: true });
     /** @type {import("@mail/discuss/call/common/rtc_service").VideoType} */
     mainVideoStreamType;
     /**
@@ -249,6 +251,33 @@ export class RtcSession extends Record {
             this.audioElement.volume = value;
         }
         this.localVolume = value;
+    }
+
+    /** @returns {number} the volume to play this session at */
+    getEffectiveVolume() {
+        return (
+            this.volume ??
+            this.store.self_user?.res_users_settings_id?.volume_settings_ids.find(
+                (volume) =>
+                    volume.partner_id?.eq(this.partner_id) || volume.guest_id?.eq(this.guest_id)
+            )?.volume ??
+            0.5
+        );
+    }
+
+    /**
+     * Apply the volume to this session and persist it, so that it also applies
+     * to the next sessions of its persona.
+     *
+     * @param {number} volume
+     */
+    saveEffectiveVolume(volume) {
+        this.volume = volume;
+        this.store.self_user?.res_users_settings_id?.saveVolumeSetting({
+            guestId: this.guest_id?.id,
+            partnerId: this.partner_id?.id,
+            volume,
+        });
     }
 
     async playAudio() {

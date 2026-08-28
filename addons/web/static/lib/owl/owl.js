@@ -34,6 +34,7 @@ var owl = (() => {
     Suspense: () => Suspense,
     TemplateSet: () => TemplateSet,
     __info__: () => __info__,
+    applyDefaults: () => applyDefaults,
     assertType: () => assertType,
     asyncComputed: () => asyncComputed,
     batched: () => batched,
@@ -41,6 +42,7 @@ var owl = (() => {
     computed: () => computed,
     config: () => config,
     effect: () => effect,
+    getDefault: () => getDefault,
     getScope: () => getScope,
     globalTemplates: () => globalTemplates,
     htmlEscape: () => htmlEscape,
@@ -60,14 +62,20 @@ var owl = (() => {
     props: () => props,
     providePlugins: () => providePlugins,
     proxy: () => proxy,
+    shallowEqual: () => shallowEqual,
     signal: () => signal,
     status: () => status,
+    t: () => types2,
     toRaw: () => toRaw,
     types: () => types2,
     untrack: () => untrack,
     useApp: () => useApp2,
+    useConfig: () => useConfig,
     useEffect: () => useEffect,
     useListener: () => useListener,
+    useOnChange: () => useOnChange,
+    usePlugin: () => usePlugin,
+    useProps: () => useProps,
     useScope: () => useScope,
     validateType: () => validateType,
     whenReady: () => whenReady,
@@ -82,10 +90,7 @@ var owl = (() => {
     NEW: 0,
     MOUNTED: 1,
     // is ready, and in DOM. It has a valid el
-    // component has been created, but has been replaced by a newer component before being mounted
-    // it is cancelled until the next animation frame where it will be destroyed
-    CANCELLED: 2,
-    DESTROYED: 3
+    DESTROYED: 2
   };
   function batched(callback) {
     let scheduled = false;
@@ -99,6 +104,26 @@ var owl = (() => {
       }
     };
   }
+  function neverEqual() {
+    return false;
+  }
+  function toEqualsFn(equals) {
+    if (equals === false) {
+      return neverEqual;
+    }
+    if (!equals) {
+      return Object.is;
+    }
+    return (a, b) => {
+      const previousComputation = currentComputation;
+      currentComputation = void 0;
+      try {
+        return equals(a, b);
+      } finally {
+        currentComputation = previousComputation;
+      }
+    };
+  }
   var ComputationState = /* @__PURE__ */ ((ComputationState2) => {
     ComputationState2[ComputationState2["EXECUTED"] = 0] = "EXECUTED";
     ComputationState2[ComputationState2["STALE"] = 1] = "STALE";
@@ -109,6 +134,7 @@ var owl = (() => {
   var observers = [];
   var immediateObservers = [];
   var currentComputation;
+  var pendingDisposals = /* @__PURE__ */ new Set();
   function createComputation(compute, isDerived, state = 1, immediate = false) {
     return {
       state,
@@ -139,6 +165,9 @@ var owl = (() => {
         }
       }
       ctx.state = 1;
+      if (ctx.isDerived && ctx.observers.size === 0) {
+        pendingDisposals.add(ctx);
+      }
     }
     if (immediateObservers.length) {
       const toRun = immediateObservers;
@@ -155,6 +184,15 @@ var owl = (() => {
     observers = [];
     for (let i = 0; i < pending.length; i++) {
       updateComputation(pending[i]);
+    }
+    if (pendingDisposals.size !== 0) {
+      const candidates = pendingDisposals;
+      pendingDisposals = /* @__PURE__ */ new Set();
+      for (const computation of candidates) {
+        if (computation.observers.size === 0) {
+          disposeComputation(computation);
+        }
+      }
     }
   }
   function getCurrentComputation() {
@@ -218,12 +256,17 @@ var owl = (() => {
     let current;
     while (current = stack.pop()) {
       for (const observer of current.observers) {
+        if (observer.isDerived && observer.observers.size === 0) {
+          pendingDisposals.add(observer);
+        }
         if (observer.state) {
           continue;
         }
         observer.state = 2;
         if (observer.isDerived) {
           stack.push(observer);
+        } else if (observer.immediate) {
+          immediateObservers.push(observer);
         } else {
           observers.push(observer);
         }
@@ -262,16 +305,42 @@ var owl = (() => {
       this.pluginManager = app.pluginManager;
     }
     /**
-     * Pushes this scope on the stack for the duration of `callback`. Any code
-     * executed inside `callback` can reach this scope via `useScope()`.
+     * Pushes this scope on the stack for the duration of `fn`, invoking it with
+     * the given arguments. Any code executed synchronously inside `fn` can reach
+     * this scope via `useScope()`.
+     *
+     * If the scope is already dead when `run` is called, it throws an
+     * `OwlError` (a programming error — nothing should schedule work in a
+     * destroyed scope). This is deliberately *not* an AbortError.
+     *
+     * If `fn` returns a promise, `run` guards the await with the scope's
+     * lifetime: the returned promise rejects with an AbortError if the scope
+     * dies during the await. AbortError is part of the normal async workflow,
+     * unlike the up-front OwlError above. This does not allocate an
+     * AbortController — status checks are sufficient for guarding between awaits.
      */
-    run(callback) {
+    run(fn, ...args) {
+      if (this.status > STATUS.MOUNTED) {
+        throw new OwlError("Cannot run a callback in a destroyed scope");
+      }
       scopeStack.push(this);
+      let result;
       try {
-        return callback();
+        result = fn(...args);
       } finally {
         scopeStack.pop();
       }
+      if (result !== null && typeof result?.then === "function") {
+        return this._guard(result);
+      }
+      return result;
+    }
+    async _guard(p) {
+      const result = await p;
+      if (this.status > STATUS.MOUNTED) {
+        throw makeAbortError();
+      }
+      return result;
     }
     /**
      * An AbortSignal tied to this scope's lifetime. If the scope is already
@@ -289,20 +358,12 @@ var owl = (() => {
       return (this._controller ??= new AbortController()).signal;
     }
     /**
-     * Awaits `p`, throwing an AbortError if the scope is dead before or after
-     * the await. Unlike `until(signal, p)`, this does not allocate an
-     * AbortController — status checks are sufficient for guarding between
-     * awaits.
+     * Returns true once the scope has been destroyed, i.e. `finalize` has run:
+     * the abort signal is aborted, onDestroy callbacks have executed and
+     * computations are disposed.
      */
-    async until(p) {
-      if (this.status > STATUS.MOUNTED) {
-        throw makeAbortError();
-      }
-      const result = await p;
-      if (this.status > STATUS.MOUNTED) {
-        throw makeAbortError();
-      }
-      return result;
+    isDestroyed() {
+      return this.status >= STATUS.DESTROYED;
     }
     /**
      * Registers a callback to run when the scope is destroyed. If the scope is
@@ -314,18 +375,6 @@ var owl = (() => {
         return;
       }
       (this._destroyCbs ??= []).push(cb);
-    }
-    /**
-     * Marks the scope as cancelled and aborts its signal. Used when an entity is
-     * abandoned before it reaches the MOUNTED state. Subclasses may override to
-     * extend the behavior (e.g. ComponentNode recurses to children).
-     */
-    cancel() {
-      if (this.status > STATUS.MOUNTED) {
-        return;
-      }
-      this.status = STATUS.CANCELLED;
-      this._controller?.abort();
     }
     /**
      * Aborts the scope's signal, runs all registered onDestroy callbacks in
@@ -423,21 +472,30 @@ var owl = (() => {
     }
     return atom;
   }
-  function onReadTargetKey(target, key, atom) {
-    onReadAtom(atom ?? getTargetKeyAtom(target, key));
+  function onReadTargetKey(target, key) {
+    onReadAtom(getTargetKeyAtom(target, key));
   }
-  function onWriteTargetKey(target, key, atom) {
-    if (!atom) {
-      const keyToAtomItem = targetToKeysToAtomItem.get(target);
-      if (!keyToAtomItem) {
-        return;
-      }
-      if (!keyToAtomItem.has(key)) {
-        return;
-      }
-      atom = keyToAtomItem.get(key);
+  function onWriteTargetKey(target, key) {
+    const keyToAtomItem = targetToKeysToAtomItem.get(target);
+    if (!keyToAtomItem) {
+      return;
     }
-    onWriteAtom(atom);
+    if (!keyToAtomItem.has(key)) {
+      return;
+    }
+    onWriteAtom(keyToAtomItem.get(key));
+  }
+  function onWriteDroppedIndices(target, newLength) {
+    const keyToAtomItem = targetToKeysToAtomItem.get(target);
+    if (!keyToAtomItem) {
+      return;
+    }
+    const droppedKeys = [...keyToAtomItem.keys()].filter(
+      (key) => typeof key === "string" && Number(key) >= newLength && String(Number(key)) === key
+    );
+    for (const key of droppedKeys) {
+      onWriteTargetKey(target, key);
+    }
   }
   var targets = /* @__PURE__ */ new WeakMap();
   var proxyCache = /* @__PURE__ */ new WeakMap();
@@ -476,7 +534,7 @@ var owl = (() => {
   function basicProxyHandler(atom) {
     return {
       get(target, key, receiver) {
-        onReadTargetKey(target, key, atom);
+        onReadTargetKey(target, key);
         const value = Reflect.get(target, key, receiver);
         if (atom || typeof value !== "object" || value === null) {
           return value;
@@ -494,26 +552,34 @@ var owl = (() => {
         const hadKey = objectHasOwnProperty.call(target, key);
         const originalValue = Reflect.get(target, key, receiver);
         const ret = Reflect.set(target, key, toRaw(value), receiver);
-        if (!hadKey && objectHasOwnProperty.call(target, key)) {
-          onWriteTargetKey(target, KEYCHANGES, atom);
+        const keyCreated = !hadKey && objectHasOwnProperty.call(target, key);
+        const valueChanged = originalValue !== Reflect.get(target, key, receiver);
+        if (keyCreated) {
+          onWriteTargetKey(target, KEYCHANGES);
         }
-        if (originalValue !== Reflect.get(target, key, receiver) || key === "length" && Array.isArray(target)) {
-          onWriteTargetKey(target, key, atom);
+        if (key === "length" && Array.isArray(target)) {
+          onWriteTargetKey(target, key);
+          if (target.length < originalValue) {
+            onWriteTargetKey(target, KEYCHANGES);
+            onWriteDroppedIndices(target, target.length);
+          }
+        } else if (valueChanged) {
+          onWriteTargetKey(target, key);
         }
         return ret;
       },
       deleteProperty(target, key) {
         const ret = Reflect.deleteProperty(target, key);
-        onWriteTargetKey(target, KEYCHANGES, atom);
-        onWriteTargetKey(target, key, atom);
+        onWriteTargetKey(target, KEYCHANGES);
+        onWriteTargetKey(target, key);
         return ret;
       },
       ownKeys(target) {
-        onReadTargetKey(target, KEYCHANGES, atom);
+        onReadTargetKey(target, KEYCHANGES);
         return Reflect.ownKeys(target);
       },
       has(target, key) {
-        onReadTargetKey(target, KEYCHANGES, atom);
+        onReadTargetKey(target, KEYCHANGES);
         return Reflect.has(target, key);
       }
     };
@@ -521,26 +587,26 @@ var owl = (() => {
   function makeKeyObserver(methodName, target, atom) {
     return (key) => {
       key = toRaw(key);
-      onReadTargetKey(target, key, atom);
+      onReadTargetKey(target, key);
       return possiblyReactive(target[methodName](key), atom);
     };
   }
   function makeIteratorObserver(methodName, target, atom) {
     return function* () {
-      onReadTargetKey(target, KEYCHANGES, atom);
+      onReadTargetKey(target, KEYCHANGES);
       const keys = target.keys();
       for (const item of target[methodName]()) {
         const key = keys.next().value;
-        onReadTargetKey(target, key, atom);
+        onReadTargetKey(target, key);
         yield possiblyReactive(item, atom);
       }
     };
   }
   function makeForEachObserver(target, atom) {
     return function forEach(forEachCb, thisArg) {
-      onReadTargetKey(target, KEYCHANGES, atom);
+      onReadTargetKey(target, KEYCHANGES);
       target.forEach(function(val, key, targetObj) {
-        onReadTargetKey(target, key, atom);
+        onReadTargetKey(target, key);
         forEachCb.call(
           thisArg,
           possiblyReactive(val, atom),
@@ -550,7 +616,7 @@ var owl = (() => {
       }, thisArg);
     };
   }
-  function delegateAndNotify(setterName, getterName, target, atom) {
+  function delegateAndNotify(setterName, getterName, target) {
     return (key, value) => {
       key = toRaw(key);
       const hadKey = target.has(key);
@@ -558,61 +624,61 @@ var owl = (() => {
       const ret = target[setterName](key, value);
       const hasKey = target.has(key);
       if (hadKey !== hasKey) {
-        onWriteTargetKey(target, KEYCHANGES, atom);
+        onWriteTargetKey(target, KEYCHANGES);
       }
       if (originalValue !== target[getterName](key)) {
-        onWriteTargetKey(target, key, atom);
+        onWriteTargetKey(target, key);
       }
       return ret;
     };
   }
-  function makeClearNotifier(target, atom) {
+  function makeClearNotifier(target) {
     return () => {
       const allKeys = [...target.keys()];
       target.clear();
-      onWriteTargetKey(target, KEYCHANGES, atom);
+      onWriteTargetKey(target, KEYCHANGES);
       for (const key of allKeys) {
-        onWriteTargetKey(target, key, atom);
+        onWriteTargetKey(target, key);
       }
     };
   }
   var rawTypeToFuncHandlers = {
     Set: (target, atom) => ({
       has: makeKeyObserver("has", target, atom),
-      add: delegateAndNotify("add", "has", target, atom),
-      delete: delegateAndNotify("delete", "has", target, atom),
+      add: delegateAndNotify("add", "has", target),
+      delete: delegateAndNotify("delete", "has", target),
       keys: makeIteratorObserver("keys", target, atom),
       values: makeIteratorObserver("values", target, atom),
       entries: makeIteratorObserver("entries", target, atom),
       [Symbol.iterator]: makeIteratorObserver(Symbol.iterator, target, atom),
       forEach: makeForEachObserver(target, atom),
-      clear: makeClearNotifier(target, atom),
+      clear: makeClearNotifier(target),
       get size() {
-        onReadTargetKey(target, KEYCHANGES, atom);
+        onReadTargetKey(target, KEYCHANGES);
         return target.size;
       }
     }),
     Map: (target, atom) => ({
       has: makeKeyObserver("has", target, atom),
       get: makeKeyObserver("get", target, atom),
-      set: delegateAndNotify("set", "get", target, atom),
-      delete: delegateAndNotify("delete", "has", target, atom),
+      set: delegateAndNotify("set", "get", target),
+      delete: delegateAndNotify("delete", "has", target),
       keys: makeIteratorObserver("keys", target, atom),
       values: makeIteratorObserver("values", target, atom),
       entries: makeIteratorObserver("entries", target, atom),
       [Symbol.iterator]: makeIteratorObserver(Symbol.iterator, target, atom),
       forEach: makeForEachObserver(target, atom),
-      clear: makeClearNotifier(target, atom),
+      clear: makeClearNotifier(target),
       get size() {
-        onReadTargetKey(target, KEYCHANGES, atom);
+        onReadTargetKey(target, KEYCHANGES);
         return target.size;
       }
     }),
     WeakMap: (target, atom) => ({
       has: makeKeyObserver("has", target, atom),
       get: makeKeyObserver("get", target, atom),
-      set: delegateAndNotify("set", "get", target, atom),
-      delete: delegateAndNotify("delete", "has", target, atom)
+      set: delegateAndNotify("set", "get", target),
+      delete: delegateAndNotify("delete", "has", target)
     })
   };
   function collectionsProxyHandler(target, targetRawType, atom) {
@@ -623,17 +689,18 @@ var owl = (() => {
         if (objectHasOwnProperty.call(specialHandlers, key)) {
           return specialHandlers[key];
         }
-        onReadTargetKey(target2, key, atom);
+        onReadTargetKey(target2, key);
         return possiblyReactive(target2[key], atom);
       }
     });
   }
-  function buildSignal(value, set) {
+  function buildSignal(value, set, equals) {
     const atom = {
       type: "signal",
       value,
       observers: /* @__PURE__ */ new Set()
     };
+    const equalsFn = toEqualsFn(equals);
     let readValue = set(atom);
     const readSignal = () => {
       onReadAtom(atom);
@@ -641,7 +708,7 @@ var owl = (() => {
     };
     readSignal[atomSymbol] = atom;
     readSignal.set = function writeSignal(newValue) {
-      if (Object.is(atom.value, newValue)) {
+      if (equalsFn(atom.value, newValue)) {
         return;
       }
       atom.value = newValue;
@@ -656,22 +723,34 @@ var owl = (() => {
     }
     onWriteAtom(signal2[atomSymbol]);
   }
-  function signalArray(initialValue) {
-    return buildSignal(initialValue, (atom) => proxifyTarget(atom.value, atom));
+  function signalRef() {
+    return buildSignal(null, (atom) => atom.value);
   }
-  function signalObject(initialValue) {
-    return buildSignal(initialValue, (atom) => proxifyTarget(atom.value, atom));
+  function signalArray(initialValue = [], options = {}) {
+    return buildSignal(initialValue, (atom) => proxifyTarget(atom.value, atom), options.equals);
   }
-  function signalMap(initialValue) {
-    return buildSignal(initialValue, (atom) => proxifyTarget(atom.value, atom));
+  function signalObject(initialValue = {}, options = {}) {
+    return buildSignal(initialValue, (atom) => proxifyTarget(atom.value, atom), options.equals);
   }
-  function signalSet(initialValue) {
-    return buildSignal(initialValue, (atom) => proxifyTarget(atom.value, atom));
+  function signalMap(initialValue = /* @__PURE__ */ new Map(), options = {}) {
+    return buildSignal(
+      initialValue,
+      (atom) => proxifyTarget(atom.value, atom),
+      options.equals
+    );
   }
-  function signal(value) {
-    return buildSignal(value, (atom) => atom.value);
+  function signalSet(initialValue = /* @__PURE__ */ new Set(), options = {}) {
+    return buildSignal(
+      initialValue,
+      (atom) => proxifyTarget(atom.value, atom),
+      options.equals
+    );
+  }
+  function signal(value, options = {}) {
+    return buildSignal(value, (atom) => atom.value, options.equals);
   }
   signal.trigger = triggerSignal;
+  signal.ref = signalRef;
   signal.Array = signalArray;
   signal.Map = signalMap;
   signal.Object = signalObject;
@@ -682,11 +761,17 @@ var owl = (() => {
     );
   }
   function computed(getter, options = {}) {
+    const equalsFn = toEqualsFn(options.equals);
+    let hasValue = false;
     const computation = createComputation(() => {
       const newValue = getter();
-      if (!Object.is(computation.value, newValue)) {
+      if (hasValue) {
+        if (equalsFn(computation.value, newValue)) {
+          return computation.value;
+        }
         onWriteAtom(computation);
       }
+      hasValue = true;
       return newValue;
     }, true);
     function readComputed() {
@@ -765,13 +850,25 @@ var owl = (() => {
     }
   }
   function asyncComputed(fetcher, options = {}) {
-    const value = signal(options.initial);
+    const value = signal(options.initial, { equals: options.equals });
     const loading = signal(false);
     const error = signal(null);
     const refreshTick = signal(0);
     const scope = getScope();
     let runId = 0;
     let runController = null;
+    let inFlight = false;
+    let pending = null;
+    function beginRun() {
+      loading.set(true);
+      inFlight = true;
+    }
+    function endRun() {
+      loading.set(false);
+      inFlight = false;
+      pending?.resolve();
+      pending = null;
+    }
     const stopEffect = effect(() => {
       refreshTick();
       const myRunId = ++runId;
@@ -784,7 +881,7 @@ var owl = (() => {
       if (scope?.abortSignal) {
         abortSignals.push(scope.abortSignal);
       }
-      loading.set(true);
+      beginRun();
       error.set(null);
       let promise;
       try {
@@ -792,34 +889,38 @@ var owl = (() => {
       } catch (e) {
         if (myRunId !== runId) return;
         if (isAbortError(e)) {
-          loading.set(false);
+          endRun();
           return;
         }
         error.set(e);
-        loading.set(false);
+        endRun();
         return;
       }
       promise.then(
         (result) => {
           if (myRunId !== runId) return;
           value.set(result);
-          loading.set(false);
+          endRun();
         },
         (e) => {
           if (myRunId !== runId) return;
           if (isAbortError(e)) {
-            loading.set(false);
+            endRun();
             return;
           }
           error.set(e);
-          loading.set(false);
+          endRun();
         }
       );
     });
     function dispose() {
+      runId++;
       stopEffect();
       runController?.abort();
       runController = null;
+      inFlight = false;
+      pending?.resolve();
+      pending = null;
     }
     scope?.onDestroy(dispose);
     const read = (() => value());
@@ -827,6 +928,16 @@ var owl = (() => {
     read.error = () => error();
     read.refresh = () => refreshTick.set(refreshTick() + 1);
     read.dispose = dispose;
+    read.currentPromise = () => {
+      if (!inFlight) {
+        return Promise.resolve();
+      }
+      if (!pending) {
+        let resolve;
+        pending = { promise: new Promise((res) => resolve = res), resolve };
+      }
+      return pending.promise;
+    };
     return read;
   }
   function safeReplacer(knownObjects, _key, value) {
@@ -854,7 +965,7 @@ var owl = (() => {
 ${issueStrings}`);
     }
   }
-  function createContext(issues, value, path, parent) {
+  function createContext(issues, value, path, parent, depthOffset = 1) {
     return {
       issueDepth: 0,
       path,
@@ -875,11 +986,11 @@ ${issueStrings}`);
       validate(type) {
         type(this);
         if (!this.isValid && parent) {
-          parent.issueDepth = this.issueDepth + 1;
+          parent.issueDepth = this.issueDepth + depthOffset;
         }
       },
       withIssues(issues2) {
-        return createContext(issues2, this.value, this.path, this);
+        return createContext(issues2, this.value, this.path, this, 0);
       },
       withKey(key) {
         return createContext(issues, this.value[key], this.path.concat(key), this);
@@ -891,33 +1002,120 @@ ${issueStrings}`);
     validation(createContext(issues, value, []));
     return issues;
   }
-  function anyType() {
-    return function validateAny() {
+  var defaultSymbol = /* @__PURE__ */ Symbol("default");
+  var innerTypeSymbol = /* @__PURE__ */ Symbol("innerType");
+  var shapeSymbol = /* @__PURE__ */ Symbol("shape");
+  var elementTypeSymbol = /* @__PURE__ */ Symbol("elementType");
+  var optionalSymbol = /* @__PURE__ */ Symbol("optional");
+  var intersectionSymbol = /* @__PURE__ */ Symbol("intersection");
+  function getDefault(type) {
+    return typeof type === "function" ? type[defaultSymbol] : void 0;
+  }
+  function makeOptional(type, value) {
+    const validate = function validateOptional(context) {
+      if (context.value === void 0) {
+        return;
+      }
+      context.validate(type);
     };
+    validate[optionalSymbol] = true;
+    validate[innerTypeSymbol] = type;
+    if (value !== void 0) {
+      validate[defaultSymbol] = typeof value === "function" ? value : () => value;
+    }
+    return validate;
+  }
+  function isOptionalType(type) {
+    return typeof type === "function" && optionalSymbol in type;
+  }
+  function makeType(validate) {
+    validate.optional = (value) => makeOptional(validate, value);
+    return validate;
+  }
+  function applyDefaults(value, type) {
+    return applyDefaultsRec(value, type);
+  }
+  function applyDefaultsRec(value, type) {
+    if (typeof type !== "function") {
+      return value;
+    }
+    if (value === void 0) {
+      const factory = type[defaultSymbol];
+      if (!factory) {
+        return value;
+      }
+      value = factory();
+    }
+    const inner = type[innerTypeSymbol] || type;
+    if (typeof inner !== "function" || !value || typeof value !== "object") {
+      return value;
+    }
+    const members = inner[intersectionSymbol];
+    if (members) {
+      let result2 = value;
+      for (const member of members) {
+        result2 = applyDefaultsRec(result2, member);
+      }
+      return result2;
+    }
+    const elementType = inner[elementTypeSymbol];
+    if (elementType && Array.isArray(value)) {
+      let result2 = value;
+      for (let index = 0; index < value.length; index++) {
+        const newValue = applyDefaultsRec(value[index], elementType);
+        if (newValue !== value[index]) {
+          if (result2 === value) {
+            result2 = [...value];
+          }
+          result2[index] = newValue;
+        }
+      }
+      return result2;
+    }
+    const shape = inner[shapeSymbol];
+    if (!shape) {
+      return value;
+    }
+    let result = value;
+    for (const key in shape) {
+      const subValue = result[key];
+      const newValue = applyDefaultsRec(subValue, shape[key]);
+      if (newValue !== subValue) {
+        if (result === value) {
+          result = Array.isArray(value) ? [...value] : { ...value };
+        }
+        result[key] = newValue;
+      }
+    }
+    return result;
+  }
+  function anyType() {
+    return makeType(function validateAny() {
+    });
   }
   function booleanType() {
-    return function validateBoolean(context) {
+    return makeType(function validateBoolean(context) {
       if (typeof context.value !== "boolean") {
         context.addIssue({ message: "value is not a boolean" });
       }
-    };
+    });
   }
   function numberType() {
-    return function validateNumber(context) {
+    return makeType(function validateNumber(context) {
       if (typeof context.value !== "number") {
         context.addIssue({ message: "value is not a number" });
       }
-    };
+    });
   }
   function stringType() {
-    return function validateString(context) {
+    return makeType(function validateString(context) {
       if (typeof context.value !== "string" && !(context.value instanceof String)) {
         context.addIssue({ message: "value is not a string" });
       }
-    };
+    });
   }
   function arrayType(elementType) {
-    return function validateArray(context) {
+    const validate = makeType(function validateArray(context) {
       if (!Array.isArray(context.value)) {
         context.addIssue({ message: "value is not an array" });
         return;
@@ -928,17 +1126,21 @@ ${issueStrings}`);
       for (let index = 0; index < context.value.length; index++) {
         context.withKey(index).validate(elementType);
       }
-    };
+    });
+    if (elementType) {
+      validate[elementTypeSymbol] = elementType;
+    }
+    return validate;
   }
   function constructorType(constructor) {
-    return function validateConstructor(context) {
+    return makeType(function validateConstructor(context) {
       if (!(typeof context.value === "function") || !(context.value === constructor || context.value.prototype instanceof constructor)) {
         context.addIssue({ message: `value is not '${constructor.name}' or an extension` });
       }
-    };
+    });
   }
   function customValidator(type, validator, errorMessage = "value does not match custom validation") {
-    return function validateCustom(context) {
+    return makeType(function validateCustom(context) {
       context.validate(type);
       if (!context.isValid) {
         return;
@@ -946,37 +1148,49 @@ ${issueStrings}`);
       if (!validator(context.value)) {
         context.addIssue({ message: errorMessage });
       }
-    };
+    });
   }
   function functionType(parameters = [], result = void 0) {
-    return function validateFunction(context) {
+    return makeType(function validateFunction(context) {
       if (typeof context.value !== "function") {
         context.addIssue({ message: "value is not a function" });
       }
-    };
+    });
   }
   function instanceType(constructor) {
-    return function validateInstanceType(context) {
+    return makeType(function validateInstanceType(context) {
       if (!(context.value instanceof constructor)) {
         context.addIssue({ message: `value is not an instance of '${constructor.name}'` });
       }
-    };
+    });
   }
   function intersection(types22) {
-    return function validateIntersection(context) {
+    const validate = makeType(function validateIntersection(context) {
       for (const type of types22) {
         context.validate(type);
       }
+    });
+    validate[intersectionSymbol] = types22;
+    validate.toShape = () => {
+      const shape = {};
+      for (const member of types22) {
+        const memberShape = typeof member.toShape === "function" ? member.toShape() : void 0;
+        if (memberShape && !Array.isArray(memberShape)) {
+          Object.assign(shape, memberShape);
+        }
+      }
+      return shape;
     };
+    return validate;
   }
   function literalType(literal) {
-    return function validateLiteral(context) {
+    return makeType(function validateLiteral(context) {
       if (context.value !== literal) {
         context.addIssue({
           message: `value is not equal to ${typeof literal === "string" ? `'${literal}'` : literal}`
         });
       }
-    };
+    });
   }
   function literalSelection(literals) {
     return union(literals.map(literalType));
@@ -1004,59 +1218,66 @@ ${issueStrings}`);
     }
     const missingKeys = [];
     for (const key of keys) {
-      const property = key.endsWith("?") ? key.slice(0, -1) : key;
-      if (context.value[property] === void 0) {
-        if (!key.endsWith("?")) {
-          missingKeys.push(property);
+      if (context.value[key] === void 0) {
+        if (!isOptionalType(shape[key])) {
+          missingKeys.push(key);
         }
         continue;
       }
       if (isShape) {
-        context.withKey(property).validate(shape[key]);
+        context.withKey(key).validate(shape[key]);
       }
     }
     if (missingKeys.length) {
       context.addIssue({
         message: "object value has missing keys",
-        missingKeys,
-        expectedKeys: keys
+        missingKeys
       });
     }
     if (isStrict) {
       const unknownKeys = [];
       for (const key in context.value) {
-        if (!keys.includes(key) && !(`${key}?` in shape)) {
+        if (!keys.includes(key)) {
           unknownKeys.push(key);
         }
       }
       if (unknownKeys.length) {
         context.addIssue({
           message: "object value has unknown keys",
-          unknownKeys,
-          expectedKeys: keys
+          unknownKeys
         });
       }
     }
   }
   function objectType(schema = {}) {
-    return function validateLooseObject(context) {
+    const validate = makeType(function validateLooseObject(context) {
       validateObject(context, schema, false);
-    };
+    });
+    if (!Array.isArray(schema)) {
+      validate[shapeSymbol] = schema;
+    }
+    validate.toShape = () => schema;
+    return validate;
   }
   function strictObjectType(schema) {
-    return function validateStrictObject(context) {
+    const validate = makeType(function validateStrictObject(context) {
       validateObject(context, schema, true);
-    };
+    });
+    if (!Array.isArray(schema)) {
+      validate[shapeSymbol] = schema;
+    }
+    validate.toShape = () => schema;
+    return validate;
   }
   function promiseType(type) {
-    return function validatePromise(context) {
+    return makeType(function validatePromise(context) {
       if (!(context.value instanceof Promise)) {
         context.addIssue({ message: "value is not a promise" });
       }
-    };
+    });
   }
   function recordType(valueType) {
-    return function validateRecord(context) {
+    return makeType(function validateRecord(context) {
       if (typeof context.value !== "object" || Array.isArray(context.value) || context.value === null) {
         context.addIssue({ message: "value is not an object" });
         return;
@@ -1067,10 +1288,10 @@ ${issueStrings}`);
       for (const key in context.value) {
         context.withKey(key).validate(valueType);
       }
-    };
+    });
   }
   function tuple(types22) {
-    return function validateTuple(context) {
+    const validate = makeType(function validateTuple(context) {
       if (!Array.isArray(context.value)) {
         context.addIssue({ message: "value is not an array" });
         return;
@@ -1082,10 +1303,12 @@ ${issueStrings}`);
       for (let index = 0; index < types22.length; index++) {
         context.withKey(index).validate(types22[index]);
       }
-    };
+    });
+    validate[shapeSymbol] = types22;
+    return validate;
   }
   function union(types22) {
-    return function validateUnion(context) {
+    return makeType(function validateUnion(context) {
       let firstIssueIndex = 0;
       const subIssues = [];
       for (const type of types22) {
@@ -1101,17 +1324,20 @@ ${issueStrings}`);
         message: "value does not match union type",
         subIssues
       });
-    };
+    });
   }
   function reactiveValueType(type) {
-    return function validateReactiveValue(context) {
+    return makeType(function validateReactiveValue(context) {
       if (typeof context.value !== "function" || !context.value[atomSymbol]) {
         context.addIssue({ message: "value is not a reactive value" });
       }
-    };
+    });
   }
   function ref(type) {
-    return union([literalType(null), instanceType(type)]);
+    if (typeof HTMLElement === "undefined") {
+      throw new Error("Cannot use ref in a non-DOM environment");
+    }
+    return union([literalType(null), instanceType(type || HTMLElement)]);
   }
   var types = {
     and: intersection,
@@ -1176,6 +1402,10 @@ ${issueStrings}`);
     }
     delete(key) {
       delete this._map()[key];
+      return this;
+    }
+    clear() {
+      this._map.set(/* @__PURE__ */ Object.create(null));
     }
     has(key) {
       return key in this._map();
@@ -1220,6 +1450,9 @@ ${issueStrings}`);
       const items = this._items().filter(([seq, val]) => val !== item);
       this._items.set(items);
       return this;
+    }
+    clear() {
+      this._items.set([]);
     }
     has(item) {
       return this._items().some(([s, value]) => value === item);
@@ -1268,9 +1501,7 @@ ${issueStrings}`);
       this.config = options.config ?? {};
       this.pluginManager = this;
       if (options.parent) {
-        const parent = options.parent;
-        parent.onDestroy(() => this.destroy());
-        this.plugins = Object.create(parent.plugins);
+        this.plugins = Object.create(options.parent.plugins);
       } else {
         this.plugins = {};
       }
@@ -1380,55 +1611,46 @@ ${issueStrings}`);
     const scope = useScope();
     scope.onDestroy(scope.decorate(fn, "onWillDestroy"));
   }
-  function useEffect(fn) {
-    onWillDestroy(effect(fn));
-  }
-  function useListener(target, eventName, handler, eventParams) {
-    if (typeof target === "function") {
-      useEffect(() => {
-        const el = target();
-        if (el) {
-          el.addEventListener(eventName, handler, eventParams);
-          return () => el.removeEventListener(eventName, handler, eventParams);
-        }
-        return;
-      });
-    } else {
-      target.addEventListener(eventName, handler, eventParams);
-      onWillDestroy(() => target.removeEventListener(eventName, handler, eventParams));
-    }
-  }
-  function useApp() {
-    return useScope().app;
-  }
-  function plugin(pluginType) {
-    const scope = useScope();
-    let plugin2 = scope.pluginManager.getPluginById(pluginType.id);
-    if (!plugin2) {
-      if (scope instanceof PluginManager) {
-        plugin2 = scope.pluginManager.startPlugin(pluginType);
-      } else {
-        throw new OwlError(`Unknown plugin "${pluginType.id}"`);
-      }
-    }
-    return plugin2;
-  }
-  function config(key, type, defaultValue) {
-    const scope = useScope();
-    if (!(scope instanceof PluginManager)) {
-      throw new OwlError("Expected to be in a plugin scope");
-    }
-    if (scope.app.dev && type) {
-      assertType(scope.config, types.object({ [key]: type }), "Config does not match the type");
-    }
-    const configValue = scope.config[key.endsWith("?") ? key.slice(0, -1) : key];
-    return configValue === void 0 ? defaultValue : configValue;
-  }
   var EventBus = class extends EventTarget {
     trigger(name, payload) {
       this.dispatchEvent(new CustomEvent(name, { detail: payload }));
     }
   };
+  function shallowEqual(a, b) {
+    if (Object.is(a, b)) {
+      return true;
+    }
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+      return false;
+    }
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+        return false;
+      }
+      for (let i = 0; i < a.length; i++) {
+        if (!Object.is(a[i], b[i])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    const protoA = Object.getPrototypeOf(a);
+    const protoB = Object.getPrototypeOf(b);
+    if (protoA !== Object.prototype && protoA !== null || protoB !== Object.prototype && protoB !== null) {
+      return false;
+    }
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) {
+      return false;
+    }
+    for (const key of keysA) {
+      if (!Object.prototype.hasOwnProperty.call(b, key) || !Object.is(a[key], b[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
   var Markup = class extends String {
   };
   function htmlEscape(str) {
@@ -1466,9 +1688,68 @@ ${issueStrings}`);
     acc += strings[i];
     return new Markup(acc);
   }
+  function useEffect(fn) {
+    onWillDestroy(effect(fn));
+  }
+  function useOnChange(dependencies, callback, { initialRun = true } = {}) {
+    const deps = computed(dependencies, { equals: shallowEqual });
+    let skipRun = !initialRun;
+    useEffect(() => {
+      const args = deps();
+      if (skipRun) {
+        skipRun = false;
+        return;
+      }
+      return untrack(() => callback(...args));
+    });
+  }
+  function useListener(target, eventName, handler, eventParams) {
+    if (typeof target === "function") {
+      useEffect(() => {
+        const el = target();
+        if (el) {
+          el.addEventListener(eventName, handler, eventParams);
+          return () => el.removeEventListener(eventName, handler, eventParams);
+        }
+        return;
+      });
+    } else {
+      target.addEventListener(eventName, handler, eventParams);
+      onWillDestroy(() => target.removeEventListener(eventName, handler, eventParams));
+    }
+  }
+  function useApp() {
+    return useScope().app;
+  }
+  function usePlugin(pluginType) {
+    const scope = useScope();
+    let plugin2 = scope.pluginManager.getPluginById(pluginType.id);
+    if (!plugin2) {
+      if (scope instanceof PluginManager) {
+        plugin2 = scope.pluginManager.startPlugin(pluginType);
+      } else {
+        throw new OwlError(`Unknown plugin "${pluginType.id}"`);
+      }
+    }
+    const scoped = pluginType.scoped;
+    return scoped ? scoped(plugin2, scope) : plugin2;
+  }
+  var plugin = usePlugin;
+  function useConfig(key, type) {
+    const scope = useScope();
+    if (!(scope instanceof PluginManager)) {
+      throw new OwlError("Expected to be in a plugin scope");
+    }
+    if (scope.app.dev && type) {
+      assertType(scope.config, types.object({ [key]: type }), "Config does not match the type");
+    }
+    const configValue = scope.config[key];
+    return configValue === void 0 ? getDefault(type)?.() : configValue;
+  }
+  var config = useConfig;
 
   // ../owl-runtime/dist/owl-runtime.es.js
-  var version = "3.0.0-alpha.34";
+  var version = "3.0.0-alpha.47";
   var fibersInError = /* @__PURE__ */ new WeakMap();
   var nodeErrorHandlers = /* @__PURE__ */ new WeakMap();
   function invokeErrorHandlers(node, error, finalize, markFibers) {
@@ -1558,7 +1839,7 @@ ${issueStrings}`);
       return false;
     }
   };
-  var txt = document.createTextNode("");
+  var txt = globalThis.document?.createTextNode("");
   var VToggler = class {
     key;
     child;
@@ -1861,9 +2142,11 @@ ${issueStrings}`);
         style.removeProperty(prop);
       }
     }
+    let changed = false;
     for (let prop in val) {
-      if (val[prop] !== oldVal[prop]) {
+      if (changed || val[prop] !== oldVal[prop]) {
         setStyleProp(style, prop, val[prop]);
+        changed = true;
       }
     }
     if (!style.cssText) {
@@ -2882,7 +3165,7 @@ ${issueStrings}`);
     }
     firstNode() {
       const child = this.children[0];
-      return child ? child.firstNode() : void 0;
+      return child ? child.firstNode() : this.anchor;
     }
     toString() {
       return this.children.map((c) => c.toString()).join("");
@@ -3082,14 +3365,14 @@ ${issueStrings}`);
     switch (entity.__owl__.status) {
       case STATUS.NEW:
         return "new";
-      case STATUS.CANCELLED:
-        return "cancelled";
       case STATUS.MOUNTED:
         return entity instanceof Plugin ? "started" : "mounted";
       case STATUS.DESTROYED:
         return "destroyed";
     }
   }
+  var MAX_RENDER_ITERATIONS = 1e3;
+  var APPLIED_TO_DOM = 1;
   function makeChildFiber(node, parent) {
     let current = node.fiber;
     if (current) {
@@ -3102,6 +3385,7 @@ ${issueStrings}`);
     let current = node.fiber;
     if (current) {
       let root = current.root;
+      current.renderState += 2;
       root.locked = true;
       root.setCounter(root.counter + 1 - cancelFibers(current.children));
       root.locked = false;
@@ -3111,7 +3395,7 @@ ${issueStrings}`);
       if (fibersInError.has(current)) {
         fibersInError.delete(current);
         fibersInError.delete(root);
-        current.appliedToDom = false;
+        current.renderState &= ~APPLIED_TO_DOM;
         if (current instanceof RootFiber) {
           current.mounted = current instanceof MountFiber ? [current] : [];
         }
@@ -3129,6 +3413,10 @@ ${issueStrings}`);
   }
   function throwOnRender() {
     throw new OwlError("Attempted to render cancelled fiber");
+  }
+  var subRootHosts = /* @__PURE__ */ new WeakMap();
+  function above(node) {
+    return node.parent || (node.status === STATUS.MOUNTED ? subRootHosts.get(node) || null : null);
   }
   function cancelFibers(fibers) {
     let result = 0;
@@ -3158,7 +3446,12 @@ ${issueStrings}`);
     // A Fiber that has been replaced by another has no root
     parent;
     children = [];
-    appliedToDom = false;
+    // Packs the "applied to DOM" flag (bit 0, see APPLIED_TO_DOM) together with
+    // the number of times this uncommitted fiber has been recycled by
+    // makeRootFiber (bits 1 and up). The recycle count climbs without bound only
+    // in a render loop (#1968); it shares a slot with the flag so the many
+    // fibers that are never recycled don't pay for a dedicated field.
+    renderState = 0;
     deep = false;
     childrenMap = {};
     constructor(node, parent) {
@@ -3178,11 +3471,11 @@ ${issueStrings}`);
       const scheduler = this.root.node.app.scheduler;
       if (scheduler.tasks.size > 1) {
         let prev = this.root.node;
-        let current = prev.parent;
+        let current = above(prev);
         while (current) {
           if (current.fiber) {
             let root2 = current.fiber.root;
-            if (root2.counter === 0 && prev.parentKey in current.fiber.childrenMap) {
+            if (root2.counter === 0 && (!prev.parent || prev.parentKey in current.fiber.childrenMap)) {
               current = root2.node;
             } else {
               scheduler.delayedRenders.push(this);
@@ -3190,12 +3483,21 @@ ${issueStrings}`);
             }
           }
           prev = current;
-          current = current.parent;
+          current = above(current);
         }
       }
       const node = this.node;
       const root = this.root;
       if (root) {
+        if (this.renderState >> 1 > MAX_RENDER_ITERATIONS) {
+          handleError({
+            node,
+            error: new OwlError(
+              `Maximum render iterations (${MAX_RENDER_ITERATIONS}) exceeded. Component "${node.componentName}" is stuck in a render loop: rendering it keeps triggering another render before the DOM is updated. A common cause is updating reactive state during render or setup() \u2014 e.g. calling a parent's state setter from a child's setup().`
+            )
+          });
+          return;
+        }
         const c = getCurrentComputation();
         removeSources(node.signalComputation);
         setComputation(node.signalComputation);
@@ -3245,7 +3547,7 @@ ${issueStrings}`);
         this.locked = false;
         while (current = mountedFibers.pop()) {
           current = current;
-          if (current.appliedToDom) {
+          if (current.renderState & APPLIED_TO_DOM) {
             for (let cb of current.node.mounted) {
               cb();
             }
@@ -3254,7 +3556,7 @@ ${issueStrings}`);
         let patchedFibers = this.patched;
         while (current = patchedFibers.pop()) {
           current = current;
-          if (current.appliedToDom) {
+          if (current.renderState & APPLIED_TO_DOM) {
             for (let cb of current.node.patched) {
               cb();
             }
@@ -3295,7 +3597,7 @@ ${issueStrings}`);
       if (this.target) {
         this._mount();
       } else {
-        this.appliedToDom = true;
+        this.renderState |= APPLIED_TO_DOM;
         this.onPrepared?.();
       }
     }
@@ -3328,10 +3630,10 @@ ${issueStrings}`);
         }
         node.fiber = null;
         node.status = STATUS.MOUNTED;
-        this.appliedToDom = true;
+        this.renderState |= APPLIED_TO_DOM;
         let mountedFibers = this.mounted;
         while (current = mountedFibers.pop()) {
-          if (current.appliedToDom) {
+          if (current.renderState & APPLIED_TO_DOM) {
             for (let cb of current.node.mounted) {
               cb();
             }
@@ -3364,6 +3666,11 @@ ${issueStrings}`);
     willPatch = [];
     patched = [];
     signalComputation;
+    // t-ref signals bound to an element hosted by this component, mapped to their
+    // atom (so the element can be read without subscribing). Swept by isConnected
+    // after each patch and after this subtree is removed, to unset a ref pointing
+    // at a bulk-removed element (slot host, enclosing t-if) — see sweepRefs.
+    trackedRefs = null;
     constructor(C, props2, app, parent, parentKey) {
       super(app);
       this.parent = parent;
@@ -3427,7 +3734,7 @@ ${issueStrings}`);
       }
     }
     async render(deep) {
-      if (this.status >= STATUS.CANCELLED) {
+      if (this.status >= STATUS.DESTROYED) {
         return;
       }
       let current = this.fiber;
@@ -3451,7 +3758,7 @@ ${issueStrings}`);
       this.fiber = fiber;
       this.app.scheduler.addFiber(fiber);
       await Promise.resolve();
-      if (this.status >= STATUS.CANCELLED) {
+      if (this.status >= STATUS.DESTROYED) {
         return;
       }
       if (this.fiber === fiber && (current || !fiber.parent)) {
@@ -3459,22 +3766,20 @@ ${issueStrings}`);
       }
     }
     cancel() {
-      this._cancel();
       delete this.parent.children[this.parentKey];
-      this.app.scheduler.scheduleDestroy(this);
-    }
-    _cancel() {
-      super.cancel();
-      const children = this.children;
-      for (let childKey in children) {
-        children[childKey]._cancel();
-      }
+      this._destroy();
     }
     destroy() {
       let shouldRemove = this.status === STATUS.MOUNTED;
-      this._destroy();
+      removalDepth++;
+      try {
+        this._destroy();
+      } finally {
+        removalDepth--;
+      }
       if (shouldRemove) {
         this.bdom.remove();
+        sweepRemovedRefs();
       }
     }
     _destroy() {
@@ -3484,11 +3789,41 @@ ${issueStrings}`);
           cb.call(component);
         }
       }
+      if (removalDepth && this.trackedRefs) {
+        (removed ||= []).push(this);
+      }
       for (let childKey in this.children) {
         this.children[childKey]._destroy();
       }
       this.finalize((e) => handleError({ error: e, node: this }));
       disposeComputation(this.signalComputation);
+    }
+    /**
+     * Unset any tracked t-ref whose element is no longer in the document, and stop
+     * tracking it (createRef re-registers it on the next render if the element
+     * comes back). `isConnected` is the discriminator: a ref the block's own
+     * remove() failed to clear (bulk removal) points at a detached element and is
+     * cleared, while a ref a surviving sibling just took over (t-if/t-else with a
+     * shared signal) points at a still-connected element and is left alone.
+     *
+     * Called after this component's dom settles: at the tail of `_patch` (before
+     * user `onPatched`), so an element removed in place is caught, and — for the
+     * nodes collected during `_destroy` — after a removed subtree is detached.
+     */
+    sweepRefs() {
+      const refs = this.trackedRefs;
+      if (!refs) {
+        return;
+      }
+      for (const [ref2, atom] of refs) {
+        const el = atom.value;
+        if (!el) {
+          refs.delete(ref2);
+        } else if (!el.isConnected) {
+          ref2.set(null);
+          refs.delete(ref2);
+        }
+      }
     }
     /**
      * Finds a child that has dom that is not yet updated, and update it. This
@@ -3505,8 +3840,15 @@ ${issueStrings}`);
           child.updateDom();
         }
       } else {
-        this.bdom.patch(this.fiber.bdom, false);
-        this.fiber.appliedToDom = true;
+        removalDepth++;
+        try {
+          this.bdom.patch(this.fiber.bdom, false);
+        } finally {
+          removalDepth--;
+        }
+        this.sweepRefs();
+        sweepRemovedRefs();
+        this.fiber.renderState |= APPLIED_TO_DOM;
         this.fiber = null;
       }
     }
@@ -3522,7 +3864,7 @@ ${issueStrings}`);
       this.bdom = bdom2;
       bdom2.mount(parent, anchor);
       this.status = STATUS.MOUNTED;
-      this.fiber.appliedToDom = true;
+      this.fiber.renderState |= APPLIED_TO_DOM;
       this.children = this.fiber.childrenMap;
       this.fiber = null;
     }
@@ -3531,6 +3873,14 @@ ${issueStrings}`);
     }
     moveBeforeVNode(other, afterNode) {
       this.bdom.moveBeforeVNode(other ? other.bdom : null, afterNode);
+    }
+    /**
+     * Register a t-ref signal bound to an element this component hosts, so its
+     * lifecycle can clear it (see sweepRefs / _destroy). Idempotent — re-tracking
+     * the same signal on each render just refreshes its atom.
+     */
+    trackRef(ref2, atom) {
+      (this.trackedRefs ||= /* @__PURE__ */ new Map()).set(ref2, atom);
     }
     patch() {
       if (this.fiber && this.fiber.parent) {
@@ -3545,8 +3895,15 @@ ${issueStrings}`);
       }
       const fiber = this.fiber;
       this.children = fiber.childrenMap;
-      this.bdom.patch(fiber.bdom, hasChildren);
-      fiber.appliedToDom = true;
+      removalDepth++;
+      try {
+        this.bdom.patch(fiber.bdom, hasChildren);
+      } finally {
+        removalDepth--;
+      }
+      this.sweepRefs();
+      sweepRemovedRefs();
+      fiber.renderState |= APPLIED_TO_DOM;
       this.fiber = null;
     }
     beforeRemove() {
@@ -3556,6 +3913,17 @@ ${issueStrings}`);
       this.bdom.remove();
     }
   };
+  var removalDepth = 0;
+  var removed = null;
+  function sweepRemovedRefs() {
+    if (removalDepth === 0 && removed) {
+      const nodes = removed;
+      removed = null;
+      for (let i = 0; i < nodes.length; i++) {
+        nodes[i].sweepRefs();
+      }
+    }
+  }
   function getComponentScope() {
     const scope = useScope();
     if (!(scope instanceof ComponentNode)) {
@@ -3575,19 +3943,12 @@ ${issueStrings}`);
     requestAnimationFrame;
     frame = 0;
     delayedRenders = [];
-    cancelledNodes = /* @__PURE__ */ new Set();
     processing = false;
     constructor() {
       this.requestAnimationFrame = _Scheduler.requestAnimationFrame;
     }
     addFiber(fiber) {
       this.tasks.add(fiber.root);
-    }
-    scheduleDestroy(node) {
-      this.cancelledNodes.add(node);
-      if (this.frame === 0) {
-        this.frame = this.requestAnimationFrame(() => this.processTasks());
-      }
     }
     /**
      * Process all current tasks. This only applies to the fibers that are ready.
@@ -3613,10 +3974,6 @@ ${issueStrings}`);
       }
       this.processing = true;
       this.frame = 0;
-      for (let node of this.cancelledNodes) {
-        node._destroy();
-      }
-      this.cancelledNodes.clear();
       for (let fiber of this.tasks) {
         if (fiber.root !== fiber) {
           this.tasks.delete(fiber);
@@ -3635,7 +3992,7 @@ ${issueStrings}`);
           if (!hasError) {
             fiber.complete();
           }
-          if (fiber.appliedToDom) {
+          if (fiber.renderState & APPLIED_TO_DOM) {
             this.tasks.delete(fiber);
           }
         }
@@ -3711,7 +4068,7 @@ ${issueStrings}`);
     const n = parseFloat(val);
     return isNaN(n) ? val : n;
   }
-  function shallowEqual(l1, l2) {
+  function shallowEqual2(l1, l2) {
     for (let i = 0, l = l1.length; i < l; i++) {
       if (l1[i] !== l2[i]) {
         return false;
@@ -3757,7 +4114,7 @@ ${issueStrings}`);
     }
     return toggler(safeKey, block);
   }
-  function createRef(ref2) {
+  function createRef(ref2, node) {
     if (!ref2) {
       throw new OwlError(`Ref is undefined or null`);
     }
@@ -3772,6 +4129,9 @@ ${issueStrings}`);
       remove2 = atom ? (prevEl) => {
         if (atom.value === prevEl) ref2.set(null);
       } : () => ref2.set(null);
+      if (atom) {
+        node.trackRef(ref2, atom);
+      }
     } else {
       throw new OwlError(
         `Ref should implement either a 'set' function or 'add' and 'delete' functions`
@@ -3949,7 +4309,7 @@ ${issueStrings}`);
     callSlot,
     withKey,
     prepareList,
-    shallowEqual,
+    shallowEqual: shallowEqual2,
     toNumber,
     LazyValue,
     safeOutput,
@@ -4113,6 +4473,16 @@ ${issueStrings}`);
       let error = null;
       try {
         node = new ComponentNode(Root, props2, this, null, null);
+        const subConfig = config3;
+        if (subConfig.pluginManager) {
+          node.pluginManager = subConfig.pluginManager;
+        }
+        if (subConfig.onError) {
+          nodeErrorHandlers.set(node, [subConfig.onError]);
+        }
+        if (subConfig.host) {
+          subRootHosts.set(node, subConfig.host);
+        }
       } catch (e) {
         error = e;
         reject(e);
@@ -4173,14 +4543,15 @@ ${issueStrings}`);
         return promise;
       };
       const root = {
-        node,
+        get prepared() {
+          return fiber ? fiber.counter === 0 : false;
+        },
         promise,
         prepare,
         mount: mount3,
         destroy: () => {
           this.roots.delete(root);
           node?.destroy();
-          this.scheduler.processTasks();
         }
       };
       this.roots.add(root);
@@ -4191,7 +4562,8 @@ ${issueStrings}`);
         root.destroy();
       }
       this.pluginManager.destroy();
-      this.scheduler.processTasks();
+      this.scheduler.tasks.clear();
+      this.scheduler.delayedRenders = [];
       apps.delete(this);
       this.destroyed = true;
     }
@@ -4201,6 +4573,9 @@ ${issueStrings}`);
   };
   async function mount2(C, target, config3 = {}) {
     const app = new App(config3);
+    if (app.pluginManager.status < STATUS.MOUNTED) {
+      await app.pluginManager.ready;
+    }
     const root = app.createRoot(C, config3);
     return root.mount(target, config3);
   }
@@ -4274,12 +4649,12 @@ ${issueStrings}`);
     }
     handlers.push(callback.bind(scope.component));
   }
-  function staticProp(key, type, ...args) {
+  function staticProp(key, type) {
     const node = getComponentScope();
-    const hasDefault = args.length > 0;
+    const defaultFactory = getDefault(type);
     const propValue = node.props[key];
     if (node.app.dev) {
-      if (type !== void 0 && (!hasDefault || propValue !== void 0)) {
+      if (type !== void 0 && (!defaultFactory || propValue !== void 0)) {
         assertType(propValue, type, `Invalid prop '${key}' in '${node.componentName}'`);
       }
       node.willUpdateProps.push((nextProps) => {
@@ -4290,37 +4665,32 @@ ${issueStrings}`);
         }
       });
     }
-    return propValue === void 0 && hasDefault ? args[0] : propValue;
+    return propValue === void 0 && defaultFactory ? defaultFactory() : propValue;
   }
   function componentType() {
     return constructorType(Component);
   }
-  var types2 = { ...types, component: componentType };
-  function validateDefaults(schema) {
-    const validation = {};
-    if (Array.isArray(schema)) {
-      for (const key of schema) {
-        if (key.endsWith("?")) {
-          validation[key] = types2.any();
-        }
-      }
-    } else {
-      for (const key in schema) {
-        if (key.endsWith("?")) {
-          validation[key] = schema[key];
+  var types2 = {
+    ...types,
+    component: componentType
+  };
+  function makeProps(type) {
+    const node = getComponentScope();
+    const { app, componentName } = node;
+    let defaults = null;
+    if (type && !Array.isArray(type)) {
+      for (const key in type) {
+        const factory = getDefault(type[key]);
+        if (factory) {
+          (defaults ||= {})[key] = factory();
         }
       }
     }
-    return types2.strictObject(validation);
-  }
-  function makeProps(type, defaults) {
-    const node = getComponentScope();
-    const { app, componentName } = node;
     if (defaults) {
       node.defaultProps = Object.assign(node.defaultProps || {}, defaults);
     }
     function resolveValue(props2, key) {
-      if (props2[key] === void 0 && defaults) {
+      if (props2[key] === void 0 && defaults && key in defaults) {
         return defaults[key];
       }
       return props2[key];
@@ -4346,16 +4716,20 @@ ${issueStrings}`);
       }
     }
     if (type) {
-      const keys = (Array.isArray(type) ? type : Object.keys(type)).map(
-        (key) => key.endsWith("?") ? key.slice(0, -1) : key
-      );
+      const keys = Array.isArray(type) ? type : Object.keys(type);
       defineProps(keys);
       node.propsUpdated.push(() => updateSignals(keys));
       if (app.dev) {
         if (defaults) {
+          const defaultedShape = {};
+          for (const key in type) {
+            if (key in defaults) {
+              defaultedShape[key] = type[key];
+            }
+          }
           assertType(
             defaults,
-            validateDefaults(type),
+            types2.object(defaultedShape),
             `Invalid component default props (${componentName})`
           );
         }
@@ -4371,13 +4745,6 @@ ${issueStrings}`);
         for (const k in props2) {
           if (k.charCodeAt(0) !== 1) {
             keys2.push(k);
-          }
-        }
-        if (defaults) {
-          for (const k in defaults) {
-            if (!(k in props2)) {
-              keys2.push(k);
-            }
           }
         }
         return keys2;
@@ -4404,7 +4771,8 @@ ${issueStrings}`);
     }
     return result;
   }
-  var props = Object.assign(makeProps, { static: staticProp });
+  var useProps = Object.assign(makeProps, { static: staticProp });
+  var props = useProps;
   var ErrorBoundary = class extends Component {
     static template = xml`
     <t t-if="this.props.error()">
@@ -4414,7 +4782,7 @@ ${issueStrings}`);
       <t t-call-slot="default"/>
     </t>
   `;
-    props = props({ "error?": types2.signal() }, { error: signal(null) });
+    props = props({ error: types2.signal().optional(() => signal(null)) });
     setup() {
       onError((e) => this.props.error.set(e));
     }
@@ -4445,9 +4813,22 @@ ${issueStrings}`);
         if (!target) {
           return;
         }
-        root = app.createRoot(PortalContent, { props: { slots } });
-        root.node.pluginManager = portalNode.pluginManager;
-        nodeErrorHandlers.set(root.node, [forwardErrorToParent(portalNode)]);
+        root = app.createRoot(PortalContent, {
+          props: { slots },
+          // Forward the plugin chain from this Portal (createRoot defaults
+          // sub-roots to the app-level plugin manager) so `providePlugins`
+          // contributions from ancestors are visible inside the portaled content.
+          pluginManager: portalNode.pluginManager,
+          // Route errors from the portaled subtree back through Portal's parent
+          // chain so consumer `onError` handlers still catch them. Without this,
+          // sub-root errors would propagate to app._handleError and tear down
+          // the whole app.
+          onError: forwardErrorToParent(portalNode),
+          // Let the scheduler see through the sub-root boundary, so renders of
+          // the portaled content yield to in-flight ancestor renders (e.g. a
+          // t-if about to remove this Portal).
+          host: portalNode
+        });
         root.mount(target);
         return tearDown;
       });
@@ -4475,20 +4856,29 @@ ${issueStrings}`);
       <t t-call-slot="fallback"/>
     </t>
   `;
-    props = props({ slots: types2.object(["default", "fallback?"]) });
+    props = props({ slots: types2.object({ default: types2.any(), fallback: types2.any().optional() }) });
     prepared = signal(false);
     mounted = signal(false);
     subRootMounted = false;
     setup() {
       const suspenseNode = this.__owl__;
       const root = suspenseNode.app.createRoot(SuspenseHost, {
-        props: { slots: this.props.slots }
+        props: { slots: this.props.slots },
+        // Thread the plugin manager so `providePlugins` contributions from
+        // ancestors are visible inside the default slot. (createRoot defaults
+        // sub-roots to the app-level plugin manager; override here.) Destroy
+        // cascade is handled explicitly below via `onWillDestroy`.
+        pluginManager: suspenseNode.pluginManager,
+        // Route errors from the sub-root back into Suspense's parent chain so
+        // consumer `onError` handlers still catch descendant failures.
+        onError: forwardErrorToParent(suspenseNode),
+        // Let the scheduler see through the sub-root boundary, so renders of
+        // the default slot yield to in-flight ancestor renders (e.g. a t-if
+        // about to remove this Suspense).
+        host: suspenseNode
       });
-      root.node.pluginManager = suspenseNode.pluginManager;
-      nodeErrorHandlers.set(root.node, [forwardErrorToParent(suspenseNode)]);
       root.prepare().then(() => this.prepared.set(true));
-      const fiber = root.node.fiber;
-      if (fiber && fiber.counter === 0) {
+      if (root.prepared) {
         this.prepared.set(true);
       }
       onMounted(() => this.mounted.set(true));
@@ -4531,8 +4921,8 @@ ${issueStrings}`);
   };
   var __info__ = {
     version: App.version,
-    date: "2026-06-05T08:48:39.601Z",
-    hash: "06699124",
+    date: "2026-08-24T09:17:57.949Z",
+    hash: "738b81a7",
     url: "https://github.com/odoo/owl"
   };
 
@@ -6063,7 +6453,7 @@ ${code}`;
       if (ast.ref) {
         const refExpr = compileExpr(ast.ref);
         this.helpers.add("createRef");
-        const setRefStr = `createRef(${refExpr})`;
+        const setRefStr = `createRef(${refExpr}, node)`;
         const idx = block.insertData(setRefStr, "ref");
         attrs["block-ref"] = String(idx);
       }

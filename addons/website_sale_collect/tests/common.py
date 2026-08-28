@@ -7,6 +7,14 @@ from odoo.addons.website_sale_stock.tests.common import WebsiteSaleStockCommon
 
 
 class ClickAndCollectCommon(PaymentCustomCommon, WebsiteSaleStockCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -17,6 +25,8 @@ class ClickAndCollectCommon(PaymentCustomCommon, WebsiteSaleStockCommon):
         # Create the in-store delivery method.
         cls.dm_product = cls._prepare_carrier_product(list_price=0.0)
         cls.provider = cls._prepare_provider(code="custom", custom_mode="on_site")
+        cls.payment_method = cls.provider._get_pm_from_code("pay_on_site")
+        cls.payment_method.active = True
         cls.in_store_dm = cls._prepare_carrier(
             cls.dm_product,
             fixed_price=0.0,
@@ -26,13 +36,14 @@ class ClickAndCollectCommon(PaymentCustomCommon, WebsiteSaleStockCommon):
             is_published=True,
         )
 
-    def _create_in_store_delivery_order(self, **values):
+    @classmethod
+    def _create_in_store_delivery_order(cls, **values):
         default_values = {
-            "partner_id": self.partner.id,
-            "website_id": self.website.id,
+            "partner_id": cls.partner.id,
+            "website_id": cls.website.id,
             "order_line": [
-                Command.create({"product_id": self.storable_product.id, "product_uom_qty": 5.0})
+                Command.create({"product_id": cls.storable_product.id, "product_uom_qty": 5.0})
             ],
-            "carrier_id": self.in_store_dm.id,
+            "carrier_id": cls.in_store_dm.id,
         }
-        return self.env["sale.order"].create(dict(default_values, **values))
+        return cls.env["sale.order"].create(dict(default_values, **values))

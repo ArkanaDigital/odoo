@@ -1,5 +1,11 @@
 import { describe, expect, test } from "@odoo/hoot";
-import { makeServerError, mockService, serverState, fields } from "@web/../tests/web_test_helpers";
+import {
+    makeServerError,
+    mockService,
+    serverState,
+    fields,
+    getService,
+} from "@web/../tests/web_test_helpers";
 import { user } from "@web/core/user";
 
 import {
@@ -25,6 +31,7 @@ import { createSpreadsheetWithList } from "@spreadsheet/../tests/helpers/list";
 import { createModelWithDataSource } from "@spreadsheet/../tests/helpers/model";
 import { CommandResult } from "@spreadsheet/o_spreadsheet/cancelled_reason";
 import { LoadingDataError } from "@spreadsheet/o_spreadsheet/errors";
+import { toRangeData } from "@spreadsheet/../tests/helpers/zones";
 
 import { animationFrame } from "@odoo/hoot-mock";
 import * as spreadsheet from "@odoo/o-spreadsheet";
@@ -298,14 +305,14 @@ test("Can use property fields", async () => {
     });
     Partner._fields.partner_properties = propertyField;
 
-    const { model, env } = await createModelWithDataSource({
+    const { model } = await createModelWithDataSource({
         serverData: { models: data },
     });
 
     const columns = [];
     for (const col of Object.keys(propertiesValues)) {
         const path = `partner_properties.${col}`;
-        const fieldInfo = await env.services.field.loadPath("partner", path);
+        const fieldInfo = await getService("field").loadPath("partner", path);
         columns.push({ name: path, string: fieldInfo.modelsInfo.at(-1).fieldDefs[col].string });
     }
 
@@ -1431,6 +1438,27 @@ test("isListUnused getter", async () => {
     expect(model.getters.isListUnused("1")).toBe(true);
 
     setCellContent(model, "A2", "[ds](odoo-data-source://list/1)");
+    expect(model.getters.isListUnused("1")).toBe(false);
+});
+
+test("isListUnused getter also checks for list used outside of cells", async () => {
+    const { model } = await createSpreadsheetWithList();
+    const sheetId = model.getters.getActiveSheetId();
+    expect(model.getters.isListUnused("1")).toBe(false);
+
+    createSheet(model, { sheetId: "sh2" });
+    deleteSheet(model, sheetId);
+    expect(model.getters.isListUnused("1")).toBe(true);
+
+    model.dispatch("ADD_DATA_VALIDATION_RULE", {
+        sheetId: "sh2",
+        ranges: [toRangeData("sh2", "A1:A2")],
+        rule: {
+            id: "dvId",
+            criterion: { type: "isEqual", values: [`=ODOO.LIST.VALUE(1,1,"active")`] },
+            isBlocking: false,
+        },
+    });
     expect(model.getters.isListUnused("1")).toBe(false);
 });
 

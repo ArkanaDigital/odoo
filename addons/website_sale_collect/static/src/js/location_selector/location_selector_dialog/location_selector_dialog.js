@@ -1,10 +1,11 @@
-import { proxy } from "@odoo/owl";
+import { proxy, t } from "@odoo/owl";
 import { patch } from '@web/core/utils/patch';
 import { SelectMenu } from '@web/core/select_menu/select_menu';
 import { _t } from '@web/core/l10n/translation';
 
 import {
-    LocationSelectorDialog
+    LocationSelectorDialog,
+    locationSelectorDialogProps,
 } from '@website_sale_stock/js/location_selector/location_selector_dialog/location_selector_dialog';
 
 patch(LocationSelectorDialog, {
@@ -12,14 +13,14 @@ patch(LocationSelectorDialog, {
         ...LocationSelectorDialog.components,
         SelectMenu,
     },
-    props: {
-        ...LocationSelectorDialog.props,
-        productId: { type: Number, optional: true },
-        isProductPage: { type: Boolean, optional: true },
-        uomId: { type: Number, optional: true },
-        countryCode: { type: String, optional: true},
-        deliveryMethodType: { type: String, optional: true },
-    },
+});
+
+Object.assign(locationSelectorDialogProps, {
+    productId: t.number().optional(),
+    isProductPage: t.boolean().optional(),
+    uomId: t.number().optional(),
+    countryCode: t.string().optional(),
+    deliveryMethodType: t.string().optional(),
 });
 
 patch(LocationSelectorDialog.prototype, {
@@ -125,9 +126,12 @@ patch(LocationSelectorDialog.prototype, {
         this.state.locations = locations.pickup_location_data;
         this.state.countries = locations.country_data;
         if (this.state.countries.length && !this.state.selectedCountryData.code) {
-            this.state.selectedCountryData = this.props.countryCode ? this.state.countries.find(
+            const matchingCountry = this.props.countryCode && this.state.countries.find(
                 (country) => country.value.code === this.props.countryCode
-            ).value : this.state.countries[0].value;
+            );
+            this.state.selectedCountryData = matchingCountry
+                ? matchingCountry.value
+                : this.state.countries[0].value;
         }
     },
 });

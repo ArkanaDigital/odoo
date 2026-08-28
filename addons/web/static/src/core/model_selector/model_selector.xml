@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <templates>
     <t t-name="web.ModelSelector">
-        <div class="o_model_selector" t-custom-ref="autocomplete_container">
-            <input t-if="this.env.isSmall"
+        <div class="o_model_selector">
+            <input t-if="this.uiService.isSmall"
                 type="text"
                 class="o_input"
                 readonly=""

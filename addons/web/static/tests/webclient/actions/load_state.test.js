@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { queryAllAttributes, queryAllTexts, queryFirst, runAllTimers } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Component, onMounted, xml } from "@odoo/owl";
+import { Component, onMounted, useProps, xml } from "@odoo/owl";
 import {
     contains,
     defineActions,
@@ -9,7 +9,6 @@ import {
     defineModels,
     fields,
     getService,
-    makeMockEnv,
     models,
     mountWithCleanup,
     mountWebClient,
@@ -19,6 +18,7 @@ import {
     toggleMenuItem,
     toggleSearchBarMenu,
     serverState,
+    makeTestApp,
 } from "@web/../tests/web_test_helpers";
 
 import { browser } from "@web/core/browser/browser";
@@ -190,7 +190,7 @@ class TestClientAction extends Component {
             ClientAction_<t t-out="this.props.action.params?.description"/>
         </div>
     `;
-    static props = ["*"];
+    props = useProps();
 
     setup() {
         onMounted(() => {
@@ -281,7 +281,7 @@ describe(`new urls`, () => {
         class ClientAction extends Component {
             static template = xml`<div class="o_client_action_test">Hello World</div>`;
             static path = "test";
-            static props = ["*"];
+            props = useProps();
         }
         actionRegistry.add("HelloWorldTest", ClientAction);
         browser.sessionStorage.setItem("menu_id", 2);
@@ -300,10 +300,10 @@ describe(`new urls`, () => {
         logHistoryInteractions();
         stepAllNetworkCalls();
 
-        const env = await makeMockEnv();
+        await makeTestApp();
         expect.verifySteps(["/web/webclient/translations", "/web/webclient/load_menus"]);
 
-        await mountWithCleanup(WebClient, { env });
+        await mountWithCleanup(WebClient);
         expect(browser.location.href).toBe("http://example.com/odoo/action-1001", {
             message: "url did not change",
         });
@@ -322,10 +322,10 @@ describe(`new urls`, () => {
         });
         stepAllNetworkCalls();
 
-        const env = await makeMockEnv();
+        await makeTestApp();
         expect.verifySteps(["/web/webclient/translations", "/web/webclient/load_menus"]);
 
-        await mountWithCleanup(WebClient, { env });
+        await mountWithCleanup(WebClient);
         user.updateContext({ an_extra_context: 22 });
         expect(browser.location.href).toBe("http://example.com/odoo/action-1001", {
             message: "url did not change",
@@ -343,10 +343,10 @@ describe(`new urls`, () => {
         logHistoryInteractions();
         stepAllNetworkCalls();
 
-        const env = await makeMockEnv();
+        await makeTestApp();
         expect.verifySteps(["/web/webclient/translations", "/web/webclient/load_menus"]);
 
-        await mountWithCleanup(WebClient, { env });
+        await mountWithCleanup(WebClient);
         expect(browser.location.href).toBe("http://example.com/odoo/__test__client__action__", {
             message: "url did not change",
         });
@@ -456,7 +456,7 @@ describe(`new urls`, () => {
     test(`properly load client actions`, async () => {
         class ClientAction extends Component {
             static template = xml`<div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
         }
         actionRegistry.add("HelloWorldTest", ClientAction);
 
@@ -481,7 +481,7 @@ describe(`new urls`, () => {
     test(`properly load client actions with path`, async () => {
         class ClientAction extends Component {
             static template = xml`<div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
             static path = "my-action";
         }
         actionRegistry.add("HelloWorldTest", ClientAction);
@@ -514,7 +514,7 @@ describe(`new urls`, () => {
     test(`properly load client actions with resId`, async () => {
         class ClientAction extends Component {
             static template = xml`<ControlPanel/><div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
             static displayName = "Client Action DisplayName";
             static components = { ControlPanel };
 
@@ -550,7 +550,7 @@ describe(`new urls`, () => {
     test(`properly load client actions with updateActionState`, async () => {
         class ClientAction extends Component {
             static template = xml`<ControlPanel/><div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
             static displayName = "Client Action DisplayName";
             static components = { ControlPanel };
 
@@ -587,7 +587,7 @@ describe(`new urls`, () => {
     test(`properly load client actions with resId and path (1)`, async () => {
         class ClientAction extends Component {
             static template = xml`<ControlPanel/><div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
             static displayName = "Client Action DisplayName";
             static components = { ControlPanel };
             static path = "my_client";
@@ -622,7 +622,7 @@ describe(`new urls`, () => {
     test(`properly load client actions with resId and path (2)`, async () => {
         class ClientAction extends Component {
             static template = xml`<ControlPanel/><div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
             static displayName = "Client Action DisplayName";
             static components = { ControlPanel };
             static path = "my_client";
@@ -657,7 +657,7 @@ describe(`new urls`, () => {
     test(`properly load client actions with LazyTranslatedString displayName`, async () => {
         class ClientAction extends Component {
             static template = xml`<ControlPanel/><div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
             static displayName = _t("translatable displayname");
             static components = { ControlPanel };
             static path = "my_client";
@@ -1263,10 +1263,10 @@ describe(`new urls`, () => {
         logHistoryInteractions();
         stepAllNetworkCalls();
 
-        const env = await makeMockEnv();
+        await makeTestApp();
         expect.verifySteps(["/web/webclient/translations", "/web/webclient/load_menus"]);
 
-        await mountWithCleanup(WebClient, { env });
+        await mountWithCleanup(WebClient);
         await animationFrame();
         await animationFrame();
 
@@ -1580,6 +1580,63 @@ describe(`new urls`, () => {
             'get current_action-{"type":"ir.actions.act_window","res_model":"partner","views":[[false,"list"],[666,"form"]]}',
             'set current_state-{"actionStack":[{"displayName":"First record","model":"partner","view_type":"form","resId":1}],"resId":1,"model":"partner"}',
             'set current_action-{"type":"ir.actions.act_window","res_model":"partner","views":[[false,"list"],[666,"form"]]}',
+            "set current_lang-en",
+        ]);
+    });
+
+    test("don't reload actions from sessionStorage (form view)", async () => {
+        patchWithCleanup(browser.sessionStorage, {
+            setItem(key, value) {
+                expect.step(`set ${key}-${value}`);
+                super.setItem(key, value);
+            },
+            getItem(key) {
+                const res = super.getItem(key);
+                expect.step(`get ${key}-${res}`);
+                return res;
+            },
+        });
+
+        // Prepare a stored action
+        browser.sessionStorage.setItem(
+            "current_action",
+            JSON.stringify({
+                id: 9001,
+                name: "Partners",
+                type: "ir.actions.act_window",
+                res_model: "partner",
+                views: [
+                    [false, "list"],
+                    [666, "form"],
+                ],
+                context: {},
+            })
+        );
+
+        defineActions([
+            {
+                id: 9001,
+                name: "Partners",
+                type: "ir.actions.act_window",
+                res_model: "partner",
+                views: [
+                    [false, "list"],
+                    [666, "form"],
+                ],
+            },
+        ]);
+
+        redirect("/odoo/m-partner/1");
+        await mountWebClient();
+        expect(`.o_form_view`).toHaveCount(1);
+        expect.verifySteps([
+            'set current_action-{"id":9001,"name":"Partners","type":"ir.actions.act_window","res_model":"partner","views":[[false,"list"],[666,"form"]],"context":{}}',
+            "get menu_id-null",
+            "get current_lang-null",
+            "get current_state-null",
+            'get current_action-{"id":9001,"name":"Partners","type":"ir.actions.act_window","res_model":"partner","views":[[false,"list"],[666,"form"]],"context":{}}',
+            'set current_state-{"actionStack":[{"displayName":"First record","model":"partner","view_type":"form","resId":1}],"resId":1,"model":"partner"}',
+            'set current_action-{"res_model":"partner","res_id":1,"type":"ir.actions.act_window","views":[[false,"form"]]}',
             "set current_lang-en",
         ]);
     });
@@ -2000,10 +2057,10 @@ describe(`legacy urls`, () => {
         redirect("/web#action=1001");
         stepAllNetworkCalls();
 
-        const env = await makeMockEnv();
+        await makeTestApp();
         expect.verifySteps(["/web/webclient/translations", "/web/webclient/load_menus"]);
 
-        await mountWebClient({ env });
+        await mountWebClient();
         expect.verifySteps(["/web/action/load"]);
     });
 
@@ -2011,10 +2068,10 @@ describe(`legacy urls`, () => {
         redirect("/web#action=__test__client__action__");
         stepAllNetworkCalls();
 
-        const env = await makeMockEnv();
+        await makeTestApp();
         expect.verifySteps(["/web/webclient/translations", "/web/webclient/load_menus"]);
 
-        await mountWebClient({ env });
+        await mountWebClient();
         expect.verifySteps([]);
     });
 
@@ -2082,7 +2139,7 @@ describe(`legacy urls`, () => {
     test(`properly load client actions`, async () => {
         class ClientAction extends Component {
             static template = xml`<div class="o_client_action_test">Hello World</div>`;
-            static props = ["*"];
+            props = useProps();
         }
         actionRegistry.add("HelloWorldTest", ClientAction);
 

@@ -113,8 +113,8 @@
             <input
                 id="o_location_selector_search"
                 class="search-query form-control oe_search_box border-0 text-bg-light"
-                t-custom-model.lazy="this.state.zipCode"
-                placeholder="Your postal code"
+                t-model.proxy.lazy="this.state.zipCode"
+                placeholder="Zip or City"
             />
             <button
                 t-on-click="this.debouncedSearchButton"
@@ -122,7 +122,7 @@
                 title="Search"
                 class="btn btn-light"
             >
-                <i class="oi oi-search"/>
+                <i class="oi" data-icon="search"/>
             </button>
         </div>
     </t>

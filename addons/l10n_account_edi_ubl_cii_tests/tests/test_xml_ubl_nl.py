@@ -9,6 +9,8 @@ from lxml import etree
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestUBLNL(TestUBLCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @TestUBLCommon.setup_country('nl')
     def setUpClass(cls):
@@ -24,8 +26,8 @@ class TestUBLNL(TestUBLCommon):
             'email': 'info@outlook.nl',
             'country_id': cls.env.ref('base.nl').id,
             'bank_ids': [(0, 0, {'account_number': 'NL000099998B57', 'allow_out_payment': True})],
-            'peppol_eas': '0106',
-            'peppol_endpoint': '77777677',
+            'routing_identifier': '0106:77777677',
+            'additional_identifiers': {'NL_KVK': '77777677'},
             'ref': 'ref_partner_1',
             'invoice_edi_format': 'nlcius',
         })
@@ -38,9 +40,8 @@ class TestUBLNL(TestUBLCommon):
             'vat': 'NL41452B11',
             'country_id': cls.env.ref('base.nl').id,
             'bank_ids': [(0, 0, {'account_number': 'NL93999574162167', 'allow_out_payment': True})],
-            'peppol_eas': '9944',
-            'peppol_endpoint': 'NL41452B11',
-            'company_registry': '123456789',
+            'routing_identifier': '9944:NL41452B11',
+            'additional_identifiers': {'NL_KVK': '12345678'},
             'ref': 'ref_partner_2',
             'invoice_edi_format': 'nlcius',
         })

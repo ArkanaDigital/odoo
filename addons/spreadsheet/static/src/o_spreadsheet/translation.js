@@ -3,7 +3,8 @@ import { _t, appTranslateFn } from "@web/core/l10n/translation";
 import { OdooUIPlugin } from "@spreadsheet/plugins";
 
 const { arg, toString } = spreadsheet.helpers;
-const { functionRegistry, featurePluginRegistry } = spreadsheet.registries;
+const { functionRegistry, featurePluginRegistry, NonSquishableFunctionRegistry } =
+    spreadsheet.registries;
 
 /**
  * Standard spreadsheet dashboards defined in the source code need to be translated.
@@ -40,8 +41,10 @@ functionRegistry.add("_t", {
     description: _t("Get the translated value of the given string"),
     args: [arg("value (string)", _t("Value to translate."))],
     compute: function (value) {
-        return this.getters.dynamicTranslate(toString(value));
+        return { value: this.getters.dynamicTranslate(toString(value)) };
     },
     returns: ["STRING"],
     hidden: true,
 });
+
+NonSquishableFunctionRegistry.add("_t", "_t");

@@ -1,3 +1,5 @@
+import { untrack } from "@odoo/owl";
+
 import { registry } from "@web/core/registry";
 
 /** @typedef {import("./record").Record} Record */
@@ -14,7 +16,6 @@ export const OR_SYM = Symbol("or");
 const AND_SYM = Symbol("and");
 export const IS_RECORD_SYM = Symbol("isRecord");
 export const IS_FIELD_SYM = Symbol("isField");
-export const IS_DELETED_SYM = Symbol("isDeleted");
 export const STORE_SYM = Symbol("store");
 
 export function AND(...args) {
@@ -24,12 +25,14 @@ export function OR(...args) {
     return [OR_SYM, ...args];
 }
 
+const COMMANDS = new Set(["ADD", "DELETE", "ADD.noinv", "DELETE.noinv", "REPLACE"]);
+
 export function isCommandList(data) {
     return Array.isArray(data) && data.length > 0 && data.every((cmd) => isCommand(cmd));
 }
 
 export function isCommand(data) {
-    return ["ADD", "DELETE", "ADD.noinv", "DELETE.noinv", "REPLACE"].includes(data?.[0]);
+    return COMMANDS.has(data?.[0]);
 }
 
 /**
@@ -135,8 +138,6 @@ export const fields = {
      *   from the relation.
      * @param {(this: Record) => void} [param1.onUpdate] function that is called when the field value is updated.
      *   This is called at least once at record creation.
-     * @param {(this: Record, r1: import("models").Models[M], r2: import("models").Models[M]) => number} [param1.sort] if defined, this field
-     *   is automatically sorted by this function.
      * @returns {import("models").Models[M][]}
      */
     Many(targetModel, param1) {
@@ -156,8 +157,8 @@ export const fields = {
      *   behaviour of OWL reactive.
      * @param {(this: Record) => void} [param1.onUpdate] function that is called when the field value is updated.
      *   This is called at least once at record creation.
-     * @param {(this: Record, Object, Object) => number} [param1.sort] if defined, this field is automatically sorted
-     *   by this function.
+     * @param {boolean} [param1.asProxy=false] a read returns the value as a proxy, so that
+     *   mutating its content is observed too. Only for an object, an array, a Map or a Set.
      * @param {'datetime'|'date'} [param1.type] if defined, automatically transform to a
      * specific type.
      * @returns {T}
@@ -242,4 +243,30 @@ export function makeRecordFieldLocalId(recordLocalId, fieldName) {
     return `${recordLocalId}:${fieldName}`;
 }
 
-export const technicalKeysOnRecords = ["_", "_proxy", "_proxyInternal", "_raw", "env", "Model"];
+export const technicalKeysOnRecords = new Set(["_", "_proxy", "_raw", "env", "Model"]);
+
+/**
+ * Wraps the given methods so they run untracked: reactive reads inside them
+ * never subscribe the caller's computation. Applied once at module load on a
+ * class prototype (or the class itself for statics); the wrapper runs on the
+ * call receiver. Defined non-enumerable, like the class methods it shadows.
+ *
+ * @param {Object} object
+ * @param {string[]} names
+ */
+export function untrackFunctions(object, names) {
+    for (const name of names) {
+        const originalFn = object[name];
+        Object.defineProperty(object, name, {
+            configurable: true,
+            enumerable: false,
+            value: function untrackFunctionsValue(...args) {
+                const self = this;
+                return untrack(function untrackFunctionsValueUntracked() {
+                    return originalFn.apply(self, args);
+                });
+            },
+            writable: true,
+        });
+    }
+}

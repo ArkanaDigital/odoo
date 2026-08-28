@@ -147,7 +147,7 @@ class PaymentTransaction(models.Model):
         payment_method_type = payment_data.get("payment_type", "")
         if payment_method_type == "card":
             payment_method_type = payment_data.get("card", {}).get("type").lower()
-        payment_method = self.env["payment.method"]._get_from_code(
+        payment_method = self.provider_id._get_pm_from_code(
             payment_method_type, mapping=const.PAYMENT_METHODS_MAPPING
         )
         self.payment_method_id = payment_method or self.payment_method_id
@@ -165,13 +165,7 @@ class PaymentTransaction(models.Model):
         elif payment_status in const.PAYMENT_STATUS_MAPPING["cancel"]:
             self._set_canceled()
         elif payment_status in const.PAYMENT_STATUS_MAPPING["error"]:
-            self._set_error(
-                self.env._(
-                    "An error occurred during the processing of your payment (status %s). Please"
-                    " try again.",
-                    payment_status,
-                )
-            )
+            self._set_error("")
         else:
             _logger.warning(
                 "Received data with invalid payment status (%s) for transaction %s.",

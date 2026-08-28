@@ -68,7 +68,7 @@ class PaymentTransaction(models.Model):
 
         # Update the payment method.
         payment_method_code = payment_data.get("brq_payment_method")
-        payment_method = self.env["payment.method"]._get_from_code(
+        payment_method = self.provider_id._get_pm_from_code(
             payment_method_code, mapping=const.PAYMENT_METHODS_MAPPING
         )
         self.payment_method_id = payment_method or self.payment_method_id
@@ -86,13 +86,7 @@ class PaymentTransaction(models.Model):
                 self.env._("Your payment was refused (code %s). Please try again.", status_code)
             )
         elif status_code in const.STATUS_CODES_MAPPING["error"]:
-            self._set_error(
-                self.env._(
-                    "An error occurred during processing of your payment (code %s). Please try"
-                    " again.",
-                    status_code,
-                )
-            )
+            self._set_error(self.env._("Code: %s", status_code))
         else:
             _logger.warning(
                 "Received data with invalid payment status (%s) for transaction %s.",

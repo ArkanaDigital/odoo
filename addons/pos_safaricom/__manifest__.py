@@ -5,14 +5,15 @@
     'depends': ['point_of_sale'],
     'data': [
         "views/pos_payment_method_views.xml",
-        'security/ir.model.access.csv',
+        'security/ir.access.csv',
+        'receipt/pos_order_receipt.xml',
     ],
     "assets": {
         "point_of_sale._assets_pos": [
             "pos_safaricom/static/src/**/*",
         ],
-        "web.assets_tests": [
-            "pos_safaricom/static/tests/tours/**/*",
+        "web.assets_unit_tests": [
+            "pos_safaricom/static/tests/unit/**/*",
         ],
     },
     "author": "Odoo S.A.",

@@ -1,51 +1,74 @@
-import { useComponent, useLayoutEffect } from "@web/owl2/utils";
 import { isContentEditable, isTextNode } from "@html_editor/utils/dom_info";
 import { rightPos } from "@html_editor/utils/position";
 import {
     generatePartnerMentionElement,
     generateRoleMentionElement,
     generateSpecialMentionElement,
-    generateChannelMentionElement,
 } from "@mail/utils/common/format";
-import { proxy, status } from "@odoo/owl";
+import { useSearch } from "@mail/utils/common/hooks";
+import { proxy, t, useProps, useScope } from "@odoo/owl";
+import { emojiType } from "@web/core/emoji_picker/emoji_loader";
 import { ConnectionAbortedError } from "@web/core/network/rpc";
 import { useService } from "@web/core/utils/hooks";
-import { useSearch } from "@mail/utils/common/hooks";
+import { useLayoutEffect } from "@web/owl2/utils";
 
 /**
- * @typedef {Object} Option
- * @property {string} [buttonClass]
- * @property {string} [classList]
- * @property {number} [group]
- * @property {boolean} [isSpecial]
- * @property {string} [label]
- * @property {string} [optionTemplate]
- * @property {string} [title]
- * @property {boolean} [unselectable]
- * @property {import("models").ResRole} [role]
- * @property {import("models").ResPartner} [partner]
- * @property {import("models").Thread} [thread]
- * @property {import("models").CannedResponse} [cannedResponse]
- * @property {import("@web/core/emoji_picker/emoji_picker").Emoji} [emoji]
- * @property {string} [help]
- * @property {string} [source]
+ * Delimiters that trigger suggestion lists in the composer.
+ *
+ * @typedef {typeof SUGGESTION_DELIMITERS[keyof typeof SUGGESTION_DELIMITERS]} SuggestionDelimiter
  */
+export const SUGGESTION_DELIMITERS = Object.freeze({
+    PARTNER: "@",
+    CANNED_RESPONSE: "::",
+    EMOJI: ":",
+    CHANNEL_COMMAND: "/",
+});
+
+/** @param {import("models").Store} store */
+export const optionType = (store) =>
+    t.object({
+        buttonClass: t.string().optional(),
+        cannedResponse: t.instanceOf(store["mail.canned.response"]).optional(),
+        classList: t.string().optional(),
+        emoji: emojiType.optional(),
+        group: t.any().optional(),
+        help: t.string().optional(),
+        isSpecial: t.boolean().optional(),
+        label: t.string().optional(),
+        optionTemplate: t.string().optional(),
+        partner: t.instanceOf(store["res.partner"]).optional(),
+        role: t.instanceOf(store["res.role"]).optional(),
+        source: t.string().optional(),
+        thread: t.instanceOf(store["mail.thread"]).optional(),
+        title: t.string().optional(),
+        unselectable: t.boolean().optional(),
+    });
+
+/** @typedef {import("@odoo/owl").StripType<ReturnType<typeof optionType>>} Option */
 
 /**
  * @typedef {import("models").ResPartner
  *   | import("models").ResRole
- *   | import("models").Thread
  *   | import("models").CannedResponse
  *   | import("@web/core/emoji_picker/emoji_picker").Emoji
  *   | import("@mail/core/common/store_service").SpecialMention} Suggestion
  */
 
 export class UseSuggestion {
-    constructor(comp) {
-        this.comp = comp;
-        this.suggestionService = useService("mail.suggestion");
+    props = useProps();
+    scope = useScope();
+    composerService = useService("mail.composer");
+    suggestionService = useService("mail.suggestion");
+
+    /**
+     * @param {import("@web/env").OdooEnv} env
+     * @param {import("@odoo/owl").ReactiveValue<import("@html_editor/editor").Editor>} editor
+     */
+    constructor(env, editor) {
+        this.env = env;
+        this.editor = editor;
         this.detection = proxy({
-            /** @type {string|undefined} */
+            /** @type {SuggestionDelimiter|undefined} */
             delimiter: undefined,
             /** @type {number|undefined} */
             position: undefined,
@@ -69,13 +92,10 @@ export class UseSuggestion {
             ]
         );
     }
-    /** @type {import("@mail/core/common/composer").Composer} */
-    comp;
     get composer() {
-        return this.comp.props.composer;
+        return this.props.composer;
     }
     clearRawMentions() {
-        this.composer.mentionedChannels.length = 0;
         this.composer.mentionedPartners.length = 0;
         this.composer.mentionedRoles.length = 0;
     }
@@ -94,8 +114,8 @@ export class UseSuggestion {
         let start = 0;
         let end = 0;
         let text = "";
-        if (this.comp.composerService.htmlEnabled) {
-            const selection = this.comp.editor.shared.selection.getEditableSelection();
+        if (this.composerService.htmlEnabled) {
+            const selection = this.editor().shared.selection.getEditableSelection();
             if (
                 !isTextNode(selection.startContainer) ||
                 !isContentEditable(selection.startContainer) ||
@@ -139,7 +159,7 @@ export class UseSuggestion {
         }
         const supportedDelimiters = this.suggestionService.getSupportedDelimiters(
             this.thread,
-            this.comp.env
+            this.env
         );
         for (const candidatePosition of candidatePositions) {
             if (candidatePosition < 0 || candidatePosition >= text.length) {
@@ -186,15 +206,18 @@ export class UseSuggestion {
     insert(option) {
         let position = this.detection.position + 1;
         if (
-            [":", "::"].includes(this.detection.delimiter) ||
-            (this.comp.composerService.htmlEnabled && this.detection.delimiter !== "/")
+            [SUGGESTION_DELIMITERS.EMOJI, SUGGESTION_DELIMITERS.CANNED_RESPONSE].includes(
+                this.detection.delimiter
+            ) ||
+            (this.composerService.htmlEnabled &&
+                this.detection.delimiter !== SUGGESTION_DELIMITERS.CHANNEL_COMMAND)
         ) {
             position = this.detection.position;
         }
-        if (this.comp.composerService.htmlEnabled) {
+        if (this.composerService.htmlEnabled) {
             const { startContainer, endContainer, endOffset } =
-                this.comp.editor.shared.selection.getEditableSelection();
-            this.comp.editor.shared.selection.setSelection({
+                this.editor().shared.selection.getEditableSelection();
+            this.editor().shared.selection.setSelection({
                 anchorNode: startContainer,
                 anchorOffset: position,
                 focusNode: endContainer,
@@ -205,18 +228,16 @@ export class UseSuggestion {
             this.composer.mentionedPartners.add({ id: option.partner.id });
         } else if (option.role) {
             this.composer.mentionedRoles.add(option.role);
-        } else if (option.channel) {
-            this.composer.mentionedChannels.add(option.channel.id);
         } else if (option.cannedResponse) {
             this.composer.cannedResponses.push(option.cannedResponse);
         }
-        if (this.comp.composerService.htmlEnabled) {
+        if (this.composerService.htmlEnabled) {
             const inlineElement = makeMentionFromOption(option, { thread: this.thread });
-            this.comp.editor.shared.dom.insert(inlineElement);
+            this.editor().shared.dom.insert(inlineElement);
             const [anchorNode, anchorOffset] = rightPos(inlineElement);
-            this.comp.editor.shared.selection.setSelection({ anchorNode, anchorOffset });
-            this.comp.editor.shared.dom.insert("\u00A0");
-            this.comp.editor.shared.history.commit();
+            this.editor().shared.selection.setSelection({ anchorNode, anchorOffset });
+            this.editor().shared.dom.insert("\u00A0");
+            this.editor().shared.history.commit();
         } else {
             // remove the user-typed search delimiter
             this.composer.composerText =
@@ -231,7 +252,7 @@ export class UseSuggestion {
             return undefined;
         }
         const { type, suggestions } = this.suggestionService.searchSuggestions(this.detection, {
-            composerType: this.comp.props.type,
+            composerType: this.props.type,
             thread: this.thread,
         });
         if (!suggestions.length) {
@@ -245,7 +266,7 @@ export class UseSuggestion {
     }
 
     async fetchSuggestions() {
-        if (!this.thread || status(this.comp) === "destroyed") {
+        if (!this.thread || this.scope.status === 3 /* destroyed */) {
             return;
         }
         if (!this.composer.store.self_user) {
@@ -257,7 +278,7 @@ export class UseSuggestion {
             await this.suggestionService.fetchSuggestions(this.detection, {
                 thread: this.thread,
                 abortSignal: this.abortController.signal,
-                composerType: this.comp.props.type,
+                composerType: this.props.type,
             });
         } catch (e) {
             if (e instanceof ConnectionAbortedError) {
@@ -265,7 +286,7 @@ export class UseSuggestion {
             }
             throw e;
         }
-        if (!this.thread || status(this.comp) === "destroyed") {
+        if (!this.thread || this.scope.status === 3 /* destroyed */) {
             return;
         }
         const { suggestions } = this.suggestionService.searchSuggestions(this.detection, {
@@ -275,8 +296,9 @@ export class UseSuggestion {
     }
 }
 
-export function useSuggestion() {
-    return new UseSuggestion(useComponent());
+/** @param {ConstructorParameters<typeof UseSuggestion>} args */
+export function useSuggestion(...args) {
+    return new UseSuggestion(...args);
 }
 
 /**
@@ -317,21 +339,16 @@ export function mapSuggestionsToOptions(type, suggestions, { thread } = {}) {
                     }
                     return {
                         group: 1,
-                        label: thread?.getPersonaName(suggestion) ?? suggestion.name,
+                        label:
+                            thread?.getPersonaName(suggestion) ||
+                            suggestion.displayName ||
+                            suggestion.email ||
+                            "",
                         partner: suggestion,
                         thread,
                         classList,
                     };
                 }),
-            };
-        case "discuss.channel":
-            return {
-                optionTemplate: "mail.Composer.suggestionChannel",
-                options: suggestions.map((suggestion) => ({
-                    label: suggestion.fullNameWithParent,
-                    channel: suggestion,
-                    classList,
-                })),
             };
         case "ChannelCommand":
             return {
@@ -380,8 +397,6 @@ export function makeMentionFromOption(option, { thread } = {}) {
         inlineElement = generateSpecialMentionElement(option.label);
     } else if (option.role) {
         inlineElement = generateRoleMentionElement(option.role);
-    } else if (option.channel) {
-        inlineElement = generateChannelMentionElement(option.channel);
     } else {
         inlineElement = document.createTextNode(option.label);
     }

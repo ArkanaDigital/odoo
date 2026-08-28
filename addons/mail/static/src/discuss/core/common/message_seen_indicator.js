@@ -1,5 +1,4 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, props, types, useListener } from "@odoo/owl";
+import { Component, signal, t, useListener, useProps } from "@odoo/owl";
 import { Dialog } from "@web/core/dialog/dialog";
 import { _t } from "@web/core/l10n/translation";
 import { useBackButton, useService } from "@web/core/utils/hooks";
@@ -9,19 +8,20 @@ class MessageSeenIndicatorDialog extends Component {
     static components = { Dialog };
     static template = "mail.MessageSeenIndicatorDialog";
 
+    contentRef = signal.ref();
+
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props({
-            "close?": types.function([]),
-            message: types.instanceOf(this.store["mail.message"].Class),
+        this.props = useProps({
+            close: t.function([]).optional(),
+            message: t.instanceOf(this.store["mail.message"]),
         });
-        this.contentRef = useRef("content");
         useListener(
             browser,
             "click",
             (ev) => {
-                if (!this.contentRef?.el.contains(ev.target)) {
+                if (!this.contentRef()?.contains(ev.target)) {
                     this.props.close();
                 }
             },
@@ -37,9 +37,9 @@ export class MessageSeenIndicator extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props({
-            "className?": types.string(),
-            message: types.instanceOf(this.store["mail.message"].Class),
+        this.props = useProps({
+            className: t.string().optional(),
+            message: t.instanceOf(this.store["mail.message"]),
         });
         this.dialog = useService("dialog");
     }

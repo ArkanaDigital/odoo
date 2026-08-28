@@ -1,4 +1,3 @@
-import { markup } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { stepUtils } from "@web_tour/tour_utils";
 
@@ -124,7 +123,7 @@ registry.category("web_tour.tours").add('project_todo_main_functions', {
 },
 {
     isActive: ["auto"],
-    trigger: ".ui-autocomplete > li > a:not(:has(i.fa))",
+    trigger: ".ui-autocomplete > li > a:not(:has(i.oi))",
     run: "click",
 }, {
     trigger: '.o_field_widget[name="name"] textarea',
@@ -164,7 +163,7 @@ registry.category("web_tour.tours").add('project_todo_main_functions', {
     run: "click",
 }, {
     trigger: ".o_form_view .breadcrumb-item:nth-child(1)",
-    content: markup`Let's go back to the <b>kanban view</b> to have an overview of your next tasks.`,
+    content: `Let's go back to the kanban view to have an overview of your next tasks.`,
     run: "click",
 }, {
     trigger: ".o_kanban_view",

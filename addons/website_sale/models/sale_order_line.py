@@ -14,6 +14,7 @@ class SaleOrderLine(models.Model):
     ]
 
     name_short = fields.Char(compute="_compute_name_short")
+    is_donation = fields.Boolean(compute="_compute_is_donation")
 
     # === COMPUTE METHODS ===#
 
@@ -91,6 +92,7 @@ class SaleOrderLine(models.Model):
             bool(self.product_id)
             and self.product_id._is_add_to_cart_allowed()
             and self._is_product_line()
+            and not self.combo_item_id
         )
 
     def _get_cart_display_price(self):
@@ -143,7 +145,45 @@ class SaleOrderLine(models.Model):
         :return: Whether the line is sellable or not.
         :rtype: bool
         """
-        return self.product_id.is_published and not self.is_delivery
+        return self.product_id._is_published() and not self.is_delivery
+
+    @api.depends("product_id")
+    def _compute_is_donation(self):
+        for line in self:
+            line.is_donation = bool(line.product_id and line.product_id._is_donation())
+
+    def _compute_price_unit(self):
+        """Override of `sale` to prevent recomputing the price of donation lines.
+
+        Donation lines have a user-selected price that must never be overwritten by pricelist rules.
+        """
+        donation_lines = self.filtered("is_donation")
+        super(SaleOrderLine, self - donation_lines)._compute_price_unit()
+
+    def _compute_discount(self):
+        donation_lines = self.filtered("is_donation")
+        donation_lines.discount = 0.0
+        super(SaleOrderLine, self - donation_lines)._compute_discount()
+
+    def _get_minimum_line_quantity(self):
+        """Return the lowest quantity this line can be set to without breaking the minimum
+        quantity required to purchase the product, considering the other lines of the same
+        product in the cart.
+        """
+        self.ensure_one()
+        return self.order_id._get_remaining_minimum_qty(
+            self.product_id, exclude_line=self, uom=self.product_uom_id
+        )
+
+    def _get_minimum_qty_reached_message(self):
+        """Return the message to display when the minimum quantity required to purchase the product
+        is not reached.
+        """
+        self.ensure_one()
+        return self.env._(
+            "The minimum quantity to purchase for this product is %(min_qty)s.",
+            min_qty=self.product_id.minimum_quantity,
+        )
 
     def _get_max_line_qty(self):
         max_quantity = self._get_max_available_qty()
@@ -176,6 +216,16 @@ class SaleOrderLine(models.Model):
             available=available_quantity,
         )
 
+    def _get_shop_warning_minimum_qty(self, remaining_min_qty):
+        self.ensure_one()
+        return self.env._(
+            "%(product_name)s requires a minimum of %(min_qty)g; please add %(missing_qty)g more"
+            " to your cart.",
+            product_name=self.product_id.display_name,
+            min_qty=self.product_id.minimum_quantity,
+            missing_qty=remaining_min_qty,
+        )
+
     def _check_availability(self):
         """Check there is sufficient stock to fulfill the cart quantity for the product in the
         current line.
@@ -192,3 +242,21 @@ class SaleOrderLine(models.Model):
                 self._add_warning_alert(self._get_shop_warning_stock(cart_qty, max(avl_qty, 0)))
                 return False
         return True
+
+    def _check_minimum_qty(self):
+        """Check that the line's quantity meets the minimum quantity required to purchase the
+        product in the current line.
+
+        :return: True if the quantity is valid, False otherwise.
+        :rtype: bool
+        """
+        self.ensure_one()
+        remaining_min_qty = self.order_id._get_remaining_minimum_qty(self.product_id)
+        if remaining_min_qty > 0:
+            self._add_warning_alert(self._get_shop_warning_minimum_qty(remaining_min_qty))
+            return False
+        return True
+
+    def _show_line_in_cart(self):
+        self.ensure_one()
+        return self._is_product_line() and not self.combo_item_id

@@ -315,10 +315,9 @@ class TestViewInheritance(ViewCase):
         # fetch an extra field on views. You better fetch that extra field with
         # the query of _get_inheriting_views() and manually feed the cache.
         self.env.invalidate_all()
-        with self.assertQueryCount(3):
+        with self.assertQueryCount(2):
             # 1: browse([self.view_ids['A']])
             # 2: _get_inheriting_views: id, inherit_id, mode, groups
-            # 3: _combine: arch_db
             self.view_ids['A'].get_combined_arch()
 
     def test_view_validate_button_action_query_count(self):
@@ -326,7 +325,7 @@ class TestViewInheritance(ViewCase):
         _, _, counter = get_cache_key_counter(self.env['ir.model.data']._xmlid_lookup, 'base.action_ui_view')
         hit, miss = counter.hit, counter.miss
 
-        with self.assertQueryCount(10):
+        with self.assertQueryCount(6):
             base_view = self.assertValid("""
                 <form string="View">
                     <header>
@@ -352,7 +351,7 @@ class TestViewInheritance(ViewCase):
         _, _, counter = get_cache_key_counter(self.env['ir.model.data']._xmlid_lookup, 'base.group_system')
         hit, miss = counter.hit, counter.miss
 
-        with self.assertQueryCount(6):
+        with self.assertQueryCount(2):
             base_view = self.assertValid("""
                 <form string="View">
                     <field name="name" groups="base.group_system"/>
@@ -1102,7 +1101,7 @@ class TestTemplating(ViewCase):
                 <div role="search">
                     <input type="search" name="search"/>
                     <button type="submit">
-                        <i class="oi-search"/>
+                        <i class="oi" data-icon="search"/>
                     </button>
                 </div>
             </root>
@@ -3447,25 +3446,25 @@ class TestViews(ViewCase):
 
     def test_valid_accessibility_icon_text(self):
         self.assertWarning(
-            '<form><span class="fa fa-warning"/></form>',
-            'A <span> with fa class (fa fa-warning) must have title in its tag, parents, descendants or have text'
+            '<form><span class="oi" data-icon="warning"/></form>',
+            'A <span> with data-icon attribute (warning) must have title in its tag, parents, descendants or have text',
         )
         self.assertWarning(
-            '<form><button icon="fa-warning"/></form>',
-            'A button with icon attribute (fa-warning) must have title in its tag, parents, descendants or have text'
+            '<form><button icon="warning"/></form>',
+            'A button with icon attribute (warning) must have title in its tag, parents, descendants or have text',
         )
         self.assertWarning(
-            '<form><span class="fa fa-warning"/><label for="key"/><field name="key"/></form>',
-            'A <span> with fa class (fa fa-warning) must have title in its tag, parents, descendants or have text'
+            '<form><span class="oi" data-icon="warning"/><label for="key"/><field name="key"/></form>',
+            'A <span> with data-icon attribute (warning) must have title in its tag, parents, descendants or have text',
         )
-        self.assertValid('<form><button icon="fa-warning"/>text</form>')
-        self.assertValid('<form><span class="fa fa-warning"/>text</form>')
-        self.assertValid('<form><span class="fa fa-warning"/><label for="key" string="Some Text"/><field name="key"/></form>')
-        self.assertValid('<form><span class="fa fa-warning"/><field name="key" string="Some Text"/></form>')
-        self.assertValid('<form>text<span class="fa fa-warning"/></form>')
-        self.assertValid('<form><span class="fa fa-warning">text</span></form>')
-        self.assertValid('<form><span title="text" class="fa fa-warning"/></form>')
-        self.assertValid('<form><span aria-label="text" class="fa fa-warning"/></form>')
+        self.assertValid('<form><button icon="warning"/>text</form>')
+        self.assertValid('<form><span class="oi" data-icon="warning"/>text</form>')
+        self.assertValid('<form><span class="oi" data-icon="warning"/><label for="key" string="Some Text"/><field name="key"/></form>')
+        self.assertValid('<form><span class="oi" data-icon="warning"/><field name="key" string="Some Text"/></form>')
+        self.assertValid('<form>text<span class="oi" data-icon="warning"/></form>')
+        self.assertValid('<form><span class="oi" data-icon="warning">text</span></form>')
+        self.assertValid('<form><span title="text" class="oi" data-icon="warning"/></form>')
+        self.assertValid('<form><span aria-label="text" class="oi" data-icon="warning"/></form>')
 
     def test_valid_simili_button(self):
         self.assertWarning('<form><a class="btn"/></form>')
@@ -4851,7 +4850,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'account_disallowed_expenses',
             'account_edi',
             'account_edi_proxy_client',
-            'account_edi_ubl_cii',
             'account_external_tax',
             'account_fleet',
             'account_followup',
@@ -4878,21 +4876,18 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'base_import_module',
             'base_install_request',
             'base_setup',
-            'base_vat',
             'calendar',
             'crm',
             'crm_helpdesk',
             'crm_iap_enrich',
             'crm_iap_mine',
             'data_cleaning',
-            'data_merge',
             'data_recycle',
             'delivery',
             'delivery_dhl',
             'delivery_easypost',
             'delivery_fedex',
             'delivery_iot',
-            'delivery_mondialrelay',
             'delivery_sendcloud',
             'delivery_shiprocket',
             'delivery_starshipit',
@@ -4903,7 +4898,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'documents',
             'documents_account',
             'documents_approvals',
-            'documents_fleet',
             'documents_spreadsheet',
             'event',
             'event_booth',
@@ -4952,7 +4946,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'hr_timesheet',
             'hr_work_entry',
             'im_livechat',
-            'iot',
             'knowledge',
             'l10n_ae_hr_payroll',
             'l10n_ar',
@@ -5081,9 +5074,7 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'partner_autocomplete',
             'payment',
             'payment_adyen',
-            'payment_authorize',
             'payment_custom',
-            'payment_demo',
             'planning',
             'point_of_sale',
             'portal',

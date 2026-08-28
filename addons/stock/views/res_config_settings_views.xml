@@ -57,9 +57,6 @@
                                     <field name="annual_inventory_month" class="o_light_label"/>
                                 </div>
                             </setting>
-                            <setting id="reception_report" help="View and allocate received quantities">
-                                <field name="group_stock_reception_report"/>
-                            </setting>
                         </block>
                         <block title="Barcode" name="barcode_setting_container">
                             <setting id="process_operations_barcodes" help="Process operations faster with barcodes" company_dependent="1" documentation="/applications/inventory_and_mrp/inventory/barcode/setup/software.html">
@@ -88,10 +85,10 @@
                                     type="action"
                                     name="%(stock.ir_module_module_action_delivery_provider_modules)d"
                                     class="btn btn-link"
-                                    icon="oi-arrow-right"
+                                    icon="east"
                                 />
                             </setting>
-                            <setting id="stock_fleet" help="Transport management: organize packs in your fleet, or carriers.">
+                            <setting id="stock_fleet" help="Organize deliveries by dock, assign drivers and vehicles, and print consignment notes.">
                                 <field name="module_stock_fleet"/>
                             </setting>
                             <setting id="stock_move_email" company_dependent="1" string="Confirmation Email" help="Send an automatic confirmation email when Delivery Orders are done">
@@ -116,7 +113,7 @@
                                 <field name="group_product_variant"/>
                                 <div class="content-group">
                                     <div class="mt8" invisible="not group_product_variant">
-                                        <button name="%(product.attribute_action)d" icon="oi-arrow-right" type="action" string="Attributes" class="btn-link"/>
+                                        <button name="%(product.attribute_action)d" icon="east" type="action" string="Attributes" class="btn-link"/>
                                     </div>
                                 </div>
                             </setting>
@@ -124,7 +121,7 @@
                                 <field name="group_uom"/>
                                 <div class="content-group">
                                     <div class="mt8" invisible="not group_uom">
-                                        <button name="%(uom.uom_uom_action_list)d" icon="oi-arrow-right" type="action" string="Units &amp; Packagings" class="btn-link"/>
+                                        <button name="%(uom.uom_uom_action_list)d" icon="east" type="action" string="Units &amp; Packagings" class="btn-link"/>
                                     </div>
                                 </div>
                             </setting>
@@ -166,7 +163,7 @@
                                 <field name="group_stock_multi_locations"/>
                                 <div class="content-group">
                                     <div class="mt8" invisible="not group_stock_multi_locations">
-                                        <button name="%(stock.action_location_form)d" icon="oi-arrow-right" type="action" string="Locations" class="btn-link"/><br/>
+                                        <button name="%(stock.action_location_form)d" icon="east" type="action" string="Locations" class="btn-link"/><br/>
                                     </div>
                                 </div>
                             </setting>
@@ -174,7 +171,7 @@
                                 <field name="group_stock_adv_location"/>
                                 <div class="content-group">
                                     <div class="mt8" invisible="not group_stock_adv_location">
-                                        <button name="%(stock.action_warehouse_form)d" icon="oi-arrow-right" type="action" string="Set Warehouse Routes" class="btn-link"/>
+                                        <button name="%(stock.action_warehouse_form)d" icon="east" type="action" string="Set Warehouse Routes" class="btn-link"/>
                                     </div>
                                 </div>
                             </setting>
@@ -205,7 +202,7 @@
             <field name="name">Settings</field>
             <field name="res_model">res.config.settings</field>
             <field name="view_mode">form</field>
-            <field name="context">{'module' : 'stock', 'bin_size': False}</field>
+            <field name="context">{'module' : 'stock'}</field>
         </record>
 
         <menuitem id="menu_stock_config_settings" name="Configuration" parent="menu_stock_root"

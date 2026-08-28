@@ -9,7 +9,6 @@
     'depends': ['resource', 'product', 'account', 'barcodes_gs1_nomenclature', 'html_editor', 'digest', 'phone_validation', 'google_address_autocomplete', 'base_report_wkhtmltox'],
     'data': [
         'security/point_of_sale_security.xml',
-        'security/ir.model.access.csv',
         'data/default_barcode_patterns.xml',
         'data/digest_data.xml',
         'data/pos_note_data.xml',
@@ -18,10 +17,10 @@
         'data/ir_config_parameter_data.xml',
         'wizard/pos_details.xml',
         'wizard/pos_payment.xml',
-        'wizard/pos_close_session_wizard.xml',
         'wizard/pos_daily_sales_reports.xml',
         'wizard/pos_confirmation_wizard.xml',
         'wizard/pos_make_invoice.xml',
+        'wizard/pos_price_inclusion_wizard.xml',
         'views/pos_assets_index.xml',
         'views/point_of_sale_report.xml',
         'views/point_of_sale_view.xml',
@@ -62,9 +61,19 @@
         'receipt/pos_cash_move_receipt.xml',  # needed in the backend and frontend
         'receipt/pos_sale_details_receipt.xml',  # needed in the backend and frontend
         'data/ir_cron_data.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'data/demo_data.xml',
+    ],
+    'other_files': [
+        'data/orders_demo.xml',
+        'data/scenarios/bakery_category_data.xml',
+        'data/scenarios/bakery_data.xml',
+        'data/scenarios/clothes_category_data.xml',
+        'data/scenarios/clothes_data.xml',
+        'data/scenarios/furniture_category_data.xml',
+        'data/scenarios/furniture_data.xml',
     ],
     'application': True,
     'website': 'https://www.odoo.com/app/point-of-sale-shop',
@@ -109,7 +118,6 @@
         'web.assets_tests': [
             'point_of_sale/static/tests/pos/tours/**/*',
             'point_of_sale/static/tests/generic_helpers/**/*',
-            'point_of_sale/static/tests/customer_display/**/*',
             'point_of_sale/static/src/utils.js',
         ],
         'web.assets_unit_tests_setup': [
@@ -124,6 +132,10 @@
             'web/static/src/core/errors/error_handlers.js',
             'web/static/src/core/dialog/dialog.scss',
             'point_of_sale/static/src/backend/views/**/*',
+
+            'point_of_sale/static/src/customer_display/**/*',
+            ('remove', 'point_of_sale/static/src/customer_display/root.js'),
+            ('remove', 'point_of_sale/static/src/customer_display/styles.scss'),
         ],
         'web.assets_unit_tests': [
             'point_of_sale/static/tests/unit/**/*',
@@ -139,17 +151,17 @@
             'web/static/lib/bootstrap/scss/_maps.scss',
             ("include", "web._assets_bootstrap_backend"),
             ('include', 'web._assets_core'),
-            "point_of_sale/static/src/app/services/offline_service.js",
+            "point_of_sale/static/src/app/plugins/offline_plugin.js",
             ("remove", "web/static/src/core/debug/**/*"),
             ('include', 'web.icons_fonts'),
             "web/static/src/views/fields/formatters.js",
             "point_of_sale/static/src/utils.js",
-            'bus/static/src/services/bus_service.js',
-            'bus/static/src/services/worker_service.js',
-            'bus/static/src/bus_parameters_service.js',
-            'bus/static/src/multi_tab_service.js',
-            'bus/static/src/multi_tab_shared_worker_service.js',
-            'bus/static/src/multi_tab_fallback_service.js',
+            'bus/static/src/services/bus_plugin.js',
+            'bus/static/src/services/worker_plugin.js',
+            'bus/static/src/bus_parameters_plugin.js',
+            'bus/static/src/multi_tab_plugin.js',
+            'bus/static/src/multi_tab_shared_worker_plugin.js',
+            'bus/static/src/multi_tab_fallback_plugin.js',
             'bus/static/src/workers/*',
         ],
 
@@ -188,7 +200,7 @@
             'web/static/fonts/fonts.scss',
             "web/static/src/scss/ui.scss",
 
-            ('remove', 'web/static/src/core/errors/error_handlers.js'), # error handling in PoS is different from the webclient
+            ('remove', 'web/static/src/core/errors/error_handlers.js'),  # error handling in PoS is different from the webclient
             ('remove', '/web/static/src/core/dialog/dialog.scss'),
             'web/static/src/core/currency.js',
             # barcode scanner
@@ -204,7 +216,6 @@
             'point_of_sale/static/src/**/*',
             ('remove', 'point_of_sale/static/src/backend/**/*'),
             ('remove', 'point_of_sale/static/src/customer_display/**/*'),
-            'point_of_sale/static/src/customer_display/utils.js',
             ('include', 'point_of_sale.payment_terminals'),
             # main.js boots the pos app, it is only included in the prod bundle as tests mount the app themselves
             ('remove', 'point_of_sale/static/src/app/main.js'),
@@ -213,7 +224,7 @@
             'account/static/src/helpers/*.js',
             'account/static/src/services/account_move_service.js',
 
-            'mail/static/src/core/common/sound_effects_service.js',
+            'mail/static/src/core/common/sound_effects_plugin.js',
             "web/static/src/core/browser/router.js",
             "web/static/src/core/debug/**/*",
             'web/static/src/model/**/*',
@@ -241,24 +252,25 @@
         'point_of_sale.customer_display_assets': [
             ('include', 'point_of_sale.base_app'),
             "point_of_sale/static/src/app/components/odoo_logo/*",
-            "point_of_sale/static/src/app/components/orderline/*",
-            "point_of_sale/static/src/app/components/centered_icon/*",
             "point_of_sale/static/src/app/utils/use_timed_press.js",
-            "point_of_sale/static/src/app/components/popups/qr_code_popup/*",
             "point_of_sale/static/src/utils.js",
             "point_of_sale/static/src/scss/pos_variables_extra.scss",
             "point_of_sale/static/src/customer_display/**/*",
             "point_of_sale/static/src/app/hooks/time_hook.js",
             "point_of_sale/static/src/app/pos_app.scss",
             "point_of_sale/static/src/app/screens/login_screen/login_screen.scss",
+            "point_of_sale/static/src/app/components/price_formatter/**/*",
+            "point_of_sale/static/src/app/components/validation_animation/**/*",
+            "point_of_sale/static/src/app/components/feedback_payment_summary/**/*",
+            "point_of_sale/static/src/app/utils/pretty_console_log.js",
+        ],
+        'point_of_sale.customer_display_assets_dark': [
+            ('include', 'point_of_sale.customer_display_assets'),
         ],
         'point_of_sale.customer_display_assets_test': [
             ('include', 'point_of_sale.base_tests'),
             "point_of_sale/static/tests/pos/tours/utils/common.js",
-            "point_of_sale/static/tests/generic_helpers/order_widget_util.js",
             "point_of_sale/static/tests/generic_helpers/utils.js",
-            "point_of_sale/static/tests/customer_display/customer_display_utils.js",
-            "point_of_sale/static/tests/customer_display/customer_display_tour.js",
         ],
         'point_of_sale.assets_debug': [
             ('include', 'point_of_sale.base_tests'),

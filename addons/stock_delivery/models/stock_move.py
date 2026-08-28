@@ -1,8 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from odoo import api, fields, models, _
+from odoo import api, fields, models
 from odoo.exceptions import UserError
-from odoo.tools.sql import column_exists, create_column
 
 
 class StockRoute(models.Model):
@@ -14,22 +13,18 @@ class StockRoute(models.Model):
 class StockMove(models.Model):
     _inherit = 'stock.move'
 
-    def _auto_init(self):
-        if not column_exists(self.env.cr, "stock_move", "weight"):
-            # In case of a big database with a lot of stock moves, the RAM gets exhausted
-            # To prevent a process from being killed We create the column 'weight' manually
-            # Then we do the computation in a query by multiplying product weight with qty
-            create_column(self.env.cr, "stock_move", "weight", "numeric")
-            self.env.cr.execute("""
+    weight = fields.Float(compute='_cal_move_weight', digits='Stock Weight', store=True, compute_sudo=True,
+        # In case of a big database with a lot of stock moves, the RAM gets exhausted
+        # To prevent a process from being killed We create the column 'weight' manually
+        # Then we do the computation in a query by multiplying product weight with qty
+        init_storage=lambda model: model.env.cr.execute("""
                 UPDATE stock_move move
                 SET weight = move.product_qty * product.weight
                 FROM product_product product
                 WHERE move.product_id = product.id
                 AND move.state != 'cancel'
-                """)
-        return super()._auto_init()
-
-    weight = fields.Float(compute='_cal_move_weight', digits='Stock Weight', store=True, compute_sudo=True)
+                """),
+    )
 
     @api.depends('product_id', 'product_uom_qty', 'uom_id')
     def _cal_move_weight(self):
@@ -42,7 +37,7 @@ class StockMove(models.Model):
         vals = super(StockMove, self)._get_new_picking_values()
         if not any(rule.propagate_carrier for rule in self.rule_id):
             return vals
-        carrier_id = self.reference_ids.sale_ids.carrier_id.id
+        carrier_id = len(self.reference_ids.sale_ids.carrier_id) == 1 and self.reference_ids.sale_ids.carrier_id.id
         carrier_tracking_ref = self.move_orig_ids.picking_id.filtered('carrier_tracking_ref')[:1].carrier_tracking_ref
         # check if the previous picking have a carrier_id, then take carrier from that
         # earlier we were taking carrier from sale but since carrier can be changed or updated in next steps so now we take carrier from prev picking
@@ -93,7 +88,6 @@ class StockMoveLine(models.Model):
                 tax_results = base_line['tax_details']
                 move_line.sale_price = sale_line_id.currency_id.round(tax_results['raw_total_included_currency'])
             else:
-                # For kits, use the regular unit price
                 unit_price = move_line.product_id.list_price
                 qty = move_line.uom_id._compute_quantity(move_line.quantity, move_line.product_id.uom_id)
                 move_line.sale_price = unit_price * qty
@@ -109,7 +103,7 @@ class StockMoveLine(models.Model):
         """
         aggregated_move_lines = super()._get_aggregated_product_quantities(**kwargs)
         for aggregated_move_line in aggregated_move_lines:
-            hs_code = aggregated_move_lines[aggregated_move_line]['product'].product_tmpl_id.hs_code
+            hs_code = aggregated_move_lines[aggregated_move_line]['product'].hs_code
             aggregated_move_lines[aggregated_move_line]['hs_code'] = hs_code
         return aggregated_move_lines
 
@@ -123,6 +117,8 @@ class StockMoveLine(models.Model):
 
     def _post_put_in_pack_hook(self, package):
         weight = self.env.context.get('weight')
+        if not weight and self.carrier_id:
+            weight = package._get_weight(self.picking_id[:1].id).get(package, 0.0)
         if weight:
             package.shipping_weight = weight
         return super()._post_put_in_pack_hook(package)

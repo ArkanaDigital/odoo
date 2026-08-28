@@ -9,7 +9,129 @@ from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCom
 import uuid
 
 
-class TestPoSSale(TestPointOfSaleHttpCommon):
+class PoSSaleSyncCommon:
+    """Helpers syncing the PoS orders that the frontend creates from a sale order."""
+
+    def _prepare_pos_order_data(self, lines, partner=False, payment_method=False, to_invoice=False, paid=True, **order_values):
+        """Build the values of the PoS order selling LINES, as the frontend sends them.
+
+        Each line is described by a dict: the ``product`` it sells, optionally its
+        ``qty``, ``price_unit``, ``discount``, ``taxes`` and any ``extra_values``
+        to set on the pos.order.line (e.g. the settled sale order line).
+        """
+        self.main_pos_config.open_ui()
+        session = self.main_pos_config.current_session_id
+        currency = session.currency_id
+        payment_method = payment_method or self.main_pos_config.payment_method_ids[0]
+        order_uuid = str(uuid.uuid4())
+        amount_total = 0
+        amount_tax = 0
+        order_lines = []
+
+        for line in lines:
+            product = line['product']
+            qty = line.get('qty', 1)
+            price_unit = line.get('price_unit', product.lst_price)
+            discount = line.get('discount', 0)
+            taxes = line.get(
+                'taxes',
+                product.taxes_id.filtered_domain(self.env['account.tax']._check_company_domain(self.env.company))
+            )
+            tax_values = taxes.compute_all(
+                price_unit * (1 - discount / 100),
+                currency,
+                qty,
+                product=product,
+                partner=partner,
+            ) if taxes else {
+                'total_excluded': price_unit * qty,
+                'total_included': price_unit * qty,
+            }
+            amount_total += tax_values['total_included']
+            amount_tax += tax_values['total_included'] - tax_values['total_excluded']
+            order_lines.append(Command.create({
+                'discount': discount,
+                'price_unit': price_unit,
+                'product_id': product.id,
+                'price_subtotal': tax_values['total_excluded'],
+                'price_subtotal_incl': tax_values['total_included'],
+                'qty': qty,
+                'tax_ids': [Command.set(taxes.ids)],
+                **line.get('extra_values', {}),
+            }))
+
+        return {
+            'amount_paid': amount_total if paid else 0,
+            'amount_return': 0,
+            'amount_tax': amount_tax,
+            'amount_total': amount_total,
+            'company_id': self.env.company.id,
+            'date_order': fields.Datetime.to_string(fields.Datetime.now()),
+            'fiscal_position_id': False,
+            'lines': order_lines,
+            'name': 'Order %s' % order_uuid,
+            'partner_id': partner and partner.id,
+            'payment_ids': [Command.create({
+                'amount': amount_total,
+                'name': fields.Datetime.now(),
+                'payment_method_id': payment_method.id,
+            })] if paid else [],
+            'pricelist_id': self.main_pos_config.available_pricelist_ids[0].id,
+            'session_id': session.id,
+            'to_invoice': to_invoice,
+            'user_id': self.env.uid,
+            'uuid': order_uuid,
+            **order_values,
+        }
+
+    def _create_pos_order(self, lines, **kwargs):
+        """Create the unpaid PoS order selling LINES, as the backend does."""
+        return self.env['pos.order'].create(self._prepare_pos_order_data(lines, paid=False, **kwargs))
+
+    def _sync_paid_pos_order(self, lines, **kwargs):
+        """Sync a paid PoS order, as the frontend does once an order is validated."""
+        order_data = self._prepare_pos_order_data(lines, **kwargs)
+        self.env['pos.order'].sync_from_ui([order_data])
+        return self.env['pos.order'].search([('uuid', '=', order_data['uuid'])]).id
+
+    def _sync_paid_pos_downpayment(self, sale_order, lines, percentage=0, to_invoice=False):
+        """Sync the paid PoS order that applying a down payment on SALE_ORDER creates.
+
+        The frontend adds one down payment line per set of taxes used by the sale
+        order lines, so each line is described by its ``price_unit`` and its
+        ``taxes``. The sale order lines sharing those taxes are the ones detailed
+        on the down payment line.
+        """
+        down_payment_lines = []
+        for line in lines:
+            taxes = line.get('taxes') or self.env['account.tax']
+            detailed_so_lines = sale_order.order_line.filtered(
+                lambda l: not l.display_type and not l.is_downpayment and l.tax_ids == taxes
+            )
+            down_payment_lines.append({
+                'product': self.main_pos_config.down_payment_product_id,
+                'qty': 1,
+                'price_unit': line['price_unit'],
+                'taxes': taxes,
+                'extra_values': {
+                    'sale_order_origin_id': sale_order.id,
+                    'down_payment_details': str([{
+                        'product_name': so_line.product_id.display_name,
+                        'product_uom_qty': so_line.product_uom_qty,
+                        'price_unit': so_line.price_unit,
+                        'total': so_line.price_total,
+                        'percentage_value': percentage,
+                    } for so_line in detailed_so_lines]),
+                    'extra_tax_data': {'computation_key': 'down_payment'},
+                },
+            })
+        return self._sync_paid_pos_order(
+            down_payment_lines, partner=sale_order.partner_id, to_invoice=to_invoice)
+
+
+class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -24,40 +146,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         groups = super().get_default_groups()
         return groups | cls.quick_ref('sales_team.group_sale_salesman_all_leads')
 
-    def test_settle_order_with_incompatible_partner(self):
-        """ If the partner of the sale order is not compatible with the current pos order,
-            then a new pos order should be to settle the newly selected sale order.
-        """
-
-        product1 = self.env['product.product'].create({
-            'name': 'product1',
-            'available_in_pos': True,
-            'is_storable': True,
-            'lst_price': 10,
-            'taxes_id': [Command.clear()],
-        })
-        product2 = self.env['product.product'].create({
-            'name': 'product2',
-            'available_in_pos': True,
-            'is_storable': True,
-            'lst_price': 11,
-            'taxes_id': [Command.clear()],
-        })
-        partner_1 = self.env['res.partner'].create({'name': 'Test Partner 1'})
-        partner_2 = self.env['res.partner'].create({'name': 'Test Partner 2'})
-        self.env['sale.order'].sudo().create({
-            'partner_id': partner_1.id,
-            'partner_shipping_id': partner_2.id,
-            'order_line': [(0, 0, {'product_id': product1.id})],
-        })
-        self.env['sale.order'].sudo().create({
-            'partner_id': partner_1.id,
-            'partner_shipping_id': partner_1.id,
-            'order_line': [(0, 0, {'product_id': product2.id})],
-        })
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('PosSettleOrderIncompatiblePartner', login="accountman")
-
     def test_downpayment_refund(self):
         #create a sale order
         sale_order = self.env['sale.order'].sudo().create({
@@ -67,6 +155,7 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
                 'name': self.product_a.name,
                 'product_uom_qty': 1,
                 'price_unit': 100,
+                'tax_ids': False,
             })],
         })
         sale_order.action_confirm()
@@ -75,15 +164,39 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             'name': 'Down Payment',
             'available_in_pos': True,
             'type': 'service',
+            'taxes_id': [],
         })
         self.main_pos_config.write({
             'down_payment_product_id': self.downpayment_product.id,
         })
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('PosRefundDownpayment', login="accountman")
-        self.assertEqual(len(sale_order.order_line), 4)
-        self.assertEqual(sale_order.order_line[2].qty_invoiced, 1)
-        self.assertEqual(sale_order.order_line[3].qty_invoiced, -1)
+        # Apply a 10% down payment, then refund it: the refund line only carries
+        # the refunded PoS line, as the ticket screen creates it.
+        order_id = self._sync_paid_pos_downpayment(sale_order, [{'price_unit': 10}], percentage=10)
+        self._sync_paid_pos_order([{
+            'product': self.downpayment_product,
+            'qty': -1,
+            'price_unit': 10,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'refunded_orderline_id': self.env['pos.order'].browse(order_id).lines.id,
+                'price_subtotal': 10,
+                'price_subtotal_incl': 10,
+            },
+        }], partner=sale_order.partner_id)
+
+        self.assertEqual(len(sale_order.order_line), 3)
+        self.assertEqual(sale_order.order_line[2].qty_invoiced, 0)
+        self.assertEqual(sale_order.order_line[2].price_unit, 0)
+        self.assertEqual(sale_order.amount_invoiced, 0)
+        payment = self.env['sale.advance.payment.inv'].with_context(
+            active_model='sale.order',
+            active_ids=sale_order.ids,
+            active_id=sale_order.id,
+        ).create({
+            'advance_payment_method': 'delivered',
+        })
+        payment.create_invoices()
+        self.assertEqual(sale_order.invoice_ids.amount_untaxed, 100)
 
     def test_pos_not_groupable_product(self):
         #Create a UoM Category that is not pos_groupable
@@ -109,61 +222,15 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             })],
         })
         self.assertEqual(sale_order.amount_total, 28.98)  # 3.5 * 8 * 1.15 * 90%
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('PosSettleOrderNotGroupable', login="accountman")
-
-    def test_customer_notes(self):
-        """This test create an order and settle it in the PoS. It also uses multistep delivery
-            and we need to make sure that all the picking are cancelled if the order is fully delivered.
-        """
-
-        #create a sale order with 2 customer notes
-        sale_order = self.env['sale.order'].sudo().create({
-            'partner_id': self.env['res.partner'].create({'name': 'Test Partner'}).id,
-            'note': 'Customer note 1',
-            'order_line': [(0, 0, {
-                'product_id': self.whiteboard_pen.product_variant_id.id,
-                'name': self.whiteboard_pen.name,
-                'product_uom_qty': 1,
-                'price_unit': self.whiteboard_pen.product_variant_id.lst_price,
-            }), (0, 0, {
-                'name': 'Customer note 2',
-                'display_type': 'line_note',
-            }), (0, 0, {
-                'name': 'Customer note 3',
-                'display_type': 'line_note',
-            })],
-        })
-
-        sale_order.action_confirm()
-
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('PosSettleOrderWithNote', login="accountman")
 
     def test_order_sales_count(self):
-        self.main_pos_config.open_ui()
-        current_session = self.main_pos_config.current_session_id
         partner_1 = self.env['res.partner'].create({'name': 'Test Partner'})
-        order = self.env['pos.order'].create({
-            'company_id': self.env.company.id,
-            'session_id': current_session.id,
-            'partner_id': partner_1.id,
-            'pricelist_id': partner_1.property_product_pricelist.id,
-            'lines': [(0, 0, {
-                'name': "OL/0001",
-                'product_id': self.desk_pad.product_variant_id.id,
-                'price_unit': self.desk_pad.product_variant_id.lst_price,
-                'discount': 0.0,
-                'qty': 1.0,
-                'tax_ids': [],
-                'price_subtotal': self.desk_pad.product_variant_id.lst_price,
-                'price_subtotal_incl': self.desk_pad.product_variant_id.lst_price,
-            })],
-            'amount_total': self.desk_pad.product_variant_id.lst_price,
-            'amount_tax': 0.0,
-            'amount_paid': 0.0,
-            'amount_return': 0.0,
-        })
+        order = self._create_pos_order([{
+            'product': self.desk_pad.product_variant_id,
+            'taxes': self.env['account.tax'],
+            'extra_values': {'name': "OL/0001"},
+        }], partner=partner_1)
+        current_session = order.session_id
         payment_context = {"active_ids": order.ids, "active_id": order.id}
         order_payment = self.env['pos.make.payment'].with_context(**payment_context).create({
             'amount': order.amount_total,
@@ -211,47 +278,21 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             })],
         })
         sale_order.action_confirm()
-        self.main_pos_config.open_ui()
-        current_session = self.main_pos_config.current_session_id
-
-        pos_order = {
-           'amount_paid': 10,
-           'amount_return': 0,
-           'amount_tax': 0,
-           'amount_total': 10,
-           'date_order': fields.Datetime.to_string(fields.Datetime.now()),
-           'fiscal_position_id': False,
-           'to_invoice': True,
-           'partner_id': partner_test.id,
-           'pricelist_id': self.main_pos_config.available_pricelist_ids[0].id,
-           'lines': [[0,
-             0,
-             {'discount': 0,
-              'price_unit': 10,
-              'product_id': product_a.id,
-              'price_subtotal': 10,
-              'price_subtotal_incl': 10,
-              'sale_order_line_id': sale_order.order_line[0].id,
-              'sale_order_origin_id': sale_order.id,
-              'qty': 1,
-              'tax_ids': []}]],
-           'session_id': current_session.id,
-           'payment_ids': [[0,
-             0,
-             {'amount': 10,
-              'name': fields.Datetime.now(),
-              'payment_method_id': self.main_pos_config.payment_method_ids[0].id}]],
-           'user_id': self.env.uid,
-            }
-
-        self.env['pos.order'].sync_from_ui([pos_order])
+        self._sync_paid_pos_order([{
+            'product': product_a,
+            'price_unit': 10,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line[0].id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=partner_test, to_invoice=True)
         self.assertEqual(sale_order.order_line[0].untaxed_amount_invoiced, 10, "Untaxed invoiced amount should be 10")
         self.assertEqual(sale_order.order_line[1].untaxed_amount_invoiced, 0, "Untaxed invoiced amount should be 0")
 
     def test_order_does_not_remain_in_list(self):
-        """Verify that a paid order doesn't remain in the orders list"""
+        """Verify that a paid order is not proposed anymore in the orders list"""
 
-        # Create a sale order
         sale_order = self.env['sale.order'].sudo().create({
             'partner_id': self.env['res.partner'].create({'name': 'Test Partner'}).id,
             'order_line': [(0, 0, {
@@ -264,8 +305,18 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
 
         sale_order.action_confirm()
 
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PosOrderDoesNotRemainInList', login="accountman")
+        self._sync_paid_pos_order([{
+            'product': self.whiteboard_pen.product_variant_id,
+            'qty': 1,
+            'price_unit': 100,
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line.id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=sale_order.partner_id, to_invoice=True)
+
+        # The orders list only shows sale orders with an unpaid amount.
+        self.assertEqual(sale_order.amount_unpaid, 0.0)
 
     def test_settle_draft_order_service_product(self):
         """
@@ -296,33 +347,16 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
 
         self.assertEqual(sale_order.state, 'draft')
 
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PosSettleDraftOrder', login="accountman")
+        self._sync_paid_pos_order([{
+            'product': product_a,
+            'qty': 1,
+            'price_unit': product_a.lst_price,
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line.id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=partner_test)
         self.assertEqual(sale_order.state, 'sale')
-
-    def test_settle_order_change_customer(self):
-        """
-        When settling an order, the price set on the sol shouldn't reset to
-        the sale price of the product when changing customer.
-        """
-        self.product_a.lst_price = 150
-        self.product_a.taxes_id = None
-        self.product_a.available_in_pos = True
-        self.product_a.name = 'Product A'
-        self.env['res.partner'].create({'name': 'A Test Partner AAA'})
-        sale_order = self.env['sale.order'].sudo().create({
-            'partner_id': self.env['res.partner'].create({'name': 'Test Partner BBB'}).id,
-            'order_line': [(0, 0, {
-                'product_id': self.product_a.id,
-                'name': self.product_a.name,
-                'product_uom_qty': 1,
-                'price_unit': 100,
-            })],
-        })
-        sale_order.action_confirm()
-
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PosSettleCustomPrice', login="accountman")
 
     def test_so_with_downpayment(self):
         self.product_a.available_in_pos = True
@@ -349,8 +383,13 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         down_payment_invoices.action_post()
         self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
         self.main_pos_config.down_payment_product_id.write({'active': True})
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PoSSaleOrderWithDownpayment', login="accountman")
+
+        # The PoS settles the down payment as a negative line, which is covered
+        # by the HOOT scenario.
+        self.assertEqual(so.amount_unpaid, 980)
+        down_payment_line = so.order_line.filtered(lambda line: line.is_downpayment and not line.display_type)
+        self.assertEqual(down_payment_line.price_unit, 20)
+        self.assertEqual(down_payment_line.qty_to_invoice, -1)
 
     def test_downpayment_with_taxed_product(self):
         tax_1 = self.env['account.tax'].create({
@@ -416,8 +455,13 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         self.main_pos_config.write({
             'down_payment_product_id': self.downpayment_product.id,
         })
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PoSDownPaymentLinesPerTax', login="accountman")
+        # A 20% down payment is split in one line per tax: 20% of the 11, 5 and 15
+        # tax included totals of the sale order lines.
+        self._sync_paid_pos_downpayment(sale_order, [
+            {'price_unit': 2.0, 'taxes': tax_1},
+            {'price_unit': 1.0, 'taxes': tax_2},
+            {'price_unit': 3.0},
+        ], percentage=20, to_invoice=True)
 
         # We check the content of the invoice to make sure Product A/B/C only appears only once
         legal_documents = self.env['pos.order'].search([]).account_move._get_invoice_legal_documents('pdf', allow_fallback=True)
@@ -430,35 +474,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         for order_line in downpayment_lines:
             order_line = order_line.with_context(lang=partner_test.lang)
             self.assertIn(format_date(order_line.env, order_line.order_id.date_order), order_line.name)
-
-    def test_settle_so_with_non_pos_groupable_uom(self):
-        """
-        For products with a non-groupable PoS UoM (e.g., Kg), ensure that when a SO
-        uses another UoM (e.g., g), the PoS correctly displays the quantity converted
-        back to the original UoM.
-        """
-        self.component_kg = self.env['product.product'].create({
-            'name': 'Pomme de Terre',
-            'is_storable': True,
-            'available_in_pos': True,
-            'taxes_id': False,
-            'lst_price': 10.0,
-            'uom_id': self.env.ref('uom.product_uom_kgm').id,
-        })
-
-        sale_order = self.env['sale.order'].sudo().create({
-            'partner_id': self.env['res.partner'].create({'name': 'Test Partner'}).id,
-            'order_line': [(0, 0, {
-                'product_id': self.component_kg.id,
-                'name': self.component_kg.name,
-                'product_uom_qty': 500,
-                'product_uom_id': self.env.ref('uom.product_uom_gram').id,
-                'price_unit': 0.01,
-            })],
-        })
-        sale_order.action_confirm()
-
-        self.start_pos_tour('test_settle_so_with_non_pos_groupable_uom')
 
     def test_settle_so_with_pos_downpayment(self):
         so = self.env['sale.order'].sudo().create({
@@ -474,17 +489,60 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         })
         so.action_confirm()
 
-        # Apply 10% down payment
-        self.main_pos_config.open_ui()
+        # Apply a 10 down payment
         self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PoSApplyDownpayment', login="accountman")
+        self._sync_paid_pos_order([{
+            'product': self.main_pos_config.down_payment_product_id,
+            'qty': 1,
+            'price_unit': 10,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'sale_order_origin_id': so.id,
+                'down_payment_details': str([{
+                    'product_name': self.product_a.display_name,
+                    'product_uom_qty': 1.0,
+                    'price_unit': 100,
+                    'total': 100,
+                    'percentage_value': 10,
+                }]),
+                'extra_tax_data': {'computation_key': 'down_payment'},
+            },
+        }], partner=so.partner_id)
 
         invoice = so._create_invoices(final=True)
         invoice.action_post()
         self.assertEqual(invoice.amount_total, 90)
 
+    def test_downpayment_invoice_line_name(self):
+        """When a down payment is invoiced straight from the POS, the invoice is
+        generated inside super().sync_from_ui, before the down-payment POS line
+        gets linked to a sale order line. At that point sale_order_line_id is
+        empty, so the invoice line name must not fall back to False (a False name
+        breaks the UBL/e-invoice export)."""
+        so = self.env['sale.order'].sudo().create({
+            'partner_id': self.partner_a.id,
+            'order_line': [
+                (0, 0, {
+                    'name': self.product_a.name,
+                    'product_id': self.product_a.id,
+                    'product_uom_qty': 1.0,
+                    'price_unit': 100,
+                    'tax_ids': False,
+                })],
+        })
+        so.action_confirm()
+
+        self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
+        self._sync_paid_pos_downpayment(so, [{'price_unit': 10}], percentage=10, to_invoice=True)
+
+        pos_order = so.pos_order_line_ids.order_id
+        invoice_line = pos_order.account_move.invoice_line_ids.filtered(
+            lambda l: l.product_id == self.main_pos_config.down_payment_product_id)
+        self.assertTrue(invoice_line, "The down payment should have been invoiced")
+        self.assertTrue(invoice_line.name, "The down-payment invoice line must have a name")
+
     def test_order_sale_team(self):
-        self.env['product.product'].create({
+        product = self.env['product.product'].create({
             'name': 'Test Product',
             'available_in_pos': True,
             'lst_price': 100.0,
@@ -492,43 +550,9 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         })
         sale_team = self.env['crm.team'].create({'name': 'Test team'})
         self.main_pos_config.write({'crm_team_id': sale_team})
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PosSaleTeam', login="accountman")
-        order = self.env['pos.order'].search([])
-        self.assertEqual(len(order), 1)
+        order_id = self._sync_paid_pos_order([{'product': product}])
+        order = self.env['pos.order'].browse(order_id)
         self.assertEqual(order.crm_team_id, sale_team)
-
-    def test_show_orders_for_pos_currency_only(self):
-        currency = self.env['res.currency'].create({
-            'name': 'C',
-            'symbol': 'C',
-            'rounding': 0.01,
-            'currency_unit_label': 'Curr',
-            'rate': 1,
-        })
-        pricelist = self.env['product.pricelist'].create({
-            'name': 'Pricelist Different Currency',
-            'currency_id': currency.id,
-        })
-        product = self.env['product.product'].create({
-            'name': 'Product',
-            'available_in_pos': True,
-            'lst_price': 10,
-            'taxes_id': False,
-        })
-        sale_order = self.env['sale.order'].sudo().create({
-            'partner_id': self.env['res.partner'].create({'name': 'Test Partner'}).id,
-            'order_line': [(0, 0, {
-                'product_id': product.id,
-                'name': product.name,
-                'product_uom_qty': 4,
-                'price_unit': product.lst_price,
-            })],
-            'pricelist_id': pricelist.id
-        })
-        sale_order.action_confirm()
-        self.main_pos_config.with_user(self.pos_admin).open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PosOrdersListDifferentCurrency', login="pos_admin")
 
     def test_downpayment_amount_to_invoice(self):
         product_a = self.env['product.product'].create({
@@ -550,8 +574,23 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         })
         sale_order.action_confirm()
         self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PoSDownPaymentAmount', login="accountman")
+        self._sync_paid_pos_order([{
+            'product': self.main_pos_config.down_payment_product_id,
+            'qty': 1,
+            'price_unit': 20,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'sale_order_origin_id': sale_order.id,
+                'down_payment_details': str([{
+                    'product_name': product_a.display_name,
+                    'product_uom_qty': 1,
+                    'price_unit': 100,
+                    'total': 100,
+                    'percentage_value': 0,
+                }]),
+                'extra_tax_data': {'computation_key': 'down_payment'},
+            },
+        }], partner=partner_test)
         self.assertEqual(sale_order.amount_to_invoice, 80.0, "Downpayment amount not considered!")
         self.assertEqual(sale_order.amount_invoiced, 20.0, "Downpayment amount not considered!")
 
@@ -571,14 +610,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         # Confirm all invoices
         sale_order.invoice_ids.action_post()
         self.assertEqual(sale_order.order_line[2].price_unit, 20)
-
-    def test_pos_sale_warnings(self):
-        self.env['res.partner'].create([
-            {'name': 'A Test Customer 1', 'sale_warn_msg': 'Highly infectious disease'},
-            {'name': 'A Test Customer 2', 'sale_warn_msg': 'Cannot afford our services'}
-        ])
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PosSaleWarning', login="accountman")
 
     def test_downpayment_invoice(self):
         """This test check that users that don't have the pos user group can invoice downpayments"""
@@ -638,9 +669,10 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
 
         # CASE 1: downpayment generated in POS, invoice settled in backend
         sale_order = sale_orders[1]
-        self.main_pos_config.open_ui()
         self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
-        self.start_pos_tour('PoSApplyDownpaymentInvoice')
+        # 10% of the 115 tax included total of the sale order
+        self._sync_paid_pos_downpayment(
+            sale_order, [{'price_unit': 10, 'taxes': tax}], percentage=10, to_invoice=True)
 
         downpayment_invoice = sale_order.pos_order_line_ids.order_id.account_move
         self.assertTrue(downpayment_invoice._is_downpayment())
@@ -659,16 +691,42 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             downpayment_invoice.invoice_line_ids,
         )
 
+        final_invoice_downpayment_line.move_id.action_post()
+        self.assertEqual(sale_order.amount_to_invoice, 0.0)
+
         # CASE 2: downpayment generated in POS, invoice settled in POS
         sale_order = sale_orders[0]
-        self.start_pos_tour('PoSApplyDownpaymentInvoice2')
+        self._sync_paid_pos_downpayment(
+            sale_order, [{'price_unit': 10, 'taxes': tax}], percentage=10, to_invoice=True)
 
         downpayment_invoice = sale_order.pos_order_line_ids.order_id.account_move
         self.assertTrue(downpayment_invoice._is_downpayment())
 
-        self.start_pos_tour('PosSettleAndInvoiceOrder2')
+        # Settling the sale order in the PoS loads its product line and deducts
+        # the down payment that was applied on it.
+        downpayment_so_line = sale_order.order_line.filtered(
+            lambda l: l.is_downpayment and not l.display_type)
+        self._sync_paid_pos_order([{
+            'product': self.product_a,
+            'qty': 1,
+            'price_unit': 100,
+            'taxes': tax,
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line[0].id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }, {
+            'product': self.main_pos_config.down_payment_product_id,
+            'qty': -1,
+            'price_unit': 10,
+            'taxes': tax,
+            'extra_values': {
+                'sale_order_line_id': downpayment_so_line.id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=customer, to_invoice=True)
 
-        final_invoice_downpayment_line = sale_order.pos_order_line_ids[-1].order_id.account_move.invoice_line_ids.filtered(lambda r: r.quantity < 0)
+        final_invoice_downpayment_line = sale_order.pos_order_line_ids[-1].order_id.account_move.invoice_line_ids
 
         self.assertEqual(
             final_invoice_downpayment_line._get_downpayment_lines(),
@@ -699,55 +757,25 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             })],
         })
         sale_order.action_confirm()
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'PosSettleOrder5', login="accountman")
+        self._create_pos_order([{
+            'product': product_a,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line.id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=sale_order.partner_id)
         self.assertEqual(sale_order.order_line.qty_invoiced, 0)
         self.assertEqual(sale_order.order_line.qty_delivered, 0)
 
-    def test_settle_quotation_delivered_qty(self):
-        """ Test if a quotation (unconfirmed sale order) is settled in the PoS, the delivered quantity is updated correctly """
-
-        product1 = self.env['product.product'].create({
-            'name': 'product1',
-            'available_in_pos': True,
-            'is_storable': True,
-            'lst_price': 10,
-            'taxes_id': [Command.clear()],
-        })
-        partner_1 = self.env['res.partner'].create({'name': 'Test Partner 1'})
-        order = self.env['sale.order'].sudo().create({
-            'partner_id': partner_1.id,
-            'order_line': [Command.create({'product_id': product1.id})],
-        })
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('PoSSettleQuotation', login="accountman")
-        self.assertEqual(order.order_line.qty_delivered, 1)
-
     def test_edit_invoice_with_pos_order(self):
-        self.main_pos_config.open_ui()
-        current_session = self.main_pos_config.current_session_id
         partner_1 = self.env['res.partner'].create({'name': 'Test Partner'})
 
-        pos_order = self.env['pos.order'].create({
-            'company_id': self.env.company.id,
-            'session_id': current_session.id,
-            'partner_id': partner_1.id,
-            'pricelist_id': partner_1.property_product_pricelist.id,
-            'lines': [(0, 0, {
-                'name': "OL/0001",
-                'product_id': self.desk_pad.product_variant_id.id,
-                'price_unit': self.desk_pad.product_variant_id.lst_price,
-                'discount': 0.0,
-                'qty': 1.0,
-                'tax_ids': [],
-                'price_subtotal': self.desk_pad.product_variant_id.lst_price,
-                'price_subtotal_incl': self.desk_pad.product_variant_id.lst_price,
-            })],
-            'amount_total': self.desk_pad.product_variant_id.lst_price,
-            'amount_tax': 0.0,
-            'amount_paid': 0.0,
-            'amount_return': 0.0,
-        })
+        pos_order = self._create_pos_order([{
+            'product': self.desk_pad.product_variant_id,
+            'taxes': self.env['account.tax'],
+            'extra_values': {'name': "OL/0001"},
+        }], partner=partner_1)
 
         # generate an invoice for pos order
         res = pos_order.action_pos_order_invoice()
@@ -816,65 +844,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
 
         self.assertAlmostEqual(order.amount_total, invoice.amount_total, places=2, msg="Order and Invoice amounts do not match.")
 
-    def test_settle_cancelled_sale_order(self):
-        """When settling a cancelled (reset to draft) SO in PoS,
-        the PoS picking should include moves for its products."""
-
-        product_a = self.env['product.product'].create({
-            'name': 'Product A',
-            'available_in_pos': True,
-            'is_storable': True,
-            'lst_price': 10.0,
-            'taxes_id': [Command.clear()],
-        })
-        product_b = self.env['product.product'].create({
-            'name': 'Product B',
-            'available_in_pos': True,
-            'is_storable': True,
-            'lst_price': 20.0,
-            'taxes_id': [Command.clear()],
-        })
-        partner = self.env['res.partner'].create({'name': 'Test Partner'})
-
-        sale_order = self.env['sale.order'].create({
-            'partner_id': partner.id,
-            'order_line': [
-                Command.create({'product_id': product_a.id, 'product_uom_qty': 1}),
-                Command.create({'product_id': product_b.id, 'product_uom_qty': 1}),
-            ],
-        })
-        sale_order.action_confirm()
-        sale_order._action_cancel()
-        sale_order.action_draft()
-
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('test_settle_cancelled_sale_order', login="accountman")
-
-        pos_order = sale_order.pos_order_line_ids.order_id
-        pos_shipped_products = pos_order.picking_ids.filtered(lambda p: p.state == 'done').move_ids.product_id
-        self.assertEqual(pos_shipped_products, product_a | product_b)
-
-    def test_down_payment_displayed(self):
-        """
-        Tests that a down payment for a Sale Order will be displayed and applied when settling the order
-        """
-        product_a = self.env['product.product'].create({
-            'name': 'Product A',
-            'lst_price': 10.0,
-        })
-        so = self.env['sale.order'].sudo().create({
-            'partner_id': self.env['res.partner'].create({'name': 'Test Partner'}).id,
-            'order_line': [(0, 0, {
-                'product_id': product_a.id,
-                'product_uom_qty': 1,
-                'price_unit': product_a.lst_price,
-            })]
-        })
-        so.action_confirm()
-        self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('test_down_payment_displayed', login="accountman")
-
     def test_amount_to_invoice(self):
         """
         Checks that the amount to invoice is updated correctly when paying an order in the PoS
@@ -908,43 +877,16 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             }
         )
         self.main_pos_config.open_ui()
-        order_data = {
-            "amount_paid": 100,
-            "amount_tax": 0,
-            "amount_return": 0,
-            "amount_total": 100,
-            "session_id": self.main_pos_config.current_session_id.id,
-            "date_order": fields.Datetime.to_string(fields.Datetime.now()),
-            "fiscal_position_id": False,
-            "lines": [
-                Command.create({
-                    "discount": 0,
-                    "price_unit": 100.0,
-                    "product_id": self.product_a.id,
-                    "price_subtotal": 100.0,
-                    "price_subtotal_incl": 100.0,
-                    "tax_ids": [],
-                    "sale_order_line_id": sale_order.order_line[0].id,
-                    "sale_order_origin_id": sale_order.id,
-                    "qty": 1,
-                }),
-            ],
-            "name": "Order 12345-123-1234",
-            "partner_id": self.partner_a.id,
-            "sequence_number": 2,
-            "payment_ids": [
-                    Command.create({
-                        "amount": 100,
-                        "name": fields.Datetime.now(),
-                        "payment_method_id": self.main_pos_config.payment_method_ids[0].id,
-                    }),
-            ],
-            "uuid": "12345-123-1234",
-            "user_id": self.env.uid,
-            "to_invoice": True,
-        }
         self.assertEqual(sale_order.amount_to_invoice, 100.0, "Amount to invoice should be 100.0")
-        self.env['pos.order'].sync_from_ui([order_data])
+        self._sync_paid_pos_order([{
+            'product': self.product_a,
+            'price_unit': 100.0,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line[0].id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=self.partner_a, to_invoice=True)
         self.assertEqual(sale_order.amount_to_invoice, 0.0, "Amount to invoice should be 0.0")
 
     def test_payment_terms_with_early_discount(self):
@@ -981,41 +923,15 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             })],
         })
         sale_order.action_confirm()
-        self.main_pos_config.open_ui()
-        current_session = self.main_pos_config.current_session_id
-
-        pos_order = {'amount_paid': 10,
-           'amount_return': 0,
-           'amount_tax': 0,
-           'amount_total': 10,
-           'date_order': fields.Datetime.to_string(fields.Datetime.now()),
-           'fiscal_position_id': False,
-           'to_invoice': True,
-           'partner_id': partner_test.id,
-           'pricelist_id': self.main_pos_config.available_pricelist_ids[0].id,
-           'lines': [[0,
-             0,
-             {'discount': 0,
-              'price_unit': 10,
-              'product_id': product_a.id,
-              'price_subtotal': 10,
-              'price_subtotal_incl': 10,
-              'sale_order_line_id': sale_order.order_line[0].id,
-              'sale_order_origin_id': sale_order.id,
-              'qty': 1,
-              'tax_ids': []}]],
-           'name': 'Order 00044-003-0014',
-           'session_id': current_session.id,
-           'sequence_number': self.main_pos_config.journal_id.id,
-           'payment_ids': [[0,
-             0,
-             {'amount': 10,
-              'name': fields.Datetime.now(),
-              'payment_method_id': self.main_pos_config.payment_method_ids[0].id}]],
-           'uuid': '00044-003-0014',
-           'user_id': self.env.uid}
-
-        pos_order_id = self.env['pos.order'].sync_from_ui([pos_order])['pos.order'][0]['id']
+        pos_order_id = self._sync_paid_pos_order([{
+            'product': product_a,
+            'price_unit': 10,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line[0].id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=partner_test, to_invoice=True)
         pos_order = self.env['pos.order'].browse(pos_order_id)
         self.assertFalse(pos_order.account_move.invoice_payment_term_id)
 
@@ -1097,26 +1013,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         self.assertEqual(pos_order_b.amount_tax, 0, "PoS order untaxed amount should be 10 with the tax override 2")
         self.assertEqual(pos_order_b.lines[0].tax_ids, tax_override_2, "PoS order should have the tax override 2")
 
-    def test_quantity_updated_settle(self):
-        """
-        Tests that the quantity is updated when partially settling an order, so that the
-        settle displays the right amount that still needs to be settled.
-        """
-        product_a = self.env['product.product'].create({
-            'name': 'Product A',
-            'lst_price': 10.0,
-        })
-        self.env['sale.order'].sudo().create({
-            'partner_id': self.env['res.partner'].create({'name': 'Test Partner'}).id,
-            'order_line': [(0, 0, {
-                'product_id': product_a.id,
-                'product_uom_qty': 5,
-                'price_unit': product_a.lst_price,
-            })]
-        })
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('test_quantity_updated_settle', login="accountman")
-
     def test_settle_order_with_different_uom(self):
         """Verify that a qty has changed according to UOM"""
         product_a = self.env['product.product'].create({
@@ -1139,53 +1035,29 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         })
         sale_order.action_confirm()
 
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('PoSSettleQuotation', login="accountman")
-        pos_order = self.env['pos.order'].search([('partner_id', '=', test_partner.id)], limit=1)
+        # The PoS loads the sale order line converted in the unit of the product.
+        converted_line = sale_order.order_line.read_converted()[0]
+        self.assertEqual(converted_line['product_uom_qty'], 12.0, "quantity should be 12.0")
+        self.assertEqual(round(converted_line['price_unit'], 2), 0.83, "price of product should be 0.83")
 
-        self.assertEqual(pos_order.lines[0].qty, 12.0, "quantity should be 12.0")
-        self.assertEqual(pos_order.lines[0].price_unit, 0.83, "price of product should be 0.83")
+        self._sync_paid_pos_order([{
+            'product': product_a,
+            'qty': converted_line['product_uom_qty'],
+            'price_unit': 0.83,
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line.id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=test_partner)
 
-    def test_selected_partner_quotation_loading(self):
-        """
-        Tests that when a partner is selected in the PoS, then a quotation for this partner is loaded
-        """
-        self.env.user.group_ids += self.quick_ref('sales_team.group_sale_salesman')
-        product_a = self.env['product.product'].create({
-            'name': 'Product A',
-            'available_in_pos': True,
-            'lst_price': 10.0,
-        })
-        product_b = self.env['product.product'].create({
-            'name': 'Product B',
-            'available_in_pos': True,
-            'lst_price': 5.0,
-        })
-        partner_1 = self.env['res.partner'].create({'name': 'A Test Partner 1'})
-        partner_2 = self.env['res.partner'].create({'name': 'A Test Partner 2'})
-        self.env['sale.order'].create({
-            'partner_id': partner_1.id,
-            'order_line': [(0, 0, {
-                'product_id': product_a.id,
-                'product_uom_qty': 1,
-                'price_unit': product_a.lst_price,
-            })]
-        })
-        self.env['sale.order'].create({
-            'partner_id': partner_2.id,
-            'order_line': [(0, 0, {
-                'product_id': product_b.id,
-                'product_uom_qty': 2,
-                'price_unit': product_b.lst_price,
-            })]
-        })
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'test_selected_partner_quotation_loading', login="accountman")
+        # The quantity sold in the PoS is converted back in the unit of the sale order line.
+        self.assertEqual(sale_order.order_line.qty_invoiced, 1.0, "1 dozen should be invoiced")
 
     def test_ecommerce_paid_order_is_hidden_in_pos(self):
         """
         Tests that a Sale Order fully paid via a payment.transaction (eCommerce)
-        does not appear in the list of orders fetched by the Point of Sale.
+        has no unpaid amount left, so that it is filtered out of the orders list
+        of the Point of Sale.
         """
         self.env.user.group_ids += self.quick_ref('sales_team.group_sale_salesman')
         partner_1 = self.env['res.partner'].create({'name': 'A Test Partner 1'})
@@ -1206,9 +1078,14 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             'name': 'Test',
             'code': 'none',
         })
+        payment_method = self.env["payment.method"].create({
+            "name": "Payment method",
+            "code": "unknown",
+            "provider_id": provider.id,
+        })
         self.env['payment.transaction'].create({
             'provider_id': provider.id,
-            'payment_method_id': self.env.ref('payment.payment_method_unknown').id,
+            'payment_method_id': payment_method.id,
             'amount': sale_order.amount_total,
             'currency_id': sale_order.currency_id.id,
             'partner_id': sale_order.partner_id.id,
@@ -1221,8 +1098,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             sale_order.amount_unpaid, 0.0,
             "The amount_unpaid for the SO should be 0 after a successful transaction."
         )
-        self.main_pos_config.open_ui()
-        self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'test_ecommerce_paid_order_is_hidden_in_pos', login="accountman")
 
     def test_ecommerce_unpaid_order_is_shown_in_pos(self):
         """
@@ -1248,7 +1123,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             sale_order.amount_unpaid, sale_order.amount_total,
             "The amount_unpaid for the SO should not be 0 if there are no transactions."
         )
-        self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'test_ecommerce_unpaid_order_is_shown_in_pos', login="accountman")
 
     def test_backend_settle_refund(self):
         """Make sure that sale orders settled in PoS and refunded in the backend get their invoiced quantity updated correctly."""
@@ -1272,45 +1146,16 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             })],
         })
         sale_order.action_confirm()
-        self.main_pos_config.open_ui()
-        current_session = self.main_pos_config.current_session_id
-
-        pos_order = {
-           'amount_paid': 10,
-           'amount_return': 0,
-           'amount_tax': 0,
-           'amount_total': 10,
-           'date_order': fields.Datetime.to_string(fields.Datetime.now()),
-           'fiscal_position_id': False,
-           'to_invoice': True,
-           'partner_id': partner_test.id,
-           'pricelist_id': self.main_pos_config.available_pricelist_ids[0].id,
-           'lines': [[0,
-             0,
-             {'discount': 0,
-              'price_unit': 10,
-              'product_id': product_a.id,
-              'price_subtotal': 10,
-              'price_subtotal_incl': 10,
-              'sale_order_line_id': sale_order.order_line[0].id,
-              'sale_order_origin_id': sale_order.id,
-              'qty': 1,
-              'tax_ids': []}]],
-           'name': 'Order 00044-003-0014',
-           'session_id': current_session.id,
-           'sequence_number': self.main_pos_config.journal_id.id,
-           'payment_ids': [[0,
-             0,
-             {'amount': 10,
-              'name': fields.Datetime.now(),
-              'payment_method_id': self.main_pos_config.payment_method_ids[0].id}]],
-           'user_id': self.env.uid,
-           'uuid': str(uuid.uuid4()),
-            }
-
-        data = self.env['pos.order'].sync_from_ui([pos_order])
+        pos_order_id = self._sync_paid_pos_order([{
+            'product': product_a,
+            'price_unit': 10,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
+                'sale_order_line_id': sale_order.order_line[0].id,
+                'sale_order_origin_id': sale_order.id,
+            },
+        }], partner=partner_test, to_invoice=True)
         self.assertEqual(sale_order.order_line.qty_invoiced, 1)
-        pos_order_id = data['pos.order'][0]['id']
         pos_order_record = self.env['pos.order'].browse(pos_order_id)
         refund_action = pos_order_record.refund()
         refund = self.env['pos.order'].browse(refund_action['res_id'])
@@ -1323,53 +1168,7 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         self.env.flush_all()
         refund_payment.with_context(**payment_context).check()
         self.assertEqual(sale_order.order_line.qty_invoiced, 0)
-
-    def test_settle_order_with_multiple_uom(self):
-        """ Verify that a sale order with multiple UoM can be settled from the PoS."""
-        uom_a, uom_b = self.env['uom.uom'].create([{
-            "name": "UoM A"
-        }, {
-            "name": "UoM B"
-        }])
-
-        product_a, product_b = self.env['product.product'].create([{
-            "name": "Product A",
-            "available_in_pos": True,
-            "is_storable": True,
-            "lst_price": 10.0,
-            "uom_id": uom_a.id,
-            "taxes_id": [],
-        }, {
-            "name": "Product B",
-            "available_in_pos": True,
-            "is_storable": True,
-            "lst_price": 20.0,
-            "uom_id": uom_b.id,
-            "taxes_id": [],
-        }])
-
-        sale_order = self.env["sale.order"].sudo().create({
-            "partner_id": self.env['res.partner'].create({'name': 'Test Partner'}).id,
-            "order_line": [
-                (0, 0, {
-                    "product_id": product_a.id,
-                    "name": product_a.name,
-                    "product_uom_qty": 2,
-                    "product_uom_id": uom_a.id,
-                    "price_unit": product_a.lst_price,
-                }),
-                (0, 0, {
-                    "product_id": product_b.id,
-                    "name": product_b.name,
-                    "product_uom_qty": 3,
-                    "product_uom_id": uom_b.id,
-                    "price_unit": product_b.lst_price,
-                }),
-            ],
-        })
-        sale_order.action_confirm()
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('PoSSettleQuotation', login="accountman")
+        self.assertEqual(sale_order.order_line.qty_delivered, 0)
 
     def test_amount_unpaid_with_downpayment_and_credit_note(self):
         """ Test that amount_unpaid is well calculated when a downpayment is not made in the PoS """
@@ -1416,52 +1215,6 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
 
         self.assertEqual(sale_order.amount_unpaid, 0.0)
 
-    def test_settle_so_custom_attribute_value(self):
-        """When settling a sale order (e.g. from the website) in POS, free-text custom
-        attribute values must appear in the orderline's product name via
-        constructFullProductName, not just the placeholder (e.g. 'Custom').
-        """
-        attr = self.env['product.attribute'].create({
-            'name': 'Inscription',
-            'create_variant': 'no_variant',
-        })
-        attr_value = self.env['product.attribute.value'].create({
-            'name': 'Custom',
-            'attribute_id': attr.id,
-            'is_custom': True,
-        })
-        product_tmpl = self.env['product.template'].create({
-            'name': 'Custom Product',
-            'available_in_pos': True,
-            'type': 'service',
-            'list_price': 10.0,
-            'taxes_id': [],
-            'attribute_line_ids': [Command.create({
-                'attribute_id': attr.id,
-                'value_ids': [Command.link(attr_value.id)],
-            })],
-        })
-        ptav = product_tmpl.attribute_line_ids.product_template_value_ids
-        product = product_tmpl.product_variant_ids[0]
-
-        sale_order = self.env['sale.order'].create({
-            'partner_id': self.env['res.partner'].create({'name': 'Website Customer'}).id,
-            'order_line': [Command.create({
-                'product_id': product.id,
-                'product_uom_qty': 1,
-                'price_unit': 10.0,
-                'product_no_variant_attribute_value_ids': [Command.link(ptav.id)],
-                'product_custom_attribute_value_ids': [Command.create({
-                    'custom_product_template_attribute_value_id': ptav.id,
-                    'custom_value': 'Value',
-                })],
-            })],
-        })
-        sale_order.action_confirm()
-
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('test_settle_so_custom_attribute_value', login="accountman")
-
     def test_advance_payment_with_extra_lines(self):
         so = self.env['sale.order'].sudo().create({
             'partner_id': self.partner_a.id,
@@ -1495,7 +1248,7 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         self.env["pos.config"].with_company(branch).create({
             "name": "Branch Point of Sale"
         })
-        self.env['pos.config']._ensure_downpayment_product()
+        self.env['pos.config']._ensure_default_products()
 
     def test_amount_unpaid_with_refund_pos_order(self):
         product = self.env['product.product'].create({
@@ -1518,45 +1271,16 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
         })
         sale_order.action_confirm()
 
-        self.main_pos_config.open_ui()
-        current_session = self.main_pos_config.current_session_id
-
-        pos_order_data = {
-            'amount_paid': 100.0,
-            'amount_return': 0.0,
-            'amount_tax': 0.0,
-            'amount_total': 100.0,
-            'date_order': fields.Datetime.to_string(fields.Datetime.now()),
-            'fiscal_position_id': False,
-            'to_invoice': False,
-            'partner_id': partner.id,
-            'pricelist_id': self.main_pos_config.available_pricelist_ids[0].id,
-            'lines': [[0, 0, {
-                'discount': 0,
-                'pack_lot_ids': [],
-                'price_unit': 100.0,
-                'product_id': product.id,
-                'price_subtotal': 100.0,
-                'price_subtotal_incl': 100.0,
+        pos_order_id = self._sync_paid_pos_order([{
+            'product': product,
+            'price_unit': 100.0,
+            'taxes': self.env['account.tax'],
+            'extra_values': {
                 'sale_order_line_id': sale_order.order_line[0].id,
                 'sale_order_origin_id': sale_order.id,
-                'qty': 1,
-                'tax_ids': [],
-            }]],
-            'name': 'Order Refund-Test-0001',
-            'session_id': current_session.id,
-            'sequence_number': 1,
-            'payment_ids': [[0, 0, {
-                'amount': 100.0,
-                'name': fields.Datetime.now(),
-                'payment_method_id': self.main_pos_config.payment_method_ids[0].id,
-            }]],
-            'user_id': self.env.uid,
-            'uuid': str(uuid.uuid4()),
-        }
-
-        data = self.env['pos.order'].sync_from_ui([pos_order_data])
-        pos_order_record = self.env['pos.order'].browse(data['pos.order'][0]['id'])
+            },
+        }], partner=partner)
+        pos_order_record = self.env['pos.order'].browse(pos_order_id)
 
         self.assertEqual(
             sale_order.amount_unpaid, 0.0,
@@ -1589,16 +1313,61 @@ class TestPoSSale(TestPointOfSaleHttpCommon):
             "a positive refund line must be treated as negative in the computation",
         )
 
+    def test_for_ecommerce_postpaid_order_amount_unpaid_equals_amount_paid(self):
+        if self.env['ir.module.module']._get('website_sale_collect').state != 'installed':
+            self.skipTest("This test requires 'Click & Collect' module to be installed.")
+        partner_1 = self.env['res.partner'].create({'name': 'A Test Partner 1'})
+        self.env.user.group_ids += self.quick_ref('sales_team.group_sale_salesman')
+        product_a = self.env['product.product'].create({
+            'name': 'Product A',
+            'available_in_pos': True,
+            'lst_price': 10.0,
+        })
+        sale_order = self.env['sale.order'].create({
+            'partner_id': partner_1.id,
+            'order_line': [Command.create({
+                'product_id': product_a.id,
+                'product_uom_qty': 2,
+                'price_unit': product_a.lst_price
+            })]
+        })
+        provider = self.env['payment.provider'].create({
+            'name': 'Test',
+            'code': 'custom',
+            'custom_mode': 'on_site',
+        })
+        payment_method = self.env["payment.method"].create({
+            "name": "Payment method",
+            "code": "pay_on_site",
+            "provider_id": provider.id,
+        })
+        self.assertTrue(payment_method._is_postpaid())
+        self.env['payment.transaction'].create({
+            'provider_id': provider.id,
+            'payment_method_id': payment_method.id,
+            'amount': sale_order.amount_total,
+            'currency_id': sale_order.currency_id.id,
+            'partner_id': sale_order.partner_id.id,
+            'state': 'done',
+            'sale_order_ids': [Command.set(sale_order.ids)],
+        })
+        self.assertEqual(
+            sale_order.amount_unpaid, sale_order.amount_paid,
+            "The amount_unpaid for the SO should be equal to amount_paid after a postpaid transaction."
+        )
+
 
 @tagged('post_install', '-at_install')
-class TestPoSSalePayment(TestPointOfSaleHttpCommon, PaymentCommon):
+class TestPoSSalePayment(PoSSaleSyncCommon, TestPointOfSaleHttpCommon, PaymentCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     def test_pos_settle_so_with_downpayment(self):
         """Ensure that the POS correctly handles Sale Orders where a down payment was processed
         via a payment transaction with the automatic invoicing setting enabled.
         """
         self.product_a.available_in_pos = True
-        self.env['ir.config_parameter'].sudo().set_bool('sale.automatic_invoice', 'True')
+        self.env.company.sale_automatic_invoice = True
         self.partner_a.email = "test.customer@example.com"
         sale_order = self.env['sale.order'].sudo().create({
             'partner_id': self.partner_a.id,
@@ -1607,7 +1376,7 @@ class TestPoSSalePayment(TestPointOfSaleHttpCommon, PaymentCommon):
                 'product_uom_qty': 1,
                 'price_unit': self.product_a.lst_price,
             })],
-            'require_payment': True,
+            'require_signature': False,
             'prepayment_percent': 0.3,
         })
         # Manual downpayment invoice
@@ -1629,8 +1398,13 @@ class TestPoSSalePayment(TestPointOfSaleHttpCommon, PaymentCommon):
             )
         self._run_post_processing(tx)
         self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
-        self.main_pos_config.open_ui()
-        self.start_pos_tour('test_pos_settle_so_with_downpayment', login="accountman")
+
+        # Both down payments are deducted when settling the order, which is
+        # covered by the HOOT scenario.
+        self.assertEqual(sale_order.amount_unpaid, 755)
+        down_payment_lines = sale_order.order_line.filtered(lambda line: line.is_downpayment and not line.display_type)
+        self.assertEqual(len(down_payment_lines), 2)
+        self.assertEqual(down_payment_lines.mapped('qty_to_invoice'), [-1, -1])
 
     def test_pos_downpayment_sale_invoice_creation(self):
         account = self.env['account.account'].create({'name': 'Test Downpayment Income Account',
@@ -1658,9 +1432,8 @@ class TestPoSSalePayment(TestPointOfSaleHttpCommon, PaymentCommon):
                 })],
         })
         sale_order.action_confirm()
-        self.main_pos_config.open_ui()
         self.main_pos_config.down_payment_product_id = downpayment_product
-        self.start_pos_tour('PoSApplyDownpaymentInvoice', login="accountman")
+        self._sync_paid_pos_downpayment(sale_order, [{'price_unit': 10}], percentage=10, to_invoice=True)
         invoice = sale_order._create_invoices(final=True)
         invoice.action_post()
 

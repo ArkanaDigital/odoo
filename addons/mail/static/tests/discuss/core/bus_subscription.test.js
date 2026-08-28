@@ -1,20 +1,18 @@
 import { waitForChannels } from "@bus/../tests/bus_test_helpers";
-import { onWebsocketEvent } from "@bus/../tests/mock_websocket";
-
 import {
     click,
     contains,
     defineMailModels,
-    insertText,
+    MENU_ACTIVE_IDS,
     openDiscuss,
     setupChatHub,
     start,
     startServer,
+    triggerHotkey,
 } from "@mail/../tests/mail_test_helpers";
+import { describe, edit, expect, mockDate, press, runAllTimers, test } from "@odoo/hoot";
 
-import { describe, edit, expect, mockDate, press, test } from "@odoo/hoot";
-
-import { Command } from "@web/../tests/web_test_helpers";
+import { Command, getService, patchWithCleanup } from "@web/../tests/web_test_helpers";
 
 defineMailModels();
 
@@ -58,7 +56,7 @@ test("bus subscription updated when opening/closing chat window as a non member"
     await waitForChannels([`discuss.channel_${channelId}`]);
 });
 
-test("bus subscription updated when joining locally pinned thread", async () => {
+test("bus subscription updated when joining non-member thread open in discuss", async () => {
     const pyEnv = await startServer();
     const channelId = pyEnv["discuss.channel"].create({
         channel_member_ids: [],
@@ -76,37 +74,45 @@ test("bus subscription updated when joining locally pinned thread", async () => 
 
 test("bus subscription is refreshed when channel is joined", async () => {
     const pyEnv = await startServer();
-    pyEnv["discuss.channel"].create([{ name: "General" }, { name: "Sales" }]);
-    onWebsocketEvent("subscribe", () => expect.step("subscribe"));
+    pyEnv["discuss.channel"].create([
+        { name: "General" },
+        { name: "Sales", channel_member_ids: [] },
+    ]);
     const later = luxon.DateTime.now().plus({ seconds: 2 });
-    mockDate(
-        `${later.year}-${later.month}-${later.day} ${later.hour}:${later.minute}:${later.second}`
-    );
+    mockDate(later.toUTC().toFormat("yyyy-MM-dd HH:mm:ss"));
     await start();
-    await expect.waitForSteps(["subscribe"]);
     await openDiscuss();
-    await expect.waitForSteps([]);
-    await click("input[placeholder='Search']");
-    await insertText(
-        ".o_command_palette_search input[placeholder='Search conversations']",
-        "new channel"
-    );
-    await expect.waitForSteps(["subscribe"]);
+    await runAllTimers(); // settle the bus subscriptions from start/openDiscuss
+    await triggerHotkey("control+k");
+    patchWithCleanup(getService("mail.store"), {
+        updateBusSubscription: () => expect.step("update_bus_subscription"),
+    });
+    await click(".o-mail-DiscussCommand:has(:text('Sales'))");
+    await contains(".o-mail-DiscussContent-threadName[title='Sales']");
+    await click("button:text('Add People')");
+    await click("[name='selectablePartnerName']:text('Mitchell Admin')");
+    await click("button:text('Invite')");
+    await expect.waitForSteps(["update_bus_subscription"]);
 });
 
 test("bus subscription is refreshed when channel is left", async () => {
     const pyEnv = await startServer();
     pyEnv["discuss.channel"].create({ name: "General" });
-    onWebsocketEvent("subscribe", () => expect.step("subscribe"));
     const later = luxon.DateTime.now().plus({ seconds: 2 });
-    mockDate(
-        `${later.year}-${later.month}-${later.day} ${later.hour}:${later.minute}:${later.second}`
-    );
+    mockDate(later.toUTC().toFormat("yyyy-MM-dd HH:mm:ss"));
     await start();
-    await expect.waitForSteps(["subscribe"]);
+    await openDiscuss(MENU_ACTIVE_IDS.CHANNEL);
+    await contains(".o-mail-Discuss[data-active]");
+    await runAllTimers(); // settle the bus subscriptions from start/openDiscuss
     await openDiscuss();
-    await expect.waitForSteps([]);
+    patchWithCleanup(getService("mail.store"), {
+        updateBusSubscription: () => expect.step("update_bus_subscription"),
+    });
+    await contains(".o-mail-MessagingMenuItem");
+    await contains(".o-mail-MessagingMenuItem:has(:text('General'))");
     await click("[title='Channel Actions']");
-    await click(".o-dropdown-item:contains('Leave Channel')");
-    await expect.waitForSteps(["subscribe"]);
+    await click(".o-dropdown-item:contains('Leave Conversation')");
+    await click(".o_dialog button:text('Leave Conversation')");
+    await contains(".o-mail-MessagingMenuItem", { count: 0 });
+    await expect.waitForSteps(["update_bus_subscription"]);
 });

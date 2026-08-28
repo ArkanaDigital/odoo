@@ -1,5 +1,4 @@
-import { useRef } from "@web/owl2/utils";
-import { Component } from "@odoo/owl";
+import { Component, signal, t, useProps } from "@odoo/owl";
 import { ControlPanel } from "@web/search/control_panel/control_panel";
 import { SearchPanel } from "@web/search/search_panel/search_panel";
 
@@ -17,17 +16,14 @@ export function extractLayoutComponents(params) {
 
 export class Layout extends Component {
     static template = "web.Layout";
-    static props = {
-        className: { type: String, optional: true },
-        display: { type: Object, optional: true },
-        slots: { type: Object, optional: true },
-    };
-    static defaultProps = {
-        display: {},
-    };
+    props = useProps({
+        className: t.string().optional(),
+        display: t.object().optional({}),
+        slots: t.object().optional(),
+    });
+    contentRef = signal.ref();
     setup() {
         this.components = extractLayoutComponents(this.env.config);
-        this.contentRef = useRef("content");
     }
     get controlPanelSlots() {
         const slots = { ...this.props.slots };

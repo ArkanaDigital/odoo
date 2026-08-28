@@ -3,15 +3,16 @@ import {
     renderStaticFileBox,
 } from "@html_editor/main/media/media_dialog/document_selector";
 import { Plugin } from "@html_editor/plugin";
+import { isEmpty } from "@html_editor/utils/dom_info";
 import { closestElement, firstLeaf, lastLeaf } from "@html_editor/utils/dom_traversal";
 import { nodeSize } from "@html_editor/utils/position";
 import { withSequence } from "@html_editor/utils/resource";
 import { _t } from "@web/core/l10n/translation";
-import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
 import { DISABLED_NAMESPACE } from "../toolbar/toolbar_plugin";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { FileModel } from "@web/core/file_viewer/file_model";
 import { downloadFile } from "@web/core/network/download";
+import { isLinkSupported } from "../link/link_plugin";
 
 export class FilePlugin extends Plugin {
     static id = "file";
@@ -25,10 +26,10 @@ export class FilePlugin extends Plugin {
             id: "uploadFile",
             title: _t("Upload a file"),
             description: _t("Add a download box"),
-            icon: "fa-upload",
+            icon: "upload",
             run: this.uploadAndInsertFiles.bind(this),
             isAvailable: (selection) =>
-                this.isUploadCommandAvailable(selection) && isHtmlContentSupported(selection),
+                this.isUploadCommandAvailable(selection) && isLinkSupported(selection),
         },
         powerbox_items: {
             categoryId: "media",
@@ -67,6 +68,23 @@ export class FilePlugin extends Plugin {
         is_node_editable_predicates: (node) => {
             if (node?.nodeName === "SPAN" && node.classList.contains("o_file_box")) {
                 return false;
+            }
+        },
+        is_powerbox_available_predicates: (node) => {
+            if (closestElement(node, ".o_file_box")) {
+                return false;
+            }
+        },
+        are_shorthands_available_predicates: (node) => {
+            if (closestElement(node, ".o_file_box")) {
+                return false;
+            }
+        },
+
+        /** Predicates */
+        should_paste_as_text_predicates: (selection) => {
+            if (closestElement(selection.anchorNode, ".o_file_box")) {
+                return true;
             }
         },
     };
@@ -129,8 +147,8 @@ export class FilePlugin extends Plugin {
             case "ArrowLeft":
                 if (
                     selection.isCollapsed &&
-                    selection.anchorNode === firstLeafNode &&
-                    selection.anchorOffset === 0
+                    (isEmpty(fileNameEl) ||
+                        (selection.anchorNode === firstLeafNode && selection.anchorOffset === 0))
                 ) {
                     ev.preventDefault();
                 }
@@ -138,8 +156,9 @@ export class FilePlugin extends Plugin {
             case "ArrowRight":
                 if (
                     selection.isCollapsed &&
-                    selection.anchorNode === lastLeafNode &&
-                    selection.anchorOffset === nodeSize(lastLeafNode)
+                    (isEmpty(fileNameEl) ||
+                        (selection.anchorNode === lastLeafNode &&
+                            selection.anchorOffset === nodeSize(lastLeafNode)))
                 ) {
                     ev.preventDefault();
                 }
@@ -208,7 +227,7 @@ export class FilePlugin extends Plugin {
             accessToken: true,
         });
         const { name: filename, mimetype, id } = attachment;
-        return renderStaticFileBox(filename, mimetype, url, id);
+        return renderStaticFileBox(filename, mimetype, url, id, this.document);
     }
 
     onClickFileImage(fileImage) {

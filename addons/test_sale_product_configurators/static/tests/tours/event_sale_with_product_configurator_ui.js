@@ -11,7 +11,7 @@ registry.category("web_tour.tours").add("event_sale_with_product_configurator_to
         ...tourUtils.addProduct("Registration Event (TEST variants)"),
         {
             trigger:
-                'tr:has(div[name="o_sale_product_configurator_name"]:contains("Memorabilia")) button:has(i.oi-plus)',
+                'tr:has(div[name="o_sale_product_configurator_name"]:contains("Memorabilia")) button:has(i[data-icon="add"])',
             run: "click",
         },
         {
@@ -130,7 +130,7 @@ registry.category("web_tour.tours").add("event_sale_with_product_configurator_to
             trigger: "body:not(:has(.modal))",
         },
         {
-            trigger: '.o_field_cell.o_data_cell.o_list_number:contains("60.00")',
+            trigger: 'td[name="price_subtotal"]:contains("60.00")', // wait for the VIP tickets line
         },
         ...stepUtils.saveForm(),
     ],

@@ -7,11 +7,21 @@ from odoo.tests import tagged
 @tagged('post_install', '-at_install', 'post_install_l10n')
 class TestGenericIN(TestGenericLocalization, CommonPosTest):
 
+    _pos_partner_pos_form_fields = ['l10n_in_gst_treatment']
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @AccountTestInvoicingCommon.setup_country('in')
     def setUpClass(cls):
         super().setUpClass()
         cls.state_in_gj = cls.env.ref('base.state_in_gj')
+        cash_pm = cls.main_pos_config.payment_method_ids.filtered_domain([
+            ('type', '=', 'cash'),
+        ])
+        if not cls.main_pos_config._get_cash_payment_method():
+            cls.main_pos_config.write({
+                'payment_method_ids': [(4, cash_pm[0].id)],
+            })
         cls.main_pos_config.company_id.write({
             'name': "Default Company",
             'state_id': cls.state_in_gj.id,

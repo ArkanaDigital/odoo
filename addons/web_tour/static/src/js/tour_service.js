@@ -1,10 +1,9 @@
-import { assertType, Component, markup, types as t, whenReady } from "@odoo/owl";
+import { assertType, Component, t, whenReady } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { registry } from "@web/core/registry";
 import { session } from "@web/session";
 import { loadBundle } from "@web/core/assets";
-import { pointerState } from "@web_tour/js/tour_pointer/tour_pointer";
 import { tourState } from "@web_tour/js/tour_state";
 import {
     tourRecorderState,
@@ -12,6 +11,7 @@ import {
 } from "@web_tour/js/tour_recorder/tour_recorder_state";
 import { redirect } from "@web/core/utils/urls";
 import { _t } from "@web/core/l10n/translation";
+import { useService } from "@web/core/utils/hooks";
 
 class OnboardingItem extends Component {
     static components = { DropdownItem };
@@ -25,39 +25,44 @@ class OnboardingItem extends Component {
 
 const stepSchema = {
     trigger: t.string(),
-    "id?": t.string(),
-    "isActive?": t.array(t.string()),
-    "run?": t.or([t.string(), t.function(), t.boolean()]),
+    id: t.string().optional(),
+    isActive: t.array(t.string()).optional(),
+    run: t
+        .customValidator(
+            t.or([t.string(), t.function()]),
+            (fn) => typeof fn === "string" || !/\{\s*\}$/.test(fn.toString().trim()),
+            "run must be a string or a non-empty function"
+        )
+        .optional(),
 };
 
 const stepSchemaAuto = {
     ...stepSchema,
-    "content?": t.string(),
-    "expectUnloadPage?": t.boolean(),
-    "timeout?": t.customValidator(t.number(), (value) => value >= 0 && value <= 60000),
-    "tooltipPosition?": t.customValidator(t.string(), (value) =>
-        ["top", "bottom", "left", "right"].includes(value)
-    ),
+    content: t.string().optional(),
+    expectUnloadPage: t.boolean().optional(),
+    timeout: t.customValidator(t.number(), (value) => value >= 0 && value <= 60000).optional(),
+    tooltipPosition: t
+        .customValidator(t.string(), (value) => ["top", "bottom", "left", "right"].includes(value))
+        .optional(),
 };
 
 const stepSchemaOnboarding = {
     ...stepSchema,
-    "content?": t.or([t.string(), t.object()]), //allow object(_t && markup)
-    "tooltipPosition?": t.customValidator(t.string(), (value) =>
-        ["top", "bottom", "left", "right"].includes(value)
-    ),
+    content: t.or([t.string(), t.object()]).optional(), //allow object(_t && markup)
+    tooltipPosition: t
+        .customValidator(t.string(), (value) => ["top", "bottom", "left", "right"].includes(value))
+        .optional(),
 };
 
 const stepSchemaDebug = {
     ...stepSchemaAuto,
     ...stepSchemaOnboarding,
-    "pause?": t.boolean(),
-    "break?": t.boolean(),
+    pause: t.boolean().optional(),
+    break: t.boolean().optional(),
 };
 
 const tourSchema = {
     steps: t.function(),
-    "undeterministicTour_doNotCopy?": t.boolean(),
 };
 
 const tourRegistry = registry.category("web_tour.tours");
@@ -74,7 +79,6 @@ export class TourService {
         this.effect = services["effect"];
         this.overlay = services["overlay"];
         this.toursEnabled = session?.tour_enabled;
-        this.removePointer = () => {};
         this.removeTourRecorder = () => {};
         this.addOnboardingItemInDebugMenu();
 
@@ -88,7 +92,8 @@ export class TourService {
         }
 
         if (tourState.getCurrentTour()) {
-            if (tourState.getCurrentConfig().mode === "auto" || this.toursEnabled) {
+            const currentConfig = tourState.getCurrentConfig();
+            if (currentConfig.mode === "auto" || currentConfig.robot || this.toursEnabled) {
                 this.resumeTour();
             } else {
                 tourState.clear();
@@ -166,7 +171,8 @@ export class TourService {
         if (options.mode === "manual") {
             const tour = await this.orm.call("web_tour.tour", "get_tour_json_by_name", [name]);
             if (!tour) {
-                throw new Error(`Tour '${name}' is not found in the database.`);
+                console.error(`Tour '${name}' is not found in the database.`);
+                return;
             }
             if (!tour.steps.length && tourRegistry.contains(tour.name)) {
                 tour.steps = tourRegistry.get(tour.name).steps;
@@ -186,7 +192,8 @@ export class TourService {
             await this.waitUntilTourRegistered(name);
             const tour = tourRegistry.get(name, null);
             if (!tour) {
-                throw new Error(`Tour '${name}' is not found in registry 'web_tour.tours'.`);
+                console.error(`Tour '${name}' is not found in registry 'web_tour.tours'.`);
+                return;
             }
             return {
                 ...tour,
@@ -245,43 +252,20 @@ export class TourService {
             new TourAutomatic(tour).start();
         } else {
             await loadBundle("web_tour.interactive");
-            const { TourPointer } = odoo.loader.modules.get(
-                "@web_tour/js/tour_pointer/tour_pointer"
-            );
-            this.removePointer = this.overlay.add(
-                TourPointer,
-                {
-                    pointerState,
-                },
-                {
-                    sequence: 1100, // sequence based on bootstrap z-index values.
-                }
-            );
             const { TourInteractive } = odoo.loader.modules.get(
                 "@web_tour/js/tour_interactive/tour_interactive"
             );
-            new TourInteractive(tour).start(this.env, async () => {
-                this.removePointer();
-                tourState.clear();
-                browser.console.log("tour succeeded");
-                let message = tourConfig.rainbowManMessage || tour.rainbowManMessage;
-                if (message && window.DOMPurify) {
-                    message = window.DOMPurify.sanitize(message);
-                    this.effect.add({
-                        type: "rainbow_man",
-                        message: markup(message),
-                    });
-                }
-
-                const nextTour = await this.orm.call("web_tour.tour", "consume", [tour.name]);
-                if (nextTour) {
+            new TourInteractive(tour, {
+                orm: this.orm,
+                effect: this.effect,
+                overlay: this.overlay,
+                onChainNextTour: (nextTour) =>
                     this.startTour(nextTour.name, {
                         mode: "manual",
                         redirect: false,
                         rainbowManMessage: nextTour.rainbowManMessage,
-                    });
-                }
-            });
+                    }),
+            }).start(this.env);
         }
     }
 
@@ -295,13 +279,20 @@ export class TourService {
      * @param {number} [options.showPointerDuration=0] - Duration to show the pointer on each step.
      * @param {boolean} [options.debug=false] - Enables debug mode for the tour.
      * @param {boolean} [options.redirect=true] - Whether to redirect to `tour.url` if necessary.
+     * @param {boolean} [options.robot=false] - In "manual" mode, performs each step's action
+     * automatically (using the same helpers as automatic tours) instead of waiting for a real
+     * user interaction, while still resolving and displaying the tour pointer as it would for a
+     * human. Useful to test that onboarding tours' pointer resolves correctly.
      */
     async startTour(name, options = {}) {
-        this.removePointer();
         this.removeTourRecorder();
-        const tour = await this.getTour(name, options);
 
-        if (!session.is_public && !this.toursEnabled && options.mode === "manual") {
+        if (
+            !session.is_public &&
+            !this.toursEnabled &&
+            options.mode === "manual" &&
+            !options.robot
+        ) {
             this.toursEnabled = await this.orm.call("res.users", "switch_tour_enabled", [
                 !this.toursEnabled,
             ]);
@@ -313,7 +304,7 @@ export class TourService {
             showPointerDuration: 0,
             debug: false,
             redirect: true,
-            allowDelayToRemove: tour.undeterministicTour_doNotCopy,
+            robot: false,
             ...options,
         };
 
@@ -321,8 +312,8 @@ export class TourService {
         tourState.setCurrentTour(name);
         tourState.setCurrentIndex(0);
 
-        if (tourConfig.mode === "manual" && tour.url && tourConfig.redirect) {
-            redirect(tour.url);
+        if (tourConfig.url && tourConfig.redirect) {
+            redirect(tourConfig.url);
         } else {
             await this.resumeTour();
         }
@@ -368,11 +359,12 @@ registry.category("services").add("tour_service", {
 
 registry.category("command_provider").add("tour_recorder", {
     provide: (env, options) => {
+        const tour = useService("tour_service");
         const result = [];
         if (options.searchValue.toLowerCase() === "record") {
             result.push({
                 action() {
-                    env.services["tour_service"].startTourRecorder();
+                    tour.startTourRecorder();
                 },
                 name: _t("Enable the tour recorder"),
             });

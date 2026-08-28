@@ -1,6 +1,5 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { rpc } from "@web/core/network/rpc";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, signal } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { AutoComplete } from "@web/core/autocomplete/autocomplete";
@@ -8,18 +7,6 @@ import { Dialog } from "@web/core/dialog/dialog";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 
 class GoogleFontAutoComplete extends AutoComplete {
-    setup() {
-        super.setup();
-        this.inputRef = useRef("input");
-        this.sourcesListRef = useRef("sourcesList");
-        useLayoutEffect(
-            (el) => {
-                el.setAttribute("id", "google_font");
-            },
-            () => [this.inputRef.el]
-        );
-    }
-
     get dropdownOptions() {
         return {
             ...super.dropdownOptions,
@@ -29,8 +16,8 @@ class GoogleFontAutoComplete extends AutoComplete {
 
     onInput(ev) {
         super.onInput(ev);
-        if (this.sourcesListRef.el) {
-            this.sourcesListRef.el.scrollTop = 0;
+        if (this.listRef()) {
+            this.listRef().scrollTop = 0;
         }
     }
 }
@@ -94,14 +81,14 @@ export class AddFontDialog extends Component {
         valid: true,
         loading: false,
         googleFontFamily: undefined,
-        googleServe: !this.env.services.website.currentWebsite.cookies_bar,
+        googleServe: false,
         uploadedFontName: undefined,
         uploadedFonts: [],
         uploadedFontFaces: undefined,
         previewText: _t("The quick brown fox jumps over the lazy dog."),
     });
+    fileInput = signal.ref();
     setup() {
-        this.fileInput = useRef("fileInput");
         this.dialog = useService("dialog");
         this.orm = useService("orm");
     }
@@ -145,7 +132,7 @@ export class AddFontDialog extends Component {
         ];
     }
     async onGoogleFontSelect(fontFamily) {
-        this.fileInput.el.value = "";
+        this.fileInput().value = "";
         this.state.uploadedFonts = [];
         this.state.uploadedFontName = undefined;
         this.state.uploadedFontFaces = undefined;
@@ -177,7 +164,7 @@ export class AddFontDialog extends Component {
     }
     async onUploadChange(e) {
         this.state.googleFontFamily = undefined;
-        const file = this.fileInput.el.files[0];
+        const file = this.fileInput().files[0];
         if (!file) {
             this.state.uploadedFonts = [];
             this.state.uploadedFontName = undefined;
@@ -210,7 +197,9 @@ export class AddFontDialog extends Component {
         let shortestNamedFont;
         for (const font of this.state.uploadedFonts) {
             if (!shortestNamedFont || font.name.length < shortestNamedFont.name.length) {
-                shortestNamedFont = font;
+                // Create a copy of the font to not mangle the original font
+                // when setting the weight and style later
+                shortestNamedFont = JSON.parse(JSON.stringify(font));
             }
             font.isItalic = /italic/i.test(font.name);
             font.weight = getUploadedFontWeight(font.name);
@@ -220,7 +209,7 @@ export class AddFontDialog extends Component {
             }
         }
         if (!Object.values(targetFonts).some((font) => font.weight === 400)) {
-            // Keep font with shortest name.
+            // Keep font with the shortest name.
             shortestNamedFont.weight = 400;
             shortestNamedFont.style = "normal";
             targetFonts["400normal"] = shortestNamedFont;
@@ -228,9 +217,10 @@ export class AddFontDialog extends Component {
         const fontFaces = [];
         for (const font of Object.values(targetFonts)) {
             fontFaces.push(`@font-face{
-                font-family: ${baseFontName};
+                font-family: "${baseFontName}";
                 font-style: ${font.style};
                 font-weight: ${font.weight};
+                font-display: swap;
                 src:url("${font.url}");
             }`);
         }

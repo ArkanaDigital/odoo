@@ -36,8 +36,8 @@ class RestaurantFloor(models.Model):
     floor_plan_layout = fields.Json(string='Floor Plan Layout', copy=False)
 
     @api.model
-    def _load_pos_data_domain(self, data, config):
-        return [('pos_config_ids', '=', config.id)]
+    def _load_pos_data_domain(self, data):
+        return [('pos_config_ids', '=', data['pos.config'].id)]
 
     @api.model
     def _load_pos_data_fields(self, config):
@@ -58,7 +58,7 @@ class RestaurantFloor(models.Model):
     def write(self, vals):
         for floor in self:
             for config in floor.pos_config_ids:
-                if config.has_active_session and (vals.get('pos_config_ids') or vals.get('active')):
+                if config.current_session_id and (vals.get('pos_config_ids') or vals.get('active')):
                     raise UserError(
                         self.env._(
                             "Please close and validate the following open PoS Session before modifying this floor.\n"
@@ -143,8 +143,8 @@ class RestaurantTable(models.Model):
             table.display_name = f"{table.floor_id.name}, {table.table_number}"
 
     @api.model
-    def _load_pos_data_domain(self, data, config):
-        return [('active', '=', True), ('floor_id', 'in', config.floor_ids.ids)]
+    def _load_pos_data_domain(self, data):
+        return [('active', '=', True), ('floor_id', 'in', data['pos.config'].floor_ids.ids)]
 
     @api.model
     def _load_pos_data_fields(self, config):

@@ -379,6 +379,60 @@ class TestAPI(ThreadRecipients):
         self.assertEqual(partner.name, 'Forced Name', 'Forced by additional values')
         self.assertEqual(partner.phone, '+32455998877')
 
+    @users('admin')
+    def test_message_change_thread_move_preserves_subtype(self):
+        lead_src, lead_dst = self.env['mail.test.lead'].create([
+            {'partner_id': self.partner_1.id},
+            {'partner_id': self.user_portal.partner_id.id},
+        ])
+
+        ticket = self.ticket_record.with_env(self.env)
+
+        subtype_with_description, generic_subtype = self.env['mail.message.subtype'].create([
+            {
+                'name': 'Subtype With Description',
+                'description': 'Important Action Done',
+                'res_model': lead_src._name,
+            }, {
+                'name': 'Generic Subtype',
+                'description': 'Generic',
+                'res_model': False,
+            },
+        ])
+
+        # Lead1 message
+        posted_msg = lead_src.message_post(
+            body="Hello message",
+            subtype_id=subtype_with_description.id,
+        )
+        lead_src.message_change_thread(ticket)
+        self.assertMessageFields(posted_msg, {
+            'body': Markup('<p>Important Action Done\n</p><p></p><p>Hello message</p>\n'),  # removed subtype description + old body
+            'subtype_id': self.env['mail.message.subtype'],
+        })
+
+        # Move to lead_dst(same model)
+        posted_msg_2 = lead_src.message_post(
+            body="Hello message",
+            subtype_id=subtype_with_description.id,
+        )
+        lead_src.message_change_thread(lead_dst)
+        self.assertMessageFields(posted_msg_2, {
+            'body': Markup('<p>Hello message</p>'),  # old body only
+            'subtype_id': subtype_with_description,
+        })
+
+        # Generic subtype test (different model)
+        posted_msg_3 = lead_src.message_post(
+            body="Hello message",
+            subtype_id=generic_subtype.id,
+        )
+        lead_src.message_change_thread(ticket)
+        self.assertMessageFields(posted_msg_3, {
+            'body': Markup('<p>Hello message</p>'),  # old body only
+            'subtype_id': generic_subtype,
+        })
+
     @users('employee')
     @warmup
     def test_message_get_default_recipients(self):
@@ -417,7 +471,7 @@ class TestAPI(ThreadRecipients):
 
         # test default computation of recipients
         self.env.invalidate_all()
-        with self.assertQueryCount(14):
+        with self.assertQueryCount(18):
             defaults_withcc = test_records.with_context()._message_get_default_recipients(with_cc=True)
             defaults_withoutcc = test_records.with_context()._message_get_default_recipients()
         for record, expected in zip(test_records, [
@@ -536,18 +590,76 @@ class TestAPI(ThreadRecipients):
             with self.subTest(ticket_name=ticket.name):
                 self.assertDictEqual(defaults[ticket.id], expected)
 
+    def test_message_get_default_recipients_root(self):
+        """
+        By default, the root partner & its email should not be available
+        as default recipients.
+        However, if a non-root partner whose email matches root is active,
+        then this restriction should be lifted.
+        """
+        # by default: root partner unavailable
+        tickets = self.env['mail.test.ticket.mc'].create([
+            # no root partner
+            {
+                'customer_id': self.user_root.partner_id.id,
+                'name': 'Root',
+            },
+            # no root email
+            {
+                'email_from': self.user_root.partner_id.email,
+                'name': 'Root Email',
+            },
+        ])
+        expected_all = [
+            # Root shouldn't show uo
+            {'email_cc': '', 'email_to': '', 'partner_ids': []},
+            # Root email shouldn't show up
+            {'email_cc': '', 'email_to': '', 'partner_ids': []},
+        ]
+        defaults = tickets._message_get_default_recipients()
+        for ticket, expected in zip(tickets, expected_all, strict=True):
+            with self.subTest(ticket_name=ticket.name):
+                self.assertDictEqual(defaults[ticket.id], expected)
+
+        # We create a partner with an email matching root:
+        partner_matching_root = self.env['res.partner'].create({
+            'name': 'PartnerMatchingRoot',
+            'email': f'"PartnerMatchingRoot" <{self.user_root.partner_id.email_normalized}>',
+        })
+        tickets += self.env['mail.test.ticket.mc'].create({
+            'customer_id': partner_matching_root.id,
+            'name': 'EmailLikeRootTicket',
+        })
+
+        # We now expect root email to become available:
+        expected_all = [
+            # Root partner should show up
+            {'email_cc': '', 'email_to': '', 'partner_ids': self.user_root.partner_id.ids},
+            # Email matching root should be allowed
+            {'email_cc': '', 'email_to': self.user_root.partner_id.email, 'partner_ids': []},
+            # Customer matching root should show up
+            {'email_cc': '', 'email_to': '', 'partner_ids': partner_matching_root.ids},
+        ]
+        defaults = tickets._message_get_default_recipients()
+        for ticket, expected in zip(tickets, expected_all, strict=True):
+            with self.subTest(ticket_name=ticket.name):
+                self.assertDictEqual(defaults[ticket.id], expected)
+
     @users("employee")
     def test_message_get_suggested_recipients(self):
         """ Test default creation values returned for suggested recipient. """
         ticket = self.ticket_record.with_user(self.env.user)
+        # assign to another user so the responsible can be proposed as suggested recipient
+        ticket.user_id = self.user_employee_2
         ticket.message_unsubscribe(ticket.user_id.partner_id.ids)
         suggestions = ticket._message_get_suggested_recipients(no_create=True)
         self.assertEqual(len(suggestions), 2)
         for suggestion, expected in zip(suggestions, [{
             'create_values': {},
-            'email': self.user_employee.email_normalized,
-            'name': self.user_employee.name,
-            'partner_id': self.partner_employee.id,
+            'email': self.user_employee_2.email_normalized,
+            'name': self.user_employee_2.name,
+            'partner_id': self.partner_employee_2.id,
+            'recipient_type': 'to',
         }, {
             'create_values': {
                 'company_id': self.env.user.company_id.id,
@@ -556,8 +668,25 @@ class TestAPI(ThreadRecipients):
             'email': 'paulette@test.example.com',
             'name': 'Paulette Vachette',
             'partner_id': False,
+            'recipient_type': 'to',
         }], strict=True):
             self.assertDictEqual(suggestion, expected)
+
+        # assigned should not be added if current user
+        ticket.user_id = self.env.user
+        ticket.message_unsubscribe(ticket.user_id.partner_id.ids)
+        suggestions = ticket._message_get_suggested_recipients(no_create=True)
+        self.assertEqual(len(suggestions), 1)
+        self.assertDictEqual(suggestions[0], {
+            'create_values': {
+                'company_id': self.env.user.company_id.id,
+                'phone': '+32455998877',
+            },
+            'email': 'paulette@test.example.com',
+            'name': 'Paulette Vachette',
+            'partner_id': False,
+            'recipient_type': 'to',
+        })
 
         # existing partner not linked -> should propose it
         ticket_partner_email = self.env['mail.test.ticket.mc'].create({
@@ -610,6 +739,7 @@ class TestAPI(ThreadRecipients):
                             'email': sugg_partner.email_normalized,
                             'name': sugg_partner.name,
                             'partner_id': sugg_partner.id,
+                            'recipient_type': 'to',
                         }
                     )
                 else:
@@ -676,6 +806,7 @@ class TestAPI(ThreadRecipients):
                     'email': self.test_partner.email_normalized,
                     'name': self.test_partner.name,
                     'partner_id': self.test_partner.id,
+                    'recipient_type': 'to',
                 },
             ],
             # only valid is the customer (and not aliases nor partner with alias email)
@@ -685,6 +816,7 @@ class TestAPI(ThreadRecipients):
                     'email': self.test_partner_archived.email_normalized,
                     'name': self.test_partner_archived.name,
                     'partner_id': self.test_partner_archived.id,
+                    'recipient_type': 'to',
                 },
             ],
         ]
@@ -749,16 +881,19 @@ class TestAPI(ThreadRecipients):
                 'email': self.user_portal.email_normalized,
                 'name': self.user_portal.name,
                 'partner_id': self.user_portal.partner_id.id,
+                'recipient_type': 'to',
             }, {  # replying message to
                 'create_values': {},
                 'email': test_to_tuples[0][1],
                 'name': test_to_tuples[0][0],
                 'partner_id': False,
+                'recipient_type': 'to',
             }, {  # replying message  cc
                 'create_values': {},
                 'email': test_cc_tuples[1][1],
                 'name': test_cc_tuples[1][0],
                 'partner_id': False,
+                'recipient_type': 'cc',
             },
         ], strict=True):
             with self.subTest():
@@ -771,6 +906,7 @@ class TestAPI(ThreadRecipients):
                 'email': self.user_portal.email_normalized,
                 'name': self.user_portal.name,
                 'partner_id': self.user_portal.partner_id.id,
+                'recipient_type': 'to',
             },  # and not author, as it is odoobot's email
         ], strict=True):
             with self.subTest():
@@ -784,11 +920,13 @@ class TestAPI(ThreadRecipients):
                 'email': test_to_tuples[1][1],
                 'name': test_to_tuples[1][0],
                 'partner_id': False,
+                'recipient_type': 'to',
             }, {  # replying message  cc
                 'create_values': {},
                 'email': test_cc_tuples[2][1],
                 'name': test_cc_tuples[2][0],
                 'partner_id': False,
+                'recipient_type': 'cc',
             },  # and not author as he is already follower
         ], strict=True):
             with self.subTest():
@@ -805,16 +943,19 @@ class TestAPI(ThreadRecipients):
                 'email': self.user_portal.email_normalized,
                 'name': self.user_portal.name,
                 'partner_id': self.user_portal.partner_id.id,
+                'recipient_type': 'to',
             }, {  # replying message to
                 'email': test_to_tuples[0][1],
                 'name': test_to_tuples[0][0],
                 'partner_id': new_to.id,
                 'create_values': {},
+                'recipient_type': 'to',
             }, {  # replying message  cc
                 'email': test_cc_tuples[1][1],
                 'name': test_cc_tuples[1][0],
                 'partner_id': new_cc_0.id,
                 'create_values': {},
+                'recipient_type': 'cc',
             },
         ], strict=True):
             with self.subTest():
@@ -854,6 +995,7 @@ class TestAPI(ThreadRecipients):
                     'email': 'outdated@test.example.com',
                     'name': 'Outdated',
                     'partner_id': False,
+                    'recipient_type': 'to',
                 }],
                 'Increase order quantity',
             ), (
@@ -870,11 +1012,13 @@ class TestAPI(ThreadRecipients):
                     'email': self.user_portal.email_normalized,
                     'name': self.user_portal.name,
                     'partner_id': self.user_portal.partner_id.id,
+                    'recipient_type': 'to',
                 }, {
                     'create_values': {},
                     'email': self.user_employee.email_normalized,
                     'name': self.user_employee.name,
                     'partner_id': self.user_employee.partner_id.id,
+                    'recipient_type': 'to',
                 }],
                 'Order for 100 chairs',
             ), (
@@ -891,11 +1035,13 @@ class TestAPI(ThreadRecipients):
                     'email': self.user_portal.email_normalized,
                     'name': self.user_portal.name,
                     'partner_id': self.user_portal.partner_id.id,
+                    'recipient_type': 'to',
                 }, {
                     'create_values': {},
                     'email': self.user_employee.email_normalized,
                     'name': self.user_employee.name,
                     'partner_id': self.user_employee.partner_id.id,
+                    'recipient_type': 'to',
                 }],
                 'Order for 100 chairs',
             ),
@@ -946,14 +1092,14 @@ class TestAPI(ThreadRecipients):
             ticket_record._message_update_content(
                 message,
                 body=Markup("<div>New Body</div>"),
-                attachment_ids=new_attachments.ids,
+                attachment_ids=(attachments + new_attachments).ids,
             )
         self.assertEqual(message.attachment_ids, attachments + new_attachments)
         self.assertEqual(set(message.mapped('attachment_ids.res_id')), set(ticket_record.ids))
         self.assertEqual(set(message.mapped('attachment_ids.res_model')), set([ticket_record._name]))
         self.assertEqual(message.body, Markup('<div>New Body <span class="o-mail-Message-edited" data-o-datetime="2025-04-08 11:00:00"></span></div>'))
 
-        # void attachments
+        # void attachments when attachment_ids is an empty list
         with freeze_time('2025-04-08 12:00:00'):
             ticket_record._message_update_content(
                 message,
@@ -963,6 +1109,24 @@ class TestAPI(ThreadRecipients):
         self.assertFalse(message.attachment_ids)
         self.assertFalse((attachments + new_attachments).exists())
         self.assertEqual(message.body, Markup('<p>Another Body, void attachments <span class="o-mail-Message-edited" data-o-datetime="2025-04-08 12:00:00"></span></p>'))
+
+        # void attachments when attachment_ids is False (should behave like an empty list)
+        new_attachments_3 = self.env['ir.attachment'].create(
+            self._generate_attachments_data(1, 'mail.compose.message', 0)
+        )
+        with freeze_time('2025-04-08 12:30:00'):
+            ticket_record._message_update_content(
+                message,
+                body=Markup("<p>Another Body, void attachments (False)</p>"),
+                attachment_ids=new_attachments_3.ids,
+            )
+            ticket_record._message_update_content(
+                message,
+                body=Markup("<p>Another Body, void attachments (False)</p>"),
+                attachment_ids=False,
+            )
+        self.assertFalse(message.attachment_ids)
+        self.assertFalse(new_attachments_3.exists())
 
         with freeze_time('2025-04-08 13:00:00'):
             ticket_record._message_update_content(
@@ -1026,6 +1190,7 @@ class TestChatterTweaks(ThreadRecipients):
             }
             if has_header:
                 headers['X-Msg-To-Add'] = f'{self.test_partner.email_formatted},{self.test_partner_catchall.email_formatted}'
+                headers['X-Msg-Cc-Add'] = ''
             for recipient in self.test_partner + self.test_partner_catchall:
                 self.assertMailMail(
                     recipient,

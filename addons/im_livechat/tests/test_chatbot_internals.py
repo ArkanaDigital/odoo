@@ -7,7 +7,7 @@ from odoo.addons.im_livechat.tests import chatbot_common
 from odoo.addons.bus.tests.common import BusResult
 from odoo.tests.common import JsonRpcException, new_test_user
 from odoo.tools.misc import mute_logger
-from odoo.addons.mail.tests.common import freeze_all_time, MailCommon
+from odoo.addons.mail.tests.common import MailCommon
 from odoo.addons.mail.tools.discuss import Store
 
 
@@ -120,7 +120,7 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
         self.assertEqual(welcome_steps, self.chatbot_script.script_step_ids[0])
 
     def test_chatbot_not_invited_to_rtc_calls(self):
-        with freeze_all_time():
+        with self.mock_datetime_and_now(self.env.cr.now()):
             data = self.make_jsonrpc_request(
                 "/im_livechat/get_session",
                 {
@@ -284,6 +284,7 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
                                 "channel_role": False,
                                 "create_date": fields.Datetime.to_string(member_emp.create_date),
                                 "id": member_emp.id,
+                                "invitation_sent_dt": False,
                                 "livechat_member_type": "agent",
                                 "last_seen_dt": fields.Datetime.to_string(member_emp.last_seen_dt),
                                 "partner_id": self.partner_employee.id,
@@ -326,7 +327,6 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
                         ),
                         "res.users": self._filter_users_fields({
                             "all_employee_ids": [],
-                            "employee_ids": [],
                             "should_display_in_call_im_status": False,
                             "id": self.user_employee.id,
                             "im_status": "offline",
@@ -349,6 +349,7 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
                     {
                         "discuss.channel": [
                             {
+                                "avatar_cache_key": discuss_channel.avatar_cache_key,
                                 "id": discuss_channel.id,
                                 "name": "OdooBot Ernest Employee",
                             },
@@ -539,3 +540,39 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
         self.assertFalse(step.answer_ids, "Answers were not cleared after step_type was changed.")
         self.assertFalse(step_2.triggering_answer_ids, "Step 2 still has stale triggering answers.")
         self.assertFalse(step_3.triggering_answer_ids, "Step 3 still has stale triggering answers.")
+
+    def test_chatbot_without_operator(self):
+        chatbot_script = self.env["chatbot.script"].create({"title": "Question bot"})
+        self.env["chatbot.script.step"].create([
+            {
+                "chatbot_script_id": chatbot_script.id,
+                "message": "What is your question?",
+                "step_type": "free_input_single",
+            },
+            {
+                "chatbot_script_id": chatbot_script.id,
+                "message": "Forwarding to operator",
+                "step_type": "forward_operator",
+            },
+        ])
+        self.livechat_channel.user_ids = False  # no operator
+        self.livechat_channel.rule_ids = self.env["im_livechat.channel.rule"].create({
+            "channel_id": self.livechat_channel.id,
+            "chatbot_script_id": chatbot_script.id,
+            "regex_url": "/",
+        })
+        data = self.make_jsonrpc_request("/im_livechat/get_session", {
+            "anonymous_name": "Test Visitor",
+            "channel_id": self.livechat_channel.id,
+            "chatbot_script_id": chatbot_script.id,
+        })
+        discuss_channel = self.env["discuss.channel"].browse(data["channel_id"])
+        self._post_answer_and_trigger_next_step(
+            discuss_channel,
+            "Connect to Operator",
+        )
+        self.make_jsonrpc_request("/chatbot/step/trigger", {
+            "channel_id": discuss_channel.id,
+            "chatbot_script_id": chatbot_script.id,
+        })
+        self.assertTrue(discuss_channel.livechat_end_dt, "The livechat session must be inactive since there is no operator available.")

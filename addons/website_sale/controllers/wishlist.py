@@ -1,7 +1,6 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from werkzeug.exceptions import BadRequest
-
+from odoo.exceptions import AccessError, ValidationError
 from odoo.http import Controller, request, route
 from odoo.http.session import touch
 from odoo.tools.mail import email_re
@@ -38,11 +37,17 @@ class ProductWishlist(Controller):
     @route("/shop/wishlist", type="http", auth="public", website=True, readonly=True, sitemap=False)
     def shop_wishlist(self, **_kw):
         wishes = self.env["product.wishlist"].current()
-
-        return request.render(
-            "website_sale.product_wishlist",
-            {"wishes": wishes.with_context(display_default_code=False)},
-        )
+        values = {"wishes": wishes.with_context(display_default_code=False)}
+        website = self.env.website
+        if website.google_analytics_key and wishes:
+            products = wishes.product_id.product_tmpl_id
+            products_prices = products._get_sales_prices(
+                request.pricelist, request.fiscal_position, website
+            )
+            values["product_tracking_infos"] = products._get_google_analytics_list_data_batch(
+                products_prices, website, "Wishlist"
+            )
+        return request.render("website_sale.product_wishlist", values)
 
     @route("/shop/wishlist/remove/<int:wish_id>", type="jsonrpc", auth="public", website=True)
     def remove_from_wishlist(self, wish_id, **_kw):
@@ -65,17 +70,49 @@ class ProductWishlist(Controller):
 
     @route("/shop/add/stock_notification", type="jsonrpc", auth="public", website=True)
     def add_stock_email_notification(self, email, product_id):
+        """Register an email address to be warned when a product is back in stock.
+
+        :param str email: the address to notify.
+        :param int product_id: the `product.product` to watch.
+        :raise ValidationError: if the address is malformed, or the product does not
+            accept stock notifications.
+        """
         # TDE FIXME: seems a bit open
         if not email_re.match(email):
-            raise BadRequest(self.env._("Invalid Email"))
+            raise ValidationError(self.env._("Invalid Email"))
 
         product = self.env["product.product"].browse(int(product_id))
+
+        # check if product available
+        if not product.exists() or not product._can_add_to_stock_notifications():
+            raise ValidationError(
+                self.env._("This product is not eligible for stock notifications.")
+            )
+
         partner = self.env["mail.thread"].sudo()._partner_find_from_emails_single([email])
 
-        if not product._has_stock_notification(partner):
-            product.sudo().stock_notification_partner_ids += partner
+        is_public_user = self.env.website.is_public_user()
+        if is_public_user and partner.user_ids.exists():
+            raise AccessError(self.env._("Please sign in to proceed."))
 
-        if self.env.website.is_public_user():
+        website = self.env.website
+
+        already_registered = False
+        if is_public_user and int(product_id) in request.session.get(
+            "product_with_stock_notification_enabled", set()
+        ):
+            already_registered = True
+        else:
+            already_registered = product._has_stock_notification(partner, website)
+
+        if not already_registered:
+            self.env["product.stock.notification"].sudo().create({
+                "product_id": product.id,
+                "website_id": website.id,
+                "partner_id": partner.id,
+            })
+
+        if is_public_user:
             request.session["product_with_stock_notification_enabled"] = list(
                 set(request.session.get("product_with_stock_notification_enabled", []))
                 | {product_id}

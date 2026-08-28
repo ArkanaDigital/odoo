@@ -1,10 +1,8 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from contextlib import contextmanager
 from datetime import datetime, timedelta, UTC
 from unittest.mock import patch, MagicMock
 
-from freezegun import freeze_time
 from markupsafe import Markup
 
 from odoo import fields
@@ -123,11 +121,11 @@ class TestCommon(HttpCase):
             },
             "start": {
                 'dateTime': self.simple_event_values["start"].replace(tzinfo=UTC).isoformat(),
-                'timeZone': 'Europe/London'
+                'timeZone': 'UTC',
             },
             "end": {
                 'dateTime': self.simple_event_values["stop"].replace(tzinfo=UTC).isoformat(),
-                'timeZone': 'Europe/London'
+                'timeZone': 'UTC',
             },
             "isAllDay": False,
             "organizer": {
@@ -161,11 +159,11 @@ class TestCommon(HttpCase):
             },
             'start': {
                 'dateTime': self.start_date.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
-                'timeZone': 'Europe/London'
+                'timeZone': 'UTC'
             },
             'end': {
                 'dateTime': self.end_date.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
-                'timeZone': 'Europe/London'
+                'timeZone': 'UTC'
             },
             'isAllDay': False,
             'isOrganizer': True,
@@ -423,17 +421,6 @@ class TestCommon(HttpCase):
         ]
         self.env.cr.postcommit.clear()
 
-    @contextmanager
-    def mock_datetime_and_now(self, mock_dt):
-        """
-        Used when synchronization date (using env.cr.now()) is important
-        in addition to standard datetime mocks. Used mainly to detect sync
-        issues.
-        """
-        with freeze_time(mock_dt), \
-                patch.object(self.env.cr, 'now', lambda: mock_dt):
-            yield
-
     def sync_odoo_recurrences_with_outlook_feature(self):
         """
         Returns the status of the recurrence synchronization feature with Outlook.
@@ -553,11 +540,5 @@ class TestCommon(HttpCase):
         """
         manually calls postcommit hooks defined with the decorator @after_commit
         """
-
-        # need to manually handle post-commit hooks calls as `self.env.cr.postcommit.run()` clean
-        # the queue at the end of the first post-commit hook call ...
         self.env.cr.flush()  # flush changes first
-        funcs = self.env.cr.postcommit._funcs.copy()
-        while funcs:
-            func = funcs.popleft()
-            func()
+        self.env.cr.postcommit.run()

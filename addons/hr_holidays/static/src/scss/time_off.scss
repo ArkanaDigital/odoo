@@ -53,6 +53,10 @@
             .o_hr_leave_subtitle {
                 font-size: 1.2rem;
             }
+            .o_inner_group {
+                grid-template-columns: fit-content(150px) minmax(0, 1fr) !important;
+                row-gap: 8px !important;
+            }
         }
         .col_left {
             padding-top: 16px;
@@ -75,6 +79,21 @@
                 flex-direction: row;
             }
         }
+    }
+}
+
+.o_leave_report_employee_row {
+    display: flex;
+    align-items: center;
+    gap: map-get($spacers, 2);
+
+    .o_field_many2one_avatar_employee,
+    .o_many2one {
+        min-width: 0;
+    }
+
+    .o_field_badge {
+        width: auto !important;
     }
 }
 
@@ -145,7 +164,6 @@
     }
 
     .o_hr_holidays_kanban_mobile {
-        --KanbanRecord__image-width: 40px;
 
         container-type: inline-size;
 

@@ -1,12 +1,18 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from odoo import Command
-from odoo.addons.account.tests.common import AccountTestInvoicingCommon
-
+import contextlib
 import datetime
+
+from lxml import etree
+
+from odoo import Command, tools
+from odoo.addons.account.tests.common import AccountTestInvoicingCommon
+from odoo.tests.common import MockHTTPClient
 
 
 class L10nHuEdiTestCommon(AccountTestInvoicingCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @AccountTestInvoicingCommon.setup_country('hu')
     def setUpClass(cls):
@@ -72,6 +78,7 @@ class L10nHuEdiTestCommon(AccountTestInvoicingCommon):
         })
 
         # Currency rates
+        cls.currency_huf = cls.env.ref('base.HUF')
         currency_eur = cls.env.ref('base.EUR')
         currency_eur.active = True
         cls.env['res.currency.rate'].create(
@@ -119,6 +126,9 @@ class L10nHuEdiTestCommon(AccountTestInvoicingCommon):
                 }),
             ],
         })
+        cls.tax_purchase_27 = cls.env['account.chart.template'].ref('V27')
+        cls.tax_purchase_5 = cls.env['account.chart.template'].ref('V5')
+        cls.tax_purchase_exempt = cls.env['account.chart.template'].ref('VKKS')
 
     @classmethod
     def write_edi_credentials(cls):
@@ -314,6 +324,7 @@ class L10nHuEdiTestCommon(AccountTestInvoicingCommon):
             'currency_id': self.env.ref('base.EUR').id,
             'partner_id': self.partner_company.id,
             'invoice_date': self.yesterday,
+            'invoice_date_due': self.today,
             'delivery_date': self.today,
             'l10n_hu_payment_mode': 'TRANSFER',
             'invoice_line_ids': [
@@ -393,3 +404,67 @@ class L10nHuEdiTestCommon(AccountTestInvoicingCommon):
             'reason': 'Some reason...',
         })
         return invoice, cancel_wizard
+
+    def _get_mocked_requests(self):
+        return ['manageInvoice', 'queryTaxpayer', 'tokenExchange', 'queryTransactionStatus', 'queryTransactionList', 'manageAnnulment', 'queryInvoiceDigest', 'queryInvoiceData']
+
+    def _get_request_file_name(self, service, data):
+        if service == 'queryInvoiceData' and b'batchIndex' in data:
+            service += '_batch'
+        return f'{service}_request'
+
+    def _get_response_file_name(self, service, data):
+        if service == 'queryInvoiceData':
+            query = etree.fromstring(data).find('{*}invoiceNumberQuery')
+            file_name = query.findtext('{*}invoiceNumber').replace('/', '_')
+            if batch_index := query.findtext('{*}batchIndex'):
+                file_name += ('_' + batch_index)
+            return file_name
+        return f'{service}_response'
+
+    @contextlib.contextmanager
+    def patch_post(self, responses=None):
+        """ Mock the NAV endpoints called by l10n_hu_edi.connection.
+
+        :param responses: If specified, a dict {service: response} that gives, for any service,
+                          bytes that should be served as response data, or an Exception that should be raised.
+                          Otherwise, will use the default responses stored under
+                          mocked_requests/{service}_response.xml
+        """
+        test_case = self
+        prod_url = 'https://api.onlineszamla.nav.gov.hu/invoiceService/v3'
+        demo_url = 'https://api-test.onlineszamla.nav.gov.hu/invoiceService/v3'
+        folder_path = f'{self.test_module}/tests/mocked_requests'
+
+        def get_service(req):
+            base_url, __, service = req.url.rpartition('/')
+            if base_url not in (prod_url, demo_url) or service not in test_case._get_mocked_requests():
+                test_case.fail(f'Invalid POST url: {req.url}')
+            return service
+
+        def check_request(req):
+            service = get_service(req)
+            request_file_name = test_case._get_request_file_name(service, req.body)
+            with tools.file_open(f'{folder_path}/{request_file_name}.xml', 'rb') as expected_request_file:
+                test_case.assertXmlTreeEqual(
+                    test_case.get_xml_tree_from_string(req.body),
+                    test_case.get_xml_tree_from_string(expected_request_file.read()),
+                )
+            if responses and isinstance(responses.get(service), Exception):
+                raise responses[service]
+
+        def return_body(req):
+            service = get_service(req)
+            if responses and service in responses:
+                return responses[service]
+            response_file_name = test_case._get_response_file_name(service, req.body)
+            with tools.file_open(f'{folder_path}/{response_file_name}.xml', 'r') as response_file:
+                return response_file.read()
+
+        with MockHTTPClient(
+            method='POST',
+            return_headers={'Content-Type': 'application/xml; charset=utf-8'},
+            return_body=return_body,
+            side_effect=check_request,
+        ):
+            yield

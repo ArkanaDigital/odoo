@@ -119,7 +119,7 @@ class PaymentTransaction(models.Model):
                 # The payment has been settled on Authorize.net side. We can refund it.
                 rounded_amount = round(self.amount, self.currency_id.decimal_places)
                 res_content = authorize_api.refund(
-                    self.provider_reference, rounded_amount, tx_details
+                    self.source_transaction_id.provider_reference, rounded_amount, tx_details
                 )
             _logger.info(
                 "refund request response for transaction %s:\n%s",
@@ -163,7 +163,7 @@ class PaymentTransaction(models.Model):
             return super()._send_void_request()
 
         authorize_API = AuthorizeAPI(self.provider_id)
-        res_content = authorize_API.void(self.provider_reference)
+        res_content = authorize_API.void(self.source_transaction_id.provider_reference)
         _logger.info(
             "void request response for transaction %s:\n%s",
             self.reference,
@@ -194,7 +194,7 @@ class PaymentTransaction(models.Model):
 
         # Update the payment method.
         payment_method_code = response_content.get("payment_method_code", "").lower()
-        payment_method = self.env["payment.method"]._get_from_code(
+        payment_method = self.provider_id._get_pm_from_code(
             payment_method_code, mapping=const.PAYMENT_METHODS_MAPPING
         )
         self.payment_method_id = payment_method or self.payment_method_id
@@ -207,6 +207,8 @@ class PaymentTransaction(models.Model):
                 self._set_done()
             elif status_type == "auth_only":
                 self._set_authorized()
+                if self.tokenize:
+                    self._tokenize(payment_data)  # Tokenize before voiding
                 if self.operation == "validation":
                     self._void()  # In last step because it processes the response.
             elif status_type == "void":

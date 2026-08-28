@@ -45,12 +45,16 @@ export class TableOfContentOptionPlugin extends Plugin {
         },
         is_unremovable_selectors: ".s_table_of_content_navbar_wrap, .s_table_of_content_main",
         content_not_editable_selectors: ".s_table_of_content_navbar",
+        anchor_allowed_selectors: ".s_table_of_content_main > *",
+        anchor_excluded_selectors:
+            ".s_table_of_content, .s_table_of_content_navbar_wrap, .s_table_of_content_main",
     };
 
     normalize(root) {
         applyFunDependOnSelectorAndExclude(this.updateTableOfContentNavbar.bind(this), root, {
             selector: ".s_table_of_content_main",
         });
+        return root;
     }
 
     updateTableOfContentNavbar(tableOfContentMain) {
@@ -129,6 +133,14 @@ export class TableOfContentOptionPlugin extends Plugin {
             return;
         }
 
+        // Remove stale TOC ids from non-heading elements (e.g. a heading
+        // converted back to a paragraph)
+        for (const el of tableOfContentMain.querySelectorAll("[id^='table_of_content_heading_']")) {
+            if (!el.matches(targetedElements)) {
+                el.removeAttribute("id");
+            }
+        }
+
         const headingIds = currentHeadingItems.map(({ el }) => getTocAndHeadingId(el).headingId);
         let maxHeadingIds = Math.max(0, ...headingIds);
 
@@ -157,9 +169,6 @@ export class TableOfContentOptionPlugin extends Plugin {
 
             itemEl.className = `table_of_content_link list-group-item list-group-item-action py-2 border-0 rounded-0 table_of_content_link_depth_${depthLevel}`;
             tableOfContentNavbar.appendChild(itemEl);
-            if (el.dataset.anchor === undefined) {
-                el.dataset.anchor = true;
-            }
             el.setAttribute("id", tocHeadingId);
         }
     }

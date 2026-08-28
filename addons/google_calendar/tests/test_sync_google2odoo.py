@@ -2,6 +2,7 @@
 
 from datetime import datetime, date, timedelta, UTC
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
 
@@ -168,6 +169,28 @@ class TestSyncGoogle2Odoo(TestSyncGoogle):
         self.assertEqual(self.public_partner.name, admin_attendee.partner_id.name)
         self.assertEqual(event.partner_ids, event.attendee_ids.partner_id)
         self.assertEqual('needsAction', admin_attendee.state)
+        self.assertGoogleAPINotCalled()
+
+    @patch_api
+    def test_new_google_allday_event(self):
+        values = {
+            'id': 'oj44nep1ldf8a3ll02uip0c9aa',
+            'organizer': {'email': 'odoocalendarref@gmail.com', 'self': True},
+            'summary': 'All day event',
+            'attendees': [],
+            'reminders': {'useDefault': True},
+            'start': {'date': '2020-01-13'},
+            'end': {'date': '2020-01-14'},
+        }
+        self.env['calendar.event']._sync_google2odoo(GoogleEvent([values]))
+        event = self.env['calendar.event'].search([('google_id', '=', values.get('id'))])
+        self.assertTrue(event)
+        self.assertTrue(event.allday)
+        self.assertEqual(event.start_date, date(2020, 1, 13))
+        self.assertEqual(event.stop_date, date(2020, 1, 13))
+        winnipeg = ZoneInfo('America/Winnipeg')
+        self.assertEqual(event.start.replace(tzinfo=UTC).astimezone(winnipeg).date(), date(2020, 1, 13))
+        self.assertEqual(event.stop.replace(tzinfo=UTC).astimezone(winnipeg).date(), date(2020, 1, 13))
         self.assertGoogleAPINotCalled()
 
     @patch_api
@@ -1501,6 +1524,42 @@ class TestSyncGoogle2Odoo(TestSyncGoogle):
         }, timeout=3)
 
     @patch_api
+    def test_attendee_not_dropped_when_other_email_matches_alias(self):
+        """ Ensure no attendees are dropped when one Google attendee's email matches a mail alias """
+        alias_domain = self.env['mail.alias.domain'].create({'name': 'test-alias.example.com'})
+        model_id = self.env['ir.model']._get_id('calendar.event')
+        alias = self.env['mail.alias'].create({
+            'alias_name': 'calendar-events',
+            'alias_model_id': model_id,
+            'alias_domain_id': alias_domain.id,
+        })
+        alias_email = alias.alias_full_name  # 'calendar-events@test-alias.example.com'
+
+        partner_a, partner_b = self.env['res.partner'].create([
+            {'name': 'Partner A', 'email': 'partner.a@example.com'},
+            {'name': 'Partner B', 'email': 'partner.b@example.com'},
+        ])
+
+        synced = self.env['calendar.event']._sync_google2odoo(GoogleEvent([{
+            'id': 'test_alias_attendee_sync',
+            'summary': 'Test Alias Attendee',
+            'updated': self.now,
+            'organizer': {'email': partner_a.email},
+            'attendees': [
+                {'email': partner_a.email, 'responseStatus': 'accepted'},
+                {'email': alias_email, 'responseStatus': 'accepted'},
+                {'email': partner_b.email, 'responseStatus': 'needsAction'},
+            ],
+            'reminders': {'useDefault': True},
+            'start': {'dateTime': '2020-01-13T16:00:00+01:00', 'timeZone': 'Europe/Brussels', 'date': None},
+            'end': {'dateTime': '2020-01-13T17:00:00+01:00', 'timeZone': 'Europe/Brussels', 'date': None},
+            'visibility': 'public',
+        }]))
+        self.assertEqual(len(synced.partner_ids), 2, "The alias-matched attendee must not be added as a partner")
+        self.assertIn(partner_a, synced.partner_ids, "partner_a must not be dropped when another attendee email matches an alias")
+        self.assertIn(partner_b, synced.partner_ids, "partner_b must not be dropped when another attendee email matches an alias")
+
+    @patch_api
     def test_attendee_recurrence_answer(self):
         """ Write on a recurrence to update all attendee answers """
         other_user = new_test_user(self.env, login='calendar-user')
@@ -2296,9 +2355,9 @@ class TestSyncGoogle2Odoo(TestSyncGoogle):
                         "Attendee should be able to modify event with 'guests_readonly' variable as 'False'.")
 
         # Assert that guest user can restart the synchronization of its calendar (containing non-editable events).
-        guest_user.sudo().stop_google_synchronization()
+        guest_user.with_user(guest_user).stop_google_synchronization()
         self.assertTrue(guest_user.google_synchronization_stopped)
-        guest_user.sudo().restart_google_synchronization()
+        guest_user.with_user(guest_user).restart_google_synchronization()
         self.assertFalse(guest_user.google_synchronization_stopped)
 
     @patch_api

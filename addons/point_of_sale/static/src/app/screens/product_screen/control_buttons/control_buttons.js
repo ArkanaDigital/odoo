@@ -1,4 +1,4 @@
-import { Component } from "@odoo/owl";
+import { Component, useProps, t } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { Dialog } from "@web/core/dialog/dialog";
 import { SelectionPopup } from "@point_of_sale/app/components/popups/selection_popup/selection_popup";
@@ -19,19 +19,16 @@ export class ControlButtons extends Component {
         SelectPartnerButton,
         InternalNoteButton,
     };
-    static props = {
-        showRemainingButtons: { type: Boolean, optional: true },
-        onClickMore: { type: Function, optional: true },
-    };
-    static defaultProps = {
-        showRemainingButtons: false,
-    };
+    props = useProps({
+        showRemainingButtons: t.boolean().optional(false),
+        onClickMore: t.function().optional(),
+    });
     setup() {
         this.pos = usePos();
         this.ui = useService("ui");
         this.dialog = useService("dialog");
         this.notification = useService("notification");
-        this.clickPrintBill = useAsyncLockedMethod(this.clickPrintBill);
+        this.clickPrintBill = useAsyncLockedMethod(this.clickPrintBill.bind(this));
     }
     async clickPrintBill() {
         // Need to await to have the result in case of automatic skip screen.
@@ -116,6 +113,8 @@ export class ControlButtons extends Component {
         const payload = await makeAwaitable(this.dialog, SelectionPopup, {
             title: _t("Select the pricelist"),
             list: selectionList,
+            size: "md",
+            bodyClass: "pb-4",
         });
 
         if (payload) {
@@ -151,4 +150,7 @@ export class ControlButtons extends Component {
 export class ControlButtonsPopup extends Component {
     static components = { Dialog, ControlButtons };
     static template = "point_of_sale.ControlButtonsPopup";
+    props = useProps({
+        close: t.function().optional(),
+    });
 }

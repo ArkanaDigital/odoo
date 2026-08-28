@@ -7,6 +7,8 @@ from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCom
 
 
 class TestPosStockHttpCommon(TestPointOfSaleHttpCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -20,13 +22,11 @@ class TestPosStockHttpCommon(TestPointOfSaleHttpCommon):
 
 class TestUi(TestPosStockHttpCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_receipt_screen_tour(self):
-        self.tip.write({
-            'taxes_id': False
-        })
         self.main_pos_config.write({
             'iface_tipproduct': True,
-            'tip_product_id': self.tip.id,
             'ship_later': True
         })
         self.start_pos_tour('StockFeedbackScreenTour')
@@ -66,9 +66,8 @@ class TestUi(TestPosStockHttpCommon):
         # create bank payment method
         bank_pm = self.env['pos.payment.method'].create({
             'name': 'Bank',
+            'type': 'bank',
             'receivable_account_id': self.env.company.account_default_pos_receivable_account_id.id,
-            'is_cash_count': False,
-            'split_transactions': False,
             'company_id': self.env.company.id,
         })
         self.main_pos_config.write({'payment_method_ids': [(6, 0, bank_pm.ids)], 'ship_later': True})
@@ -213,18 +212,23 @@ class TestUi(TestPosStockHttpCommon):
         self.main_pos_config.current_session_id.order_ids.filtered(
             lambda o: o.state != 'paid').state = 'cancel'
 
-        self.main_pos_config.current_session_id.action_pos_session_closing_control()
+        self.main_pos_config.current_session_id.close_session_from_ui()
         self.assertEqual(
             two_last_orders[0].picking_ids.move_line_ids.owner_id.id,
             two_last_orders[1].picking_ids.move_line_ids.owner_id.id,
             "The owner of the refund is not the same as the owner of the original order")
 
-    def test_only_existing_lots(self):
+    def _run_existing_lots_test(self, removal_strategy, tour_name):
+        category = self.env['product.category'].create({
+            'name': 'Test Category',
+            'removal_strategy_id': removal_strategy.id,
+        })
         product = self.env['product.product'].create({
             'name': 'Product with existing lots',
             'is_storable': True,
             'tracking': 'lot',
             'available_in_pos': True,
+            'categ_id': category.id,
         })
         self.env['stock.quant'].with_context(inventory_mode=True).create([{
             'product_id': product.id,
@@ -244,7 +248,13 @@ class TestUi(TestPosStockHttpCommon):
         })
 
         self.main_pos_config.with_user(self.pos_user).open_ui()
-        self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'test_only_existing_lots', login="pos_user")
+        self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, tour_name, login="pos_user")
+
+    def test_only_existing_lots_fifo(self):
+        self._run_existing_lots_test(self.env.ref('stock.removal_fifo'), tour_name='test_only_existing_lots_fifo')
+
+    def test_only_existing_lots_lifo(self):
+        self._run_existing_lots_test(self.env.ref('stock.removal_lifo'), tour_name='test_only_existing_lots_lifo')
 
     def test_order_with_existing_serial(self):
         product = self.env['product.product'].create({
@@ -451,8 +461,14 @@ class TestUi(TestPosStockHttpCommon):
         self.main_pos_config.with_user(self.pos_user).open_ui()
         self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'GS1BarcodeScanningTourWithLots', login="pos_user")
 
+    def test_weighted_product_ean13_barcode_scan(self):
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('BarcodeScanningWeightedProductTour')
+
 
 class MobileTestUi(TestUi):
+    _test_user_groups = None  # FIXME list needed groups
+
     browser_size = '375x667'
     touch_enabled = True
     allow_inherited_tests_method = True

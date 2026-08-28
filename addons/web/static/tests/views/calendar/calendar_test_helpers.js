@@ -1,8 +1,7 @@
-import { click, drag, edit, hover, queryFirst, queryRect } from "@odoo/hoot-dom";
 import { advanceFrame, advanceTime, animationFrame } from "@odoo/hoot";
+import { click, drag, edit, hover, queryFirst, queryRect } from "@odoo/hoot-dom";
 import { EventBus } from "@odoo/owl";
-import { contains, getMockEnv, swipeLeft, swipeRight } from "@web/../tests/web_test_helpers";
-
+import { contains, isSmall, swipeLeft, swipeRight } from "@web/../tests/web_test_helpers";
 import { hasTouch } from "@web/core/browser/feature_detection";
 import { createElement } from "@web/core/utils/xml";
 import { CalendarModel } from "@web/views/calendar/calendar_model";
@@ -136,6 +135,7 @@ export const FAKE_FILTER_SECTIONS = [
 
 export const FAKE_FIELDS = {
     id: { string: "Id", type: "integer" },
+    display_name: { string: "Display Name", type: "char" },
     user_id: { string: "User", type: "many2one", relation: "user", default: -1 },
     partner_id: {
         string: "Partner",
@@ -190,34 +190,28 @@ export const FAKE_MODEL = {
     hasAllDaySlot: true,
     hasEditDialog: false,
     quickCreate: false,
-    popoverFieldNodes: {
-        name: Field.parseFieldNode(
-            createElement("field", { name: "name" }),
-            { event: { fields: FAKE_FIELDS } },
-            "event",
-            "calendar"
-        ),
-        description: Field.parseFieldNode(
-            createElement("field", { name: "description" , class: "text-wrap"}),
-            { event: { fields: FAKE_FIELDS } },
-            "event",
-            "calendar"
-        ),
-    },
-    activeFields: {
-        name: {
-            context: "{}",
-            invisible: false,
-            readonly: false,
-            required: false,
-            onChange: false,
-        },
-        description: {
-            context: "{}",
-            invisible: false,
-            readonly: false,
-            required: false,
-            onChange: false,
+    meta: {
+        context: {},
+        fields: FAKE_FIELDS,
+        resModel: "event",
+        popover: {
+            cardId: false,
+            fields: [],
+            fieldNodes: {
+                name: Field.parseFieldNode(
+                    createElement("field", { name: "name" }),
+                    { event: { fields: FAKE_FIELDS } },
+                    "event",
+                    "calendar"
+                ),
+                description: Field.parseFieldNode(
+                    createElement("field", { name: "description", class: "text-wrap" }),
+                    { event: { fields: FAKE_FIELDS } },
+                    "event",
+                    "calendar"
+                ),
+            },
+            templates: {},
         },
     },
     rangeEnd: DEFAULT_DATE.endOf("month"),
@@ -472,11 +466,7 @@ export async function selectAllDayRange(startDate, endDate) {
     await animationFrame();
 }
 export async function closeCwPopOver() {
-    if (getMockEnv().isSmall) {
-        await contains(`.oi-arrow-left`).click();
-    } else {
-        await contains(`.o_cw_popover_close`).click();
-    }
+    await contains(`.o_card_popover_close`).click();
 }
 /**
  * @param {number} eventId
@@ -546,7 +536,7 @@ export async function moveEventToTime(eventId, dateTime) {
 }
 
 export async function selectHourOnPicker(selectedValue) {
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         const fromFormat = selectedValue.includes(":") ? "H:mm" : "H";
         selectedValue = luxon.DateTime.fromFormat(selectedValue, fromFormat).toFormat("HH:mm");
     }
@@ -642,7 +632,7 @@ export async function resizeEventToTime(eventId, dateTime) {
  * @param {string} date
  * @returns {Promise<void>}
  */
-export async function resizeEventToDate(eventId, date, fromStart=false) {
+export async function resizeEventToDate(eventId, date, fromStart = false) {
     const eventEl = findEvent(eventId);
     const slot = findAllDaySlot(date);
 
@@ -652,7 +642,9 @@ export async function resizeEventToDate(eventId, date, fromStart=false) {
     await animationFrame();
 
     // Show the resizer
-    const resizer = queryFirst(fromStart ? ".fc-event-resizer-start" : ".fc-event-resizer-end", { root: eventEl });
+    const resizer = queryFirst(fromStart ? ".fc-event-resizer-start" : ".fc-event-resizer-end", {
+        root: eventEl,
+    });
     Object.assign(resizer.style, { display: "block", height: "1px", bottom: "0" });
 
     instantScrollTo(slot);
@@ -690,13 +682,13 @@ export async function changeScale(scale) {
 }
 
 export async function displayCalendarPanel() {
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await contains(".o_calendar_container .o_other_calendar_panel").click();
     }
 }
 
 export async function hideCalendarPanel() {
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await contains(".o_calendar_container .o_other_calendar_panel").click();
     }
 }

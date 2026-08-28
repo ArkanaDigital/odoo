@@ -13,11 +13,12 @@ import { loadBundle } from "@web/core/assets";
 
 describe.current.tags("desktop");
 
+// This test asserts on the thumbnail URLs, so use existing static images.
 const snippetContent = [
-    `<div name="Button A" data-oe-thumbnail="buttonA.svg" data-oe-snippet-id="123">
+    `<div name="Button A" data-oe-thumbnail="/web/static/img/logo.png" data-oe-snippet-id="123">
         <a class="btn btn-primary" href="#" data-snippet="s_button">Button A</a>
     </div>`,
-    `<div name="Button B" data-oe-thumbnail="buttonB.svg" data-oe-snippet-id="123">
+    `<div name="Button B" data-oe-thumbnail="/web/static/img/logo2.png" data-oe-snippet-id="123">
         <a class="btn btn-primary" href="#" data-snippet="s_button">Button B</a>
     </div>`,
 ];
@@ -40,7 +41,10 @@ test("Display inner content snippet", async () => {
     const thumbnailImgUrls = queryAll(
         `${snippetInnerContentSelector} .o_snippet_thumbnail_img`
     ).map((thumbnail) => thumbnail.style.backgroundImage);
-    expect(thumbnailImgUrls).toEqual(['url("buttonA.svg")', 'url("buttonB.svg")']);
+    expect(thumbnailImgUrls).toEqual([
+        'url("/web/static/img/logo.png")',
+        'url("/web/static/img/logo2.png")',
+    ]);
 });
 
 test("Drag & drop inner content block", async () => {
@@ -49,7 +53,7 @@ test("Drag & drop inner content block", async () => {
         dropzoneSelectors,
     });
     expect(contentEl).toHaveInnerHTML(`<div><p>Text</p></div>`);
-    expect(".o-website-builder_sidebar .fa-undo").not.toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
 
     const { moveTo, drop } = await contains(
         ".o-website-builder_sidebar [name='Button A'] .o_snippet_thumbnail"
@@ -57,11 +61,11 @@ test("Drag & drop inner content block", async () => {
     expect(":iframe .oe_drop_zone:nth-child(1)").toHaveCount(1);
     expect(":iframe .oe_drop_zone:nth-child(3)").toHaveCount(1);
 
-    expect(".o-website-builder_sidebar .fa-undo").not.toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
 
     await moveTo(":iframe .oe_drop_zone");
     expect(":iframe .oe_drop_zone.invisible:nth-child(1)").toHaveCount(1);
-    expect(".o-website-builder_sidebar .fa-undo").not.toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
 
     await drop(getDragHelper());
     await waitForEndOfOperation();
@@ -69,7 +73,7 @@ test("Drag & drop inner content block", async () => {
     expect(contentEl).toHaveInnerHTML(
         `<div>\ufeff<a class="btn btn-primary" href="#" data-snippet="s_button" data-name="Button A">\ufeffButton A\ufeff</a>\ufeff<p>Text</p></div>`
     );
-    expect(".o-website-builder_sidebar .fa-undo").toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='undo']").toBeEnabled();
 });
 
 test("Drag & drop inner content block + undo/redo", async () => {
@@ -78,10 +82,10 @@ test("Drag & drop inner content block + undo/redo", async () => {
         dropzoneSelectors,
     });
     expect(contentEl).toHaveInnerHTML(`<div><p>Text</p></div>`);
-    expect(".o-website-builder_sidebar .fa-undo").not.toBeEnabled();
-    expect(".o-website-builder_sidebar .fa-repeat").not.toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='redo']").not.toBeEnabled();
 
-    await click(".o-website-builder_sidebar .fa-undo");
+    await click(".o-website-builder_sidebar [data-icon='undo']");
     const { moveTo, drop } = await contains(
         ".o-website-builder_sidebar [name='Button A'] .o_snippet_thumbnail"
     ).drag();
@@ -92,14 +96,14 @@ test("Drag & drop inner content block + undo/redo", async () => {
     expect(contentEl).toHaveInnerHTML(
         `<div>\ufeff<a class="btn btn-primary" href="#" data-snippet="s_button" data-name="Button A">\ufeffButton A\ufeff</a>\ufeff<p>Text</p></div>`
     );
-    expect(".o-website-builder_sidebar .fa-undo").toBeEnabled();
-    expect(".o-website-builder_sidebar .fa-repeat").not.toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='undo']").toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='redo']").not.toBeEnabled();
 
-    await click(".o-website-builder_sidebar .fa-undo");
+    await click(".o-website-builder_sidebar [data-icon='undo']");
     await animationFrame();
     expect(contentEl).toHaveInnerHTML(`<div><p>Text</p></div>`);
-    expect(".o-website-builder_sidebar .fa-undo").not.toBeEnabled();
-    expect(".o-website-builder_sidebar .fa-repeat").toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o-website-builder_sidebar [data-icon='redo']").toBeEnabled();
 });
 
 test("Drag inner content and drop it outside of a dropzone", async () => {

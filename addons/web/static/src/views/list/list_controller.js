@@ -1,33 +1,41 @@
-import { render, onWillRender, useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
+import {
+    Component,
+    onWillPatch,
+    onWillStart,
+    usePlugin,
+    proxy,
+    signal,
+    t,
+    useProps,
+} from "@odoo/owl";
+import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { _t } from "@web/core/l10n/translation";
-import { evaluateExpr, evaluateBooleanExpr } from "@web/core/py_js/py";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
+import { evaluateBooleanExpr, evaluateExpr } from "@web/core/py_js/py";
 import { user } from "@web/core/user";
-import { unique } from "@web/core/utils/arrays";
 import { useService } from "@web/core/utils/hooks";
 import { omit } from "@web/core/utils/objects";
+import { useModelWithSampleData } from "@web/model/model";
+import { DynamicRecordList } from "@web/model/relational_model/dynamic_record_list";
+import { extractFieldsFromArchInfo } from "@web/model/relational_model/utils";
+import { onWillRender, render, useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { useSetupAction } from "@web/search/action_hook";
 import { ActionMenus, STATIC_ACTIONS_GROUP_NUMBER } from "@web/search/action_menus/action_menus";
 import { Layout } from "@web/search/layout";
 import { usePager } from "@web/search/pager_hook";
-import { useModelWithSampleData } from "@web/model/model";
-import { DynamicRecordList } from "@web/model/relational_model/dynamic_record_list";
-import { extractFieldsFromArchInfo } from "@web/model/relational_model/utils";
-import { standardViewProps } from "@web/views/standard_view_props";
-import { MultiRecordViewButton } from "@web/views/view_button/multi_record_view_button";
-import { ViewButton } from "@web/views/view_button/view_button";
-import { executeButtonCallback, useViewButtons } from "@web/views/view_button/view_button_hook";
-import { ListConfirmationDialog } from "./list_confirmation_dialog";
 import { OfflineSearchBar } from "@web/search/search_bar/offline_search_bar";
 import { SearchBar } from "@web/search/search_bar/search_bar";
 import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
 import { session } from "@web/session";
-import { ListCogMenu } from "./list_cog_menu";
-import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { OfflineActionHelper } from "@web/views/offline_action_helper";
+import { standardViewProps } from "@web/views/standard_view_props";
+import { MultiRecordViewButton } from "@web/views/view_button/multi_record_view_button";
+import { ViewButton } from "@web/views/view_button/view_button";
+import { executeButtonCallback, useViewButtons } from "@web/views/view_button/view_button_hook";
 import { SelectionBox } from "@web/views/view_components/selection_box";
-import { useExportRecords, useDeleteRecords } from "@web/views/view_hook";
-
-import { Component, onWillPatch, onWillStart, proxy } from "@odoo/owl";
+import { useDeleteRecords, useExportRecords } from "@web/views/view_hook";
+import { ListCogMenu } from "./list_cog_menu";
+import { ListConfirmationDialog } from "./list_confirmation_dialog";
 
 // -----------------------------------------------------------------------------
 
@@ -45,30 +53,28 @@ export class ListController extends Component {
         DropdownItem,
         SelectionBox,
     };
-    static props = {
+    props = useProps({
         ...standardViewProps,
-        allowSelectors: { type: Boolean, optional: true },
-        onSelectionChanged: { type: Function, optional: true },
-        readonly: { type: Boolean, optional: true },
-        allowOpenAction: { type: Boolean, optional: true },
-        Model: Function,
-        Renderer: Function,
-        buttonTemplate: String,
-        archInfo: Object,
-    };
-    static defaultProps = {
-        allowSelectors: true,
-        createRecord: () => {},
-        selectRecord: () => {},
-        allowOpenAction: true,
-    };
+        allowSelectors: t.boolean().optional(true),
+        onSelectionChanged: t.function().optional(),
+        readonly: t.boolean().optional(),
+        allowOpenAction: t.boolean().optional(true),
+        Model: t.function(),
+        Renderer: t.function(),
+        buttonTemplate: t.string(),
+        archInfo: t.object(),
+        createRecord: t.function().optional(() => () => {}),
+        selectRecord: t.function().optional(() => () => {}),
+    });
+
+    rootRef = signal.ref();
 
     setup() {
         this.actionService = useService("action");
         this.dialogService = useService("dialog");
+        this.uiService = useService("ui");
         this.orm = useService("orm");
-        this.offlineService = useService("offline");
-        this.rootRef = useRef("root");
+        this.offlinePlugin = usePlugin(OfflinePlugin);
 
         this.archInfo = this.props.archInfo;
         this.activeActions = this.archInfo.activeActions;
@@ -117,7 +123,7 @@ export class ListController extends Component {
             beforeLeave: this.beforeLeave.bind(this),
             beforeUnload: this.beforeUnload.bind(this),
             getLocalState: () => {
-                const renderer = this.rootRef.el.querySelector(".o_list_renderer");
+                const renderer = this.rootRef()?.querySelector(".o_list_renderer");
                 return {
                     modelState: this.model.exportState(),
                     rendererScrollPositions: {
@@ -140,12 +146,12 @@ export class ListController extends Component {
                 if (!isReady) {
                     return;
                 }
-                if (this.env.isSmall) {
+                if (this.uiService.isSmall) {
                     setScrollFromState();
                 } else {
                     const { rendererScrollPositions } = this.props.state || {};
                     if (rendererScrollPositions) {
-                        const renderer = this.rootRef.el.querySelector(".o_list_renderer");
+                        const renderer = this.rootRef().querySelector(".o_list_renderer");
                         renderer.scrollLeft = rendererScrollPositions.left;
                         renderer.scrollTop = rendererScrollPositions.top;
                     }
@@ -272,25 +278,38 @@ export class ListController extends Component {
 
     get isNewButtonAvailableOffline() {
         if (this.archInfo.editable && !this.model.root.isGrouped) {
-            return this.offlineService.isAvailableOffline(
+            return this.offlinePlugin.isAvailableOffline(
                 this.env.config.actionId,
                 "list_quick_create",
                 false
             );
         }
-        return this.offlineService.isAvailableOffline(this.env.config.actionId, "form", false);
+        return this.offlinePlugin.isAvailableOffline(this.env.config.actionId, "form", false);
     }
 
     getExportableFields() {
-        return unique(
+        const { activeFields, fields } = this.model.root;
+        // Columns currently visible in the list (not invisible and, if optional, toggled on).
+        const visibleColumns = new Set(
             this.props.archInfo.columns
                 .filter((col) => col.type === "field")
-                .filter((col) => !col.optional || this.optionalActiveFields[col.name])
                 .filter((col) => !evaluateBooleanExpr(col.column_invisible, this.props.context))
-                .map((col) => this.props.fields[col.name])
-                .filter((field) => field.exportable !== false)
-                .filter((field) => field.type !== "properties")
+                .filter((col) => !col.optional || this.optionalActiveFields[col.name])
+                .map((col) => col.name)
         );
+        return Object.keys(activeFields)
+            .map((fieldName) => fields[fieldName])
+            .filter(Boolean)
+            .filter((field) => {
+                // Export a sub-property only when its own optional
+                // column is currently shown.
+                if (field.relatedPropertyField) {
+                    return this.optionalActiveFields[field.name];
+                }
+                return visibleColumns.has(field.name);
+            })
+            .filter((field) => field.exportable !== false)
+            .filter((field) => field.type !== "properties");
     }
 
     async beforeLeave(ev) {
@@ -384,17 +403,17 @@ export class ListController extends Component {
     }
 
     async onClickCreate() {
-        return executeButtonCallback(this.rootRef.el, () => this.createRecord());
+        return executeButtonCallback(this.rootRef(), () => this.createRecord());
     }
 
     async onClickDiscard() {
-        return executeButtonCallback(this.rootRef.el, () =>
+        return executeButtonCallback(this.rootRef(), () =>
             this.model.root.leaveEditMode({ discard: true })
         );
     }
 
     async onClickSave() {
-        return executeButtonCallback(this.rootRef.el, async () => {
+        return executeButtonCallback(this.rootRef(), async () => {
             const saved = await this.editedRecord.save();
             if (saved) {
                 await this.model.root.leaveEditMode();
@@ -420,11 +439,11 @@ export class ListController extends Component {
     }
 
     onPageChange() {
-        if (this.rootRef && this.rootRef.el) {
-            if (this.env.isSmall) {
-                this.rootRef.el.scrollTop = 0;
+        if (this.rootRef()) {
+            if (this.uiService.isSmall) {
+                this.rootRef().scrollTop = 0;
             } else {
-                this.rootRef.el.querySelector(".o_content .o_list_renderer").scrollTop = 0;
+                this.rootRef().querySelector(".o_content .o_list_renderer").scrollTop = 0;
             }
         }
     }
@@ -434,14 +453,14 @@ export class ListController extends Component {
             export: {
                 isAvailable: () => this.isExportEnable,
                 sequence: 10,
-                icon: "fa fa-upload",
+                icon: "upload",
                 description: _t("Export"),
                 callback: () => this.exportRecords(),
             },
             duplicate: {
                 isAvailable: () => this.activeActions.duplicate,
                 sequence: 30,
-                icon: "fa fa-clone",
+                icon: "content_copy",
                 description: _t("Duplicate"),
                 callback: () => this.model.root.duplicateRecords(),
             },
@@ -449,7 +468,7 @@ export class ListController extends Component {
                 isAvailable: () => this.archiveEnabled,
                 availableOffline: true,
                 sequence: 40,
-                icon: "oi oi-archive",
+                icon: "archive",
                 description: _t("Archive"),
                 callback: () =>
                     this.model.root.toggleArchiveWithConfirmation(true, this.archiveDialogProps),
@@ -458,7 +477,7 @@ export class ListController extends Component {
                 isAvailable: () => this.archiveEnabled,
                 availableOffline: true,
                 sequence: 45,
-                icon: "oi oi-unarchive",
+                icon: "unarchive",
                 description: _t("Unarchive"),
                 callback: () => this.model.root.toggleArchiveWithConfirmation(false),
             },
@@ -466,7 +485,8 @@ export class ListController extends Component {
                 isAvailable: () => this.activeActions.delete,
                 availableOffline: true,
                 sequence: 50,
-                icon: "fa fa-trash-o",
+                icon: "delete",
+                iconClass: "oi-filled",
                 description: _t("Delete"),
                 class: "text-danger",
                 callback: () => this.onDeleteSelectedRecords(),

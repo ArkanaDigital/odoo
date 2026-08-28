@@ -1,9 +1,15 @@
-from odoo import Command
+import base64
+import textwrap
+import uuid
+
+from odoo import Command, fields
 from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 from odoo.tools import config, file_open
 
 
 class TestUblCiiCommon(AccountTestInvoicingCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -40,7 +46,6 @@ class TestUblCiiCommon(AccountTestInvoicingCommon):
             'city': "Ramillies",
             'vat': 'BE0477472701',
             'additional_identifiers': {'BE_EN': '0477472701'},
-            'company_registry': '0477472701',
             'bank_ids': [Command.create({'account_number': 'BE90735788866632', 'allow_out_payment': True})],
             'country_id': cls.env.ref('base.be').id,
             **kwargs,
@@ -54,12 +59,8 @@ class TestUblCiiCommon(AccountTestInvoicingCommon):
             'street': "bd de la Foire",
             'zip': "L-1528",
             'city': "Luxembourg",
-            'vat': None,
-            'additional_identifiers': None,
-            'company_registry': None,
+            'vat': 'LU12345613',
             'country_id': cls.env.ref('base.lu').id,
-            'peppol_eas': '9938',
-            'peppol_endpoint': '00005000041',
             **kwargs,
         })
 
@@ -72,11 +73,9 @@ class TestUblCiiCommon(AccountTestInvoicingCommon):
             'zip': "1000",
             'city': "Amsterdam",
             'vat': 'NL000099998B57',
-            'additional_identifiers': None,
-            'company_registry': None,
+            'additional_identifiers': {'NL_KVK': '77777677'},
             'country_id': cls.env.ref('base.nl').id,
-            'peppol_eas': '0106',
-            'peppol_endpoint': '77777677',
+            'routing_identifier': '0106:77777677',
             **kwargs,
         })
 
@@ -194,8 +193,54 @@ class TestUblCiiCommon(AccountTestInvoicingCommon):
             attachment = cls._import_invoice_as_attachment(test_name)
         return journal._create_document_from_attachment(attachment.id)
 
+    @classmethod
+    def _get_raw_mail_message_str(self, attachments, email_to, message_id=None):
+        """ Mock an incoming mail message
+        :param attachments: Odoo recordset of ir.attachment.
+        :param email_to: string that will fill email_to field in the email, probably you'll want to use some journal alias here.
+        :param message_id: Optional. Custom message ID for the email. If not provided, a UUID will be generated.
+
+        Returns:
+            Formatted email string.
+        """
+        if not message_id:
+            message_id = str(uuid.uuid4())
+
+        attachment_parts = []
+        for attachment in attachments:
+            encoded_attachment = base64.b64encode(attachment['raw']).decode()
+            attachment_part = textwrap.dedent(f"""\
+                --000000000000a47519057e029630
+                Content-Type: {attachment['mimetype']}
+                Content-Transfer-Encoding: base64
+                Content-Disposition: attachment; filename="{attachment['name']}"
+
+                {encoded_attachment}
+            """)
+            attachment_parts.append(attachment_part)
+
+        email_raw = textwrap.dedent(f"""\
+            MIME-Version: 1.0
+            Date: Fri, 26 Nov 2021 16:27:45 +0100
+            Message-ID: {message_id}
+            Subject: Incoming bill
+            From: Someone <someone@some.company.com>
+            To: {email_to}
+            Content-Type: multipart/alternative; boundary="000000000000a47519057e029630"
+
+            --000000000000a47519057e029630
+            Content-Type: text/plain; charset="UTF-8"
+
+            Here is your requested document(s).
+        """)
+        email_raw += "\n".join(attachment_parts)
+        email_raw += "\n--000000000000a47519057e029630--"
+        return email_raw
+
 
 class TestUblCiiBECommon(TestUblCiiCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def _create_company(cls, **create_values):
@@ -207,7 +252,6 @@ class TestUblCiiBECommon(TestUblCiiCommon):
             'city': "Ramillies",
             'vat': 'BE0202239951',
             'additional_identifiers': {'BE_EN': '0202239951'},
-            'company_registry': '0202239951',
             'country_id': cls.env.ref('base.be').id,
             'bank_ids': [Command.create({'account_number': 'BE15001559627230', 'allow_out_payment': True})],
         })
@@ -221,6 +265,8 @@ class TestUblCiiBECommon(TestUblCiiCommon):
 
 class TestUblCiiFRCommon(TestUblCiiCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def _create_company(cls, **create_values):
         company = super()._create_company(**create_values)
@@ -231,7 +277,6 @@ class TestUblCiiFRCommon(TestUblCiiCommon):
             'city': "Saint-Malo",
             'vat': 'FR23334175221',
             'additional_identifiers': {'FR_SIRET': '40678483500521'},
-            'company_registry': '40678483500521',
             'country_id': cls.env.ref('base.fr').id,
         })
         return company
@@ -243,6 +288,8 @@ class TestUblCiiFRCommon(TestUblCiiCommon):
 
 
 class TestUblCiiNOCommon(TestUblCiiCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def _create_company(cls, **create_values):
@@ -259,11 +306,29 @@ class TestUblCiiNOCommon(TestUblCiiCommon):
 
 class TestUblBis3Common(TestUblCiiCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def _create_partner_default_values(cls):
         values = super()._create_partner_default_values()
         values['invoice_edi_format'] = 'ubl_bis3'
         return values
+
+    def _create_sdd_mandate(self, partner, account_number, start_date=None, end_date=None):
+        partner_bank = self.env['res.partner.bank'].create({
+            'account_number': account_number,
+            'partner_id': partner.id,
+            'company_id': self.env.company.id,
+        })
+        mandate = self.env['sdd.mandate'].create({  # noqa: OLS03001
+            'name': f'mandate_{partner.name}_{account_number[-4:]}',
+            'partner_id': partner.id,
+            'partner_bank_id': partner_bank.id,
+            'start_date': start_date or fields.Date.today(),
+            'end_date': end_date,
+            'company_id': self.env.company.id,
+        })
+        mandate.action_validate_mandate()
 
     # -------------------------------------------------------------------------
     # EXPORT HELPERS

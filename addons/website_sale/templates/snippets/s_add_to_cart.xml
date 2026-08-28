@@ -11,11 +11,12 @@
             <button
                 name="add_to_cart"
                 type="button"
-                class="s_add_to_cart_btn disabled btn btn-secondary mb-2"
+                class="s_add_to_cart_btn btn btn-secondary mb-2"
                 data-action="add_to_cart"
                 t-att-data-show-quantity="False"
+                disabled=""
             >
-                <i class="fa fa-cart-plus me-2"/>Add to Cart
+                <i class="oi me-2" data-icon="add_shopping_cart"/>Add to Cart
             </button>
         </div>
     </template>

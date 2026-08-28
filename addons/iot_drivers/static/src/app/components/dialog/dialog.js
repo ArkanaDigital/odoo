@@ -1,23 +1,16 @@
 /* global owl */
 
-const { Component, xml, useListener, signal, props, types: t } = owl;
+const { Component, xml, useListener, signal, useProps, types: t } = owl;
 
 export class Dialog extends Component {
-    props = props(
-        {
-            slots: t.object(),
-            name: t.string(),
-            "help?": t.string(),
-            "btnName?": t.string(),
-            "isLarge?": t.boolean(),
-            "onOpen?": t.function(),
-            "onClose?": t.function(),
-        },
-        {
-            onOpen: () => {},
-            onClose: () => {},
-        }
-    );
+    props = useProps({
+        name: t.string(),
+        help: t.string().optional(),
+        btnName: t.string().optional(),
+        isLarge: t.boolean().optional(),
+        onOpen: t.function().optional(() => () => {}),
+        onClose: t.function().optional(() => () => {}),
+    });
 
     dialogRef = signal(null, { type: t.ref() });
 
@@ -38,7 +31,7 @@ export class Dialog extends Component {
                 <div class="modal-content">
                     <div class="modal-header gap-1">
                         <t t-out="this.props.name"/>
-                        <a t-if="this.props.help" t-att-href="this.props.help" class="fa fa-question-circle text-decoration-none text-dark" target="_blank"/>
+                        <a t-if="this.props.help" t-att-href="this.props.help" class="oi text-decoration-none text-dark" data-icon="help" target="_blank"/>
                     </div>
                     <div class="modal-body position-relative dialog-body">
                         <t t-call-slot="body" />

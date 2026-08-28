@@ -1,14 +1,40 @@
-import { Component, onMounted, onPatched, onWillUnmount, proxy, useEffect, xml } from "@odoo/owl";
+import {
+    computed,
+    onMounted,
+    onPatched,
+    onWillUnmount,
+    proxy,
+    t,
+    untrack,
+    useEffect,
+    useListener,
+    usePlugin,
+    useProps,
+    useScope,
+} from "@odoo/owl";
 
-import { useComponent, useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
 import { Reactive } from "@web/core/utils/reactive";
+import { useLayoutEffect } from "@web/owl2/utils";
 
 import { CallPermissionDeniedDialog } from "@mail/discuss/call/common/call_permission_denied_dialog";
 import { monitorAudio } from "@mail/utils/common/media_monitoring";
 import { browser } from "@web/core/browser/browser";
-import { OVERLAY_SYMBOL } from "@web/core/overlay/overlay_container";
 import { makeDraggableHook } from "@web/core/utils/draggable_hook_builder_owl";
 import { useService } from "@web/core/utils/hooks";
+
+/**
+ * Version of usePlugin() where the plugin is allowed to not be provided by any parented component.
+ *
+ * @template T
+ * @param {T extends import("@odoo/owl").PluginConstructor} pluginType
+ * @returns {import("@odoo/owl").PluginInstance<T>|undefined}
+ */
+export function useMaybePlugin(pluginType) {
+    if (useScope().pluginManager?.getPluginById(pluginType.id)) {
+        return usePlugin(pluginType);
+    }
+    return undefined;
+}
 
 /**
  * @param {() => HTMLElement} target
@@ -17,23 +43,22 @@ import { useService } from "@web/core/utils/hooks";
  * @param {boolean|AddEventListenerOptions} [eventParams]
  */
 export function useLazyExternalListener(target, eventName, handler, eventParams) {
-    const boundHandler = handler.bind(useComponent());
     let t;
     onMounted(() => {
         t = target();
         if (!t) {
             return;
         }
-        t.addEventListener(eventName, boundHandler, eventParams);
+        t.addEventListener(eventName, handler, eventParams);
     });
     onPatched(() => {
         const t2 = target();
         if (t !== t2) {
             if (t) {
-                t.removeEventListener(eventName, boundHandler, eventParams);
+                t.removeEventListener(eventName, handler, eventParams);
             }
             if (t2) {
-                t2.addEventListener(eventName, boundHandler, eventParams);
+                t2.addEventListener(eventName, handler, eventParams);
             }
             t = t2;
         }
@@ -42,15 +67,16 @@ export function useLazyExternalListener(target, eventName, handler, eventParams)
         if (!t) {
             return;
         }
-        t.removeEventListener(eventName, boundHandler, eventParams);
+        t.removeEventListener(eventName, handler, eventParams);
     });
 }
 
-export function onExternalClick(refOrName, cb) {
+export function onExternalClick(ref, cb) {
     let downTarget, upTarget;
-    const ref = typeof refOrName === "string" ? useRef(refOrName) : refOrName;
+    let targetDocument = document;
     function onClick(ev) {
-        if (ref.el && !ref.el.contains(ev.composedPath()[0])) {
+        const el = ref();
+        if (el && !el.contains(ev.composedPath()[0])) {
             cb(ev, { downTarget, upTarget });
             upTarget = downTarget = null;
         }
@@ -62,50 +88,36 @@ export function onExternalClick(refOrName, cb) {
         upTarget = ev.target;
     }
     onMounted(() => {
-        document.body.addEventListener("mousedown", onMousedown, true);
-        document.body.addEventListener("mouseup", onMouseup, true);
-        document.body.addEventListener("click", onClick, true);
+        targetDocument = ref()?.ownerDocument || document;
+        targetDocument.body.addEventListener("mousedown", onMousedown, true);
+        targetDocument.body.addEventListener("mouseup", onMouseup, true);
+        targetDocument.body.addEventListener("click", onClick, true);
     });
     onWillUnmount(() => {
-        document.body.removeEventListener("mousedown", onMousedown, true);
-        document.body.removeEventListener("mouseup", onMouseup, true);
-        document.body.removeEventListener("click", onClick, true);
+        targetDocument.body.removeEventListener("mousedown", onMousedown, true);
+        targetDocument.body.removeEventListener("mouseup", onMouseup, true);
+        targetDocument.body.removeEventListener("click", onClick, true);
     });
 }
 
 /**
  * Hook that allows to determine precisely when refs are (mouse-)hovered.
- * Should provide a list of ref names, and can add callbacks when elements are
- * hovered-in (onHover), hovered-out (onAway), hovering for some time (onHovering).
+ * Should provide a list of refs, and can add callbacks when elements are
+ * hovered-in (onHover), hovered-out (onAway).
  *
- * @param {string | string[] | Function} refNames name of refs that determine whether this is in state "hovering".
- *   ref name that end with "*" means it takes parented HTML node into account too. Useful for floating
- *   menu where dropdown menu container is not accessible. Function type is for useChildRef support.
+ * @param {import("@odoo/owl").Signal<HTMLElement> | import("@odoo/owl").Signal<HTMLElement>[]} refs signal refs that determine whether this is in state "hovering".
  * @param {Object} param1
- * @param {() => void} [param1.onHover] callback when hovering the ref names.
- * @param {() => void} [param1.onAway] callback when stop hovering the ref names.
- * @param {number, () => void} [param1.onHovering] array where 1st param is duration until start hovering
- *   and function to be executed at this delay duration after hovering is kept true.
+ * @param {() => void} [param1.onHover] callback when hovering the refs.
+ * @param {() => void} [param1.onAway] callback when stop hovering the refs.
  * @param {() => Array} [param1.stateObserver] when provided, function that, when called, returns list of
  *   reactive state related to presence of targets' el. This is used to help the hook detect when the targets
  *   are removed from DOM, to properly mark the hovered target as non-hovered.
- * @returns {({ isHover: boolean })}
  */
-export function useHover(refNames, { onHover, onAway, stateObserver, onHovering } = {}) {
-    refNames = Array.isArray(refNames) ? refNames : [refNames];
-    const targets = [];
+export function useHover(refs, { onHover, onAway, stateObserver } = {}) {
+    refs = Array.isArray(refs) ? refs : [refs];
     let wasHovering = false;
-    let hoveringTimeout;
     let awayTimeout;
-    let lastHoveredTarget;
-    for (const refName of refNames) {
-        if (typeof refName === "function") {
-            // Special case: useChildRef support
-            targets.push({ ref: refName });
-            continue;
-        }
-        targets.push({ ref: useRef(refName) });
-    }
+    let lastHoveredRef;
     const state = proxy({
         set isHover(newIsHover) {
             if (this._isHover !== newIsHover) {
@@ -117,146 +129,81 @@ export function useHover(refNames, { onHover, onAway, stateObserver, onHovering 
             void this._count;
             return this._isHover;
         },
-        _contains: [],
         _count: 0,
         _isHover: false,
-        _targets: targets,
-        addTarget(target) {
-            state._targets.push(target);
-            const handleMouseenter = (ev) => onmouseenter(ev);
-            const handleMouseleave = (ev) => onmouseleave(ev);
-            target.ref.el.addEventListener("mouseenter", handleMouseenter, true);
-            target.ref.el.addEventListener("mouseleave", handleMouseleave, true);
-            return () => {
-                target.ref.el.removeEventListener("mouseenter", handleMouseenter, true);
-                target.ref.el.removeEventListener("mouseleave", handleMouseleave, true);
-                const idx = state._targets.findIndex((t) => t === target);
-                if (idx !== -1) {
-                    state._targets.splice(idx, 1);
-                }
-            };
-        },
+        refs,
     });
+    /** @param {boolean} hovering */
     function setHover(hovering) {
         if (hovering && !wasHovering) {
             state.isHover = true;
             clearTimeout(awayTimeout);
-            clearTimeout(hoveringTimeout);
             if (typeof onHover === "function") {
                 onHover();
-            }
-            if (Array.isArray(onHovering)) {
-                const [delay, cb] = onHovering;
-                hoveringTimeout = setTimeout(() => {
-                    cb();
-                }, delay);
             }
         } else if (!hovering) {
             state.isHover = false;
             clearTimeout(awayTimeout);
             if (typeof onAway === "function") {
                 awayTimeout = setTimeout(() => {
-                    clearTimeout(hoveringTimeout);
                     onAway();
                 }, 100);
             }
         }
         wasHovering = hovering;
     }
+    /** @param {MouseEvent} ev */
     function onmouseenter(ev) {
         if (state.isHover) {
             return;
         }
-        for (const target of state._targets) {
-            if (!target.ref.el) {
+        for (const ref of state.refs) {
+            const el = ref();
+            if (!el) {
                 continue;
             }
-            if (target.ref.el.contains(ev.target)) {
+            if (el.contains(ev.target)) {
                 setHover(true);
-                lastHoveredTarget = target;
-                return;
-            }
-        }
-        for (const contains of state._contains) {
-            if (contains(ev.target)) {
-                setHover(true);
+                lastHoveredRef = ref;
                 return;
             }
         }
     }
+    /** @param {MouseEvent} ev */
     function onmouseleave(ev) {
         if (!state.isHover) {
             return;
         }
-        for (const target of state._targets) {
-            if (!target.ref.el) {
+        for (const ref of state.refs) {
+            const el = ref();
+            if (!el) {
                 continue;
             }
-            if (target.ref.el.contains(ev.relatedTarget)) {
-                return;
-            }
-        }
-        for (const contains of state._contains) {
-            if (contains(ev.relatedTarget)) {
+            if (el.contains(ev.relatedTarget)) {
                 return;
             }
         }
         setHover(false);
-        lastHoveredTarget = null;
+        lastHoveredRef = null;
     }
 
-    for (const target of targets) {
-        useLazyExternalListener(
-            () => target.ref.el,
-            "mouseenter",
-            (ev) => onmouseenter(ev),
-            true
-        );
-        useLazyExternalListener(
-            () => target.ref.el,
-            "mouseleave",
-            (ev) => onmouseleave(ev),
-            true
-        );
+    for (const ref of refs) {
+        useListener(ref, "mouseenter", (ev) => onmouseenter(ev), true);
+        useListener(ref, "mouseleave", (ev) => onmouseleave(ev), true);
     }
 
     if (stateObserver) {
         useLayoutEffect((open) => {
             // Note: stateObserver is essentially used with useDropdownState()?.isOpen.
-            // While isOpen can become false, the ref.el can still be there for a short period of time.
+            // While isOpen can become false, the ref() can still be there for a short period of time.
             // Relying on isOpen becoming false forces good syncing of isHover state on dropdown close.
-            if ((lastHoveredTarget && !lastHoveredTarget.ref.el) || !open) {
+            if ((lastHoveredRef && !lastHoveredRef()) || !open) {
                 setHover(false);
-                lastHoveredTarget = null;
+                lastHoveredRef = null;
             }
         }, stateObserver);
     }
     return state;
-}
-
-export class UseHoverOverlay extends Component {
-    static props = ["slots", "hover"];
-    static template = xml`<div t-custom-ref="root"><t t-call-slot="default"/></div>`;
-
-    setup() {
-        super.setup();
-        this.root = useRef("root");
-        const overlayContains = this.env[OVERLAY_SYMBOL].contains;
-        let removeTarget;
-        onMounted(() => {
-            this.props.hover._contains.push(overlayContains);
-            removeTarget = this.props.hover.addTarget({
-                ref: { el: this.root.el.closest(".o-overlay-item") },
-            });
-        });
-        onWillUnmount(() => {
-            const idx = this.props.hover._contains.findIndex((c) => c === overlayContains);
-            if (idx !== -1) {
-                this.props.hover._contains.splice(idx, 1);
-            }
-            removeTarget?.();
-        });
-    }
 }
 
 /**
@@ -296,22 +243,17 @@ export function useScrollState(ref) {
             state.canScrollAfter = false;
         }
     }
-    useLayoutEffect(
-        (el) => {
-            if (!el) {
-                return;
-            }
-            computeState();
-            el.addEventListener("scroll", computeState);
-            const resizeObserver = new ResizeObserver(computeState);
-            resizeObserver.observe(el);
-            return () => {
-                el.removeEventListener("scroll", computeState);
-                resizeObserver.disconnect();
-            };
-        },
-        () => [ref()]
-    );
+    useListener(ref, "scroll", computeState);
+    useEffect(() => {
+        const el = ref();
+        if (!el) {
+            return;
+        }
+        computeState();
+        const resizeObserver = new ResizeObserver(computeState);
+        resizeObserver.observe(el);
+        return () => resizeObserver.disconnect();
+    });
     return state;
 }
 
@@ -319,22 +261,22 @@ export function useScrollState(ref) {
  * Hook that execute the callback function each time the scrollable element hit
  * the bottom minus the threshold.
  *
- * @param {string} refName scrollable t-ref name to observe
+ * @param {string|import("@odoo/owl").Signal<HTMLElement|null>} refOrName scrollable t-ref name or signal ref to observe
  * @param {function} callback function to execute when scroll hit the bottom minus the threshold
  * @param {number} threshold number of threshold pixel to trigger the callback
  */
-export function useOnBottomScrolled(refName, callback, threshold = 1) {
-    const ref = useRef(refName);
+export function useOnBottomScrolled(ref, callback, threshold = 1) {
     function onScroll() {
-        if (Math.abs(ref.el.scrollTop + ref.el.clientHeight - ref.el.scrollHeight) < threshold) {
+        const el = ref();
+        if (el && Math.abs(el.scrollTop + el.clientHeight - el.scrollHeight) < threshold) {
             callback();
         }
     }
     onMounted(() => {
-        ref.el?.addEventListener("scroll", onScroll);
+        ref()?.addEventListener("scroll", onScroll);
     });
     onWillUnmount(() => {
-        ref.el?.removeEventListener("scroll", onScroll);
+        ref()?.removeEventListener("scroll", onScroll);
     });
 }
 
@@ -342,9 +284,8 @@ export function useOnBottomScrolled(refName, callback, threshold = 1) {
  * @param {string} refName
  * @param {function} [cb]
  */
-export function useVisible(refOrName, cb, { ready = true } = {}) {
-    const ref = typeof refOrName === "string" ? useRef(refOrName) : refOrName;
-    const getEl = () => ("el" in ref ? ref.el : ref());
+export function useVisible(ref, cb, { ready = true } = {}) {
+    const getEl = () => untrack(ref);
     const state = proxy({
         isVisible: undefined,
         ready,
@@ -473,27 +414,33 @@ export function useMessageScrolling({
     return state;
 }
 
+export class MessageSelectionState {
+    selectedMessageId;
+    data = new Set();
+
+    clearSelected() {
+        this.data.delete(this.selectedMessageId);
+    }
+
+    /** @param {import("models").Message} message */
+    isSelected(message) {
+        return this.data.has(message.id);
+    }
+
+    /** @param {import("models").Message} message */
+    setSelected(message) {
+        this.clearSelected();
+        this.data.add(message.id);
+        this.selectedMessageId = message.id;
+    }
+
+    get size() {
+        return this.data.size;
+    }
+}
+
 export function useMessageSelection() {
-    let selectedMessageId;
-    const data = proxy(new Set());
-    return {
-        clearSelected() {
-            data.delete(selectedMessageId);
-        },
-        /** @param {import("models").Message} message */
-        isSelected(message) {
-            return data.has(message.id);
-        },
-        /** @param {import("models").Message} message */
-        setSelected(message) {
-            this.clearSelected();
-            data.add(message.id);
-            selectedMessageId = message.id;
-        },
-        get size() {
-            return data.size;
-        },
-    };
+    return proxy(new MessageSelectionState());
 }
 
 export function useMicrophoneVolume() {
@@ -558,30 +505,33 @@ export function useMicrophoneVolume() {
     return state;
 }
 
-export function useSelection({ refName, model, preserveOnClickAwayPredicate = () => false }) {
+export function useSelection({ ref, model, preserveOnClickAwayPredicate = () => false }) {
     const ui = useService("ui");
-    const ref = useRef(refName);
+    const elRef = ref;
+    const getEl = () => untrack(elRef);
     function onSelectionChange() {
-        const activeElement = ref.el?.getRootNode().activeElement;
-        if (activeElement && activeElement === ref.el) {
+        const el = getEl();
+        const activeElement = el?.getRootNode().activeElement;
+        if (activeElement && activeElement === el) {
             Object.assign(model, {
-                start: ref.el.selectionStart,
-                end: ref.el.selectionEnd,
-                direction: ref.el.selectionDirection,
+                start: el.selectionStart,
+                end: el.selectionEnd,
+                direction: el.selectionDirection,
             });
         }
     }
-    onExternalClick(refName, async (ev) => {
+    onExternalClick(elRef, async (ev) => {
         if (await preserveOnClickAwayPredicate(ev)) {
             return;
         }
-        if (!ref.el) {
+        const el = getEl();
+        if (!el) {
             return;
         }
         Object.assign(model, {
-            start: ref.el.value.length,
-            end: ref.el.value.length,
-            direction: ref.el.selectionDirection,
+            start: el.value.length,
+            end: el.value.length,
+            direction: el.selectionDirection,
         });
     });
     onMounted(() => {
@@ -594,14 +544,15 @@ export function useSelection({ refName, model, preserveOnClickAwayPredicate = ()
     });
     return {
         restore() {
-            ref.el?.setSelectionRange(model.start, model.end, model.direction);
+            getEl()?.setSelectionRange(model.start, model.end, model.direction);
         },
         moveCursor(position) {
             model.start = model.end = position;
-            if (ref.el && !ui.isSmall) {
+            const el = getEl();
+            if (el && !ui.isSmall) {
                 // In mobile, selection seems to adjust correctly.
                 // Don't programmatically adjust, otherwise it shows soft keyboard!
-                ref.el.selectionStart = ref.el.selectionEnd = position;
+                el.selectionStart = el.selectionEnd = position;
             }
         },
     };
@@ -919,23 +870,10 @@ export function useLongPress(ref, { action, predicate = () => true } = {}) {
     );
 }
 
-export const inDiscussCallViewProps = ["isPip?"];
-export function useInDiscussCallView() {
-    const component = useComponent();
-    useSubEnv({
-        inDiscussCallView: {
-            get isPip() {
-                return component.props.isPip;
-            },
-        },
-    });
-}
-
-/** @typedef {import("@web/core/utils/hooks").useChildRef} useChildRef */
-
 /**
- * Hook that works like `useChildRef()` but allow many refs that each child component can save using an id of their choice.
- * @see useChildRef
+ * Hook that gathers the signal refs of many children, each child saving its own
+ * ref under an id of its choice.
+ * @see useForwardRefsToParent
  */
 export function useChildRefs() {
     /** @type {Map<any, import("@odoo/owl").Signal<Element>>} */
@@ -950,37 +888,68 @@ export class UseForwardRefsToParent {
      * @param {import("@odoo/owl").Signal<Element>} ref
      */
     constructor(propName, getRefIdFn, ref) {
-        const component = useComponent();
+        const compProps = useProps();
         this.ref = ref;
         // Note: The `useChildRefs()` Map is shared with all children, using useLayoutEffect/willUnmount to ensure proper on/off life cycle hook calls for given child.
         // If we use setup/willDestroy we can have 2 fiber nodes of same child component with one finalizing with willDestroy from cancelling duplicated fiber node.
         useLayoutEffect(
             (map, key) => {
-                this.registerRef(map, key);
-                return () => this.removeRef(map, key);
+                if (map) {
+                    this.registerRef(map, key);
+                    return () => map.delete(key);
+                }
             },
-            () => [component.props[propName], getRefIdFn(component.props)]
+            () => [compProps[propName], getRefIdFn(compProps)]
         );
     }
 
     registerRef(map, key) {
-        map?.set(key, this.ref);
-    }
-
-    removeRef(map, key) {
-        map?.delete(key);
+        map.set(key, this.ref);
     }
 }
 
-/** @typedef {import("@web/core/utils/hooks").useForwardRefToParent} useForwardRefToParent */
 /**
- * Hook that works like `useForwardRefToParent()` but allow many refs that each child component can save using an id of their choice.
- * @see useForwardRefToParent
+ * Hook that saves the `ref` of a child in the `useChildRefs()` map of its parent,
+ * under an id of the child's choice.
  *
  * @param {string} propName name of prop that contains a `useChildRefs()` object
  * @param {(Props) => any} getRefIdFn function whose evaluation returns the key in `useChildRefs()` object to save the `ref`, with props passed as param.
- * @param {import("@web/core/utils/hooks").Ref} ref the `ref` that is saved in `useChildRefs()` at key from `getRefIdFn` function evaluation
+ * @param {import("@odoo/owl").Signal<Element>} ref the `ref` that is saved in `useChildRefs()` at key from `getRefIdFn` function evaluation
  */
 export function useForwardRefsToParent(propName, getRefIdFn, ref) {
     new UseForwardRefsToParent(propName, getRefIdFn, ref);
+}
+
+/**
+ * Single read-only signal derived from one plain-value prop. The result is a signal tracking prop
+ * changes, but it is less efficient than `propSignal` as a prop change always triggers an
+ * unnecessary render of the parent. To be used only when the parent does not pass a signal and it
+ * is not possible to update all parents to pass signals.
+ *
+ * @template S
+ * @param {string} name
+ * @param {S} shape shape of the final value (e.g. `t.number()`)
+ * @returns {import("@odoo/owl").ReactiveValue<import("@odoo/owl").StripBrands<S>>} the resulting
+ *   (read-only) signal, which always exists (never `undefined`), even when the prop is optional.
+ */
+export function propComputed(name, shape) {
+    const rawProps = useProps({ [name]: shape });
+    return computed(() => rawProps[name]);
+}
+
+/**
+ * Single signal for one prop that is itself a signal: a thin wrapper over `useProps.static` that adds
+ * the `t.signal(...)` typing. The parent must pass a stable signal reference (but its inner value
+ * may change).
+ *
+ * @template S
+ * @param {string} name
+ * @param {S} shape shape of the final value (e.g. `t.number()`)
+ * @param {object} [options]
+ * @param {boolean} [options.optional]
+ * @returns {import("@odoo/owl").ReactiveValue<import("@odoo/owl").StripBrands<S>>}
+ */
+export function propSignal(name, shape, { optional = false } = {}) {
+    const type = t.signal(shape);
+    return useProps.static(name, optional ? type.optional() : type);
 }

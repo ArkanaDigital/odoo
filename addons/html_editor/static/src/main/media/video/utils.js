@@ -28,6 +28,8 @@ const convertOptionValueToUrlParam = (value, optionConfig) => {
         }
         case Number:
             return value.toString();
+        case String:
+            return value;
     }
     console.warn(`Unsupported option type: ${type}, returning raw option value.`);
     return value.toString();
@@ -53,6 +55,8 @@ const parseParams = (paramValue, optionConfig) => {
         }
         case Number:
             return parseInt(paramValue);
+        case String:
+            return paramValue;
     }
     console.warn(`Unsupported option type: ${type}, returning raw param value.`);
     return paramValue;
@@ -82,6 +86,19 @@ export function encodeOptionsToParams(options, optionsConfig, useBoolean = false
                     paramValue = paramName ? "true" : "false";
                 }
                 URLParams.push(`${encodeURI(paramName)}=${encodeURI(paramValue)}`);
+            }
+        }
+
+        if (config?.linkedParams?.length) {
+            for (const paramName of config.linkedParams) {
+                const isDefaultValue = optionValue === config.default;
+                if (!isDefaultValue) {
+                    let paramValue = convertOptionValueToUrlParam(optionValue, config);
+                    if (useBoolean && config.type === Boolean) {
+                        paramValue = paramName ? "true" : "false";
+                    }
+                    URLParams.push(`${encodeURI(paramName)}=${encodeURI(paramValue)}`);
+                }
             }
         }
     }

@@ -10,6 +10,7 @@ from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
 from odoo.tools.image import is_image_size_above
 from odoo.tools.sql import SQL
+from odoo.tools.translate import mark_as_copy
 
 _logger = logging.getLogger(__name__)
 PRICE_CONTEXT_KEYS = ['pricelist', 'quantity', 'uom', 'date']
@@ -49,7 +50,7 @@ class ProductTemplate(models.Model):
     def _domain_fixed_pricelist_rule_ids(self):
         return self._domain_pricelist_rule_ids() & Domain('compute_price', '=', 'fixed')
 
-    name = fields.Char('Name', index='trigram', required=True, translate=True)
+    name = fields.Char('Name', index='trigram', required=True, translate=True, copy=mark_as_copy('name'))
     sequence = fields.Integer('Sequence', default=1, help='Gives the sequence order when displaying a product list')
     description = fields.Html(
         'Description', translate=True)
@@ -92,6 +93,7 @@ class ProductTemplate(models.Model):
         group_expand='_read_group_categ_id',
         index='btree_not_null',
         tracking=True,
+        check_company=True,
     )
 
     currency_id = fields.Many2one(
@@ -240,6 +242,9 @@ class ProductTemplate(models.Model):
         store=True,
         required=True,
         default=0,
+        # Force NUMERIC with unlimited precision, as for `uom.uom.relative_factor`,
+        # to support very small ratios, e.g. one unit in a box of 10000.
+        digits=0,
     )
     base_unit_id = fields.Many2one(
         string="Custom Unit of Measure",
@@ -782,14 +787,6 @@ class ProductTemplate(models.Model):
             ))
         return super().action_archive()
 
-    def copy_data(self, default=None):
-        default = dict(default or {})
-        vals_list = super().copy_data(default=default)
-        if 'name' not in default:
-            for template, vals in zip(self, vals_list):
-                vals['name'] = _("%s (copy)", template.name)
-        return vals_list
-
     def copy(self, default=None):
         copied_tmpls = super().copy(default)
         for template, template_copy in zip(self, copied_tmpls, strict=True):
@@ -813,12 +810,6 @@ class ProductTemplate(models.Model):
                 # avoid multi-company issues.
                 continue
 
-            # User duplicating the template might not have access to pricings
-            template_sudo = template.sudo()
-
-            if not template_sudo._duplicate_pricelist_rules_on_copy():
-                continue
-
             # Force the order to be on id, since the others keys will have the same value/order
             # This guarantees the order of the copied pricings is the same as the original ones
             # regardless of the 'id desc' in the _order of product.pricelist.item model.
@@ -835,13 +826,28 @@ class ProductTemplate(models.Model):
 
             # Duplicate variant-specific rules
             if variant_specific_pricings:
-                variant_mapping = dict(
-                    zip(
-                        template_sudo.product_variant_ids.ids,
-                        template_copy.product_variant_ids.ids,
-                        strict=True,
+                def get_combination_key(variant, attribute_line_ids):
+                    return frozenset(
+                        variant.product_template_variant_value_ids.mapped(
+                            lambda v: (
+                                attribute_line_ids.index(v.attribute_line_id.id),
+                                v.product_attribute_value_id.id,
+                            )
+                        )
                     )
-                )
+
+                template_copy_line_ids = template_copy.attribute_line_ids.ids
+                copy_variant_by_attribute_combo = {
+                    get_combination_key(v, template_copy_line_ids): v.id
+                    for v in template_copy.product_variant_ids
+                }
+
+                template_line_ids = template.attribute_line_ids.ids
+                variant_mapping = {}
+                for variant in template.product_variant_ids:
+                    key = get_combination_key(variant, template_line_ids)
+                    if key in copy_variant_by_attribute_combo:
+                        variant_mapping[variant.id] = copy_variant_by_attribute_combo[key]
 
                 for product_id, pricings in variant_specific_pricings.grouped(
                     lambda pricing: pricing.product_id.id
@@ -855,11 +861,6 @@ class ProductTemplate(models.Model):
                         'product_id': variant_mapping.get(product_id),
                     })
         return copied_tmpls
-
-    def _duplicate_pricelist_rules_on_copy(self):
-        # Safety net, the current heuristic/approach might not be safe enough
-        # to be applied by default on all products (inactive variants, exclusions, ...)
-        return False
 
     @api.depends('name', 'default_code')
     @api.depends_context('formatted_display_name', 'display_default_code')
@@ -940,6 +941,17 @@ class ProductTemplate(models.Model):
                 _("(e.g: product description, ebook, legal notice, ...)."),
             )
         }
+
+    def action_open_packaging_barcodes(self):
+        self.ensure_one()
+        variants = self.product_variant_ids
+        action = self.env['ir.actions.act_window']._for_xml_id('product.product_uom_action_view_list')
+        action['domain'] = [('product_id', 'in', variants.ids)]
+        action['context'] = {
+            'default_product_id': variants[0].id,
+            'product_ids': variants.ids,
+        }
+        return action
 
     #=== BUSINESS METHODS ===#
 

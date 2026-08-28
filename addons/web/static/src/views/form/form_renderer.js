@@ -1,4 +1,4 @@
-import { render, useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
+import { render, useSubEnv } from "@web/owl2/utils";
 import { evaluateBooleanExpr } from "@web/core/py_js/py";
 import { Notebook } from "@web/core/notebook/notebook";
 import { Setting } from "./setting/setting";
@@ -16,7 +16,31 @@ import { FormCompiler } from "./form_compiler";
 import { FormLabel } from "./form_label";
 import { StatusBarButtons } from "./status_bar_buttons/status_bar_buttons";
 
-import { Component, onMounted, onWillUnmount, xml, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillUnmount,
+    proxy,
+    signal,
+    t,
+    useEffect,
+    useProps,
+    xml,
+} from "@odoo/owl";
+
+export const formRendererProps = {
+    archInfo: t.object(),
+    Compiler: t.function().optional(),
+    record: t.object(),
+    // Template props : added by the FormCompiler
+    class: t.string().optional(),
+    translateAlert: t.or([t.object(), t.literal(null)]).optional(),
+    onNotebookPageChange: t.function().optional(() => () => {}),
+    activeNotebookPages: t.object().optional({}),
+    readonly: t.boolean().optional(),
+    saveRecord: t.function().optional(),
+    setFieldAsDirty: t.function().optional(),
+};
 
 export class FormRenderer extends Component {
     static template = xml`<t t-call="{{ this.templates.FormRenderer }}" t-call-context="{ __comp__: Object.assign(Object.create(this), { this: this }) }" />`;
@@ -32,24 +56,10 @@ export class FormRenderer extends Component {
         InnerGroup,
         StatusBarButtons,
     };
-    static props = {
-        archInfo: Object,
-        Compiler: { type: Function, optional: true },
-        record: Object,
-        // Template props : added by the FormCompiler
-        class: { type: String, optional: true },
-        translateAlert: { type: [Object, { value: null }], optional: true },
-        onNotebookPageChange: { type: Function, optional: true },
-        activeNotebookPages: { type: Object, optional: true },
-        readonly: { type: Boolean, optional: true },
-        saveRecord: { type: Function, optional: true },
-        setFieldAsDirty: { type: Function, optional: true },
-        slots: { type: Object, optional: true },
-    };
-    static defaultProps = {
-        activeNotebookPages: {},
-        onNotebookPageChange: () => {},
-    };
+    props = useProps(formRendererProps);
+
+    // Bound by the FormCompiler on the compiled view root.
+    rootRef = signal.ref();
 
     setup() {
         this.evaluateBooleanExpr = evaluateBooleanExpr;
@@ -60,45 +70,48 @@ export class FormRenderer extends Component {
         useSubEnv({ model: record.model });
         this.uiService = useService("ui");
         this.onResize = useDebounced(() => render(this), 200);
-        this.onScrollThrottled = useThrottleForAnimation(this.onScroll);
+        this.onScrollThrottled = useThrottleForAnimation(this.onScroll.bind(this));
         onMounted(() => browser.addEventListener("resize", this.onResize));
         onWillUnmount(() => browser.removeEventListener("resize", this.onResize));
 
         const { autofocusFieldIds } = archInfo;
-        const rootRef = useRef("compiled_view_root");
         if (this.shouldAutoFocus) {
-            useLayoutEffect(
-                (record, rootEl) => {
-                    if (!rootEl) {
-                        return;
-                    }
-                    let elementToFocus;
-                    if (record.isNew) {
-                        const focusableSelectors = [
-                            'input[type="text"]',
-                            "textarea",
-                            "[contenteditable]",
-                        ];
-                        for (const id of autofocusFieldIds) {
-                            elementToFocus = rootEl.querySelector(`#${id}`);
-                            if (elementToFocus) {
-                                break;
-                            }
+            const mounted = signal(false);
+            onMounted(() => mounted.set(true));
+            useEffect(() => {
+                if (!mounted()) {
+                    return;
+                }
+                const record = this.props.record;
+                const rootEl = this.rootRef();
+                if (!rootEl) {
+                    return;
+                }
+                let elementToFocus;
+                if (record.isNew) {
+                    const focusableSelectors = [
+                        'input[type="text"]',
+                        "textarea",
+                        "[contenteditable]",
+                    ];
+                    for (const id of autofocusFieldIds) {
+                        elementToFocus = rootEl.querySelector(`#${id}`);
+                        if (elementToFocus) {
+                            break;
                         }
-                        elementToFocus =
-                            elementToFocus ||
-                            rootEl.querySelector(
-                                focusableSelectors
-                                    .map((sel) => `.o_content .o_field_widget ${sel}`)
-                                    .join(", ")
-                            );
                     }
-                    if (elementToFocus) {
-                        elementToFocus.focus();
-                    }
-                },
-                () => [this.props.record, rootRef.el]
-            );
+                    elementToFocus =
+                        elementToFocus ||
+                        rootEl.querySelector(
+                            focusableSelectors
+                                .map((sel) => `.o_content .o_field_widget ${sel}`)
+                                .join(", ")
+                        );
+                }
+                if (elementToFocus) {
+                    elementToFocus.focus();
+                }
+            });
         }
 
         if (this.env.inDialog) {
@@ -108,13 +121,14 @@ export class FormRenderer extends Component {
             const fieldNodeIds = Object.keys(this.props.archInfo.fieldNodes);
             const elementsByNodeIds = {};
             onMounted(() => {
-                if (!rootRef.el) {
+                const rootEl = this.rootRef();
+                if (!rootEl) {
                     // t-ref is sometimes set on a <t> node, resulting in a null ref (e.g. footer case)
                     return;
                 }
                 for (const id of fieldNodeIds) {
                     const els = [...document.querySelectorAll(`[id=${id}]`)].filter(
-                        (el) => !rootRef.el.contains(el)
+                        (el) => !rootEl.contains(el)
                     );
                     if (els.length) {
                         els[0].removeAttribute("id");
@@ -136,7 +150,7 @@ export class FormRenderer extends Component {
 
     onScroll(ev) {
         this.state.isStatusbarStickyPinned =
-            !this.env.inDialog && !this.env.isSmall && ev.target.scrollTop !== 0;
+            !this.env.inDialog && !this.uiService.isSmall && ev.target.scrollTop !== 0;
     }
 
     async onWillChangeNotebookPage() {

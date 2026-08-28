@@ -25,8 +25,7 @@
                     <sheet>
                     <div class="oe_button_box" name="button_box">
                         <button class="oe_stat_button" name="action_open_related_taxes"
-                                type="object" icon="fa-bars"
-                                invisible="not tax_ids">
+                                type="object" icon="menu">
                             <div class="o_stat_info">
                                 <span class="o_stat_text">
                                     Taxes
@@ -136,7 +135,7 @@
             <field name="priority" eval="5"/>
             <field name="arch" type="xml">
                 <div name="button_box" position="inside">
-                    <button type="object" class="oe_stat_button" icon="fa-pencil-square-o" name="action_view_partner_invoices"
+                    <button type="object" class="oe_stat_button" icon="edit_square" name="action_view_partner_invoices"
                         groups="account.group_account_invoice,account.group_account_readonly"
                         context="{'default_partner_id': id}">
                         <div class="o_form_field o_stat_info">
@@ -152,7 +151,7 @@
                         type="action"
                         name="%(account.res_partner_action_supplier_bills)d"
                         groups="account.group_account_invoice"
-                        icon="fa-pencil-square-o" help="Vendor Bills"
+                        icon="edit_square" help="Vendor Bills"
                         invisible="supplier_invoice_count == 0"
                     >
                         <field string="Vendor Bills" name="supplier_invoice_count" widget="statinfo"/>
@@ -165,15 +164,10 @@
                 </label>
                 <field name="vat" position="attributes">
                     <attribute name="options">{'placeholder_field': 'partner_vat_placeholder'}</attribute>
+                    <attribute name="placeholder"></attribute>
                 </field>
                 <div id="vat_div" position="attributes">
                     <attribute name="class">o_row d-flex</attribute>
-                </div>
-                <div id="vat_div" position="inside">
-                    <field name="additional_identifiers" widget="additional_identifiers_button" nolabel="1"/>
-                </div>
-                <div id="vat_div" position="after">
-                    <field name="additional_identifiers" widget="additional_identifiers_list" colspan="2" nolabel="1"/>
                 </div>
 
                 <xpath expr=".//page[@name='sales_purchases']//group[@name='misc']" position="inside">
@@ -212,13 +206,6 @@
                 <xpath expr="//field[@name='company_id']" position="after">
                     <field name="fiscal_country_codes" invisible="1"/>
                 </xpath>
-                <xpath expr="//sheet" position="before">
-                    <div groups="account.group_account_invoice,account.group_account_readonly" class="alert alert-warning" role="alert"
-                         invisible="not duplicate_bank_partner_ids">
-                        <span class="me-1">One or more Bank Accounts set on this partner are also used by others:</span>
-                        <field name="duplicate_bank_partner_ids" widget="x2many_buttons" string="Partners with same bank"/>
-                    </div>
-                </xpath>
                 <page name="sales_purchases" position="after">
                     <page string="Invoicing" name="accounting" invisible="not is_company and parent_id" groups="account.group_account_invoice,account.group_account_readonly">
                         <group>
@@ -228,6 +215,7 @@
                                        context="{'default_partner_id': id}"
                                        domain="[('partner_id','=', id)]"
                                        widget="many2many_tags_banks"
+                                       readonly="not id"
                                        options="{'color_field': 'color', 'allow_out_payment_field': 'allow_out_payment', 'on_tag_click': 'open_form'}"/>
                                 <field name="property_account_receivable_id" required="True" groups="account.group_account_user" decoration-muted="not property_account_receivable_active"/>
                                 <field name="property_account_payable_id" required="True" groups="account.group_account_user" decoration-muted="not property_account_payable_active"/>

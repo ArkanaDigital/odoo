@@ -1,16 +1,16 @@
-import { Component } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
 import { getColor } from "../utils";
 
 export class CalendarMobileFilterPanel extends Component {
     static components = {};
     static template = "web.CalendarMobileFilterPanel";
-    static props = {
-        model: Object,
-        sidePanelShown: Boolean,
-        toggleSidePanel: Function,
-    };
+    props = useProps({
+        model: t.object(),
+        sidePanelShown: t.boolean(),
+        toggleSidePanel: t.function(),
+    });
     get caretDirection() {
-        return this.props.sidePanelShown ? "down" : "left";
+        return this.props.sidePanelShown ? "keyboard_arrow_down" : "chevron_backward";
     }
     getFilterColor(filter) {
         return `o_color_${getColor(filter.colorIndex)}`;

@@ -129,6 +129,10 @@ class SnailmailLetter(models.Model):
             self.attachment_id.check_access('read')
         return res
 
+    @api.onchange("attachment_id")
+    def _onchange_attachment_id(self):
+        self.attachment_id.check_access('read')
+
     def _generate_report_pdf(self, report):
         obj = self.env[self.model].browse(self.res_id)
         if report.print_report_name:
@@ -552,9 +556,10 @@ class SnailmailLetter(models.Model):
         curr_pdf = PdfFileReader(io.BytesIO(invoice_bin))
         out = PdfFileWriter()
         for page in curr_pdf.pages:
-            page.merge_page(new_pdf.pages[0])
             out.add_page(page)
-            out.pages[-1].compress_content_streams()
+            added_page = out.pages[-1]
+            added_page.merge_page(new_pdf.pages[0])
+            added_page.compress_content_streams()
         out_stream = io.BytesIO()
         out.write(out_stream)
         out_bin = out_stream.getvalue()

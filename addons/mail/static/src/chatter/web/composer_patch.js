@@ -1,11 +1,9 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
+import { proxy, signal, t, useEffect, useOnChange, useProps } from "@odoo/owl";
 
 import { patch } from "@web/core/utils/patch";
 
 import { Composer } from "@mail/core/common/composer";
 import { RecipientsInput } from "@mail/core/web/recipients_input";
-
-Composer.props.push("thread?", "withMessageFields?");
 
 Object.assign(Composer.components, {
     RecipientsInput,
@@ -13,9 +11,21 @@ Object.assign(Composer.components, {
 
 patch(Composer.prototype, {
     setup() {
-        this.subjectInputRef = useRef("subjectInput");
+        super.setup(...arguments);
+        this.webComposerProps = useProps({
+            thread: t.instanceOf(this.store["mail.thread"]).optional(),
+            withMessageFields: t.boolean().optional(),
+        });
+        this.subjectInputRef = signal.ref();
         // fill in the "suggested subject" only when it differs from the default
-        useLayoutEffect(
+        useOnChange(
+            () => [
+                this.webComposerProps.withMessageFields,
+                this.webComposerProps.thread?.defaultSubject,
+                this.webComposerProps.thread?.suggestedSubject,
+                this.webComposerProps.thread?.showSubjectInSmallComposer,
+                this.subjectInputRef(),
+            ],
             (
                 withMessageFields,
                 defaultSubject,
@@ -38,21 +48,27 @@ patch(Composer.prototype, {
                 ) {
                     inputEl.value = suggestedSubject;
                 }
-            },
-            () => [
-                this.props.withMessageFields,
-                this.props.thread?.defaultSubject,
-                this.props.thread?.suggestedSubject,
-                this.props.thread?.showSubjectInSmallComposer,
-                this.subjectInputRef?.el,
-            ]
+            }
         );
-        return super.setup();
+        this.chatterState = proxy({
+            isCcEnabled: false,
+        });
+        useEffect(() => {
+            const allRecipients = (this.webComposerProps.thread?.suggestedRecipients || []).concat(
+                this.webComposerProps.thread?.additionalRecipients || []
+            );
+            if (allRecipients.some((r) => r.recipient_type === "cc")) {
+                this.chatterState.isCcEnabled = true;
+            }
+        });
     },
 
     async onClickFullComposerGetAction() {
         const res = await super.onClickFullComposerGetAction();
-        if (this.props.withMessageFields && this.props.thread.showSubjectInSmallComposer) {
+        if (
+            this.webComposerProps.withMessageFields &&
+            this.webComposerProps.thread.showSubjectInSmallComposer
+        ) {
             res.action.context.default_subject = this.subject;
         }
         return res;
@@ -63,10 +79,11 @@ patch(Composer.prototype, {
         if (this.subject) {
             postData.subject = this.subject;
         }
+        postData.isCcEnabled = this.chatterState.isCcEnabled;
         return postData;
     },
 
     get subject() {
-        return this.subjectInputRef.el?.value;
+        return this.subjectInputRef()?.value;
     },
 });

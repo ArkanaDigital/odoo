@@ -1,7 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import api, Command, fields, models, _
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError
 from odoo.tools import float_is_zero
 
 
@@ -95,9 +95,8 @@ class SaleOrderLine(models.Model):
     @api.depends('order_id.partner_id', 'product_id', 'order_id.project_id')
     def _compute_analytic_distribution(self):
         ctx_project = self.env['project.project'].browse(self.env.context.get('project_id'))
-        project_lines = self.filtered(lambda l: not l.display_type and (ctx_project or l.product_id.with_company(l.company_id).project_id or l.order_id.project_id))
-        empty_project_lines = project_lines.filtered(lambda l: not l.analytic_distribution)
-        super(SaleOrderLine, (self - project_lines) + empty_project_lines)._compute_analytic_distribution()
+        project_lines = self.filtered(lambda l: l._is_product_line() and (ctx_project or l.product_id.with_company(l.company_id).project_id or l.order_id.project_id))
+        super()._compute_analytic_distribution()
 
         for line in project_lines:
             project = ctx_project or line.product_id.with_company(line.company_id).project_id or line.order_id.project_id
@@ -165,6 +164,14 @@ class SaleOrderLine(models.Model):
                 datum['analytic_distribution'] = False
         return data
 
+    def action_view_sale_order(self):
+        self.ensure_one()
+        action = self.env["ir.actions.actions"]._for_xml_id("sale.action_orders")
+        action['views'] = [(False, 'form')]
+        action['res_id'] = self.order_id.id
+        action['context'] = {'create': False}
+        return action
+
     ###########################################
     # Service : Project and task generation
     ###########################################
@@ -175,8 +182,9 @@ class SaleOrderLine(models.Model):
     def _timesheet_create_project_prepare_values(self):
         """Generate project values"""
         # create the project or duplicate one
+        partner_name = self.order_id.partner_id.commercial_company_name
         values = {
-            'name': '%s - %s' % (self.order_id.client_order_ref, self.order_id.name) if self.order_id.client_order_ref else self.order_id.name,
+            'name': '%s - %s - %s' % (self.order_id.client_order_ref, self.order_id.name, partner_name) if self.order_id.client_order_ref else '%s - %s' % (self.order_id.name, partner_name),
             'account_id': self.env.context.get('project_account_id') or self.order_id.project_account_id.id or self.env['account.analytic.account'].create(self.order_id._prepare_analytic_account_data()).id,
             'partner_id': self.order_id.partner_id.id,
             'active': True,
@@ -218,7 +226,15 @@ class SaleOrderLine(models.Model):
                 ('product_id.service_tracking', 'in', ['project_only', 'task_in_project']),
             ])
             if project_only_sol_count == 1:
-                values['name'] = "%s - [%s] %s" % (values['name'], self.product_id.default_code, self.product_id.name) if self.product_id.default_code else "%s - %s" % (values['name'], self.product_id.name)
+                sale_line_name_parts = self.name.split('\n')
+                if sale_line_name_parts and sale_line_name_parts[0] == self.product_id.display_name:
+                    sale_line_name_parts.pop(0)
+                if len(sale_line_name_parts) == 1 and sale_line_name_parts[0]:
+                    name = sale_line_name_parts[0]
+                else:
+                    name = "[%s] %s" % (self.product_id.default_code, self.product_id.name) if self.product_id.default_code else self.product_id.name
+                    values['description'] = '<br/>'.join(sale_line_name_parts)
+                values['name'] = "%s - %s" % (values['name'], name)
             values.update(self._timesheet_create_project_account_vals(self.order_id.project_id))
             project = self.env['project.project'].create(values)
 
@@ -290,7 +306,7 @@ class SaleOrderLine(models.Model):
             )
 
         return {
-            'name': '%s - %s' % (self.order_id.name, template.name),
+            'name': '%s - %s - %s' % (self.order_id.name, project.partner_id.commercial_company_name if project.partner_id else self.order_id.partner_id.commercial_company_name, template.name),
             'allocated_hours': allocated_hours,
             'project_id': project.id,
             'sale_line_id': self.id,
@@ -424,14 +440,6 @@ class SaleOrderLine(models.Model):
                         task_templates |= so_line.product_id.task_template_id
                         so_line._timesheet_create_task(project)
                     so_line._handle_milestones(project)
-
-                elif not project:
-                    raise UserError(_(
-                        "A project must be defined on the quotation %(order)s or on the form of products creating a task on order.\n"
-                        "The following product need a project in which to put its task: %(product_name)s",
-                        order=so_line.order_id.name,
-                        product_name=so_line.product_id.name,
-                    ))
 
     def _handle_milestones(self, project):
         self.ensure_one()

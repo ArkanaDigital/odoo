@@ -29,7 +29,6 @@ configuration of their taxes and fiscal positions manually.
 **Credits:** Sistheo, Zeekom, CrysaLEAD, Akretion and Camptocamp.
 """,
     'depends': [
-        'base_vat',
         'account',
         'account_edi_ubl_cii',
         'l10n_fr',
@@ -41,7 +40,7 @@ configuration of their taxes and fiscal positions manually.
         'data/tax_report_data.xml',
         'views/report_invoice.xml',
         'wizard/account_fr_fec_export_wizard_view.xml',
-        'security/ir.model.access.csv',
+        'security/ir.access.csv',
     ],
     'demo': [
         'data/l10n_fr_account_demo.xml',

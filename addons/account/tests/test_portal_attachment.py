@@ -11,6 +11,8 @@ from odoo.tools import file_open, mute_logger
 @tagged('post_install', '-at_install')
 class TestPortalAttachment(AccountTestInvoicingHttpCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -118,8 +120,7 @@ class TestPortalAttachment(AccountTestInvoicingHttpCommon):
             url=f'{self.invoice_base_url}/mail/attachment/delete',
             json={
                 'params': {
-                    'attachment_id': create_res['id'],
-                    'access_token': "wrong",
+                    'access_token_by_attachment_id': {create_res['id']: "wrong"},
                 },
             },
         )
@@ -132,8 +133,7 @@ class TestPortalAttachment(AccountTestInvoicingHttpCommon):
             url=f'{self.invoice_base_url}/mail/attachment/delete',
             json={
                 'params': {
-                    'attachment_id': create_res['id'],
-                    "access_token": create_res["ownership_token"],
+                    'access_token_by_attachment_id': {create_res['id']: create_res["ownership_token"]},
                 },
             },
         )
@@ -148,8 +148,7 @@ class TestPortalAttachment(AccountTestInvoicingHttpCommon):
             url=f'{self.invoice_base_url}/mail/attachment/delete',
             json={
                 'params': {
-                    'attachment_id': attachment.id,
-                    "access_token": attachment._get_ownership_token(),
+                    'access_token_by_attachment_id': {attachment.id: attachment._get_ownership_token()},
                 },
             },
         )
@@ -172,8 +171,7 @@ class TestPortalAttachment(AccountTestInvoicingHttpCommon):
             url=f'{self.invoice_base_url}/mail/attachment/delete',
             json={
                 'params': {
-                    'attachment_id': attachment.id,
-                    "access_token": attachment._get_ownership_token(),
+                    'access_token_by_attachment_id': {attachment.id: attachment._get_ownership_token()},
                 },
             },
         )

@@ -11,7 +11,8 @@ import { withSequence } from "@html_editor/utils/resource";
 import { _t } from "@web/core/l10n/translation";
 import { memoize } from "@web/core/utils/functions";
 import { closestElement } from "@html_editor/utils/dom_traversal";
-import { utils } from "@web/core/ui/ui_service";
+import { utils } from "@web/core/ui/ui_utils";
+import { removeStyle } from "@html_editor/utils/dom";
 
 /** @typedef { import("@html_editor/core/selection_plugin").EditorSelection } EditorSelection */
 /** @typedef {import("@html_editor/core/selection_plugin").SelectionData} SelectionData */
@@ -44,6 +45,7 @@ import { utils } from "@web/core/ui/ui_service";
  * @property {Object} [commandParams] Passed to the command's `run` function
  * @property {TranslatedString | TranslatedStringGetter} [description] * - becomes the button's title (and tooltip content)
  * @property {string} [icon] *
+ * @property {string} [iconClass] *
  * @property {string} [text] Can be used with (or instead of) `icon`
  * @property {(selection: EditorSelection) => boolean} [isAvailable] ? *
  * @property {(selection: EditorSelection, nodes: Node[]) => boolean} [isActive]
@@ -72,6 +74,7 @@ import { utils } from "@web/core/ui/ui_service";
  * @property {TranslatedStringGetter} description
  * @property {Function} run
  * @property {string} [icon]
+ * @property {string} [iconClass]
  * @property {string} [text]
  * @property {(selection: EditorSelection) => boolean} isAvailable
  * @property {(selection: EditorSelection, nodes: Node[]) => boolean} [isActive]
@@ -125,7 +128,8 @@ export const DISABLED_NAMESPACE = "disabled";
  *                 id: myCommand,
  *                 run: myCommandFunction,
  *                 description: _t("My Command"),
- *                 icon: "fa-bug",
+ *                 icon: "bug_report",
+ *                 iconClass: "oi-filled",
  *             },
  *         ],
  *         // see ToolbarGroup
@@ -160,9 +164,11 @@ export class ToolbarPlugin extends Plugin {
     /** @type {import("plugins").EditorResources} */
     resources = {
         on_selectionchange_handlers: this.handleSelectionChange.bind(this),
-        on_selection_leave_handlers: () => this.closeToolbar(),
+        on_selection_leave_handlers: () => this.closeToolbar(null, { force: true }),
         on_selection_enter_handlers: () => this.updateToolbar(),
         on_committed_to_history_handlers: () => this.updateToolbar(),
+        on_format_requested_handlers: () => this.updateToolbar(),
+        on_collapsed_formats_removed_handlers: () => this.updateToolbar(),
         user_commands: {
             id: "expandToolbar",
             run: () => {
@@ -179,7 +185,7 @@ export class ToolbarPlugin extends Plugin {
             groupId: "expand_toolbar",
             commandId: "expandToolbar",
             description: _t("Expand toolbar"),
-            icon: "oi-ellipsis-v",
+            icon: "more_vert",
         },
         toolbar_namespace_providers: [
             withSequence(100, (targetedNodes, editableSelection) =>
@@ -216,7 +222,12 @@ export class ToolbarPlugin extends Plugin {
         this.state = proxy({ buttonGroups: [], namespace: undefined });
 
         this.onSelectionChangeActive = true;
-        this.debouncedUpdateToolbar = debounce(this._updateToolbar, DELAY_TOOLBAR_OPEN);
+        // Re-enable selection tracking only after the debounced update finishes,
+        // so async selectionchange events don't open the toolbar early.
+        this.debouncedUpdateToolbar = debounce(() => {
+            this._updateToolbar();
+            this.onSelectionChangeActive = true;
+        }, DELAY_TOOLBAR_OPEN);
 
         if (this.isMobileToolbar) {
             this.addDomListener(this.editable, "pointerup", () => {
@@ -234,8 +245,7 @@ export class ToolbarPlugin extends Plugin {
             this.addGlobalDomListener("mouseup", (ev) => {
                 if (ev.detail >= 2) {
                     // Delayed open, waiting for a possible triple click.
-                    this.onSelectionChangeActive = true;
-                    this.debouncedUpdateToolbar();
+                    this.triggerDebouncedUpdateToolbar();
                 } else {
                     // Fast open, just wait for a possible selection change due
                     // to mouseup.
@@ -267,16 +277,14 @@ export class ToolbarPlugin extends Plugin {
             this.addDomListener(this.editable, "keyup", (ev) => {
                 if (ev.key?.startsWith("Arrow")) {
                     this.pendingArrowKey = false;
-                    this.onSelectionChangeActive = true;
-                    this.debouncedUpdateToolbar();
+                    this.triggerDebouncedUpdateToolbar();
                 }
             });
             if (isMacOS()) {
                 this.addDomListener(this.document, "selectionchange", () => {
                     if (this.pendingArrowKey && !this.isMouseDown) {
                         this.pendingArrowKey = false;
-                        this.onSelectionChangeActive = true;
-                        this.debouncedUpdateToolbar();
+                        this.triggerDebouncedUpdateToolbar();
                     }
                 });
                 this.addDomListener(this.editable, "mousedown", () => (this.isMouseDown = true));
@@ -300,6 +308,13 @@ export class ToolbarPlugin extends Plugin {
     }
 
     /**
+     * Schedules a debounced toolbar update.
+     */
+    triggerDebouncedUpdateToolbar() {
+        this.debouncedUpdateToolbar();
+    }
+
+    /**
      * @returns {ToolbarButton[]}
      */
     getButtons() {
@@ -313,7 +328,12 @@ export class ToolbarPlugin extends Plugin {
         };
         /** @type {(item: ToolbarComponentItem) => ToolbarComponentButton} */
         const componentItemToButton = (item) => ({
-            isAvailable: () => true,
+            isAvailable: (selection) => {
+                const command = item.commandId
+                    ? this.dependencies.userCommand.getCommand(item.commandId)
+                    : null;
+                return command?.isAvailable ? command.isAvailable(selection) : true;
+            },
             ...item,
             description:
                 item.description instanceof Function ? item.description : () => item.description,
@@ -377,6 +397,14 @@ export class ToolbarPlugin extends Plugin {
      */
     updateToolbar = debounce(this._updateToolbar, 0, { trailing: true });
     _updateToolbar(selectionData = this.dependencies.selection.getSelectionData()) {
+        // A debounced/deferred update can still fire after the plugin has been
+        // destroyed (e.g. the "mouseup" handler re-arms `updateToolbar` through a
+        // raw setTimeout that isn't cancelled by `destroy`). At that point the
+        // editable's document is detached and `defaultView` is null, which would
+        // crash in `getFilteredTargetedNodes`. Bail out early in that case.
+        if (this.isDestroyed || !this.document.isConnected) {
+            return;
+        }
         // Prevent toolbar to open if the selection is not in the editable area,
         // or if the selection is protected or protecting.
         if (
@@ -466,7 +494,7 @@ export class ToolbarPlugin extends Plugin {
     /**
      * @param {SelectionData} selectionData
      */
-    closeToolbar(selectionData = null) {
+    closeToolbar(selectionData = null, { force = false } = {}) {
         if (!this.overlay.isOpen) {
             return;
         }
@@ -475,8 +503,9 @@ export class ToolbarPlugin extends Plugin {
             ? selectionData.editableSelection?.anchorNode
             : document.getSelection()?.anchorNode;
         const shouldPreventClosing =
+            !force &&
             anchor?.closest?.("[data-prevent-closing-overlay]")?.dataset?.preventClosingOverlay ===
-            "true";
+                "true";
         if (!shouldPreventClosing) {
             this.overlay.close();
             this.isToolbarExpanded = false;
@@ -502,7 +531,7 @@ export class ToolbarPlugin extends Plugin {
                         ...(button.Component
                             ? pick(button, "Component", "props")
                             : {
-                                  ...pick(button, "run", "icon", "text"),
+                                  ...pick(button, "run", "icon", "iconClass", "text"),
                                   isActive: !!button.isActive?.(selection, targetedNodes),
                               }),
                     })),
@@ -559,6 +588,7 @@ class MobileToolbarOverlay {
 
     open({ props }) {
         props.class = "shadow";
+        props.editable = this.editable;
         if (!this.isOpen) {
             const modal = this.editable.closest(".o_modal_full");
             if (modal) {
@@ -576,7 +606,7 @@ class MobileToolbarOverlay {
     close() {
         const modal = this.editable.closest(".o_modal_full");
         if (modal) {
-            modal.style.paddingBottom = "";
+            removeStyle(modal, "padding-bottom");
         }
         registry.category("main_components").remove(this.overlayId, "MobileToolbar");
         this.isOpen = false;

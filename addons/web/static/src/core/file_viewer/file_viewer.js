@@ -1,6 +1,6 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, proxy, signal, useEffect } from "@odoo/owl";
+import { Component, proxy, signal, t, useEffect, useProps } from "@odoo/owl";
 import { hasTouch } from "@web/core/browser/feature_detection";
+import { download } from "@web/core/network/download";
 import { useAutofocus, useBackButton, useService } from "@web/core/utils/hooks";
 import { clamp } from "@web/core/utils/numbers";
 import { hidePDFJSButtons } from "@web/core/utils/pdfjs";
@@ -29,18 +29,23 @@ const IMAGE_BUFFER_PADDING = 20;
 export class FileViewer extends Component {
     static template = "web.FileViewer";
     static components = {};
-    static props = ["files", "startIndex", "close?", "modal?"];
-    static defaultProps = {
-        modal: true,
-    };
+    props = useProps({
+        files: t.any(),
+        startIndex: t.any(),
+        close: t.any().optional(),
+        modal: t.any().optional(true),
+        onUnlink: t.function().optional(),
+        canUnlink: t.function().optional(() => () => false),
+    });
 
-    iframeViewerPdfRef = signal(null);
+    autofocusRef = signal.ref();
+    iframeViewerPdfRef = signal.ref();
+    imageRef = signal.ref();
+    imageToolbarRef = signal.ref();
+    zoomerRef = signal.ref();
 
     setup() {
-        useAutofocus();
-        this.imageRef = useRef("image");
-        this.imageToolbarRef = useRef("imageToolbar");
-        this.zoomerRef = useRef("zoomer");
+        useAutofocus({ ref: this.autofocusRef });
         this.hasTouch = hasTouch();
 
         this.isDragging = false;
@@ -66,6 +71,7 @@ export class FileViewer extends Component {
             imageLoaded: false,
             scale: 1,
             angle: 0,
+            isIframeLoaded: false,
         });
         this.ui = useService("ui");
         useEffect(() => {
@@ -80,6 +86,12 @@ export class FileViewer extends Component {
 
     onImageLoaded() {
         this.state.imageLoaded = true;
+    }
+
+    onIframeLoaded(ev) {
+        requestAnimationFrame(() => {
+            this.state.isIframeLoaded = true;
+        });
     }
 
     close() {
@@ -280,14 +292,14 @@ export class FileViewer extends Component {
 
     updateZoomerStyle() {
         const isImageRotated = this.state.angle % 180 !== 0;
-        const { offsetWidth, offsetHeight } = this.imageRef.el;
+        const { offsetWidth, offsetHeight } = this.imageRef();
         const imageWidth = (isImageRotated ? offsetHeight : offsetWidth) * this.state.scale;
         const imageHeight = (isImageRotated ? offsetWidth : offsetHeight) * this.state.scale;
-        const diffX = imageWidth - this.zoomerRef.el.offsetWidth + IMAGE_BUFFER_PADDING;
+        const diffX = imageWidth - this.zoomerRef().offsetWidth + IMAGE_BUFFER_PADDING;
         const diffY =
             imageHeight -
-            this.zoomerRef.el.offsetHeight +
-            2 * this.imageToolbarRef.el.clientHeight +
+            this.zoomerRef().offsetHeight +
+            2 * this.imageToolbarRef().clientHeight +
             IMAGE_BUFFER_PADDING;
         let tx = diffX > 0 ? this.translate.x + this.translate.dx : 0;
         let ty = diffY > 0 ? this.translate.y + this.translate.dy : 0;
@@ -307,7 +319,11 @@ export class FileViewer extends Component {
         if (ty === 0) {
             this.translate.y = 0;
         }
-        this.zoomerRef.el.style = "transform: " + `translate(${tx}px, ${ty}px)`;
+        this.zoomerRef().style = "transform: " + `translate(${tx}px, ${ty}px)`;
+    }
+
+    get canUnlink() {
+        return this.props.onUnlink && this.props.canUnlink(this.state.file);
     }
 
     get imageStyle() {
@@ -325,26 +341,25 @@ export class FileViewer extends Component {
         return style;
     }
 
+    async onClickUnlink() {
+        if (await this.props.onUnlink(this.state.file)) {
+            this.close();
+        }
+    }
+
     onClickPrint() {
-        const printWindow = window.open("about:blank", "_new");
-        printWindow.document.open();
-        printWindow.document.write(`
-                <html>
-                    <head>
-                        <script>
-                            function onloadImage() {
-                                setTimeout('printImage()', 10);
-                            }
-                            function printImage() {
-                                window.print();
-                                window.close();
-                            }
-                        </script>
-                    </head>
-                    <body onload='onloadImage()'>
-                        <img src="${this.state.file.defaultSource}" alt=""/>
-                    </body>
-                </html>`);
-        printWindow.document.close();
+        const printWindow = window.open();
+        const image = printWindow.document.createElement("img");
+        image.setAttribute("onload", "window.print(); setTimeout(window.close, 10)");
+        image.setAttribute("onerror", "window.print(); setTimeout(window.close, 10)");
+        image.src = this.state.file.defaultSource;
+        printWindow.document.body.appendChild(image);
+    }
+
+    onClickDownload() {
+        download({
+            data: {},
+            url: this.state.file.downloadUrl,
+        });
     }
 }

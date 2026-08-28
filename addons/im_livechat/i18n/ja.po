@@ -8,22 +8,22 @@
 # Ryoko Tsuda <ryoko@quartile.co>, 2023
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
 # "Junko Augias (juau)" <juau@odoo.com>, 2025, 2026.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-29 17:39+0000\n"
-"PO-Revision-Date: 2026-05-04 13:46+0000\n"
-"Last-Translator: \"Junko Augias (juau)\" <juau@odoo.com>\n"
-"Language-Team: Japanese <https://translate.odoo.com/projects/odoo-s19-3/"
+"POT-Creation-Date: 2026-07-26 19:08+0000\n"
+"PO-Revision-Date: 2026-06-19 04:13+0000\n"
+"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
+"Language-Team: Japanese <https://translate.odoo.com/projects/odoo-master/"
 "im_livechat/ja/>\n"
 "Language: ja\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 5.17\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: im_livechat
 #: model:ir.model.constraint,message:im_livechat.constraint_discuss_channel_livechat_rating_constraint
@@ -82,27 +82,28 @@ msgstr "満足度%"
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "%(days)sd"
 msgstr "%(days)sd"
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "%(hours)sh"
 msgstr "%(hours)sh"
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "%(minutes)sm"
 msgstr "%(minutes)sm"
 
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/public_web/livechat_rating_notification_service.js:0
+#, fuzzy
 msgid "%(name)s left a rating:"
-msgstr ""
+msgstr "%(name)s 評価を残す："
 
 #. module: im_livechat
 #. odoo-python
@@ -156,36 +157,38 @@ msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "< 1m"
 msgstr "< 1m"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
-msgid "<i class=\"fa fa-sign-in o-me-1_5\" role=\"img\"/>Join"
+msgid "<i class=\"oi o-me-1_5\" data-icon=\"login\" role=\"img\"/>Join"
 msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
-msgid "<i class=\"fa fa-sign-out o-me-1_5\" role=\"img\"/>Leave"
-msgstr ""
-
-#. module: im_livechat
-#: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
-msgid ""
-"<i class=\"fa fa-smile-o text-success\" role=\"img\" aria-label=\"Happy "
-"face\"/>"
+msgid "<i class=\"oi o-me-1_5\" data-icon=\"logout\" role=\"img\"/>Leave"
 msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.chatbot_test_script_page
-msgid "<i class=\"oi oi-fw oi-arrow-right\"/>Back to edit mode"
-msgstr "<i class=\"oi oi-fw oi-arrow-right\"/>編集モードに戻る"
+msgid "<i class=\"oi oi-fw\" data-icon=\"east\"/>Back to edit mode"
+msgstr "<i class=\"oi oi-fw\" data-icon=\"east\"/>編集モードに戻る"
+
+#. module: im_livechat
+#: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
+msgid ""
+"<i class=\"oi text-success\" data-icon=\"sentiment_satisfied\" role=\"img\" "
+"aria-label=\"Happy face\"/>"
+msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
-msgid "<i title=\"Remove operator\" class=\"fa fa-fw fa-lg fa-close\"/>"
-msgstr "<i title=\"Remove operator\" class=\"fa fa-fw fa-lg fa-close\"/>"
+msgid ""
+"<i title=\"Remove operator\" class=\"oi oi-fw oi-lg\" data-icon=\"close\"/>"
+msgstr ""
+"<i title=\"Remove operator\" class=\"oi oi-fw oi-lg\" data-icon=\"close\"/>"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_kanban
@@ -329,8 +332,9 @@ msgstr "エージェントが接続しました"
 #. module: im_livechat
 #: model:ir.actions.act_window,name:im_livechat.im_livechat_agent_history_action
 #: model:ir.ui.menu,name:im_livechat.menu_reporting_livechat_agent
+#, fuzzy
 msgid "Agents Performance"
-msgstr ""
+msgstr "エージェントのパフォーマンス"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
@@ -516,10 +520,14 @@ msgstr "チャットでお問い合わせ"
 #. module: im_livechat
 #: model_terms:ir.actions.act_window,help:im_livechat.im_livechat_channel_action
 #: model_terms:ir.actions.act_window,help:im_livechat.im_livechat_channel_config_action
+#, fuzzy
 msgid ""
 "Chat with your website visitors in real time by creating a\n"
 "                channel for each website where you want live chat enabled."
 msgstr ""
+"ライブチャットを有効にしたい各ウェブサイトごとに\n"
+"                チャネルを作成することで、ウェブサイト訪問者とリアルタイムで"
+"チャットできます。"
 
 #. module: im_livechat
 #: model:ir.actions.act_window,name:im_livechat.chatbot_script_action
@@ -625,8 +633,9 @@ msgstr "閉じる"
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/common/thread_actions_patch.js:0
 #: code:addons/im_livechat/static/src/core/public_web/livechat_leave_dialog.xml:0
+#, fuzzy
 msgid "Close Conversation"
-msgstr ""
+msgstr "会話を閉じる"
 
 #. module: im_livechat
 #: model:ir.model.constraint,message:im_livechat.constraint_discuss_channel_livechat_end_dt_status_constraint
@@ -637,10 +646,13 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/public_web/livechat_leave_dialog.js:0
+#, fuzzy
 msgid ""
 "Closing this will end the live chat with %(channel_name)s. Are you sure you "
 "want to proceed?"
 msgstr ""
+"これを閉じると、%(channel_name)s とのライブチャットが終了します。本当に続行し"
+"ますか?"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_expertise__color
@@ -663,6 +675,12 @@ msgid "Configure Channel"
 msgstr "チャネル設定"
 
 #. module: im_livechat
+#. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "Connect"
+msgstr ""
+
+#. module: im_livechat
 #: model:ir.model,name:im_livechat.model_res_partner
 msgid "Contact"
 msgstr "連絡先"
@@ -680,8 +698,9 @@ msgstr "会話"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__channel_type
+#, fuzzy
 msgid "Conversation Type"
-msgstr ""
+msgstr "会話タイプ"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -871,8 +890,9 @@ msgstr "レポート"
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/public_web/livechat_leave_dialog.xml:0
+#, fuzzy
 msgid "Discard"
-msgstr ""
+msgstr "破棄"
 
 #. module: im_livechat
 #: model:chatbot.script.answer,name:im_livechat.chatbot_script_answer_discuss_demo
@@ -981,6 +1001,12 @@ msgstr "メール: "
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_rule__chatbot_enabled_condition
 msgid "Enable ChatBot"
 msgstr "ChatBotを有効化"
+
+#. module: im_livechat
+#. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "Engage with visitors to convert leads or offer services."
+msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
@@ -1111,8 +1137,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/views/discuss_template.xml:0
+#, fuzzy
 msgid "Go to Sessions"
-msgstr ""
+msgstr "セッションに移動"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__guest_id
@@ -1187,6 +1214,12 @@ msgstr "要求されたサポート(担当者)"
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__help_status
 msgid "Help Status"
 msgstr "サポートステータス"
+
+#. module: im_livechat
+#. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "Help needed"
+msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.livechat_email_template
@@ -1452,8 +1485,9 @@ msgstr "言語"
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.res_users_form_view
 #: model_terms:ir.ui.view,arch_db:im_livechat.res_users_form_view_simple_modif
+#, fuzzy
 msgid "Languages you can speak for live chat conversations."
-msgstr ""
+msgstr "ライブチャットでの会話に対応可能な言語。"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
@@ -1548,8 +1582,6 @@ msgid "Limited"
 msgstr "制限付き"
 
 #. module: im_livechat
-#. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_app/discuss_app_model_patch.js:0
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__channel_type__livechat
 #: model:ir.ui.menu,name:im_livechat.livechat_technical
 #: model:ir.ui.menu,name:im_livechat.menu_livechat_root
@@ -1622,7 +1654,7 @@ msgstr "ライブチャットウィンドウ"
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
 #: model_terms:ir.ui.view,arch_db:im_livechat.view_partner_form
 msgid "Live Chats"
 msgstr "ライブチャット"
@@ -1715,8 +1747,9 @@ msgstr "ライブチャット参加者の履歴"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__livechat_rating
+#, fuzzy
 msgid "Livechat Rating Text"
-msgstr ""
+msgstr "ライブチャット評価テキスト"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__livechat_status
@@ -1741,7 +1774,6 @@ msgstr "ライブチャット言語"
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_app/discuss_app_model_patch.js:0
 #: code:addons/im_livechat/static/src/core/public_web/discuss_channel_model_patch.js:0
 #: code:addons/im_livechat/static/src/core/web/store_service_patch.js:0
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_status__need_help
@@ -1878,10 +1910,13 @@ msgstr "新規セッション"
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.res_users_form_view
 #: model_terms:ir.ui.view,arch_db:im_livechat.res_users_form_view_simple_modif
+#, fuzzy
 msgid ""
 "Nickname used in live chat conversations to protect your real name from "
 "visitors."
 msgstr ""
+"ライブチャットでの会話において、訪問者から本名を保護するために使用されるニッ"
+"クネーム。"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel__block_assignment_during_call
@@ -1895,14 +1930,21 @@ msgstr "失敗なし"
 
 #. module: im_livechat
 #. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "No Livechat Session!"
+msgstr ""
+
+#. module: im_livechat
+#. odoo-javascript
 #: code:addons/im_livechat/static/src/embed/common/livechat_service.js:0
 msgid "No available collaborator, please try again later."
 msgstr "対応可能な協力者がいません。後で試して下さい。"
 
 #. module: im_livechat
 #: model_terms:ir.actions.act_window,help:im_livechat.chatbot_script_action
+#, fuzzy
 msgid "No chatbots found. Let's create one!"
-msgstr ""
+msgstr "チャットボットが見つかりませんでした。作成してみましょう！"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -1928,8 +1970,9 @@ msgstr "履歴が見つかりません"
 #. module: im_livechat
 #: model_terms:ir.actions.act_window,help:im_livechat.im_livechat_channel_action
 #: model_terms:ir.actions.act_window,help:im_livechat.im_livechat_channel_config_action
+#, fuzzy
 msgid "No live chat channel found. Let's create one!"
-msgstr ""
+msgstr "ライブチャットチャネルが見つかりません。作成しましょう!"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -1984,15 +2027,17 @@ msgstr "進行中のセッション数"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
+#, fuzzy
 msgid ""
 "Number of conversations and percentage of positive ratings in the last 30 "
 "days"
-msgstr ""
+msgstr "直近30日間の会話数および高評価の割合"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel__nbr_channel
+#, fuzzy
 msgid "Number of conversations in the past 30 days"
-msgstr ""
+msgstr "過去30日間の会話数"
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_im_livechat_report_channel__nbr_message
@@ -2021,8 +2066,9 @@ msgstr "通話中"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
+#, fuzzy
 msgid "Ongoing Conversations"
-msgstr ""
+msgstr "進行中の会話"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
@@ -2044,8 +2090,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-python
 #: code:addons/im_livechat/models/discuss_channel.py:0
+#, fuzzy
 msgid "Only customers can rate a live chat conversation."
-msgstr ""
+msgstr "ライブチャットの会話を評価できるのは、顧客のみです。"
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_channel_rule__chatbot_enabled_condition__only_if_operator
@@ -2103,8 +2150,9 @@ msgstr "取引先"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
+#, fuzzy
 msgid "Percentage of positive ratings in the last 30 days"
-msgstr ""
+msgstr "直近30日間の高評価率"
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__chatbot_script_step__step_type__question_phone
@@ -2131,8 +2179,9 @@ msgstr "質問"
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_ir_qweb
+#, fuzzy
 msgid "Qweb"
-msgstr ""
+msgstr "Qweb"
 
 #. module: im_livechat
 #. odoo-python
@@ -2166,8 +2215,9 @@ msgstr "評価テキスト"
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/embed/common/feedback_panel/feedback_panel.xml:0
+#, fuzzy
 msgid "Receive a copy of this conversation"
-msgstr ""
+msgstr "この会話のコピーを受け取る"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_script_answer__redirect_link
@@ -2187,8 +2237,7 @@ msgstr "関連するメールメッセージ"
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.xml:0
-#: code:addons/im_livechat/static/src/core/web/discuss_app/sidebar/category_patch.xml:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.xml:0
 msgid "Relevant to your expertise"
 msgstr "あなたの専門分野に関連して"
 
@@ -2285,8 +2334,9 @@ msgstr "スクリプト (外部)"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel__script_external_text
+#, fuzzy
 msgid "Script (external) Text"
-msgstr ""
+msgstr "スクリプト(外部)テキスト"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_script_answer__script_step_id
@@ -2407,8 +2457,9 @@ msgstr "セッション"
 #. module: im_livechat
 #: model:ir.actions.act_window,name:im_livechat.im_livechat_report_channel_action
 #: model:ir.ui.menu,name:im_livechat.menu_reporting_livechat_channel
+#, fuzzy
 msgid "Sessions Analysis"
-msgstr ""
+msgstr "セッション分析"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel__max_sessions_mode
@@ -2417,12 +2468,17 @@ msgstr "オペレータごとのセッション"
 
 #. module: im_livechat
 #: model_terms:ir.actions.act_window,help:im_livechat.chatbot_script_action
+#, fuzzy
 msgid ""
 "Set up a bot with a defined script to chat with your website visitors.\n"
 "                Qualify and forward conversations to your live chat agents, "
 "and generate leads or\n"
 "                support tickets automatically."
 msgstr ""
+"定義済みのスクリプトを使用して、ウェブサイトの訪問者とチャットするボットを設"
+"定します。\n"
+"                会話を評価してライブチャット担当者に転送し、リード生成や\n"
+"                サポートチケットを自動的に生成します。"
 
 #. module: im_livechat
 #: model:chatbot.script.answer,name:im_livechat.chatbot_script_answer_setup_demo
@@ -2524,8 +2580,9 @@ msgstr "サポートボット"
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/web/composer_patch.js:0
+#, fuzzy
 msgid "Tab to next live chat"
-msgstr ""
+msgstr "Tabキーで次のライブチャットに移動"
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__chatbot_script_step__step_type__text
@@ -2608,13 +2665,15 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/common/discuss_channel_model_patch.js:0
+#, fuzzy
 msgid "This live chat conversation has ended."
-msgstr ""
+msgstr "このライブチャットの会話は終了しました。"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.livechat_email_template
+#, fuzzy
 msgid "This message has been removed"
-msgstr ""
+msgstr "このメッセージは削除されました"
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_res_users_settings__livechat_username
@@ -2718,8 +2777,9 @@ msgstr "顧客がチャネルのオペレータとディスカッションでき
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_utm_mixin
+#, fuzzy
 msgid "UTM Mixin"
-msgstr ""
+msgstr "UTM Mixin"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_report_channel__uuid
@@ -2750,11 +2810,15 @@ msgstr "無制限"
 
 #. module: im_livechat
 #: model_terms:digest.tip,tip_description:im_livechat.digest_tip_im_livechat_0
+#, fuzzy
 msgid ""
 "Use canned responses to define templates of messages in the Live Chat app. "
 "To load a canned response, start your sentence with '::' and select the "
 "template."
 msgstr ""
+"定型応答を使用して、ライブチャットアプリでメッセージのテンプレートを定義しま"
+"す。定型応答を読み込むには、テキストを ' : ' で開始し、テンプレートを選択しま"
+"す。"
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_res_users
@@ -2791,8 +2855,9 @@ msgstr "ユーザの生の回答"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
+#, fuzzy
 msgid "View Channel"
-msgstr ""
+msgstr "チャネルを表示"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -2805,12 +2870,6 @@ msgstr ""
 #: code:addons/im_livechat/static/src/core/web/livechat_channel_info_list.xml:0
 msgid "View Contact"
 msgstr "連絡先を表示"
-
-#. module: im_livechat
-#. odoo-javascript
-#: code:addons/im_livechat/static/src/core/web/discuss_app/sidebar/category_patch.js:0
-msgid "View or join live chat channels"
-msgstr ""
 
 #. module: im_livechat
 #. odoo-python

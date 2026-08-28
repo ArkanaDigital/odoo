@@ -1,13 +1,20 @@
 # -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from odoo import _, models, fields
-from odoo.tools.float_utils import float_is_zero, float_round
+from odoo import api, models
 from odoo.exceptions import UserError
+from odoo.tools import float_compare
 
 
 class StockMove(models.Model):
     _inherit = 'stock.move'
+
+    @api.depends('bom_line_id')
+    def _compute_packaging_uom_id(self):
+        super()._compute_packaging_uom_id()
+        for move in self:
+            if move.bom_line_id and move.bom_line_id.bom_id.type == 'phantom':
+                move.packaging_uom_id = move.uom_id
 
     def _get_cost_ratio(self, quantity):
         self.ensure_one()
@@ -17,7 +24,11 @@ class StockMove(models.Model):
                 unit_kit_purchase = 1
                 if self.purchase_line_id:
                     active_moves = self.purchase_line_id.move_ids.filtered(lambda m:
-                        m.state != 'cancel' and m.product_id == self.product_id and m.picking_id != self.picking_id,
+                        m.state != 'cancel'
+                        and m.product_id == self.product_id
+                        and m.picking_id != self.picking_id
+                        and m.bom_line_id == self.bom_line_id
+                        and float_compare(m.cost_share, self.cost_share, precision_digits=6) == 0
                     )
                     active_quantity = quantity + sum(active_moves.mapped('quantity'))
                     if active_quantity:
@@ -42,6 +53,12 @@ class StockMove(models.Model):
         if self.purchase_line_id:
             vals['purchase_line_id'] = self.purchase_line_id.id
         return vals
+
+    def _merge_moves_fields(self):
+        res = super()._merge_moves_fields()
+        if not self.env.context.get('merge_extra'):
+            res['cost_share'] = sum(self.mapped('cost_share'))
+        return res
 
     def _get_qty_received_without_self(self):
         line = self.purchase_line_id

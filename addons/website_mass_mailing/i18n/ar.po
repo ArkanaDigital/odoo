@@ -8,14 +8,15 @@
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
 # "Malaz Siddig Elsayed Abuidris (msea)" <msea@odoo.com>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 15.5alpha1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:38+0000\n"
-"PO-Revision-Date: 2025-11-05 17:59+0000\n"
-"Last-Translator: \"Malaz Siddig Elsayed Abuidris (msea)\" <msea@odoo.com>\n"
-"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-19/"
+"POT-Creation-Date: 2026-07-17 17:39+0000\n"
+"PO-Revision-Date: 2026-06-21 12:38+0000\n"
+"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
+"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-master/"
 "website_mass_mailing/ar/>\n"
 "Language: ar\n"
 "MIME-Version: 1.0\n"
@@ -23,35 +24,36 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
 "&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
-"X-Generator: Weblate 5.12.2\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_benefits_popup
 msgid ""
-"<i class=\"fa fa-check text-o-color-1\" role=\"img\"/>  Curated Industry "
-"Insights"
+"<i class=\"oi text-o-color-1\" data-icon=\"check\" role=\"img\"/>  Curated "
+"Industry Insights"
 msgstr ""
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_benefits_popup
 msgid ""
-"<i class=\"fa fa-check text-o-color-1\" role=\"img\"/>  Expert Tips &amp; "
-"How-Tos"
+"<i class=\"oi text-o-color-1\" data-icon=\"check\" role=\"img\"/>  Expert "
+"Tips &amp; How-Tos"
 msgstr ""
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_benefits_popup
 msgid ""
-"<i class=\"fa fa-check text-o-color-1\" role=\"img\"/>  Guides &amp; "
-"Resources"
+"<i class=\"oi text-o-color-1\" data-icon=\"check\" role=\"img\"/>  Guides "
+"&amp; Resources"
 msgstr ""
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_grid
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_subscribe_form
 msgid ""
-"<i class=\"fa fa-check-circle-o\" role=\"img\"/> Thanks for registering!"
-msgstr "<i class=\"fa fa-check-circle-o\" role=\"img\"/> شكراً على التسجيل!"
+"<i class=\"oi\" data-icon=\"check_circle\" role=\"img\"/> Thanks for "
+"registering!"
+msgstr ""
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_aside
@@ -142,6 +144,11 @@ msgid "Always <b>First</b>."
 msgstr "دائماً <b>الأول</b>."
 
 #. module: website_mass_mailing
+#: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_waiting_list
+msgid "Avatars"
+msgstr ""
+
+#. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_grid
 msgid "Be the first to find out all the latest new, products and trends."
 msgstr "كن أول من تصله أحدث الأخبار، المنتجات، والتوجهات."
@@ -151,6 +158,13 @@ msgstr "كن أول من تصله أحدث الأخبار، المنتجات، �
 msgid ""
 "Be the first to find out all the latest news,<br/> products, and trends."
 msgstr "كن أول من تصله أحدث الأخبار،<br/> المنتجات، والتوجهات."
+
+#. module: website_mass_mailing
+#: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_waiting_list
+msgid ""
+"Be the first to know when we launch.<br/>Leave your email and we'll notify "
+"you at launch."
+msgstr ""
 
 #. module: website_mass_mailing
 #. odoo-javascript
@@ -212,6 +226,12 @@ msgstr ""
 "ستصلك مباشرةً إلى صندوق الوارد الخاص بك."
 
 #. module: website_mass_mailing
+#. odoo-python
+#: code:addons/website_mass_mailing/controllers/main.py:0
+msgid "Invalid subscription type"
+msgstr ""
+
+#. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_aside
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_block_form_template
 msgid "John Smith"
@@ -219,9 +239,17 @@ msgstr "جون سميث"
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_benefits_popup
+#, fuzzy
 msgid ""
 "Join our mailing list to receive carefully curated resources, tips, and "
 "updates straight to your inbox."
+msgstr ""
+"انضم إلى قائمتنا البريدية لتتلقى موارد ونصائح وتحديثات مختارة بعناية مباشرة "
+"إلى بريدك الإلكتروني."
+
+#. module: website_mass_mailing
+#: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_waiting_list
+msgid "Join the waitlist."
 msgstr ""
 
 #. module: website_mass_mailing
@@ -245,13 +273,15 @@ msgstr "النشرة الأخبارية"
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.snippets
+#, fuzzy
 msgid "Newsletter Aside"
-msgstr ""
+msgstr "نشرة إخبارية جانبية"
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.snippets
+#, fuzzy
 msgid "Newsletter Benefits"
-msgstr ""
+msgstr "مزايا النشرة الإخبارية"
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.snippets
@@ -343,7 +373,7 @@ msgstr ""
 
 #. module: website_mass_mailing
 #. odoo-javascript
-#: code:addons/website_mass_mailing/static/src/js/mass_mailing_form_editor.js:0
+#: code:addons/website_mass_mailing/static/src/js/mass_mailing_form_editor.edit.js:0
 msgid "Subscribe to"
 msgstr "الاشتراك في"
 
@@ -385,6 +415,11 @@ msgid "This block is not linked to an active Newsletter."
 msgstr ""
 
 #. module: website_mass_mailing
+#: model_terms:ir.ui.view,arch_db:website_mass_mailing.snippets
+msgid "Waiting List"
+msgstr ""
+
+#. module: website_mass_mailing
 #. odoo-python
 #: code:addons/website_mass_mailing/controllers/website_form.py:0
 msgid "You cannot subscribe to the following list anymore : %s"
@@ -398,13 +433,13 @@ msgstr "ستكون على علم دائماً بآخر الأخبار."
 
 #. module: website_mass_mailing
 #. odoo-javascript
-#: code:addons/website_mass_mailing/static/src/js/mass_mailing_form_editor.js:0
+#: code:addons/website_mass_mailing/static/src/js/mass_mailing_form_editor.edit.js:0
 msgid "Your Email"
 msgstr "بريدك الإلكتروني"
 
 #. module: website_mass_mailing
 #. odoo-javascript
-#: code:addons/website_mass_mailing/static/src/js/mass_mailing_form_editor.js:0
+#: code:addons/website_mass_mailing/static/src/js/mass_mailing_form_editor.edit.js:0
 msgid "Your Name"
 msgstr "اسمك"
 
@@ -420,6 +455,19 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_block_form_template
 msgid "johnsmith@example.com"
 msgstr "johnsmith@example.com"
+
+#. module: website_mass_mailing
+#: model_terms:ir.ui.view,arch_db:website_mass_mailing.s_newsletter_waiting_list
+msgid "people on the waitlist."
+msgstr ""
+
+#. module: website_mass_mailing
+#: model_terms:ir.ui.view,arch_db:website_mass_mailing.snippets
+msgid ""
+"updates, digest, bulletin, announcements, notifications, communication, "
+"email, prompt, subscription, subscribe, mailing-list, news, waitlist, "
+"waiting, signup, hero, jumbotron, headline, header, introduction, home"
+msgstr ""
 
 #. module: website_mass_mailing
 #: model_terms:ir.ui.view,arch_db:website_mass_mailing.snippets
@@ -451,3 +499,23 @@ msgid ""
 "promotional, email, subscription, subscribe, mailing-list, news, grid, "
 "image, picture"
 msgstr ""
+
+#, fuzzy
+#~ msgid ""
+#~ "<i class=\"fa fa-check text-o-color-1\" role=\"img\"/>  Curated Industry "
+#~ "Insights"
+#~ msgstr ""
+#~ "<i class=\"fa fa-check text-o-color-1\" role=\"img\"/> رؤى مختارة عن هذا "
+#~ "القطاع "
+
+#, fuzzy
+#~ msgid ""
+#~ "<i class=\"fa fa-check text-o-color-1\" role=\"img\"/>  Expert Tips &amp; "
+#~ "How-Tos"
+#~ msgstr ""
+#~ "<i class=\"fa fa-check text-o-color-1\" role=\"img\"/>  نصائح الخبراء "
+#~ "وكيفية الاستخدام"
+
+#~ msgid ""
+#~ "<i class=\"fa fa-check-circle-o\" role=\"img\"/> Thanks for registering!"
+#~ msgstr "<i class=\"fa fa-check-circle-o\" role=\"img\"/> شكراً على التسجيل!"

@@ -71,6 +71,25 @@ class TestFormattedReadGroupingSets(common.TransactionCase):
                 expected_result,
             )
 
+    def test_repeated_groupby_spec_formatted_read_grouping_sets(self):
+        Model = self.env['test_read_group.aggregate']
+        Partner = self.env['test_read_group.partner']
+        partner_1 = Partner.create({'name': 'one'})
+        Model.create({'key': 1, 'partner_id': partner_1.id, 'value': 4})
+        Model.create({'key': 1, 'partner_id': partner_1.id, 'value': 2})
+        Model.create({'key': 2, 'value': 3})
+
+        grouping_sets = [['key'], ['key', 'key']]
+        expected_result = [
+            Model.formatted_read_group([], grouping_set, aggregates=['value:sum'])
+            for grouping_set in grouping_sets
+        ]
+
+        self.assertEqual(
+            Model.formatted_read_grouping_sets([], grouping_sets, aggregates=['value:sum']),
+            expected_result,
+        )
+
     def test_many2many_formatted_read_grouping_sets(self):
         User = self.env['test_read_group.user']
         mario, luigi = User.create([{'name': 'Mario'}, {'name': 'Luigi'}])
@@ -319,10 +338,11 @@ class TestFormattedReadGroupingSets(common.TransactionCase):
         ChainInherits = ChainInherits.with_user(self.base_user)
 
         inherits_model = self.env['ir.model']._get(RelatedInherits._name)
-        self.env['ir.rule'].create({
+        self.env['ir.access'].create({
             'name': "AAAAAAA",
             'model_id': inherits_model.id,
-            'domain_force': [('id', 'in', inherits_records[1:].ids)],
+            'operation': 'crud',
+            'domain': [('id', 'in', inherits_records[1:].ids)],
         })
 
         grouping_sets = [['inherited_id.value'], ['inherited_id.base_id.name'], ['inherited_id.foo_id.name'], []]

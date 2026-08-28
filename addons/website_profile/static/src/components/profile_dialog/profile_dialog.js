@@ -1,6 +1,16 @@
-import { useRef } from "@web/owl2/utils";
 import { Wysiwyg } from "@html_editor/wysiwyg";
-import { Component, markup, onMounted, onWillStart, proxy, useEffect } from "@odoo/owl";
+import {
+    Component,
+    markup,
+    onMounted,
+    onWillStart,
+    useProps,
+    proxy,
+    signal,
+    t,
+    useEffect,
+    usePlugin,
+} from "@odoo/owl";
 import { Dialog } from "@web/core/dialog/dialog";
 import { localization } from "@web/core/l10n/localization";
 import { _t } from "@web/core/l10n/translation";
@@ -11,6 +21,7 @@ import { isHtmlEmpty } from "@web/core/utils/html";
 import { isEmail } from "@web/core/utils/strings";
 import { FileUploader } from "@web/views/fields/file_handler";
 import { endPos } from "@html_editor/utils/position";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 export class ProfileDialog extends Component {
     static template = "website_profile.ProfileDialog";
@@ -19,27 +30,22 @@ export class ProfileDialog extends Component {
         FileUploader,
         Wysiwyg,
     };
-    static props = {
-        close: Function,
-        confirm: { type: Function, optional: true },
-        focusWebsiteDescription: {
-            type: Boolean,
-            optional: true,
-        },
-        userId: { type: Number },
-        canEditCountry: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        confirm: () => {},
-        focusWebsiteDescription: false,
-        canEditCountry: true,
-    };
+    props = useProps({
+        close: t.function(),
+        confirm: t.function().optional(() => () => {}),
+        focusWebsiteDescription: t.boolean().optional(false),
+        userId: t.number(),
+        canEditCountry: t.boolean().optional(true),
+    });
+
+    nameRef = signal.ref();
+    profileImgRef = signal.ref();
+
+    debugMode = usePlugin(DebugModePlugin);
 
     setup() {
         super.setup();
         this.orm = useService("orm");
-        this.upload = useRef("upload");
-        this.profileImg = useRef("profileImg");
         this.profileImgData = null;
         this.state = proxy({
             isProcessing: false,
@@ -48,7 +54,7 @@ export class ProfileDialog extends Component {
             nameHasError: false,
         });
         const websiteDescriptionClass = "website_profile_profile_dialog_website_description";
-        useAutofocus({ refName: "name" });
+        useAutofocus({ ref: this.nameRef });
 
         this.user = proxy({});
         let isUserInitialized = false;
@@ -89,7 +95,7 @@ export class ProfileDialog extends Component {
                 allowImage: isInternalUser,
                 classList: ["form-control", websiteDescriptionClass],
                 content: this.user.website_description,
-                debug: !!this.env.debug,
+                debug: this.debugMode.isActive(),
                 direction: localization.direction || "ltr",
                 placeholder: _t("Write a few words about yourself..."),
             };
@@ -124,7 +130,10 @@ export class ProfileDialog extends Component {
 
     onClearProfileImg() {
         this.profileImgData = false;
-        this.profileImg.el.src = "/web/static/img/placeholder.png";
+        const el = this.profileImgRef();
+        if (el) {
+            el.src = "/web/static/img/placeholder.png";
+        }
     }
 
     async onConfirm() {
@@ -156,7 +165,10 @@ export class ProfileDialog extends Component {
     }
 
     onUploadProfileImg(file) {
-        this.profileImg.el.src = `data:${file.type};base64,${file.data}`;
+        const el = this.profileImgRef();
+        if (el) {
+            el.src = `data:${file.type};base64,${file.data}`;
+        }
         this.profileImgData = file.data;
     }
 

@@ -5,7 +5,6 @@ from urllib.parse import urlencode
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 from odoo.tools import BinaryBytes
-from odoo.tools.sql import create_column, column_exists
 
 
 class PosOrder(models.Model):
@@ -13,7 +12,7 @@ class PosOrder(models.Model):
 
     l10n_jo_edi_pos_return_reason = fields.Char(string="Return Reason", help="Return Reason reported to JoFotara")
     l10n_jo_edi_pos_enabled = fields.Boolean(related='company_id.l10n_jo_edi_pos_enabled')
-    l10n_jo_edi_pos_uuid = fields.Char(string="Order UUID", copy=False, compute='_compute_l10n_jo_edi_pos_uuid', store=True)
+    l10n_jo_edi_pos_uuid = fields.Char(string="Order UUID", copy=False, compute='_compute_l10n_jo_edi_pos_uuid', store=True, init_storage=lambda model: None)
     l10n_jo_edi_pos_qr = fields.Char(string="QR", copy=False)
     l10n_jo_edi_pos_state = fields.Selection(
         selection=[('to_send', 'To Send'), ('sent', 'Sent'), ('demo', 'Sent (Demo)')],
@@ -36,11 +35,6 @@ class PosOrder(models.Model):
         string="Jordan E-Invoice XML",
         help="Jordan: e-invoice XML.",
     )
-
-    def _auto_init(self):
-        if not column_exists(self.env.cr, 'pos_order', 'l10n_jo_edi_pos_uuid'):
-            create_column(self.env.cr, 'pos_order', 'l10n_jo_edi_pos_uuid', 'char')
-        return super()._auto_init()
 
     @api.depends('country_code')
     def _compute_l10n_jo_edi_pos_uuid(self):
@@ -166,7 +160,7 @@ class PosOrder(models.Model):
     @api.depends('country_code', 'l10n_jo_edi_pos_error')
     def _compute_l10n_jo_edi_pos_computed_xml(self):
         for order in self:
-            if order.country_code == 'JO' and not order.l10n_jo_edi_pos_error:
+            if order.country_code == 'JO' and order.l10n_jo_edi_pos_error:
                 xml_content = order.env['pos.edi.xml.ubl_21.jo']._export_pos_order(order)[0]
                 order.l10n_jo_edi_pos_computed_xml = BinaryBytes(xml_content)
             else:
@@ -203,9 +197,8 @@ class PosOrder(models.Model):
             'preferred_payment_method_line_id': self.env['account.payment.method.line'].search([], limit=1).id,
         }
 
-    def _create_invoice(self, move_vals):
-        # EXTENDS 'point_of_sale'
-        invoice = super()._create_invoice(move_vals)
+    def _generate_pos_order_invoice(self):
+        invoice = super()._generate_pos_order_invoice()
         self._link_xml_and_qr_to_invoice(invoice)
         return invoice
 

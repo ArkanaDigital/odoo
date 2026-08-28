@@ -7,13 +7,13 @@
             <form>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
-                        <button name="action_get_opportunity_tree_view" class="oe_stat_button" type="object" icon="fa-star" invisible="lead_type != 'opportunity' and opportunity_count == 0">
+                        <button name="action_get_opportunity_tree_view" class="oe_stat_button" type="object" icon="star" icon_class="oi-filled" invisible="lead_type != 'opportunity' and opportunity_count == 0">
                             <div class="o_stat_info">
                                 <field name="opportunity_count"/>
                                 <span class="o_stat_text"> Opportunities </span>
                             </div>
                         </button>
-                        <button name="action_get_lead_tree_view" class="oe_stat_button" type="object" icon="fa-star" groups="crm.group_use_lead" invisible="lead_type != 'lead' and lead_count == 0">
+                        <button name="action_get_lead_tree_view" class="oe_stat_button" type="object" icon="star" icon_class="oi-filled" groups="crm.group_use_lead" invisible="lead_type != 'lead' and lead_count == 0">
                             <div class="o_stat_info">
                                 <field name="lead_count"/>
                                 <span class="o_stat_text"> Leads </span>
@@ -36,7 +36,7 @@
                                 <field name="country_ids" widget="many2many_tags" options="{'no_open': True, 'no_create': True}"/>
                                 <field name="website_id" options="{'no_open': True, 'no_create_edit': True}" groups="website.group_multi_website"/>
                                 <field name="state_ids" widget="many2many_tags" invisible="not country_ids" domain="[('country_id', 'in', country_ids)]"/>
-                                <field name="regex_url" widget="website_urls" placeholder="e.g. /page"/>
+                                <field name="regex_url" placeholder="e.g. /page"/>
                                 <field name="sequence"/>
                             </group>
                         </div>

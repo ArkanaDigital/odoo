@@ -44,7 +44,7 @@ export class Activity extends Record {
     /** @type {string} */
     feedback;
     /** @type {string} */
-    icon = "fa-tasks";
+    icon = "checklist";
     mail_template_ids = fields.Many("mail.template");
     note = fields.Html("");
     /** @type {string} */
@@ -55,6 +55,7 @@ export class Activity extends Record {
     res_id;
     /** @type {string} */
     res_name;
+    role_id = fields.One("res.role");
     /** @type {'overdue'|'planned'|'today'} */
     state;
     /** @type {string} */
@@ -65,8 +66,15 @@ export class Activity extends Record {
     /** @type {[number, string]} */
     write_uid;
 
+    get thread() {
+        return this.store["mail.thread"].insert({
+            model: this.res_model,
+            id: this.res_id,
+        });
+    }
+
     serialize() {
-        return JSON.parse(JSON.stringify(this.toData(["user_id"])));
+        return JSON.parse(JSON.stringify(this.toData(["user_id", "role_id"])));
     }
 }
 

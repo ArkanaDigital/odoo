@@ -1,7 +1,9 @@
-import base64
 import logging
 import uuid
+import zlib
+from base64 import b64decode
 from datetime import timedelta
+from io import BytesIO
 from json import JSONDecodeError
 from urllib.parse import quote, urlencode, urlparse
 
@@ -9,6 +11,7 @@ from markupsafe import Markup
 
 from odoo import _, Command, api, fields, models
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import SQL
 
 from odoo.addons.l10n_tr_nilvera.lib.nilvera_client import _get_nilvera_client
 
@@ -41,7 +44,7 @@ UNSYNCED_COMMERCIAL_MOVE_DOMAIN = [
     ("l10n_tr_gib_invoice_scenario", "=", "TICARIFATURA"),
     ("l10n_tr_nilvera_send_status", "=", "succeed"),
     ("partner_id", "!=", False),  # Partner's status is needed to determine endpoint when fetching response
-    ("company_id.country_code", "=", "TR"),
+    ("company_id.partner_id.country_id.code", "=", "TR"),
     ("company_id.l10n_tr_nilvera_api_key", "!=", False),
 ]
 
@@ -57,31 +60,43 @@ class AccountMove(models.Model):
         help="This is the unique identifier (UUID) used to link this Odoo document with the Nilvera system. \n"
         "This record ensures every new document has its own unique ID for tracking.",
     )
+    l10n_tr_nilvera_draft_sync_hash = fields.Char(
+        copy=False,
+        readonly=True,
+        help="Hash of the UBL XML last uploaded to the Nilvera draft. Compared when "
+             "sending to detect edits that still need to be pushed to the portal.",
+    )
 
     l10n_tr_nilvera_send_status = fields.Selection(
         selection=[
+            ('cancelled', 'Cancelled'),
             ('error', "Error"),
             ('not_sent', "Not sent"),
             ('sent', "Sent and waiting response"),
             ('succeed', "Successful"),
             ('waiting', "Waiting"),
             ('unknown', "Unknown"),
-            ('commercial_approved', "Approved (Commercial)"),
-            ('commercial_answered_automatically', "Approved Automatically (Commercial)"),
-            ('commercial_rejected', "Rejected (Commercial)"),
+            ('commercial_approved', "Approved"),
+            ('commercial_answered_automatically', "Approved Automatically"),
+            ('commercial_rejected', "Rejected"),
+            ('draft_sent', "Sent as Draft"),
         ],
         string="Nilvera Status",
         readonly=True,
         copy=False,
         default='not_sent',
-        help="Tracks the real-time submission status of this invoice to the Nilvera. It is updated automatically based on"
+        help="Tracks the real-time submission status of this invoice to Nilvera. It is updated automatically based on "
              "responses from Nilvera and GİB. \n"
-             "This field is read-only as it is updated automatically by the system "
-             "based on responses from Nilvera and GİB. \n"
+             "This field is read-only as it is updated automatically by the system based on responses from Nilvera and GİB. \n"
              "- Not sent: Default state before processing. \n"
              "- Sent and waiting response: Sent to Nilvera, awaiting GİB confirmation. \n"
              "- Successful: GİB has accepted the invoice. \n"
-             "- Error: The submission failed (check chatter for details).",
+             "- Error: The submission failed (check chatter for details). \n"
+             "- Approved: Commercial Invoice is approved by recipient.\n"
+             "- Approved Automatically: Commercial Invoice is automatically approved after 8 days without a response.\n"
+             "- Rejected: Commercial Invoice is rejected by recipient.\n"
+             "- Sent as Draft: Uploaded to Nilvera as a draft."
+             "It is approved and transmitted to GİB when the invoice is sent.",
     )
     l10n_tr_gib_invoice_scenario = fields.Selection(
         selection=[
@@ -93,8 +108,9 @@ class AccountMove(models.Model):
         string="Invoice Scenario",
         help="Defines the official GİB (Turkish Revenue Administration) e-invoice "
         "scenario. \n"
-        "Basic: Standard e-invoice that cannot be rejected by the recipient via the GİB portal. \n"
-        "Public Sector: Used specifically for invoices issued to public (government) institutions.",
+        "- Basic: Standard e-invoice that cannot be rejected by the recipient via the GİB portal. \n"
+        "- Public Sector: Used specifically for invoices issued to public (government) institutions.\n"
+        "- Commercial: Allows the recipient to accept or reject the invoice via GİB.",
     )
     l10n_tr_gib_invoice_type = fields.Selection(
         compute='_compute_l10n_tr_gib_invoice_type',
@@ -112,13 +128,15 @@ class AccountMove(models.Model):
         ],
         help="Specifies the official GİB classification for the e-invoice/e-archive, which "
         "determines its tax treatment and validation rules. \n"
-        "Sales: A standard sales invoice. \n"
+        "- Sales: A standard sales invoice. \n"
         "Withholding: An invoice where the buyer is responsible for "
-        "paying a portion of the VAT. \n"
+        "- paying a portion of the VAT. \n"
         "Registered for Export: Invoice for goods that will later be exported."
-        "If selected, an 'Exemption Reason' is required. \n"
-        "Tax Exempt: An invoice for goods/services exempt from VAT. "
-        "If selected, an 'Exemption Reason' is required.",
+        "- If selected, an 'Exemption Reason' is required. \n"
+        "- Tax Exempt: An invoice for goods/services exempt from VAT. "
+        "If selected, an 'Exemption Reason' is required.\n"
+        "- Return: Reverses a previously issued sales invoice for returned or canceled goods/services.\n"
+        "- Withholding Return: Reverses a previously issued withholding invoice.\n",
     )
     l10n_tr_is_export_invoice = fields.Boolean(
         string="GİB Product Export Invoice",
@@ -155,7 +173,7 @@ class AccountMove(models.Model):
         "list of available exemption codes based on the selected "
         "GIB Invoice Type or other criteria.",
     )
-    l10n_tr_zero_vat_warning = fields.Binary(compute="_compute_l10n_tr_l10n_tr_zero_vat_warning")
+    l10n_tr_zero_vat_warning = fields.Boolean(compute="_compute_l10n_tr_l10n_tr_zero_vat_warning")
     l10n_tr_nilvera_customer_status = fields.Selection(
         string="Partner Nilvera Status",
         related='partner_id.l10n_tr_nilvera_customer_status',
@@ -182,6 +200,53 @@ class AccountMove(models.Model):
         readonly=False,
         compute='_compute_l10n_tr_public_spending_unit_id',
     )
+    l10n_tr_invoice_scenario_group = fields.Selection(
+        selection=[
+            ('basic', "Basic Scenario"),
+            ('public', "Public Scenario"),
+            ('commercial', "Commercial Scenario"),
+            ('earchive', "e-Archive"),
+            ('export', "Export Invoice"),
+        ],
+        string="Invoice Scenario Group",
+        compute='_compute_l10n_tr_invoice_scenario_group',
+        compute_sql='_compute_sql_invoice_scenario_group',
+        compute_sudo=True,
+    )
+
+    @api.depends('l10n_tr_is_export_invoice', 'partner_id.l10n_tr_nilvera_customer_status', 'l10n_tr_gib_invoice_scenario')
+    def _compute_l10n_tr_invoice_scenario_group(self):
+        for record in self:
+            if record.l10n_tr_is_export_invoice:
+                record.l10n_tr_invoice_scenario_group = 'export'
+            elif record.l10n_tr_nilvera_customer_status == 'earchive':
+                record.l10n_tr_invoice_scenario_group = 'earchive'
+            elif record.l10n_tr_gib_invoice_scenario == 'TEMELFATURA':
+                record.l10n_tr_invoice_scenario_group = 'basic'
+            elif record.l10n_tr_gib_invoice_scenario == 'KAMU':
+                record.l10n_tr_invoice_scenario_group = 'public'
+            elif record.l10n_tr_gib_invoice_scenario == 'TICARIFATURA':
+                record.l10n_tr_invoice_scenario_group = 'commercial'
+            else:
+                record.l10n_tr_invoice_scenario_group = False
+
+    def _compute_sql_invoice_scenario_group(self, table):
+        partner_table = table._join('partner_id')
+        return SQL(
+            """
+            CASE
+                WHEN %(export)s = TRUE               THEN 'export'
+                WHEN %(partner_status)s = 'earchive' THEN 'earchive'
+                WHEN %(scenario)s = 'TEMELFATURA'    THEN 'basic'
+                WHEN %(scenario)s = 'KAMU'           THEN 'public'
+                WHEN %(scenario)s = 'TICARIFATURA'   THEN 'commercial'
+                ELSE NULL
+            END
+            """,
+            export=table['l10n_tr_is_export_invoice'],
+            partner_status=partner_table['l10n_tr_nilvera_customer_status'],
+            scenario=table['l10n_tr_gib_invoice_scenario'],
+        )
 
     @api.depends('move_type', 'l10n_tr_gib_invoice_scenario')
     def _compute_l10n_tr_public_spending_unit_id(self):
@@ -219,6 +284,20 @@ class AccountMove(models.Model):
         for record in self:
             record.l10n_tr_exemption_code_id = False
 
+    @api.onchange("partner_id")
+    def _onchange_partner_id(self):
+        # Fill scenario and type based on the latest invoice.
+        if self.partner_id and (invoice := self.env['account.move'].search([
+            ('id', 'not in', self.ids),
+            ('move_type', '=', self.move_type),
+            ('partner_id', '=', self.partner_id.id),
+            ('state', '=', 'posted'),
+        ], limit=1)):
+            self.l10n_tr_gib_invoice_scenario = invoice.l10n_tr_gib_invoice_scenario
+            self.l10n_tr_gib_invoice_type = invoice.l10n_tr_gib_invoice_type if not self.l10n_tr_is_export_invoice else 'ISTISNA'
+
+        super()._onchange_partner_id()
+
     def _get_import_file_type(self, file_data):
         """ Identify Nilvera UBL files. """
         # EXTENDS 'account'
@@ -251,14 +330,38 @@ class AccountMove(models.Model):
             return self.env['account.edi.xml.ubl.tr']
         return super()._get_ubl_cii_builder_from_xml_tree(tree)
 
+    def button_cancel_earchive(self):
+        self._l10n_tr_nilvera_cancel_earchive()
+
     def button_draft(self):
         # EXTENDS account
         for move in self.filtered(lambda move: move.l10n_tr_nilvera_uuid and move.move_type in {'out_invoice', 'in_invoice'}):
             if move.l10n_tr_nilvera_send_status == 'error':
                 move.message_post(body=_("To preserve accounting integrity and comply with legal requirements, invoices cannot be reused once an error occurs. Please create a new invoice to continue."))
-            elif move.l10n_tr_nilvera_send_status not in {"not_sent", "commercial_rejected"}:
+            elif move.l10n_tr_nilvera_send_status not in {'not_sent', 'draft_sent', 'commercial_rejected'}:
                 raise UserError(_("You cannot reset to draft an entry that has been sent/received from Nilvera."))
-        super().button_draft()
+        return super().button_draft()
+
+    def _l10n_tr_nilvera_cancel_earchive(self):
+        """ Attempts to cancel sent e-Archive moves on Nilvera. """
+        self.ensure_one()
+        if (
+                not self.l10n_tr_nilvera_uuid
+                or self.l10n_tr_nilvera_customer_status != 'earchive'
+                or self.l10n_tr_nilvera_send_status in {'error', 'not_sent'}
+                or self.move_type != 'out_invoice'
+        ):
+            raise UserError(self.env._("Only e-Archive invoices that have been sent successfully to Nilvera can be cancelled."))
+
+        with _get_nilvera_client(self.env._, self.env.company) as client:
+            client.request(
+                "PUT",
+                endpoint=f'/earchive/Invoices/{self.l10n_tr_nilvera_uuid}/Cancel',
+            )
+
+            self.state = 'cancel'
+            self.l10n_tr_nilvera_send_status = 'cancelled'
+            self.message_post(body=_("Cancellation request created on Nilvera."))
 
     def _l10n_tr_nilvera_einvoice_check_invalid_invoice_reference(self):
         invalid_moves = self.env["account.move"]
@@ -298,6 +401,199 @@ class AccountMove(models.Model):
             xml_file=xml_file,
             endpoint="/earchive/Send/Xml",
         )
+
+    def _l10n_tr_nilvera_check_draft_precondition(self):
+        self.ensure_one()
+        if not (
+            self.country_code == 'TR'
+            and self.move_type == 'out_invoice'
+            and self.l10n_tr_is_export_invoice
+            and self.l10n_tr_nilvera_customer_status in {'einvoice', 'earchive'}
+            and self.state == 'draft'
+        ):
+            raise UserError(self.env._(
+                "Sending as draft is only available for export invoices in Draft state "
+                "whose customer's Nilvera status has been verified."
+            ))
+
+        if missing_ctsp := self.invoice_line_ids.filtered(
+            lambda ln: ln.display_type not in {"line_note", "line_section"} and not ln.l10n_tr_ctsp_number
+        ):
+            raise UserError(self.env._(
+                "Each export invoice line must have a CTSP (GTİP) Number before it can be sent as a draft.\n"
+                "Missing on: %s",
+                ", ".join(line.name or line.product_id.display_name or 'Unnamed Line' for line in missing_ctsp),
+            ))
+
+    def _l10n_tr_nilvera_get_series_prefix(self):
+        """Return the 3-character invoice series for an unnamed draft.
+
+        A draft has no sequence number yet. The series is derived from the last sequence
+        used on this journal/period, falling back to the journal code; if neither yields
+        a usable value, it is left empty.
+        """
+        self.ensure_one()
+        last_sequence = self._get_last_sequence() or self._get_last_sequence(relaxed=True)
+        if last_sequence:
+            _, parts = self._get_sequence_format_param(last_sequence)
+            prefix = parts['prefix1'][:3]
+        else:
+            prefix = self.journal_id.code or ''
+        return prefix
+
+    def _l10n_tr_nilvera_build_draft_xml(self):
+        """Generate the UBL-TR XML for this move as an uploadable file-like object."""
+        self.ensure_one()
+        builder = self.env['account.edi.xml.ubl.tr']
+        xml_content, errors = builder._export_invoice(self)
+        if errors:
+            raise UserError(self.env._(
+                "The invoice could not be converted to the Nilvera format:\n%s",
+                "\n".join(errors),
+            ))
+        xml_file = BytesIO(xml_content)
+        xml_file.name = builder._export_invoice_filename(self)
+        return xml_file
+
+    def _l10n_tr_nilvera_draft_xml_hash(self, xml_bytes):
+        """Checksum of the uploaded XML, used to detect edits still to be pushed."""
+        return '%08x' % zlib.crc32(xml_bytes)
+
+    def _l10n_tr_nilvera_detach_pdf(self):
+        """Release the cached Nilvera PDF without deleting the attachment.
+
+        ``l10n_tr_nilvera_pdf_file`` is a ``Binary(attachment=True)``, so assigning
+        ``False`` would delete the backing ir.attachment — which is also the one
+        posted to the chatter, making previously fetched PDFs disappear from the
+        history. Instead, clear the attachment's ``res_field`` so it lives on as a
+        regular chatter attachment while the binary field reads empty, letting a
+        fresh PDF be fetched.
+        """
+        self.ensure_one()
+        if self.l10n_tr_nilvera_pdf_id:
+            self.l10n_tr_nilvera_pdf_id.res_field = False
+            self.invalidate_recordset(['l10n_tr_nilvera_pdf_id', 'l10n_tr_nilvera_pdf_file'])
+
+    def _l10n_tr_nilvera_upload_draft(self, xml_file, customer_alias):
+        """Upload the UBL XML as a Nilvera draft, creating or updating it.
+
+        The first upload creates the draft with ``POST /{channel}/Upload``. A
+        later upload of the same document (same ETTN/UUID) must update it with
+        ``PUT /{channel}/Upload/{UUID}`` instead — re-posting the same ETTN is
+        rejected by Nilvera because it is already registered as a draft.
+
+        Stores the UUID returned by Nilvera and the hash of the uploaded XML so a
+        later change can be detected and re-pushed before the draft is sent.
+        """
+        self.ensure_one()
+        base_endpoint = '/einvoice/Upload' if customer_alias else '/earchive/Upload'
+        # A prior successful upload leaves a hash; that draft must be updated, not recreated.
+        is_update = bool(self.l10n_tr_nilvera_draft_sync_hash and self.l10n_tr_nilvera_uuid)
+        method = "PUT" if is_update else "POST"
+        endpoint = '%s/%s' % (base_endpoint, quote(self.l10n_tr_nilvera_uuid)) if is_update else base_endpoint
+        xml_file.seek(0)
+        with _get_nilvera_client(self.env._, self.env.company) as client:
+            response = client.request(
+                method,
+                endpoint,
+                files={'file': (xml_file.name, xml_file, 'application/xml')},
+                handle_response=False,
+            )
+            try:
+                data = response.json()
+                if "Errors" in data:
+                    messages = (f"{data['Message']}\n" if data.get('Message') else "") + \
+                    "\n".join([f"{e.get('Description')}: {e.get('Detail')}" for e in data['Errors']])
+                    raise UserError(messages)
+            except JSONDecodeError:
+                raise UserError(self.env._("An error occurred. Try again later."))
+            if 400 <= response.status_code < 500:
+                error_message, _ = client._get_error_message_with_codes_from_response(response)
+                raise UserError(error_message)
+        if data.get('UUID'):
+            self.l10n_tr_nilvera_uuid = data['UUID']
+        self.l10n_tr_nilvera_draft_sync_hash = self._l10n_tr_nilvera_draft_xml_hash(xml_file.getvalue())
+        # The draft just changed on Nilvera, so any previously fetched PDF is stale;
+        # detach it so the next fetch re-downloads the updated document.
+        self._l10n_tr_nilvera_detach_pdf()
+
+    def _l10n_tr_nilvera_confirm_and_send_draft(self, customer_alias, register_series=True):
+        """Approve the uploaded draft and transmit it to GİB (ConfirmAndSend)."""
+        self.ensure_one()
+        if customer_alias:
+            endpoint = '/einvoice/Draft/ConfirmAndSend'
+            body = [{'Alias': customer_alias, 'UUID': self.l10n_tr_nilvera_uuid}]
+            series_endpoint = '/einvoice/Series'
+        else:
+            endpoint = '/earchive/Draft/ConfirmAndSend'
+            body = [self.l10n_tr_nilvera_uuid]
+            series_endpoint = '/earchive/Series'
+        with _get_nilvera_client(self.env._, self.env.company) as client:
+            response = client.request('POST', endpoint, json=body, handle_response=False)
+            if 400 <= response.status_code < 500 and register_series and self.sequence_prefix:
+                error_message, error_codes = client._get_error_message_with_codes_from_response(response)
+                if 3009 in error_codes:
+                    client.request('POST', series_endpoint, json={
+                        'Name': self.sequence_prefix.split('/', 1)[0],
+                        'IsActive': True,
+                        'IsDefault': False,
+                    })
+                    self._l10n_tr_nilvera_confirm_and_send_draft(customer_alias, register_series=False)
+                else:
+                    raise UserError(error_message)
+            elif response.status_code != 200:
+                raise UserError(_("Server error from Nilvera, please try again later."))
+
+    def _l10n_tr_nilvera_approve_and_send_draft(self, xml_file, customer_alias):
+        """Send flow for an invoice already uploaded as a draft.
+
+        Push the current XML if it changed since the last upload (posting assigns
+        the final invoice number, so this normally re-uploads once), then approve
+        the draft and transmit it to GİB.
+        """
+        self.ensure_one()
+        if self._l10n_tr_nilvera_draft_xml_hash(xml_file.getvalue()) != self.l10n_tr_nilvera_draft_sync_hash:
+            self._l10n_tr_nilvera_upload_draft(xml_file, customer_alias)
+        self._l10n_tr_nilvera_confirm_and_send_draft(customer_alias)
+        self.is_move_sent = True
+        self.l10n_tr_nilvera_send_status = 'sent'
+        # Any draft PDF fetched earlier is now superseded by the finalized GİB
+        # document; detach it so the finalized PDF is fetched once the invoice
+        # reaches 'succeed' (otherwise the stale draft PDF blocks the re-fetch).
+        self._l10n_tr_nilvera_detach_pdf()
+        self.message_post(body=self.env._("The draft has been approved and sent to Nilvera."))
+
+    def l10n_tr_nilvera_action_send_as_draft(self):  # noqa: RET503
+        """Upload the invoice to Nilvera as a draft (or update an existing draft).
+
+        The Odoo invoice stays in Draft; it is approved and transmitted to GİB
+        later, when it is sent with Send & Print.
+        """
+        self.ensure_one()
+        self._l10n_tr_nilvera_check_draft_precondition()
+        if self.l10n_tr_nilvera_send_status not in {'not_sent', 'draft_sent'}:
+            raise UserError(self.env._("This invoice has already been sent to Nilvera."))
+        # The UBL XML embeds the Nilvera UUID, so it must exist before we build it.
+        if not self.l10n_tr_nilvera_uuid:
+            self.l10n_tr_nilvera_uuid = str(uuid.uuid4())
+        xml_file = self._l10n_tr_nilvera_build_draft_xml()
+        # Nothing to push if the draft already reflects the current invoice.
+        if (
+            self.l10n_tr_nilvera_draft_sync_hash
+            and self._l10n_tr_nilvera_draft_xml_hash(xml_file.getvalue()) == self.l10n_tr_nilvera_draft_sync_hash
+        ):
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'type': 'info',
+                    'message': self.env._("This invoice is already up to date on Nilvera."),
+                    'sticky': False,
+                },
+            }
+        self._l10n_tr_nilvera_upload_draft(xml_file, self._get_partner_l10n_tr_nilvera_customer_alias_name())
+        self.l10n_tr_nilvera_send_status = 'draft_sent'
+        self.message_post(body=self.env._("The invoice has been uploaded to Nilvera as a draft."))
 
     def _l10n_tr_nilvera_submit_document(self, xml_file, endpoint, post_series=True):
         """
@@ -381,8 +677,11 @@ class AccountMove(models.Model):
                     )
 
                     nilvera_status = response.get('InvoiceStatus', {}).get('Code') or response.get('StatusCode')
+                    answer = response.get('Answer') or {}
+                    answer_code = answer.get('AnswerCode')
                     if nilvera_status in dict(invoice._fields['l10n_tr_nilvera_send_status'].selection):
                         if nilvera_status == 'error':
+                            invoice.l10n_tr_nilvera_send_status = nilvera_status
                             invoice.message_post(
                                 body=Markup(
                                     "%s<br/>%s - %s<br/>"
@@ -392,11 +691,15 @@ class AccountMove(models.Model):
                                     response.get('InvoiceStatus', {}).get('DetailDescription') or response.get('ReportStatus'),
                                 )
                             )
-                        elif invoice.l10n_tr_gib_invoice_scenario == "TICARIFATURA" and invoice.move_type in {'out_invoice', 'in_invoice'} and nilvera_status == 'succeed':
-                            if response['Answer'] and response['Answer'].get('AnswerCode') in {'approved', 'rejected', 'documentAnsweredAutomatically'}:
-                                invoice.l10n_tr_nilvera_send_status = TICARIFATURA_ANSWER_TO_FIELD_VALUE_MAP[response['Answer']['AnswerCode']]
-                                if response['Answer']['AnswerCode'] == 'rejected':
-                                    invoice._l10n_tr_action_process_rejected_ticarifatura(response['Answer'].get('Description', ''), client)
+                        elif (
+                            invoice.l10n_tr_gib_invoice_scenario == "TICARIFATURA"
+                            and invoice.move_type in {'out_invoice', 'in_invoice'}
+                            and nilvera_status == 'succeed'
+                            and answer_code in {'approved', 'rejected', 'documentAnsweredAutomatically'}
+                        ):
+                            invoice.l10n_tr_nilvera_send_status = TICARIFATURA_ANSWER_TO_FIELD_VALUE_MAP[answer_code]
+                            if answer_code == 'rejected':
+                                invoice._l10n_tr_action_process_rejected_ticarifatura(answer.get('Description', ''), client)
                         else:
                             invoice.l10n_tr_nilvera_send_status = nilvera_status
                     else:
@@ -521,11 +824,10 @@ class AccountMove(models.Model):
 
         return move
 
-    def _l10n_tr_nilvera_add_pdf_to_invoice(self, client, invoice, document_uuid, document_category="Purchase", invoice_channel="einvoice"):
-        response = client.request(
-            "GET",
-            f"/{invoice_channel}/{quote(document_category)}/{quote(document_uuid)}/pdf",
-        )
+    def _l10n_tr_nilvera_add_pdf_to_invoice(self, client, invoice, document_uuid, document_category="Purchase", invoice_channel="einvoice", is_draft=False):
+        category = "Draft" if is_draft else quote(document_category)
+        url = f"/{invoice_channel}/{category}/{quote(document_uuid)}/pdf"
+        response = client.request('GET', url)
 
         filename = f'{invoice.ref}.pdf' if invoice.ref else invoice._get_invoice_nilvera_pdf_report_filename()
 
@@ -534,7 +836,7 @@ class AccountMove(models.Model):
             'res_id': invoice.id,
             'res_field': 'l10n_tr_nilvera_pdf_file',
             'res_model': 'account.move',
-            'raw': base64.b64decode(response),
+            'raw': b64decode(response),
             'type': 'binary',
             'mimetype': 'application/pdf',
         })
@@ -557,8 +859,7 @@ class AccountMove(models.Model):
         if len(self) > 1:
             notification_type = 'account_notification'
             payload['message'] = self.env._(
-                "Some PDFs could not be retrieved because the Nilvera Status is not successful yet or is in error. "
-                "Please try again once the status becomes successful."
+                "Some PDFs are not yet available from Nilvera. Please try again later.",
             )
             payload['action_button'] = {
                 'name': self.env._('View Invoice(s)'),
@@ -568,8 +869,7 @@ class AccountMove(models.Model):
             }
         else:
             payload['message'] = self.env._(
-                "The PDF could not be retrieved because the Nilvera Status is not successful yet or is in error. "
-                "Please try again once the status becomes successful."
+                "The PDF is not yet available from Nilvera. Please try again later.",
             )
         self.env.user._bus_send(notification_type, payload)
 
@@ -578,8 +878,45 @@ class AccountMove(models.Model):
         Fetches and attaches the Nilvera PDF to invoices that have been sent successfully but do not have a PDF downloaded yet.
         The method will also try to update the status of the pending invoices to make sure we don't miss any PDFs.
         """
-        # Sort invoices by status into buckets. Invoices with existing PDFs or invalid types are skipped.
-        successful_invoice_ids = []
+        failed_invoices = self._l10n_tr_nilvera_do_fetch_pdfs()
+        self._l10n_tr_nilvera_notify_failed_pdf(failed_invoices)
+
+    def _l10n_tr_nilvera_notify_pdf_not_yet_available(self, unavailable_invoices):
+        """ Shows a notification when PDFs have not yet been retrieved from Nilvera. """
+        if not unavailable_invoices:
+            return
+
+        notification_type = 'simple_notification'
+        payload = {
+            'type': 'warning',
+            'sticky': True,
+        }
+        if len(self) > 1:
+            notification_type = 'account_notification'
+            payload['message'] = self.env._(
+                "Some PDFs could not be retrieved because they have not yet been retrieved from Nilvera. "
+                "Please try again once the PDFs have been received."
+            )
+            payload['action_button'] = {
+                'name': self.env._('View Invoice(s)'),
+                'action_name': self.env._('Pending e-Invoice PDFs'),
+                'model': 'account.move',
+                'res_ids': unavailable_invoices.ids,
+            }
+        else:
+            payload['message'] = self.env._(
+                "The PDF is not yet available from Nilvera. Please ry again later.",
+            )
+        self.env.user._bus_send(notification_type, payload)
+
+    def _l10n_tr_nilvera_do_fetch_pdfs(self):
+        """ Fetch and attach Nilvera PDFs for eligible invoices that don't have one yet.
+
+        Skips invoices that already have a PDF, have an invalid status, or lack a Nilvera
+        customer status. Refreshes status of pending invoices before attempting the fetch.
+        Returns the set of invoices whose fetch failed due to error/pending status.
+        """
+        successful_and_draft_invoice_ids = []
         pending_invoices_ids = []
         failed_invoices_ids = []
         for invoice in self:
@@ -590,34 +927,74 @@ class AccountMove(models.Model):
             ):
                 continue
             status = invoice.l10n_tr_nilvera_send_status
-            if status == 'succeed':
-                successful_invoice_ids.append(invoice.id)
+            if status in {'succeed', 'draft_sent'}:
+                successful_and_draft_invoice_ids.append(invoice.id)
             elif status in {'sent', 'waiting'}:
                 pending_invoices_ids.append(invoice.id)
             elif status == 'error':
                 failed_invoices_ids.append(invoice.id)
-        successful_invoices = self.browse(successful_invoice_ids)
+        successful_and_draft_invoices = self.browse(successful_and_draft_invoice_ids)
         pending_invoices = self.browse(pending_invoices_ids)
         failed_invoices = self.browse(failed_invoices_ids)
-
         # Update pending invoices to catch any that succeeded since the last check.
         if pending_invoices:
             pending_invoices._l10n_tr_nilvera_get_submitted_document_status()
             newly_succeed = pending_invoices.filtered(lambda i: i.l10n_tr_nilvera_send_status == 'succeed')
-            successful_invoices |= newly_succeed
+            successful_and_draft_invoices |= newly_succeed
             failed_invoices |= pending_invoices - newly_succeed
 
         with _get_nilvera_client(self.env._, self.env.company) as client:
-            for invoice in successful_invoices:
+            for invoice in successful_and_draft_invoices:
                 invoice._l10n_tr_nilvera_add_pdf_to_invoice(
                     client,
                     invoice,
                     invoice.l10n_tr_nilvera_uuid,
-                    document_category="Sale",
+                    document_category=invoice._l10n_tr_get_document_category(invoice.l10n_tr_nilvera_customer_status),
+                    is_draft=invoice.l10n_tr_nilvera_send_status == 'draft_sent',
                     invoice_channel=invoice.l10n_tr_nilvera_customer_status,
                 )
 
-        self._l10n_tr_nilvera_notify_failed_pdf(failed_invoices)
+        return failed_invoices
+
+    def action_l10n_tr_print_einvoice_pdf(self):
+        """ Print action for the e-Invoice PDF from the Print menu.
+
+        Auto-fetches the PDF from Nilvera when not yet downloaded, then triggers a
+        browser download. Shows a warning notification for invoices whose PDF is not
+        yet available on Nilvera.
+        """
+        if self.env.company.country_id.code != 'TR':
+            return False
+        nilvera_invoices = self.filtered('l10n_tr_nilvera_uuid')
+        if not nilvera_invoices:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'message': _("No e-invoice documents found for the selected invoices."),
+                    'type': 'warning',
+                },
+            }
+
+        # Auto-fetch PDFs that are not yet cached locally.
+        to_fetch = nilvera_invoices.filtered(lambda inv: not inv.l10n_tr_nilvera_pdf_id)
+        if to_fetch:
+            to_fetch._l10n_tr_nilvera_do_fetch_pdfs()
+
+        invoices_with_pdf = nilvera_invoices.filtered('l10n_tr_nilvera_pdf_id')
+        invoices_without_pdf = nilvera_invoices - invoices_with_pdf
+
+        nilvera_invoices._l10n_tr_nilvera_notify_pdf_not_yet_available(invoices_without_pdf)
+
+        if not invoices_with_pdf:
+            return False
+
+        attachment_ids = ','.join(str(inv.l10n_tr_nilvera_pdf_id.id) for inv in invoices_with_pdf)
+        return {
+            'type': 'ir.actions.act_url',
+            'url': f'/account/download_invoice_attachments/{attachment_ids}',
+            'target': 'download',
+        }
 
     def _l10n_tr_nilvera_einvoice_check_negative_lines(self):
         return any(
@@ -630,8 +1007,7 @@ class AccountMove(models.Model):
         # Allows overriding the default customer alias with a custom one.
         self.ensure_one()
         return (
-            self.l10n_tr_is_export_invoice
-            and self.company_id.l10n_tr_nilvera_export_alias
+            (self.l10n_tr_is_export_invoice and self.env['ir.config_parameter'].sudo().get_str('l10n_tr_nilvera_einvoice.export_alias'))
             or self.partner_id.l10n_tr_nilvera_customer_alias_id.name
         )
 
@@ -661,7 +1037,7 @@ class AccountMove(models.Model):
 
     def _cron_nilvera_get_invoice_status(self):
         invoices_to_update = self.env['account.move'].search([
-            ('l10n_tr_nilvera_send_status', 'in', ['waiting', 'sent']),
+            ('l10n_tr_nilvera_send_status', 'in', ['waiting', 'sent', 'unknown']),
             ('move_type', 'in', self._l10n_tr_types_to_update_status()),
         ])
         invoices_to_update._l10n_tr_nilvera_get_submitted_document_status()
@@ -680,7 +1056,7 @@ class AccountMove(models.Model):
                         client,
                         invoice,
                         invoice.l10n_tr_nilvera_uuid,
-                        document_category="Sale",
+                        document_category=invoice._l10n_tr_get_document_category(invoice.l10n_tr_nilvera_customer_status),
                         invoice_channel=invoice.l10n_tr_nilvera_customer_status,
                     )
 

@@ -1,4 +1,4 @@
-import { Component, props, types } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
 
 import { useService } from "@web/core/utils/hooks";
 
@@ -8,41 +8,32 @@ export class AvatarStack extends Component {
     setup() {
         super.setup(...arguments);
         this.store = useService("mail.store");
-        this.props = props(
-            {
-                "avatarClass?": types.function(
+        this.props = useProps({
+            avatarClass: t
+                .function(
                     [
-                        types.or([
-                            types.instanceOf(this.store["res.partner"].Class),
-                            types.instanceOf(this.store["mail.guest"].Class),
+                        t.or([
+                            t.instanceOf(this.store["res.partner"]),
+                            t.instanceOf(this.store["mail.guest"]),
                         ]),
                     ],
-                    types.string()
-                ),
-                "containerClass?": types.string(),
-                "direction?": types.selection(["h", "v"]),
-                "max?": types.number(),
-                "onClick?": types.function([types.instanceOf(MouseEvent)]),
-                personas: types.array(
-                    types.or([
-                        types.instanceOf(this.store["res.partner"].Class),
-                        types.instanceOf(this.store["mail.guest"].Class),
-                    ])
-                ),
-                "size?": types.number(),
-                "slots?": types.object(),
-                "spacing?": types.number(),
-                "total?": types.number(),
-            },
-            {
-                avatarClass: () => "",
-                direction: "h",
-                max: 4,
-                onClick: () => {},
-                size: 24,
-                spacing: 8,
-            }
-        );
+                    t.record(t.boolean())
+                )
+                .optional(() => () => ({})),
+            containerClass: t.string().optional(),
+            direction: t.selection(["h", "v"]).optional("h"),
+            max: t.number().optional(4),
+            onClick: t.function([t.instanceOf(MouseEvent)]).optional(() => () => {}),
+            personas: t.array(
+                t.or([
+                    t.instanceOf(this.store["res.partner"]),
+                    t.instanceOf(this.store["mail.guest"]),
+                ])
+            ),
+            size: t.number().optional(24),
+            spacing: t.number().optional(8),
+            total: t.number().optional(),
+        });
     }
 
     getStyle(index) {

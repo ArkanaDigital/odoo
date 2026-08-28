@@ -156,7 +156,7 @@ test("attachment counter while loading attachments", async () => {
     await openFormView("res.partner", partnerId);
     await contains("button[aria-label='Attach files']");
     await advanceTime(DELAY_FOR_SPINNER);
-    await contains("button[aria-label='Attach files'] .fa-spin");
+    await contains("button[aria-label='Attach files'] .oi-spin");
     await contains("button[aria-label='Attach files']:text('0')", { count: 0 });
     await expect.waitForSteps(["before mail.thread"]);
     resolve();
@@ -177,11 +177,11 @@ test("attachment counter transition when attachments become loaded", async () =>
     await openFormView("res.partner", partnerId);
     await contains("button[aria-label='Attach files']");
     await advanceTime(DELAY_FOR_SPINNER);
-    await contains("button[aria-label='Attach files'] .fa-spin");
+    await contains("button[aria-label='Attach files'] .oi-spin");
     await expect.waitForSteps(["before mail.thread"]);
     resolve();
     await waitStoreFetch("mail.thread");
-    await contains("button[aria-label='Attach files'] .fa-spin", { count: 0 });
+    await contains("button[aria-label='Attach files'] .oi-spin", { count: 0 });
 });
 
 test("attachment icon open directly the file uploader if there is no attachment yet", async () => {
@@ -268,4 +268,31 @@ test("Send message displays the number of notified followers inside a badge", as
     await openFormView("res.partner", partnerId_3);
     await click("button:text('Send message')");
     await contains(".o-mail-RecipientsInput .badge:text('2 Followers')");
+});
+
+test("Attach files and Pinned Messages panels are mutually exclusive", async () => {
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({ name: "Armstrong" });
+    pyEnv["mail.message"].create({
+        body: "Pinned message",
+        model: "res.partner",
+        pinned_at: "2025-01-01 00:00:00",
+        res_id: partnerId,
+    });
+    pyEnv["ir.attachment"].create({
+        mimetype: "text/plain",
+        name: "A.txt",
+        res_id: partnerId,
+        res_model: "res.partner",
+    });
+    await start();
+    await openFormView("res.partner", partnerId);
+    await click("button[title='Attach files']:text('1')");
+    await contains(".o-mail-AttachmentBox");
+    await click("button[title='Pinned Messages']");
+    await contains(".o-mail-pinnedMessages");
+    await contains(".o-mail-AttachmentBox", { count: 0 });
+    await click("button[title='Attach files']:text('1')");
+    await contains(".o-mail-AttachmentBox");
+    await contains(".o-mail-pinnedMessages", { count: 0 });
 });

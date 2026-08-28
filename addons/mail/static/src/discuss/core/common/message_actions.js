@@ -10,7 +10,7 @@ registerMessageAction("set-new-message-separator", {
         !message.hasNewMessageSeparator &&
         message.persistent &&
         !message.isEmpty,
-    icon: "fa fa-eye-slash",
+    icon: "visibility_off",
     name: _t("Mark as Unread"),
     onSelected: ({ message }) => {
         const selfMember = message.channel_id?.self_member_id;
@@ -19,10 +19,12 @@ registerMessageAction("set-new-message-separator", {
             selfMember.new_message_separator_ui = selfMember.new_message_separator;
         }
         message.channel_id.markedAsUnread = true;
-        rpc("/discuss/channel/set_new_message_separator", {
-            channel_id: message.thread.id,
-            message_id: message.id,
-        });
+        message.thread.markReadSequential(() =>
+            rpc("/discuss/channel/set_new_message_separator", {
+                channel_id: message.thread.id,
+                message_id: message.id,
+            })
+        );
     },
     sequence: 50,
 });

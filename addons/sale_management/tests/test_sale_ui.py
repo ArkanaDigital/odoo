@@ -9,6 +9,8 @@ from odoo.addons.sale.tests.common import TestSaleCommon
 
 @tagged("post_install", "-at_install")
 class TestUi(AccountTestInvoicingCommon, HttpCase):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -31,7 +33,7 @@ class TestUi(AccountTestInvoicingCommon, HttpCase):
                 "name": "test SO",
                 "partner_id": self.agrolait.id,
                 "state": "sent",
-                "require_payment": False,
+                "prepayment_percent": 0,
                 "order_line": [Command.create({"product_id": self.product.id})],
             })
         )
@@ -42,6 +44,8 @@ class TestUi(AccountTestInvoicingCommon, HttpCase):
 
 @tagged("-at_install", "post_install")
 class TestSaleFlowTourPostInstall(TestSaleCommon, HttpCase):
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_basic_sale_flow_with_minimal_access_rights(self):
         """
         Test that a sale user with minimal access rights (own document only) can open both the
@@ -50,7 +54,9 @@ class TestSaleFlowTourPostInstall(TestSaleCommon, HttpCase):
         sale_user = self.env["res.users"].create({
             "name": "Super Sale Woman",
             "login": "SuperSaleWoman",
-            "group_ids": [Command.set([self.ref("sales_team.group_sale_salesman")])],
+            "group_ids": [
+                Command.set([self.ref("sales_team.group_sale_salesman"), self.ref("uom.group_uom")])
+            ],
         })
         # create and confirm a sale order to populate the list view
         sale_order = (
@@ -68,6 +74,11 @@ class TestSaleFlowTourPostInstall(TestSaleCommon, HttpCase):
                 ],
             })
         )
+
+        # Make the default UoM differ from the product's default UoM so the tour can detect when
+        # the onchange has completed.
+        self.product.uom_id = self.uom_dozen
+
         sale_order.action_confirm()
         self.start_tour(
             "/odoo", "test_basic_sale_flow_with_minimal_access_rights", login="SuperSaleWoman"

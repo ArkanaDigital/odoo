@@ -1,43 +1,45 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, onMounted, onPatched, status, useListener } from "@odoo/owl";
+import { Component, signal, status, t, useEffect, useListener, useProps } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 
-/**
- * @typedef {Object} Props
- * @property {import("models").RtcSession} session
- * @extends {Component<Props, Env>}
- */
 export class CallParticipantVideo extends Component {
-    static props = ["session", "type", "inset?"];
     static template = "discuss.CallParticipantVideo";
+
+    root = signal.ref();
 
     setup() {
         super.setup();
         this.rtc = useService("discuss.rtc");
         this.store = useService("mail.store");
-        this.root = useRef("root");
-        onMounted(() => this._update());
-        onPatched(() => this._update());
+        this.props = useProps({
+            inset: t
+                .function([
+                    t.instanceOf(this.store["discuss.channel.rtc.session"]),
+                    t.selection(["camera", "screen"]),
+                ])
+                .optional(),
+            session: t.instanceOf(this.store["discuss.channel.rtc.session"]),
+            type: t.selection(["camera", "screen"]),
+        });
+        useEffect(() => {
+            const el = this.root();
+            if (!el) {
+                return;
+            }
+            el.srcObject = this.props.session.getStream(this.props.type) || null;
+            el.load();
+            return () => {
+                el.srcObject = null;
+                el.load();
+            };
+        });
         useListener(this.env.bus, "RTC-SERVICE:PLAY_MEDIA", async () => {
             await this.play();
         });
     }
 
-    _update() {
-        if (!this.root.el) {
-            return;
-        }
-        if (!this.props.session || !this.props.session.getStream(this.props.type)) {
-            this.root.el.srcObject = undefined;
-        } else {
-            this.root.el.srcObject = this.props.session.getStream(this.props.type);
-        }
-        this.root.el.load();
-    }
-
     async play() {
         try {
-            await this.root.el?.play?.();
+            await this.root()?.play?.();
             this.props.session.videoError = undefined;
         } catch (error) {
             if (status(this) === "destroyed") {

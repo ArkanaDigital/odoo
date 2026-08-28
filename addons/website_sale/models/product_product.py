@@ -4,11 +4,13 @@ from collections import OrderedDict
 from urllib.parse import urlencode, urlparse
 
 from odoo import api, fields, models
+from odoo.fields import Domain
 from odoo.http import request
 
 
 class ProductProduct(models.Model):
-    _inherit = "product.product"
+    _name = "product.product"
+    _inherit = ["product.product", "website.structured_data.mixin"]
     _mail_post_access = "read"
 
     variant_ribbon_id = fields.Many2one(string="Variant Ribbon", comodel_name="product.ribbon")
@@ -24,12 +26,6 @@ class ProductProduct(models.Model):
         string="Website URL",
         help="The full URL to access the document through the website.",
         compute="_compute_product_website_url",
-    )
-
-    stock_notification_partner_ids = fields.Many2many(
-        "res.partner",
-        relation="stock_notification_product_partner_rel",
-        string="Back in stock Notifications",
     )
 
     # === COMPUTE METHODS ===#
@@ -89,30 +85,32 @@ class ProductProduct(models.Model):
 
     def _website_show_quick_add(self):
         self.ensure_one()
-        if self._is_sold_out() or not self.filtered_domain(self.env["website"]._product_domain()):
-            return False
-        if not self._get_available_uoms():
-            return False
-        website = self.env["website"].get_current_website()
-        return not (
-            website.prevent_sale
-            and website._prevent_product_sale(self, not self._get_contextual_price())
+        return self.product_tmpl_id._website_show_quick_add(self)
+
+    def _is_add_to_cart_allowed(self) -> bool:
+        """Determine whether the current user is permitted to buy the product."""
+        self.ensure_one()
+        if self._is_donation():
+            return True
+
+        website = self.env.website
+        return (
+            website.has_ecommerce_access()
+            and self._is_purchasable()
+            and self._is_published()
+            and (
+                not website.prevent_sale
+                or not website._prevent_product_sale(self, not self._get_contextual_price())
+            )
         )
 
-    def _is_add_to_cart_allowed(self):
+    def _is_published(self) -> bool:
+        return self.product_tmpl_id._is_published()
+
+    def _is_purchasable(self) -> bool:
+        """Determine whether the given product can be sold through the eCommerce shop."""
         self.ensure_one()
-        if self.env.user.has_group("base.group_system"):
-            return True
-        if not self.active or not self.website_published:
-            return False
-        if not self.filtered_domain(self.env["website"]._product_domain()):
-            return False
-        website = self.env["website"].get_current_website()
-        if website.prevent_sale and website._prevent_product_sale(
-            self, not self._get_contextual_price()
-        ):
-            return False
-        return website.has_ecommerce_access()
+        return self.product_tmpl_id._is_purchasable(product=self)
 
     @api.onchange("public_categ_ids")
     def _onchange_public_categ_ids(self):
@@ -121,50 +119,51 @@ class ProductProduct(models.Model):
         else:
             self.website_published = False
 
-    def _to_markup_data(self, website):
-        """Generate JSON-LD markup data for the current product.
-
-        :param website website: The current website.
-        :return: The JSON-LD markup data.
-        :rtype: dict
-        """
+    def _prepare_jsonld_vals(self, **kwargs):
+        """JSON-LD payload describing the variant as a https://schema.org/Product."""
         self.ensure_one()
 
-        product_price = request.pricelist._get_product_price(
-            self, quantity=1, currency=website.currency_id
-        )
+        website = self.env.website or self.env["website"].browse(self.env.context.get("host_id"))
+        base_url = website.get_base_url()
+        product_price = kwargs.get("precomputed_price")
+        if product_price is None:
+            product_price = request.pricelist._get_product_price(
+                self, quantity=1, currency=website.currency_id
+            )
         # Use sudo to access cross-company taxes.
         price = self._apply_taxes_to_price(product_price, website.currency_id, website=website)
 
-        base_url = website.get_base_url()
-        markup_data = {
-            "@context": "https://schema.org",
+        offer = {"@type": "Offer", "price": price, "priceCurrency": website.currency_id.name}
+        if self.is_product_variant and self.is_storable:
+            offer["availability"] = (
+                "https://schema.org/OutOfStock"
+                if self._is_sold_out()
+                else "https://schema.org/InStock"
+            )
+
+        vals = {
             "@type": "Product",
+            "@id": f"{base_url}{self.website_url}/#product-{self.id}",
             "name": self.with_context(display_default_code=False).display_name,
             "url": f"{base_url}{self.website_url}",
-            "image": f"{base_url}{website.image_url(self, 'image_1920')}",
-            "offers": {"@type": "Offer", "price": price, "priceCurrency": website.currency_id.name},
+            "offers": offer,
+            "image": f"{base_url}{self._get_image_1920_url()}",
         }
-        if self.website_meta_description or self.description_sale:
-            markup_data["description"] = self.website_meta_description or self.description_sale
+        if description := (self.website_meta_description or self.description_sale):
+            vals["description"] = description
+        if self.default_code:
+            vals["sku"] = self.default_code
         if self.barcode:
-            markup_data["gtin"] = self.barcode
-        if self.is_product_variant and self.is_storable:
-            if not self._is_sold_out():
-                availability = "https://schema.org/InStock"
-            else:
-                availability = "https://schema.org/OutOfStock"
-            markup_data["offers"]["availability"] = availability
+            vals["gtin"] = self.barcode
 
         direct, others = self._split_standard_from_custom_attributes()
-        markup_data.update(direct)
+        vals.update(direct)
         if others:
-            markup_data["additionalProperty"] = [
+            vals["additionalProperty"] = [
                 {"@type": "PropertyValue", "name": name, "value": value}
                 for name, value in others.items()
             ]
-
-        return markup_data
+        return vals
 
     def _get_image_1920_url(self):
         """Return the local url of the product main image.
@@ -279,7 +278,7 @@ class ProductProduct(models.Model):
         if self.env["res.groups"]._is_feature_enabled("uom.group_uom") and self.env.context.get(
             "website_id"
         ):
-            return all_uoms - self.env["website"].get_current_website().restricted_uom_ids
+            return all_uoms - self.env.website.restricted_uom_ids
         return all_uoms
 
     def _get_main_uom(self):
@@ -301,6 +300,12 @@ class ProductProduct(models.Model):
             extra_tracking_values["product_id"] = res_id
         return extra_tracking_values
 
+    def _is_donation(self):
+        """Return whether this product is the donation product used by the donation snippet."""
+        self.ensure_one()
+        # Unpublished, sudo to allow public users to read it
+        return self.sudo().product_tmpl_id._is_donation()
+
     def _is_sold_out(self):
         """Return whether the product is sold out (no available quantity).
 
@@ -313,12 +318,33 @@ class ProductProduct(models.Model):
         self.ensure_one()
         if not self.is_storable or self.allow_out_of_stock_order:
             return False
-        free_qty = self.env["website"].get_current_website()._get_product_available_qty(self.sudo())
+        free_qty = self.env.website._get_product_available_qty(self.sudo())
         return free_qty <= 0
 
-    def _has_stock_notification(self, partner):
+    def _has_stock_notification(self, partner, website):
         self.ensure_one()
-        return partner in self.stock_notification_partner_ids
+        return bool(
+            self
+            .env["product.stock.notification"]
+            .sudo()
+            .search_count(
+                [
+                    ("product_id", "=", self.id),
+                    ("website_id", "=", website.id),
+                    ("partner_id", "=", partner.id),
+                ],
+                limit=1,
+            )
+        )
+
+    def _get_free_qty(self, **_kwargs):
+        """Return the free quantity of the product.
+
+        :param dict _kwargs: Optional data used in overrides of this method
+        :return: available quantity
+        :rtype: float
+        """
+        return self.qty_available - self.outgoing_qty
 
     def _get_max_quantity(self, website, sale_order, **kwargs):
         """Return The max quantity of a product.
@@ -339,36 +365,53 @@ class ProductProduct(models.Model):
         return None
 
     def _send_availability_email(self):
-        products = self.search([("stock_notification_partner_ids", "!=", False)]).filtered(
-            lambda p: not p._is_sold_out()
-        )
-        self.env["ir.cron"]._commit_progress(remaining=len(products.stock_notification_partner_ids))
+        """Send back-in-stock emails to all subscribers whose product is now available.
+
+        For each (product, website) group that is no longer sold
+        out, sends one email per subscriber using the website-specific template, then
+        deletes the notification record.
+
+        The sender address is resolved in order:
+        - company partner email
+        - website salesperson email
+        - company email_formatted, which includes the mail alias domain catchall
+        """
         email_template = self.env.ref(
             "website_sale.email_template_back_in_stock", raise_if_not_found=False
         )
         if not email_template:
             return
-        website = self.env["website"].get_current_website()
-        for product_id in products.ids:
-            product = self.env["product.product"].browse(product_id)
-            for partner_id in product.with_context(
-                # Only fetch the ids, all the other fields will be invalidated either way
-                prefetch_fields=False
-            ).stock_notification_partner_ids.ids:
-                partner = self.env["res.partner"].browse(partner_id)
-                email_template.with_user(website.salesperson_id).with_context(
-                    customer_name=partner.name, lang=partner.lang
-                ).send_mail(
-                    product.id,
-                    force_send=True,
-                    email_values={
-                        "email_to": partner.email_formatted,
-                        "email_from": website.company_id.partner_id.email_formatted,
-                    },
-                )
+        grouped_notifications = self.env["product.stock.notification"]._read_group(
+            [], groupby=["product_id", "website_id"], aggregates=["id:recordset"]
+        )
+        notifications_to_send = [
+            notification
+            for product, website, notification in grouped_notifications
+            if not product
+            .with_company(website.company_id)
+            .with_context(website_id=website.id)
+            ._is_sold_out()
+        ]
+        self.env["ir.cron"]._commit_progress(remaining=len(notifications_to_send))
+        for notification in notifications_to_send:
+            website = notification.website_id
+            partner = notification.partner_id
+            product = notification.product_id
+            sender_email = (
+                website.company_id.partner_id.email_formatted
+                or website.salesperson_id.email_formatted
+                or website.company_id.email_formatted
+            )
+            email_template.with_user(website.salesperson_id).sudo().with_context(
+                customer_name=partner.name, lang=partner.lang, website_id=website.id
+            ).send_mail(
+                product.id,
+                force_send=True,
+                email_values={"email_to": partner.email_formatted, "email_from": sender_email},
+            )
 
-                product.stock_notification_partner_ids -= partner
-                self.env["ir.cron"]._commit_progress(1)
+            notification.sudo().unlink()
+            self.env["ir.cron"]._commit_progress(1)
 
     def _split_standard_from_custom_attributes(self):
         self.ensure_one()
@@ -377,3 +420,32 @@ class ProductProduct(models.Model):
     def _apply_taxes_to_price(self, *args, **kwargs):
         self.ensure_one()
         return self.product_tmpl_id._apply_taxes_to_price(*args, product=self, **kwargs)
+
+    def _can_add_to_stock_notifications(self):
+        """Return whether the product is eligible for stock notifications.
+
+        Note: `self.ensure_one()`
+
+        :return: True if the product is active, saleable, and published on the website
+        :rtype: bool
+        """
+        self.ensure_one()
+        return self.active and self.sale_ok and self.website_published
+
+    def _mail_get_operation_for_mail_message_operation(self, message_operation):
+        if (
+            message_operation == "create"
+            and not self.env.user._is_internal()
+            and not self.env["website"].is_view_active("website_sale.product_comment")
+        ):
+            return [(Domain.TRUE, "write")]
+        return super()._mail_get_operation_for_mail_message_operation(message_operation)
+
+    def _can_return_content(self, field_name=None, access_token=None):
+        """Override of `BaseModel` to allow showing donation product image to public users."""
+        if (
+            field_name in ["image_%s" % size for size in [1920, 1024, 512, 256, 128]]
+            and self._is_donation()
+        ):
+            return True
+        return super()._can_return_content(field_name, access_token)

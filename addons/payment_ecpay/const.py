@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo.tools import frozendict
+from types import MappingProxyType
 
 # Routes for ECPay redirection and webhook.
 PAYMENT_RETURN_ROUTE = "/payment/ecpay/return"
@@ -9,27 +10,8 @@ WEBHOOK_ROUTE = "/payment/ecpay/webhook"
 # The currency supported by ECPay, in ISO 4217 format.
 SUPPORTED_CURRENCY = "TWD"
 
-# The codes of the payment methods to activate when ECPay is activated.
-DEFAULT_PAYMENT_METHOD_CODES = (
-    # Primary payment methods.
-    "card",
-    "wechat_pay",
-    "cvs",
-    "bank_transfer",
-    "mobile_wallet",
-    "twqr",
-    # Brand payment methods.
-    "visa",
-    "mastercard",
-    "jcb",
-    "unionpay",
-    "ok_mart",
-    "hi_life",
-    "family_mart",
-    "7eleven",
-    "jkopay",
-    "ipass_money",
-)
+# The codes of the default primary payment methods to activate
+DEFAULT_PAYMENT_METHOD_CODES = {"card"}
 
 # Mapping of payment method codes to ECPay codes.
 PAYMENT_METHODS_MAPPING = frozendict({
@@ -61,7 +43,13 @@ PAYMENT_METHODS_RESPONSE_MAPPING = frozendict({
 
 # Mapping IETF language tags (e.g.: 'fr-BE') to ECPay language codes.
 # If a language tag is not listed, the country code prefix can serve as fallback.
-LANGUAGE_CODES_MAPPING = frozendict({"en": "ENG", "ja_JP": "JPN", "ko": "KOR", "zh": "CHI"})
+# zh_TW is intentionally omitted so that ECPay defaults to it when Language is missing.
+LANGUAGE_CODES_MAPPING = MappingProxyType({
+    "en": "ENG",
+    "ja_JP": "JPN",
+    "ko": "KOR",
+    "zh_CN": "CHI",
+})
 
 # Mapping of transaction states to ECPay success codes.
 SUCCESS_CODE_MAPPING = frozendict({"done": ("1", "2", "10100073")})

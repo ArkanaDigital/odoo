@@ -17,10 +17,10 @@ class TestMenusAdmin(odoo.tests.HttpCase):
     @classmethod
     def _request_handler(cls, s: Session, r: PreparedRequest, /, **kw):
         # mock odoofin requests
-        if 'proxy/v1/get_dashboard_institutions' in r.url:
+        if 'proxy/v2/get_dashboard_institutions' in r.url:
             r = Response()
             r.status_code = 200
-            r.json = lambda: {'result': {}}
+            r.json = list
             return r
         return super()._request_handler(s, r, **kw)
 
@@ -31,7 +31,7 @@ class TestMenusAdmin(odoo.tests.HttpCase):
         for app_id in menus['root']['children']:
             with self.subTest(app=menus[app_id]['name']):
                 _logger.runbot('Testing %s', menus[app_id]['name'])
-                self.browser_js("/odoo", "odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere('%s');" % menus[app_id]['xmlid'], "odoo.isReady === true", login="admin", timeout=1200, success_signal="clickbot test succeeded")
+                self.browser_js("/odoo", "odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere({ xmlId: '%s', logger: true });" % menus[app_id]['xmlid'], "odoo.isReady === true", login="admin", timeout=1200, success_signal="clickbot test succeeded")
 
 
 @odoo.tests.tagged('click_all', 'post_install', '-at_install', '-standard')
@@ -42,7 +42,8 @@ class TestMenusDemo(HttpCaseWithUserDemo):
         for app_id in menus['root']['children']:
             with self.subTest(app=menus[app_id]['name']):
                 _logger.runbot('Testing %s', menus[app_id]['name'])
-                self.browser_js("/odoo", "odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere('%s');" % menus[app_id]['xmlid'], "odoo.isReady === true", login="demo", timeout=1200, success_signal="clickbot test succeeded")
+                self.browser_js("/odoo", "odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere({ xmlId: '%s', logger: true });" % menus[app_id]['xmlid'], "odoo.isReady === true", login="demo", timeout=1200, success_signal="clickbot test succeeded")
+
 
 @odoo.tests.tagged('post_install', '-at_install')
 class TestMenusAdminLight(odoo.tests.HttpCase):
@@ -57,7 +58,7 @@ class TestMenusAdminLight(odoo.tests.HttpCase):
             return r
         return super()._request_handler(s, r, **kw)
 
-    def test_01_click_apps_menus_as_admin(self):
+    def _run_clickbot(self, offline=False):
         # Disable onboarding tours to remove warnings
         if 'tour_enabled' in self.env['res.users']._fields:
             self.env.ref('base.user_admin').tour_enabled = False
@@ -68,10 +69,31 @@ class TestMenusAdminLight(odoo.tests.HttpCase):
             self.env['pos.prep.display'].create({
                 'name': 'Super Smart Kitchen Display',
             })
-        self.browser_js("/odoo", "odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere(undefined, true);", "odoo.isReady === true", login="admin", timeout=120, success_signal="clickbot test succeeded")
+
+        click_bot_options = "{ light: true, offline: true }" if offline else "{ light: true }"
+        js_code = f"odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere({click_bot_options});"
+
+        self.browser_js("/odoo", js_code, "odoo.isReady === true", login="admin", timeout=120, success_signal="clickbot test succeeded")
+
+    def test_01_click_apps_menus_as_admin(self):
+        self._run_clickbot(offline=False)
+
+    def test_02_click_apps_menus_as_admin_offline(self):
+        self._run_clickbot(offline=True)
+
 
 @odoo.tests.tagged('post_install', '-at_install')
 class TestMenusDemoLight(HttpCaseWithUserDemo):
+
+    @classmethod
+    def _request_handler(cls, s: Session, r: PreparedRequest, /, **kw):
+        # mock odoofin requests
+        if 'proxy/v2/get_dashboard_institutions' in r.url:
+            r = Response()
+            r.status_code = 200
+            r.json = list
+            return r
+        return super()._request_handler(s, r, **kw)
 
     def test_01_click_apps_menus_as_demo(self):
         # Disable onboarding tours to remove warnings
@@ -82,4 +104,4 @@ class TestMenusDemoLight(HttpCaseWithUserDemo):
         group_website_designer = self.env.ref('website.group_website_designer', raise_if_not_found=False)
         if group_website_designer:
             self.env.ref('base.group_user').write({"implied_ids": [(4, group_website_designer.id)]})
-        self.browser_js("/odoo", "odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere(undefined, true);", "odoo.isReady === true", login="demo", timeout=120, success_signal="clickbot test succeeded")
+        self.browser_js("/odoo", "odoo.loader.modules.get('@web/webclient/clickbot/clickbot_loader').startClickEverywhere({ light: true });", "odoo.isReady === true", login="demo", timeout=120, success_signal="clickbot test succeeded")

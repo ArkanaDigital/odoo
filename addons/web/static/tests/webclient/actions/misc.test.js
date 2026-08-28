@@ -1,7 +1,7 @@
 import { expect, getFixture, test } from "@odoo/hoot";
 import { queryOne, scroll, waitFor } from "@odoo/hoot-dom";
-import { animationFrame, Deferred } from "@odoo/hoot-mock";
-import { Component, onWillStart, xml } from "@odoo/owl";
+import { animationFrame } from "@odoo/hoot-mock";
+import { Component, onWillStart, useProps, xml } from "@odoo/owl";
 import {
     contains,
     defineActions,
@@ -10,7 +10,7 @@ import {
     fields,
     getDropdownMenu,
     getService,
-    makeMockEnv,
+    makeTestApp,
     models,
     mountWithCleanup,
     onRpc,
@@ -170,7 +170,7 @@ test("can execute actions from id, xmlid and tag", async () => {
         .add("client_action_by_tag", () => expect.step("client_action_tag"))
         .add("client_action_by_object", () => expect.step("client_action_object"));
 
-    await makeMockEnv();
+    await makeTestApp();
     await getService("action").doAction(10);
     expect.verifySteps(["client_action_db_id"]);
     await getService("action").doAction("some_action");
@@ -189,7 +189,7 @@ test("can execute actions from id, xmlid and tag", async () => {
 
 test("action doesn't exists", async () => {
     expect.assertions(1);
-    await makeMockEnv();
+    await makeTestApp();
     try {
         await getService("action").doAction({
             tag: "this_is_a_tag",
@@ -232,7 +232,7 @@ test("getCurrentAction (virtual controller)", async () => {
     stepAllNetworkCalls();
     class ClientAction extends Component {
         static template = xml`<div class="o_client_action_test">Hello World</div>`;
-        static props = ["*"];
+        props = useProps();
         static path = "plop";
         setup() {
             onWillStart(async () => {
@@ -276,7 +276,7 @@ test("getCurrentAction (virtual controller)", async () => {
 });
 
 test("action in handler registry", async () => {
-    await makeMockEnv();
+    await makeTestApp();
     actionHandlersRegistry.add("ir.action_in_handler_registry", ({ action }) =>
         expect.step(action.type)
     );
@@ -326,7 +326,7 @@ test("actions can be cached", async () => {
         expect.step(params.context);
     });
 
-    await makeMockEnv();
+    await makeTestApp();
 
     // With no additional params
     await getService("action").loadAction(3);
@@ -382,7 +382,7 @@ test("action cache: additionalContext is used on the key", async () => {
         expect.step("server loaded");
     });
 
-    await makeMockEnv();
+    await makeTestApp();
     const actionParams = {
         additionalContext: {
             some: { deep: { nested: "Robert" } },
@@ -748,10 +748,10 @@ test("action is removed while waiting for another action with selectMenu", async
     let def;
     class SlowClientAction extends Component {
         static template = xml`<div>My client action</div>`;
-        static props = ["*"];
+        props = useProps();
 
         setup() {
-            onWillStart(() => def);
+            onWillStart(() => def?.promise);
         }
     }
     actionRegistry.add("slow_client_action", SlowClientAction);
@@ -779,7 +779,7 @@ test("action is removed while waiting for another action with selectMenu", async
     expect(".o_kanban_view").toHaveCount(1);
 
     // select app in navbar menu
-    def = new Deferred();
+    def = Promise.withResolvers();
     await contains(".o_navbar_apps_menu .dropdown-toggle").click();
     const appsMenu = getDropdownMenu(".o_navbar_apps_menu");
     await contains(".o_app:contains(App1)", { root: appsMenu }).click();

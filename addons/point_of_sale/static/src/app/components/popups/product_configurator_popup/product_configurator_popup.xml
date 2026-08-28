@@ -2,7 +2,7 @@
 <templates id="template" xml:space="preserve">
 
     <t t-name="point_of_sale.RadioProductAttribute">
-        <div class="configurator_radio" t-custom-ref="root">
+        <div class="configurator_radio">
             <div class="d-flex flex-wrap gap-3 align-items-center">
                 <t t-foreach="this.props.attribute.values()" t-as="value" t-key="value.id">
                     <div class="attribute-name-cell form-check">
@@ -32,7 +32,7 @@
     </t>
 
     <t t-name="point_of_sale.PillsProductAttribute">
-        <div class="configurator_radio" t-custom-ref="root">
+        <div class="configurator_radio">
             <div class="d-flex flex-wrap gap-2">
                 <t t-foreach="this.props.attribute.values()" t-as="value" t-key="value.id">
                     <div class="attribute-name-cell">
@@ -194,9 +194,14 @@
     </t>
 
     <t t-name="point_of_sale.ProductConfiguratorPopup">
-        <Dialog title="this.title">
+        <Dialog title="this.title" contentClass="'product-configurator-popup'" bodyClass="'bg-secondary'">
+            <t t-set-slot="header">
+                <h4 class="modal-title text-break flex-grow-1" t-out="this.title"/>
+                <span class="me-2" t-if="this.defaultCode" t-out="'[' + this.defaultCode + ']'"/>
+                <button type="button" class="btn-close" aria-label="Close" tabindex="-1" t-on-click="this.props.close"/>
+            </t>
             <ProductInfoBanner t-if="this.showInfoBanner" productTemplate="this.props.productTemplate" product="this.product" />
-            <div t-custom-ref="input-area">
+            <div>
                 <div t-if="this.isArchivedCombination()" class="alert alert-warning mt-3">
                     <span>This option or combination of options is not available</span>
                 </div>
@@ -231,12 +236,12 @@
             <t t-set-slot="footer">
                 <div class="d-flex flex-row gap-2 w-100">
                     <button
-                            class="btn btn-primary btn-lg lh-lg w-50"
+                            class="btn btn-primary w-50"
                             t-att-class="{'disabled': this.isArchivedCombination() or !this.isValidCombination()}"
                             t-on-click="this.confirm">
                             Add
                         </button>
-                    <button class="btn btn-secondary btn-lg lh-lg w-50" t-on-click="this.props.close">Discard</button>
+                    <button class="btn btn-secondary w-50" t-on-click="this.props.close">Discard</button>
                 </div>
             </t>
         </Dialog>

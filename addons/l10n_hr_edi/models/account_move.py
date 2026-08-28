@@ -5,9 +5,8 @@ import re
 from odoo import api, models, fields
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import SQL
-from odoo.tools.sql import column_exists, create_column
 
-from ..tools import (
+from odoo.addons.l10n_hr_edi.tools.api import (
     _mer_api_mark_paid,
     _mer_api_query_document_process_status_inbox,
     _mer_api_query_document_process_status_outbox,
@@ -45,6 +44,7 @@ class AccountMove(models.Model):
         store=True,
         readonly=False,
         copy=False,
+        init_storage=lambda model: None,
     )
     l10n_hr_customer_defined_process_name = fields.Char(
         string="Custom Process Name",
@@ -80,11 +80,6 @@ class AccountMove(models.Model):
     l10n_hr_mer_document_eid = fields.Char(related='l10n_hr_edi_addendum_id.mer_document_eid')
     l10n_hr_mer_document_status = fields.Selection(related='l10n_hr_edi_addendum_id.mer_document_status')
 
-    def _auto_init(self):
-        if not column_exists(self.env.cr, 'account_move', 'l10n_hr_process_type'):
-            create_column(self.env.cr, 'account_move', 'l10n_hr_process_type', 'varchar')
-        return super()._auto_init()
-
     @api.depends('l10n_hr_edi_addendum_id.payment_reported_amount', 'amount_residual', 'amount_total')
     def _compute_l10n_hr_payment_unreported(self):
         for move in self:
@@ -106,8 +101,12 @@ class AccountMove(models.Model):
     @api.constrains('move_type', 'l10n_hr_process_type')
     def _check_l10n_hr_process_type(self):
         for record in self:
-            if record.country_code == 'HR' and (record.l10n_hr_process_type == 'P9') == (record.move_type != 'out_refund'):
-                raise ValidationError(self.env._('Business Process Type P9 can only be used with credit notes and vice versa.'))
+            if record.country_code != 'HR':
+                continue
+            if record.move_type != 'out_refund' and record.l10n_hr_process_type == 'P9':
+                raise ValidationError(self.env._('Business Process Type P9 can only be used with credit notes.'))
+            if record.move_type == 'out_refund' and record.l10n_hr_process_type not in ('P9', 'P10'):
+                raise ValidationError(self.env._('Credit notes must use Business Process Type P9 or P10.'))
 
     @api.depends('l10n_hr_fiscalization_status')
     def _compute_show_reset_to_draft_button(self):

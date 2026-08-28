@@ -3,20 +3,17 @@ import { registry } from "@web/core/registry";
 import { exprToBoolean } from "@web/core/utils/strings";
 import { standardFieldProps } from "../standard_field_props";
 
-import { Component } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
 
 export class BooleanFavoriteField extends Component {
     static template = "web.BooleanFavoriteField";
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        noLabel: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        noLabel: false,
-    };
+        noLabel: t.boolean().optional(false),
+    });
 
     get iconClass() {
-        return this.props.record.data[this.props.name] ? "fa fa-star" : "fa fa-star-o";
+        return this.props.record.data[this.props.name] ? "oi-filled" : "";
     }
 
     get label() {

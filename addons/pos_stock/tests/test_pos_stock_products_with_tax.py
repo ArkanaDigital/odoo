@@ -9,6 +9,8 @@ from odoo.addons.pos_stock.tests.common import TestPosStockCommon
 @odoo.tests.tagged('post_install', '-at_install')
 class TestPosStockProductsWithTax(TestPosStockCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
         self.config = self.basic_config
@@ -139,6 +141,7 @@ class TestPosStockProductsWithTax(TestPosStockCommon):
         xx_cash_journal = self.company_data['default_journal_cash'].copy({'company_id': branch_xx.id})
         xx_cash_payment_method = self.env['pos.payment.method'].create({
             'name': 'XX Cash Payment',
+            'type': 'cash',
             'receivable_account_id': xx_account_receivable.id,
             'journal_id': xx_cash_journal.id,
             'company_id': branch_xx.id,
@@ -153,7 +156,7 @@ class TestPosStockProductsWithTax(TestPosStockCommon):
         # - Product no tax from XX      => tax from Branch X should be set
         # - Product no tax from branch  => 2 taxes from parent company should be set
         # - Product no tax              => no tax should be set
-        pos_data = pos_session.load_data([])
+        pos_data = pos_session.load_data({'only_records': True})
         self.assertEqual(
             next(iter(filter(lambda p: p['id'] == product_all_taxes.product_tmpl_id.id, pos_data['product.template'])))['taxes_id'],
             tax_xx.ids

@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 /* global BarcodeDetector */
 
 import { browser } from "@web/core/browser/browser";
@@ -6,7 +5,17 @@ import { delay } from "@web/core/utils/concurrency";
 import { loadJS } from "@web/core/assets";
 import { isVideoElementReady, buildZXingBarcodeDetector } from "./ZXingBarcodeDetector";
 import { CropOverlay } from "./crop_overlay";
-import { Component, onMounted, onWillStart, onWillUnmount, status, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillStart,
+    onWillUnmount,
+    proxy,
+    signal,
+    status,
+    t,
+    useProps,
+} from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { pick } from "@web/core/utils/objects";
 
@@ -15,27 +24,22 @@ export class BarcodeVideoScanner extends Component {
     static components = {
         CropOverlay,
     };
-    static props = {
-        cssClass: { type: String, optional: true },
-        facingMode: {
-            type: String,
-            validate: (fm) => ["environment", "left", "right", "user"].includes(fm),
-        },
-        close: { type: Function, optional: true },
-        onReady: { type: Function, optional: true },
-        onResult: Function,
-        onError: Function,
-        placeholder: { type: String, optional: true },
-        delayBetweenScan: { type: Number, optional: true },
-    };
-    static defaultProps = {
-        cssClass: "w-100 h-100",
-    };
+    props = useProps({
+        cssClass: t.string().optional("w-100 h-100"),
+        facingMode: t.selection(["environment", "left", "right", "user"]),
+        close: t.function().optional(),
+        onReady: t.function().optional(),
+        onResult: t.function(),
+        onError: t.function(),
+        placeholder: t.string().optional(),
+        delayBetweenScan: t.number().optional(),
+    });
+    videoPreviewRef = signal.ref();
+
     /**
      * @override
      */
     setup() {
-        this.videoPreviewRef = useRef("videoPreview");
         this.detectorTimeout = null;
         this.stream = null;
         this.detector = null;
@@ -80,18 +84,22 @@ export class BarcodeVideoScanner extends Component {
                 this.props.onError(new Error(errorMessage));
                 return;
             }
-            if (!this.videoPreviewRef.el) {
+            const videoEl = this.videoPreviewRef();
+            if (!videoEl) {
                 this.cleanStreamAndTimeout();
                 const errorMessage = _t("Barcode Video Scanner could not be mounted properly.");
                 this.props.onError(new Error(errorMessage));
                 return;
             }
-            this.videoPreviewRef.el.srcObject = this.stream;
+            videoEl.srcObject = this.stream;
             const ready = await this.isVideoReady();
             if (!ready) {
                 return;
             }
-            const { height, width } = getComputedStyle(this.videoPreviewRef.el);
+            if (videoEl.paused) {
+                await videoEl.play();
+            }
+            const { height, width } = getComputedStyle(videoEl);
             const divWidth = width.slice(0, -2);
             const divHeight = height.slice(0, -2);
             const tracks = this.stream.getVideoTracks();
@@ -127,9 +135,9 @@ export class BarcodeVideoScanner extends Component {
      */
     async isVideoReady() {
         // FIXME: even if it shouldn't happened, a timeout could be useful here.
-        while (!isVideoElementReady(this.videoPreviewRef.el)) {
+        while (!isVideoElementReady(this.videoPreviewRef())) {
             await delay(10);
-            if (status(this) === "destroyed"){
+            if (status(this) === "destroyed") {
                 return false;
             }
         }
@@ -156,7 +164,7 @@ export class BarcodeVideoScanner extends Component {
         let barcodeDetected = false;
         let codes = [];
         try {
-            codes = await this.detector.detect(this.videoPreviewRef.el);
+            codes = await this.detector.detect(this.videoPreviewRef());
         } catch (err) {
             this.props.onError(err);
         }
@@ -221,7 +229,7 @@ export class BarcodeVideoScanner extends Component {
             inputElement.addEventListener("input", async (event) => {
                 await track?.applyConstraints({ advanced: [{ zoom: inputElement.value }] });
             });
-            this.videoPreviewRef.el.parentElement.appendChild(inputElement);
+            this.videoPreviewRef().parentElement.appendChild(inputElement);
         }
     }
 }

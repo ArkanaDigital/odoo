@@ -14,6 +14,8 @@ from odoo.fields import Command
 @tagged('post_install', '-at_install')
 class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -224,6 +226,27 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         ]
 
         self.assertAlmostEqual(sum(k.standard_price * k.qty_available for k in components), 120 * 1260, delta=0.5)
+
+    def test_kit_component_packaging_uom_not_converted_po(self):
+        """ The receipt move of a kit component must keep the component's own
+        UoM as packaging UoM."""
+        kit, component = self.env['product.product'].create([
+            {'name': 'Kit UoM', 'uom_id': self.uom_unit.id},
+            {'name': 'Comp Kg', 'is_storable': True, 'uom_id': self.uom_kg.id},
+        ])
+        self.env['mrp.bom'].create({
+            'product_tmpl_id': kit.product_tmpl_id.id,
+            'type': 'phantom',
+            'bom_line_ids': [Command.create({'product_id': component.id, 'product_qty': 1.0})],
+        })
+        po = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [Command.create({'product_id': kit.id, 'product_qty': 1.0})],
+        })
+        po.button_confirm()
+        component_move = po.picking_ids.move_ids
+        self.assertEqual(component_move.uom_id, self.uom_kg)
+        self.assertEqual(component_move.packaging_uom_id, self.uom_kg)
 
     def test_kit_component_cost_multi_currency(self):
         # Set kit and component product to automated FIFO
@@ -678,14 +701,13 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         # set horizon days to 0
         self.env.company.horizon_days = 0
 
+        routes = self.env.ref('mrp.route_warehouse0_manufacture') + self.env.ref('purchase_stock.route_warehouse0_buy')
+        routes.product_selectable = True
         product = self.env['product.product'].create({
             'name': 'super product',
             'is_storable': True,
-            #set route to manufacture + buy
-            'route_ids': [
-                (4, self.env.ref('mrp.route_warehouse0_manufacture').id),
-                (4, self.env.ref('purchase_stock.route_warehouse0_buy').id)
-            ],
+            # set route to manufacture + buy
+            'route_ids': routes,
             'seller_ids': [(0, 0, {
                 'partner_id': self.env['res.partner'].create({'name': 'super vendor'}).id,
                 'min_qty': 1,
@@ -1049,6 +1071,7 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         route_buy = self.warehouse.buy_pull_id.route_id
         route_mto = self.warehouse.mto_pull_id.route_id
         route_mto.rule_ids.procure_method = "make_to_order"
+        (route_buy + route_mto).product_selectable = True
         self.component_a.write({
             'seller_ids': [
                 Command.create({'partner_id': self.partner_a.id},
@@ -1102,6 +1125,7 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         route_buy = self.warehouse.buy_pull_id.route_id
         route_mto = self.warehouse.mto_pull_id.route_id
         route_mto.rule_ids.procure_method = "make_to_order"
+        (route_buy + route_mto).product_selectable = True
         self.component_a.write({
             'seller_ids': [
                 Command.create({'partner_id': self.partner_a.id},
@@ -1388,3 +1412,23 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         self.assertEqual(mo.reference_ids.move_ids.created_purchase_line_ids.product_qty, 5)
         mo.move_raw_ids.product_uom_qty = 2
         self.assertEqual(mo.reference_ids.move_ids.created_purchase_line_ids.product_qty, 2)
+
+    def test_monthly_demand_multistep_manufacturing(self):
+        """Ensure that monthly demand is correctly counted for waiting raw
+        material consumption moves in multi-step (2-step/3-step) manufacturing.
+        """
+        self.warehouse.manufacture_steps = 'pbm'
+        component = self.component_a
+
+        mo = self.env['mrp.production'].create({
+            'product_id': self.product.id,
+            'move_raw_ids': [Command.create({
+                'product_id': component.id,
+                'product_uom_qty': 20,
+            })],
+        })
+        mo.action_confirm()
+
+        # Monthly demand of the raw material(component) should be 20.0 with and without warehouse.
+        self.assertEqual(component.with_context(warehouse_id=self.warehouse.id).monthly_demand, 20.0)
+        self.assertEqual(component.monthly_demand, 20.0)

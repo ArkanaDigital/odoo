@@ -9,7 +9,6 @@
     'website': 'https://www.odoo.com/documentation/latest/applications/finance/fiscal_localizations/peru.html',
     'license': 'LGPL-3',
     'depends': [
-        'base_vat',
         'portal_address_extended',
         'l10n_latam_base',
         'l10n_latam_invoice_document',
@@ -18,7 +17,6 @@
     ],
     'auto_install': ['account'],
     'data': [
-        'security/ir.model.access.csv',
         'views/account_tax_view.xml',
         'views/res_city_view.xml',
         'views/portal_address_templates.xml',
@@ -27,6 +25,7 @@
         'data/l10n_pe.res.city.district.csv',
         'data/res_country_data.xml',
         'data/l10n_latam_identification_type_data.xml',
+        'security/ir.access.csv',
     ],
     'assets': {
         'web.assets_frontend': [

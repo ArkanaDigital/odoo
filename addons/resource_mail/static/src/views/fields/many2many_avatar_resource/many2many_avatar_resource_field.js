@@ -1,24 +1,20 @@
 import { AvatarCard } from "@mail/core/web/avatar_card/avatar_card";
-
-import { Component } from "@odoo/owl";
-
-import { registry } from "@web/core/registry";
-import { usePopover } from "@web/core/popover/popover_hook";
-import { _t } from "@web/core/l10n/translation";
 import {
-    KanbanMany2ManyTagsAvatarUserField,
+    CardMany2ManyTagsAvatarUserField,
     ListMany2ManyTagsAvatarUserField,
     Many2ManyTagsAvatarUserField,
-    kanbanMany2ManyTagsAvatarUserField,
+    cardMany2ManyTagsAvatarUserField,
     listMany2ManyTagsAvatarUserField,
     many2ManyTagsAvatarUserField,
 } from "@mail/views/web/fields/many2many_avatar_user_field/many2many_avatar_user_field";
-import { Many2XAutocomplete } from "@web/views/fields/relational_utils";
+import { Component } from "@odoo/owl";
+import { _t } from "@web/core/l10n/translation";
+import { usePopover } from "@web/core/popover/popover_hook";
+import { registry } from "@web/core/registry";
 import { AvatarTag } from "@web/core/tags_list/avatar_tag";
+import { useService } from "@web/core/utils/hooks";
 import { Many2ManyTagsAvatarFieldPopover } from "@web/views/fields/many2many_tags_avatar/many2many_tags_avatar_field";
-
-// TODO: Remove me in master
-export class AvatarResourceMany2XAutocomplete extends Many2XAutocomplete {}
+import { Many2XAutocomplete } from "@web/views/fields/relational_utils";
 
 class ResourceTag extends Component {
     static template = "resource_mail.ResourceTag";
@@ -37,6 +33,7 @@ class ResourceTag extends Component {
 const WithResourceFieldMixin = (T) => class ResourceFieldMixin extends T {
     setup() {
         super.setup(...arguments);
+        this.uiService = useService("ui");
         if (this.relation == "resource.resource") {
             this.avatarCard = usePopover(AvatarCard);
         }
@@ -44,7 +41,7 @@ const WithResourceFieldMixin = (T) => class ResourceFieldMixin extends T {
 
     static components = {
         ...super.components,
-        Many2XAutocomplete: AvatarResourceMany2XAutocomplete,
+        Many2XAutocomplete,
         Tag: ResourceTag,
     };
     static optionTemplate = "resource_mail.Many2ManyAvatarResourceField.option";
@@ -58,7 +55,7 @@ const WithResourceFieldMixin = (T) => class ResourceFieldMixin extends T {
     }
 
     displayAvatarCard(record) {
-        return !this.env.isSmall && this.relation === "resource.resource" && record.data.resource_type === "user";
+        return !this.uiService.isSmall && this.relation === "resource.resource" && record.data.resource_type === "user";
     }
 
     getTagProps(record) {
@@ -111,17 +108,17 @@ registry.category("fields").add("list.many2many_avatar_resource", listMany2ManyA
 
 export class Many2ManyTagsAvatarResourceFieldPopover extends WithResourceFieldMixin(Many2ManyTagsAvatarFieldPopover) {}
 
-export class KanbanMany2ManyAvatarResourceField extends WithResourceFieldMixin(KanbanMany2ManyTagsAvatarUserField) {
+export class CardMany2ManyAvatarResourceField extends WithResourceFieldMixin(CardMany2ManyTagsAvatarUserField) {
     static PopoverClass = Many2ManyTagsAvatarResourceFieldPopover;
 
     get placeholder() {
         return _t("Search resources...");
     }
 }
-export const kanbanMany2ManyAvatarResourceField = {
-    ...kanbanMany2ManyTagsAvatarUserField,
+export const cardMany2ManyAvatarResourceField = {
+    ...cardMany2ManyTagsAvatarUserField,
     ...resourceFieldMixin,
-    component: KanbanMany2ManyAvatarResourceField,
+    component: CardMany2ManyAvatarResourceField,
 };
-registry.category("fields").add("kanban.many2many_avatar_resource", kanbanMany2ManyAvatarResourceField);
-registry.category("fields").add("activity.many2many_avatar_resource", kanbanMany2ManyAvatarResourceField);
+registry.category("fields").add("card.many2many_avatar_resource", cardMany2ManyAvatarResourceField);
+registry.category("fields").add("activity.many2many_avatar_resource", cardMany2ManyAvatarResourceField);

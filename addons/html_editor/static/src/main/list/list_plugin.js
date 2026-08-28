@@ -3,7 +3,6 @@ import { closestBlock, isBlock } from "@html_editor/utils/blocks";
 import {
     fillEmpty,
     removeClass,
-    removeEmptyTextNodes,
     removeStyle,
     toggleClass,
     unwrapContents,
@@ -37,8 +36,8 @@ import { _t } from "@web/core/l10n/translation";
 import { compareListTypes, createList, insertListAfter, isListItem } from "./utils";
 import { callbacksForCursorUpdate } from "@html_editor/utils/selection";
 import { withSequence } from "@html_editor/utils/resource";
-import { FONT_SIZE_CLASSES, getFontSizeOrClass, getHtmlStyle } from "@html_editor/utils/formatting";
-import { getTextColorOrClass, TEXT_CLASSES_REGEX } from "@html_editor/utils/color";
+import { getFontSizeOrClass, getHtmlStyle } from "@html_editor/utils/formatting";
+import { TEXT_CLASSES_REGEX, getColorOrClass } from "@html_editor/utils/color";
 import { baseContainerGlobalSelector } from "@html_editor/utils/base_container";
 import { ListSelector } from "./list_selector";
 import { composeToolbarButton } from "../toolbar/toolbar";
@@ -91,7 +90,7 @@ export class ListPlugin extends Plugin {
                 id: "toggleListUL",
                 title: _t("Bulleted list"),
                 description: _t("Create a simple bulleted list"),
-                icon: "fa-list-ul",
+                icon: "format_list_bulleted",
                 run: () => this.toggleListCommand({ mode: "UL" }),
                 isAvailable: this.canToggleList.bind(this),
             },
@@ -99,7 +98,7 @@ export class ListPlugin extends Plugin {
                 id: "toggleListOL",
                 title: _t("Numbered list"),
                 description: _t("Create a list with numbering"),
-                icon: "fa-list-ol",
+                icon: "format_list_numbered",
                 run: ({ listStyle } = {}) => this.toggleListCommand({ mode: "OL", listStyle }),
                 isAvailable: this.canToggleList.bind(this),
             },
@@ -107,7 +106,7 @@ export class ListPlugin extends Plugin {
                 id: "toggleListCL",
                 title: _t("Checklist"),
                 description: _t("Track tasks with a checklist"),
-                icon: "fa-check-square-o",
+                icon: "check_box",
                 run: () => this.toggleListCommand({ mode: "CL" }),
                 isAvailable: (selection) =>
                     this.config.allowChecklist && this.canToggleList(selection),
@@ -180,6 +179,7 @@ export class ListPlugin extends Plugin {
         /** Handlers */
         on_deleted_handlers: this.adjustListPaddingOnDelete.bind(this),
         on_will_insert_separator_handlers: this.exitList.bind(this),
+        on_format_applied_handlers: this.postFormatAppliedOnList.bind(this),
 
         /** Processors */
         normalize_processors: this.normalize.bind(this),
@@ -195,7 +195,6 @@ export class ListPlugin extends Plugin {
         shift_tab_overrides: this.handleShiftTab.bind(this),
         split_element_block_overrides: this.handleSplitBlock.bind(this),
         apply_color_overrides: this.applyColorToListItem.bind(this),
-        format_selection_overrides: this.applyFormatToListItem.bind(this),
         triple_click_overrides: this.handleTripleClick.bind(this),
 
         is_node_fully_selected_predicates: (node, selection, range) => {
@@ -223,6 +222,12 @@ export class ListPlugin extends Plugin {
                 return li;
             }
         },
+        formattable_node_providers: (node) => {
+            const li = closestElement(node, isListItem);
+            if (li && this.dependencies.selection.areNodeContentsFullySelected(li)) {
+                return li;
+            }
+        },
     };
 
     setup() {
@@ -242,12 +247,14 @@ export class ListPlugin extends Plugin {
 
     getBlocksToToggleList() {
         const targetedBlocks = [...this.dependencies.selection.getTargetedBlocks()];
-        return targetedBlocks.filter(
-            (block) =>
-                !descendants(block).some((descendant) => targetedBlocks.includes(descendant)) &&
-                block.isContentEditable &&
-                !["OL", "UL"].includes(block.tagName)
-        );
+        return targetedBlocks
+            .filter(
+                (block) =>
+                    !descendants(block).some((descendant) => targetedBlocks.includes(descendant)) &&
+                    !["OL", "UL"].includes(block.tagName)
+            )
+            .map((block) => closestElement(block, isListItem) ?? block)
+            .filter((block) => block.isContentEditable && block.parentElement.isContentEditable);
     }
 
     canToggleList(selection) {
@@ -291,7 +298,7 @@ export class ListPlugin extends Plugin {
         const nonListBlocks = new Set();
         const listsToSwitch = new Set();
         for (const block of this.getBlocksToToggleList()) {
-            const li = closestElement(block, isListItem);
+            const li = isListItem(block) && block;
             if (li) {
                 if (this.getListMode(li.parentElement) === mode) {
                     sameModeListItems.add(li);
@@ -324,6 +331,7 @@ export class ListPlugin extends Plugin {
     }
 
     normalize(root = this.editable) {
+        const originalRoot = root;
         const closestNestedLI = closestElement(root, "li:has(ul, ol)");
         if (closestNestedLI && closestNestedLI.closest("ul, ol")) {
             root = closestNestedLI.parentElement;
@@ -347,6 +355,19 @@ export class ListPlugin extends Plugin {
                 }
             }
         }
+        // Help CSS to not use :has(> ...) by setting a class on parent nodes
+        for (const floatClass of ["float-start", "float-end"]) {
+            const parentClass = `o-${floatClass}-parent`;
+            for (const el of selectElements(root, `.${parentClass}`)) {
+                if (![...el.children].some((el) => el.classList.contains(floatClass))) {
+                    el.classList.remove(parentClass);
+                }
+            }
+            for (const el of selectElements(root, `:not(.${parentClass}) > .${floatClass}`)) {
+                el.parentElement.classList.add(parentClass);
+            }
+        }
+        return originalRoot;
     }
 
     // --------------------------------------------------------------------------
@@ -761,9 +782,15 @@ export class ListPlugin extends Plugin {
         // Preserve style properties
         const dir = li.getAttribute("dir") || ul.getAttribute("dir");
         const textAlign = li.style.getPropertyValue("text-align");
-        const liColorStyle = getTextColorOrClass(li);
+        const liColorStyle = getColorOrClass(li);
         const liFontSizeStyle = getFontSizeOrClass(li);
-        const wrapChildren = (parent, tag) => {
+        const getOrCreateWrapper = (parent, tag) => {
+            if (
+                parent.childNodes.length === 1 &&
+                parent.firstChild.nodeName === tag.toUpperCase()
+            ) {
+                return parent.firstChild;
+            }
             const wrapper = this.document.createElement(tag);
             wrapper.append(...parent.childNodes);
             parent.replaceChildren(wrapper);
@@ -781,16 +808,24 @@ export class ListPlugin extends Plugin {
             }
             // text color
             if (liColorStyle) {
-                const font = wrapChildren(block, "font");
+                const font = getOrCreateWrapper(block, "font");
                 this.dependencies.color.colorElement(font, liColorStyle.value, "color");
             }
             // font-size
-            if (liFontSizeStyle && !isEmptyBlock(block)) {
-                const span = wrapChildren(block, "span");
+            if (liFontSizeStyle) {
+                const span = getOrCreateWrapper(block, "span");
                 if (liFontSizeStyle.type === "font-size") {
-                    span.style.fontSize = liFontSizeStyle.value;
-                } else if (liFontSizeStyle.type === "class") {
+                    span.style.setProperty("font-size", liFontSizeStyle.value);
+                } else {
                     span.classList.add(liFontSizeStyle.value);
+                }
+            }
+            // other style properties
+            for (const property of ["font-weight", "font-style"]) {
+                const value = li.style.getPropertyValue(property);
+                if (value) {
+                    const span = getOrCreateWrapper(block, "span");
+                    span.style.setProperty(property, value);
                 }
             }
         }
@@ -1130,14 +1165,11 @@ export class ListPlugin extends Plugin {
         const listItems = new Set(
             targetedNodes.map((n) => closestElement(n, "li")).filter(Boolean)
         );
-        if (!listItems.size || mode !== "color" || isColorGradient(color)) {
+        if (!listItems.size || (mode !== "color" && color) || isColorGradient(color)) {
             return;
         }
         const cursors = this.dependencies.selection.preserveSelection();
         for (const listItem of listItems) {
-            // Remove empty text nodes without breaking the current selection.
-            removeEmptyTextNodes(listItem, cursors);
-
             if (this.dependencies.selection.areNodeContentsFullySelected(listItem)) {
                 const listItemDescendants = descendants(listItem);
                 for (const node of [
@@ -1153,7 +1185,10 @@ export class ListPlugin extends Plugin {
                     removeClass(node, ...classesToRemove);
 
                     if (node.style.color) {
-                        removeStyle(node, "color");
+                        this.dependencies.color.colorElement(node, color, mode);
+                    }
+                    if (node.style.backgroundColor) {
+                        removeStyle(node, "background-color");
                     }
                 }
 
@@ -1191,84 +1226,20 @@ export class ListPlugin extends Plugin {
         cursors.restore();
     }
 
-    applyFormatToListItem(formatName, formattedNodes, { formatProps, applyStyle } = {}) {
-        if (!["setFontSizeClassName", "fontSize"].includes(formatName)) {
+    postFormatAppliedOnList(node, formatName, applyStyle) {
+        if (formatName !== "fontSize") {
             return;
         }
-        this.dependencies.split.splitSelection();
-        const targetedNodes = this.dependencies.selection.getTargetedNodes();
-        const listItems = new Set(
-            targetedNodes.map((n) => closestElement(n, "li")).filter(Boolean)
-        );
-        if (!listItems.size) {
-            return false;
-        }
         const listsSet = new Set();
-        const cursors = this.dependencies.selection.preserveSelection();
-        for (const listItem of listItems) {
-            // Skip list items with block descendants other than base
-            // container or a list related elements or no font size formatting
-            // to remove.
-            const hasOnlyBaseBlocks = [...descendants(listItem)]
-                .filter(isBlock)
-                .every((n) => n.matches(`${baseContainerGlobalSelector}, ol, ul, li`));
-            const hasExistingFontSize =
-                FONT_SIZE_CLASSES.some((c) => listItem.classList.contains(c)) ||
-                listItem.style.fontSize;
-            if (!hasOnlyBaseBlocks || (!applyStyle && !hasExistingFontSize)) {
-                continue;
-            }
-
-            // Remove empty text nodes without breaking the current selection.
-            removeEmptyTextNodes(listItem, cursors);
-
-            if (this.dependencies.selection.areNodeContentsFullySelected(listItem)) {
-                const listItemDescendants = descendants(listItem);
-                for (const node of [
-                    listItem,
-                    ...listItemDescendants.filter(
-                        (n) => isElement(n) && closestElement(n, "LI") === listItem
-                    ),
-                ]) {
-                    removeClass(node, ...FONT_SIZE_CLASSES, "o_default_font_size");
-                    if (node.style.fontSize) {
-                        node.style.fontSize = "";
-                    }
-                }
-
-                const sublists = childNodes(listItem).filter(isListElement);
-                formattedNodes.add(listItem);
-                listItemDescendants
-                    .filter((n) => !sublists.some((list) => list.contains(n)))
-                    .forEach((n) => formattedNodes.add(n));
+        if (isListItem(node)) {
+            const sublists = childNodes(node).filter(isListElement);
+            for (const list of sublists) {
                 if (applyStyle) {
-                    if (formatName === "setFontSizeClassName") {
-                        listItem.classList.add(formatProps.className);
-                    } else if (formatName === "fontSize") {
-                        listItem.style.fontSize = formatProps.size;
-                    }
-                    for (const list of sublists) {
-                        list.classList.add("o_default_font_size");
-                    }
-                }
-            } else if (!applyStyle && hasExistingFontSize) {
-                const textNodes = targetedNodes.filter(
-                    (n) => isVisibleTextNode(n) && closestElement(n, "li") === listItem
-                );
-                // Remove inline font size from partial selection by
-                // wrapping in span with default font size.
-                for (const node of textNodes) {
-                    const span = this.document.createElement("span");
-                    span.classList.add("o_default_font_size");
-                    node.before(span);
-                    cursors.update(callbacksForCursorUpdate.before(node, span));
-                    span.append(node);
-                    cursors.update(callbacksForCursorUpdate.append(span, node));
+                    list.classList.add("o_default_font_size");
                 }
             }
-            listsSet.add(listItem.parentElement);
+            listsSet.add(node.parentElement);
         }
-        cursors.restore();
         for (const list of listsSet) {
             this.adjustListPadding(list);
         }

@@ -43,7 +43,13 @@ export class DataResponse extends Record {
         /** @this {import("models").DataResponse} */
         onUpdate() {
             if (this._resolve) {
-                this._resultResolvers.resolve({ ...this });
+                const result = { ...this };
+                for (const [name, value] of Object.entries(result)) {
+                    if (Array.isArray(value)) {
+                        result[name] = [...value];
+                    }
+                }
+                this._resultResolvers.resolve(result);
                 this.delete();
             }
         },
@@ -64,6 +70,8 @@ export class DataResponse extends Record {
     channels = fields.Many("discuss.channel");
     /** @type {number} */
     count;
+    /** @type {boolean} */
+    is_fully_loaded;
     message = fields.One("mail.message");
     messages = fields.Many("mail.message");
     partners = fields.Many("res.partner");

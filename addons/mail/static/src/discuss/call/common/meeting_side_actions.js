@@ -1,47 +1,46 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { ActionList } from "@mail/core/common/action_list";
+import { UseThreadActions } from "@mail/core/common/thread_actions";
+import { attClassObjectToString } from "@mail/utils/common/format";
 
-import { Component } from "@odoo/owl";
+import { Component, computed, types, useProps } from "@odoo/owl";
 
 import { useService } from "@web/core/utils/hooks";
 
 /** @typedef {"chat"|"invite"} MeetingPanel */
 
-/**
- * @typedef {Object} Props
- * @property {import("@mail/core/common/thread_actions").UseThreadActions} threadActions
- * @extends {Component<Props, Env>}
- */
 export class MeetingSideActions extends Component {
     static template = "mail.MeetingSideActions";
-    static props = ["threadActions", "isSmall?"];
     static components = { ActionList };
 
     setup() {
         this.store = useService("mail.store");
-        useSubEnv({ inMeetingSideActions: true });
+        this.props = useProps({
+            threadActions: types.instanceOf(UseThreadActions),
+        });
+        this.ui = useService("ui");
     }
 
     get callActionsParams() {
         return { channel: () => this.store.rtc.channel };
     }
 
-    computeActions() {
+    actions = computed(() => {
         const threadActions = this.props.threadActions;
-        if (this.store.rtc.channel.default_display_mode === "video_full_screen") {
-            this.actions = threadActions.actions.filter((action) =>
+        // the channel can already be gone while the meeting view tears down
+        if (this.store.rtc.channel?.default_display_mode === "video_full_screen") {
+            return threadActions.actions.filter((action) =>
                 ["member-list", "meeting-chat"].includes(action.id)
             );
-            return;
         }
-        const quickThreadActionIds = this.props.isSmall ? [] : ["invite-people", "meeting-chat"];
+        const quickThreadActionIds = this.ui.isSmall ? [] : ["member-list", "meeting-chat"];
+        const hiddenActionIds = ["advanced-settings", "leave"];
+        const actionsInMore = (action) =>
+            !quickThreadActionIds.includes(action.id) && !hiddenActionIds.includes(action.id);
         const { quick, other, group } = threadActions.partition;
         const partitionedActions = {
-            quick: quick.filter((action) => !quickThreadActionIds.includes(action.id)),
-            other: other.filter((action) => !quickThreadActionIds.includes(action.id)),
-            group: group
-                .map((group) => group.filter((action) => !quickThreadActionIds.includes(action.id)))
-                .filter((g) => g.length > 0),
+            quick: quick.filter(actionsInMore),
+            other: other.filter(actionsInMore),
+            group: group.map((group) => group.filter(actionsInMore)).filter((g) => g.length > 0),
         };
         const actions = threadActions.actions.filter((action) =>
             quickThreadActionIds.includes(action.id)
@@ -53,8 +52,11 @@ export class MeetingSideActions extends Component {
                     partitionedActions.other,
                     ...partitionedActions.group,
                 ],
+                dropdownMenuClass: attClassObjectToString({
+                    "o-discuss-CallActionList-menu": Boolean(this.env.inMeetingView),
+                }),
             })
         );
-        this.actions = actions;
-    }
+        return actions;
+    });
 }

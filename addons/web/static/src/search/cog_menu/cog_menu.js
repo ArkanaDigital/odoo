@@ -1,10 +1,24 @@
-import { registry } from "@web/core/registry";
+import { asyncComputed, onWillStart, t } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
-import { ActionMenus } from "@web/search/action_menus/action_menus";
 import { _t } from "@web/core/l10n/translation";
-import { onWillStart, onWillUpdateProps } from "@odoo/owl";
+import { registry } from "@web/core/registry";
+import { useService } from "@web/core/utils/hooks";
+import { ActionMenus, actionMenusProps } from "@web/search/action_menus/action_menus";
 
 const cogMenuRegistry = registry.category("cogMenu");
+
+export const cogMenuProps = {
+    ...actionMenusProps,
+    getActiveIds: t.function().optional(),
+    context: t.object().optional(),
+    resModel: t.string().optional(),
+    items: t
+        .object({
+            action: t.array().optional(),
+            print: t.array().optional(),
+        })
+        .optional({}),
+};
 
 /**
  * Combined Action menus (or Action/Print bar, previously called 'Sidebar')
@@ -24,27 +38,13 @@ export class CogMenu extends ActionMenus {
         ...ActionMenus.components,
         Dropdown,
     };
-    static props = {
-        ...ActionMenus.props,
-        getActiveIds: { type: ActionMenus.props.getActiveIds, optional: true },
-        context: { type: ActionMenus.props.context, optional: true },
-        resModel: { type: ActionMenus.props.resModel, optional: true },
-        items: { ...ActionMenus.props.items, optional: true },
-        slots: { type: Object, optional: true },
-    };
-    static defaultProps = {
-        ...ActionMenus.defaultProps,
-        items: {},
-    };
+    static actionMenusProps = cogMenuProps;
 
     setup() {
         super.setup();
-        onWillStart(async () => {
-            this.registryItems = await this._registryItems();
-        });
-        onWillUpdateProps(async () => {
-            this.registryItems = await this._registryItems();
-        });
+        this.uiService = useService("ui");
+        this.registryItems = asyncComputed(async () => this._registryItems(), { initial: [] });
+        onWillStart(() => this.registryItems.currentPromise());
     }
 
     get hasItems() {
@@ -71,9 +71,13 @@ export class CogMenu extends ActionMenus {
     }
 
     get cogItems() {
-        return [...this.registryItems, ...this.actionItems].sort(
+        return [...this.registryItems(), ...this.actionItems].sort(
             (item1, item2) => (item1.groupNumber || 0) - (item2.groupNumber || 0)
         );
+    }
+
+    hasGroupIcons(groupNumber) {
+        return this.cogItems.some((item) => item.groupNumber === groupNumber && item.icon);
     }
 
     getPrintItemAriaLabel(item) {

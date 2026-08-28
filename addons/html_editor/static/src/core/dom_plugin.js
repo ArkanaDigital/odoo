@@ -44,6 +44,7 @@ import {
     createBaseContainer,
 } from "@html_editor/utils/base_container";
 import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
+import { withSequence } from "@html_editor/utils/resource";
 
 /**
  * Get distinct connected parents of nodes
@@ -61,8 +62,17 @@ function getConnectedParents(nodes) {
     return parents;
 }
 
+// These elements should only have inline content (even if they have a `block`
+// display style, for example if they are in a flex)
+// NOTE: h1, h2, ..., p, pre already prevents wrapping their children into block
+const ONLY_ALLOW_INLINE_TAGS = new Set([
+    ...["a", "em", "strong", "small", "s", "cite", "q", "abbr", "data", "time", "code"],
+    ...["samp", "sub", "sup", "i", "b", "u", "mark", "bdi", "span", "label", "button"],
+]);
+
 /**
  * @typedef {Object} DomShared
+ * @property { DomPlugin['normalize'] } normalize
  * @property { DomPlugin['insert'] } insert
  * @property { DomPlugin['copyAttributes'] } copyAttributes
  * @property { DomPlugin['canSetBlock'] } canSetBlock
@@ -74,7 +84,10 @@ function getConnectedParents(nodes) {
 /**
  * @typedef {((insertedNodes: Node[]) => void)[]} on_inserted_handlers
  * @typedef {((el: HTMLElement) => void)[]} on_will_set_tag_handlers
+ * @typedef {((root: HTMLElement) => void)[]} on_will_normalize_handlers
+ * @typedef {((root: HTMLElement) => void)[]} on_normalized_handlers
  *
+ * @typedef {((root: EditorContext["editable"] | HTMLElement) => EditorContext["editable"] | HTMLElement)[]} normalize_processors
  * @typedef {((container: Element, block: Element) => container)[]} before_insert_processors
  * @typedef {((nodeToInsert: Node, container: HTMLElement) => nodeToInsert)[]} node_to_insert_processors
  *
@@ -89,6 +102,7 @@ export class DomPlugin extends Plugin {
     static id = "dom";
     static dependencies = ["baseContainer", "selection", "history", "split", "delete", "lineBreak"];
     static shared = [
+        "normalize",
         "insert",
         "copyAttributes",
         "canSetBlock",
@@ -107,8 +121,10 @@ export class DomPlugin extends Plugin {
             },
         ],
         /** Handlers */
+        on_editor_started_handlers: withSequence(0, this.normalize.bind(this)),
         clean_for_save_processors: (root) => {
             this.removeEmptyClassAndStyleAttributes(root);
+            return root;
         },
         clipboard_content_processors: this.removeEmptyClassAndStyleAttributes.bind(this),
         is_functional_empty_node_predicates: (node) => {
@@ -130,6 +146,18 @@ export class DomPlugin extends Plugin {
     }
 
     // Shared
+
+    /**
+     * Normalize the contents of the given root element (or the editable if none
+     * was given).
+     *
+     * @param {HTMLElement} [root = this.editable]
+     */
+    normalize(root = this.editable) {
+        this.trigger("on_will_normalize_handlers", root);
+        this.processThrough("normalize_processors", root);
+        this.trigger("on_normalized_handlers", root);
+    }
 
     /**
      * Wrap inline children nodes in Blocks, optionally updating cursors for
@@ -192,9 +220,7 @@ export class DomPlugin extends Plugin {
                 shouldBreakLine = true;
             } else if (
                 !visibleNodes.has(node) &&
-                !this.getResource("unremovable_node_predicates").some((predicate) =>
-                    predicate(node)
-                )
+                (this.checkPredicates("is_node_removable_predicates", node) ?? true)
             ) {
                 removeNode(node, cursors);
             } else if (node.nodeName === "BR") {
@@ -235,10 +261,10 @@ export class DomPlugin extends Plugin {
             container.textContent = content;
         } else {
             if (content.nodeType === Node.ELEMENT_NODE) {
-                this.processThrough("normalize_processors", content);
+                this.normalize(content);
             } else {
                 for (const child of children(content)) {
-                    this.processThrough("normalize_processors", child);
+                    this.normalize(child);
                 }
             }
             container.replaceChildren(content);
@@ -246,6 +272,7 @@ export class DomPlugin extends Plugin {
 
         const block = closestBlock(selection.anchorNode);
         container = this.processThrough("before_insert_processors", container, block);
+        this.trigger("before_insert_handlers");
         if (!container.hasChildNodes()) {
             return [];
         }
@@ -426,7 +453,7 @@ export class DomPlugin extends Plugin {
         let nodeToInsert;
         let doesCurrentNodeAllowsP = allowsParagraphRelatedElements(currentNode);
         const candidatesForRemoval = [];
-        const insertedNodes = childNodes(container);
+        const insertedNodes = [];
         while ((nodeToInsert = container.firstChild)) {
             if (isBlock(nodeToInsert) && !doesCurrentNodeAllowsP) {
                 // Split blocks at the edges if inserting new blocks (preventing
@@ -457,7 +484,10 @@ export class DomPlugin extends Plugin {
                     if (!insertBefore) {
                         offset += 1;
                     }
-                    if (offset) {
+                    if (
+                        (offset === 1 && !insertBefore) ||
+                        (offset && isVisible(currentNode?.previousSibling))
+                    ) {
                         const [left, right] = this.dependencies.split.splitElement(
                             currentNode.parentElement,
                             offset
@@ -483,7 +513,7 @@ export class DomPlugin extends Plugin {
                     isBlock(nodeToInsert) &&
                     this.dependencies.split.isUnsplittable(nodeToInsert)
                 ) {
-                    const br = document.createElement("br");
+                    const br = this.document.createElement("br");
                     currentNode[
                         isEmptyBlock(currentNode) || !isTangible(currentNode) ? "before" : "after"
                     ](br);
@@ -500,6 +530,7 @@ export class DomPlugin extends Plugin {
                 currentNode.after(nodeToInsert);
             }
             allInsertedNodes.push(nodeToInsert);
+            insertedNodes.push(nodeToInsert);
             if (currentNode.tagName !== "BR" && isShrunkBlock(currentNode)) {
                 currentNode.remove();
             }
@@ -514,7 +545,8 @@ export class DomPlugin extends Plugin {
             if (
                 !this.areInlinesAllowedAtRoot(parent) &&
                 this.isEditionBoundary(parent) &&
-                allowsParagraphRelatedElements(parent)
+                allowsParagraphRelatedElements(parent) &&
+                !isPhrasingContent(parent)
             ) {
                 // Ensure that edition boundaries do not have inline content.
                 this.wrapInlinesInBlocks(parent, {
@@ -577,6 +609,9 @@ export class DomPlugin extends Plugin {
     }
 
     areInlinesAllowedAtRoot(node) {
+        if (ONLY_ALLOW_INLINE_TAGS.has(node.nodeName.toLowerCase())) {
+            return true;
+        }
         const results = this.getResource("are_inlines_allowed_at_root_predicates")
             .map((p) => p(node))
             .filter((r) => r !== undefined);
@@ -725,7 +760,7 @@ export class DomPlugin extends Plugin {
         let newCandidate = createNewCandidate();
         this.dependencies.split.splitBlockSegments();
         const cursors = this.dependencies.selection.preserveSelection();
-        const newEls = [];
+        let newEl;
         for (const block of this.getBlocksToSet()) {
             if (
                 isParagraphRelatedElement(block) ||
@@ -736,9 +771,13 @@ export class DomPlugin extends Plugin {
                 if (newCandidate.matches(baseContainerGlobalSelector) && isListItemElement(block)) {
                     continue;
                 }
-                this.trigger("on_will_set_tag_handlers", block, tagName, cursors);
-                const newEl = this.setTagName(block, tagName);
-                cursors.remapNode(block, newEl);
+                const params = { block, newEl, tagName, cursors };
+                this.trigger("on_will_set_tag_handlers", params);
+                if (this.delegateTo("set_block_overrides", params)) {
+                    continue;
+                }
+                newEl = this.setTagName(params.block, tagName);
+                cursors.remapNode(params.block, newEl);
                 // We want to be able to edit the case `<h2 class="h3">`
                 // but in that case, we want to display "Header 2" and
                 // not "Header 3" as it is more important to display
@@ -750,7 +789,6 @@ export class DomPlugin extends Plugin {
                 if (extraClass) {
                     newEl.classList.add(extraClass);
                 }
-                newEls.push(newEl);
             } else {
                 // eg do not change a <div> into a h1: insert the h1
                 // into it instead.
@@ -773,5 +811,6 @@ export class DomPlugin extends Plugin {
                 node.removeAttribute("style");
             }
         }
+        return root;
     }
 }

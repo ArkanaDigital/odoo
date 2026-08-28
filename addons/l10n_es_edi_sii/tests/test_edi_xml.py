@@ -11,6 +11,8 @@ from odoo.tests import tagged
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestEdiXmls(TestEsEdiCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -67,6 +69,7 @@ class TestEdiXmls(TestEsEdiCommon):
         refund = self._create_invoice_es(
             move_type='out_refund', partner_id=self.partner_b.id,
             invoice_line_ids=[{'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva21b').ids)]}],
+            l10n_es_sii_refund_reason='R1',
         )
         moves = invoice | refund
         moves.action_post()
@@ -294,6 +297,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva10b').ids)]},
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva21s').ids)]},
             ],
+            l10n_es_sii_refund_reason='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -421,6 +425,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_sp_i').ids)]},
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_g_i').ids)]},
             ],
+            l10n_es_sii_refund_reason='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -533,6 +538,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_sp_i').ids)]},
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_g_i').ids)]},
             ],
+            l10n_es_sii_refund_reason='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -591,6 +597,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_sp_i').ids)]},
                 {'price_unit': 400.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_g_i').ids)]},
             ],
+            l10n_es_sii_refund_reason='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -699,6 +706,7 @@ class TestEdiXmls(TestEsEdiCommon):
             partner_id=self.partner_b.id,
             l10n_es_registration_date='2019-01-02',
             invoice_line_ids=[{'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('p_iva10_bc').ids)]}],
+            l10n_es_sii_refund_reason='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -993,6 +1001,7 @@ class TestEdiXmls(TestEsEdiCommon):
                     'tax_ids': [(6, 0, (self._get_tax_by_xml_id('p_iva10_bc') + self._get_tax_by_xml_id('p_irpf1')).ids)],
                 },
             ],
+            l10n_es_sii_refund_reason='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -1044,6 +1053,7 @@ class TestEdiXmls(TestEsEdiCommon):
                     'tax_ids': [(6, 0, (self._get_tax_by_xml_id('p_iva10_bc') + self._get_tax_by_xml_id('p_irpf1')).ids)],
                 },
             ],
+            l10n_es_sii_refund_reason='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -1193,6 +1203,7 @@ class TestEdiXmls(TestEsEdiCommon):
                     'tax_ids': [(6, 0, self._get_tax_by_xml_id('p_iva21_ic_bc').ids)],
                 },
             ],
+            l10n_es_sii_refund_reason='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',

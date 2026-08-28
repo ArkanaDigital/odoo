@@ -10,7 +10,6 @@ import { waitFor } from "@odoo/hoot-dom";
 
 test("test that generic components can be mounted; the goal is to ensure that they don't have any unmet dependencies", async () => {
     class TestComponent extends Component {
-        static props = [];
         static components = {
             OdooLogo,
             CenteredIcon,
@@ -20,7 +19,7 @@ test("test that generic components can be mounted; the goal is to ensure that th
         static template = xml`
             <div class="test-container">
                 <OdooLogo />
-                <CenteredIcon icon="'fa-smile'"/>
+                <CenteredIcon icon="'sentiment_satisfied'"/>
                 <Input tModel="[this.state, 'number']"/>
                 <NumericInput tModel="[this.state, 'number']" />
             </div>

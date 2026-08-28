@@ -11,8 +11,16 @@ const storeServicePatch = {
     /** @override */
     setup() {
         super.setup();
+        /** @type {string|undefined} */
+        this.companyName = undefined;
         /** @type {Map<number, Promise<DiscussChannel|void>>} */
         this.fetchChannelPromiseByChannelId = new Map();
+        /** @type {boolean|undefined} whether some channels are unpinned (hidden from the sidebar) */
+        this.has_hidden_channels = undefined;
+        /** @type {boolean|undefined} */
+        this.isChannelTokenSecret = undefined;
+        /** @type {boolean|undefined} */
+        this.is_welcome_page_displayed = undefined;
         /**
          * Defines channel types that have the message seen indicator/info feature.
          * @see `discuss.channel`._types_allowing_seen_infos()
@@ -33,14 +41,14 @@ const storeServicePatch = {
     /**
      * @param {Object} param0
      * @param {string} param0.default_display_mode
-     * @param {number[]} param0.partners_to
+     * @param {number[]} param0.users_to
      * @param {string} param0.name
      * @returns {Promise<import("models").DiscussChannel>}
      */
-    async createGroupChat({ default_display_mode, partners_to, name }) {
+    async createGroupChat({ default_display_mode, users_to, name }) {
         const { channel } = await this.fetchStoreData(
             "/discuss/create_group",
-            { default_display_mode, partners_to, name },
+            { default_display_mode, users_to, name },
             { requestData: true }
         );
         channel.open({ focus: true });
@@ -100,7 +108,15 @@ const storeServicePatch = {
             const chat = await this.joinChat(correspondentId, true);
             chat.open({ focus: true, bypassCompact: true });
         } else {
-            await this.createGroupChat({ partners_to });
+            const users_to = [
+                ...new Set([
+                    this.self_user.id,
+                    ...partnerIds
+                        .map((partnerId) => this["res.partner"].get(partnerId)?.main_user_id?.id)
+                        .filter(Boolean),
+                ]),
+            ];
+            await this.createGroupChat({ users_to });
         }
     },
 };

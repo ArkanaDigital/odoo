@@ -9,6 +9,8 @@ import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
 import { TableDragDrop } from "./table_drag_drop";
 import { registry } from "@web/core/registry";
 import { getRowIndex } from "@html_editor/utils/table";
+import { allowsParagraphRelatedElements, isTableCell } from "@html_editor/utils/dom_info";
+import { hasTouch } from "@web/core/browser/feature_detection";
 
 /**
  * This plugin only contains the table ui feature (table picker, menus, ...).
@@ -24,9 +26,12 @@ export class TableUIPlugin extends Plugin {
                 id: "openTablePicker",
                 title: _t("Table"),
                 description: _t("Insert a table"),
-                icon: "fa-table",
+                icon: "table",
                 run: this.openPickerOrInsertTable.bind(this),
-                isAvailable: isHtmlContentSupported,
+                isAvailable: (selection) =>
+                    isHtmlContentSupported(selection) &&
+                    closestElement(selection.anchorNode, allowsParagraphRelatedElements)
+                        ?.isContentEditable,
             },
         ],
         powerbox_items: [
@@ -73,19 +78,6 @@ export class TableUIPlugin extends Plugin {
         this.rowMenuOverlayKey = "table-row-menu";
 
         /** @type {import("@html_editor/core/overlay_plugin").Overlay} */
-        this.colMenu = this.dependencies.overlay.createOverlay(TableMenu, {
-            positionOptions: {
-                position: "top-fit",
-                flip: false,
-            },
-        });
-        /** @type {import("@html_editor/core/overlay_plugin").Overlay} */
-        this.rowMenu = this.dependencies.overlay.createOverlay(TableMenu, {
-            positionOptions: {
-                position: "left-fit",
-            },
-        });
-        /** @type {import("@html_editor/core/overlay_plugin").Overlay} */
         this.tableDragDropOverlay = this.dependencies.overlay.createOverlay(TableDragDrop);
         this.addDomListener(this.document, "pointermove", this.onMouseMove);
         const closeMenus = () => {
@@ -96,6 +88,8 @@ export class TableUIPlugin extends Plugin {
             }
         };
         this.addDomListener(this.document, "scroll", closeMenus, true);
+        this.tableMenuMethods = Object.assign({}, ...this.getResource("table_menu_commands"));
+        this.addDomListener(this.document, "touchend", this.onTouchEnd);
     }
 
     openPicker() {
@@ -127,6 +121,20 @@ export class TableUIPlugin extends Plugin {
             this.openMobilePicker();
         } else {
             this.openPicker();
+        }
+    }
+
+    onTouchEnd(ev) {
+        const touch = ev.changedTouches[0];
+        const element = this.document.elementFromPoint(touch.clientX, touch.clientY);
+        if (!element) {
+            return;
+        }
+        const targetCell = closestElement(element, isTableCell);
+        const isTableMenuClick = !targetCell && element.closest(".o-we-table-menu");
+
+        if (!isTableMenuClick && this.activeTd !== targetCell) {
+            this.setActiveTd(targetCell);
         }
     }
 
@@ -191,34 +199,9 @@ export class TableUIPlugin extends Plugin {
         if (!td) {
             return;
         }
-        const withCommit =
-            (fn) =>
-            (...args) => {
-                fn(...args);
-                this.dependencies.history.commit();
-            };
-        const tableMethods = {
-            moveColumn: withCommit(this.dependencies.table.moveColumn),
-            addColumn: withCommit(this.dependencies.table.addColumn),
-            removeColumn: withCommit(this.dependencies.table.removeColumn),
-            moveRow: withCommit(this.dependencies.table.moveRow),
-            addRow: withCommit(this.dependencies.table.addRow),
-            removeRow: withCommit(this.dependencies.table.removeRow),
-            turnIntoHeader: withCommit(this.dependencies.table.turnIntoHeader),
-            turnIntoRow: withCommit(this.dependencies.table.turnIntoRow),
-            resetRowHeight: withCommit(this.dependencies.table.resetRowHeight),
-            resetColumnWidth: withCommit(this.dependencies.table.resetColumnWidth),
-            resetTableSize: withCommit(this.dependencies.table.resetTableSize),
-            clearColumnContent: withCommit(this.dependencies.table.clearColumnContent),
-            clearRowContent: withCommit(this.dependencies.table.clearRowContent),
-            toggleAlternatingRows: withCommit(this.dependencies.table.toggleAlternatingRows),
-            mergeSelectedCells: withCommit(this.dependencies.table.mergeSelectedCells),
-            unmergeSelectedCell: withCommit(this.dependencies.table.unmergeSelectedCell),
-            buildTableGrid: this.dependencies.table.buildTableGrid,
-        };
         const grid = this.dependencies.table.buildTableGrid(closestElement(td, "table"));
         const rowIndex = getRowIndex(td.parentElement);
-        if (grid[rowIndex][0] === td) {
+        if (grid[rowIndex][0] === td || hasTouch()) {
             registry.category(this.config.localOverlayContainers.key).add(this.rowMenuOverlayKey, {
                 Component: TableMenu,
                 props: {
@@ -230,11 +213,12 @@ export class TableUIPlugin extends Plugin {
                     close: () => this.closeRowMenu(),
                     document: this.document,
                     editable: this.editable,
-                    ...tableMethods,
+                    commit: this.dependencies.history.commit,
+                    ...this.tableMenuMethods,
                 },
             });
         }
-        if (td.parentElement.rowIndex === 0) {
+        if (td.parentElement.rowIndex === 0 || hasTouch()) {
             registry
                 .category(this.config.localOverlayContainers.key)
                 .add(this.columnMenuOverlayKey, {
@@ -248,7 +232,8 @@ export class TableUIPlugin extends Plugin {
                         document: this.document,
                         editable: this.editable,
                         close: () => this.closeColumnMenu(),
-                        ...tableMethods,
+                        commit: this.dependencies.history.commit,
+                        ...this.tableMenuMethods,
                     },
                 });
         }

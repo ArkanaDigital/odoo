@@ -17,14 +17,12 @@ Also provides Nemhandel registration and invoice sending throught the Odoo Acces
 
     """,
     'depends': [
-        'base_vat',
         'account',
         'account_edi_proxy_client',
         'account_edi_ubl_cii',
     ],
     'auto_install': ['account'],
     'data': [
-        'security/ir.model.access.csv',
         'data/account_tax_report_data.xml',
         'data/account.account.tag.csv',
         'data/cron.xml',
@@ -36,6 +34,7 @@ Also provides Nemhandel registration and invoice sending throught the Odoo Acces
         'views/res_partner_views.xml',
         'wizard/nemhandel_registration_views.xml',
         'wizard/nemhandel_rejection_wizard_views.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'demo/demo_company.xml',
@@ -48,6 +47,6 @@ Also provides Nemhandel registration and invoice sending throught the Odoo Acces
         ],
     },
     'license': 'LGPL-3',
-    'pre_init_hook': '_pre_init_nemhandel',
+    'post_init_hook': '_post_init_nemhandel',
     'uninstall_hook': 'uninstall_hook',
 }

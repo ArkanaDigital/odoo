@@ -49,7 +49,7 @@ class EventMailCommon(EventCase, MailCase, CronMixinCase):
         cls.event_date_end = datetime(2021, 3, 24, 18, 0, 0)
 
         cls._setup_test_reports()
-        with cls.mock_datetime_and_now(cls, cls.reference_now):
+        with cls.mock_datetime_and_now(cls.reference_now):
             # create with admin to force create_date
             cls.test_event = cls.env['event.event'].with_user(cls.user_eventmanager).create({
                 'name': 'TestEventMail',
@@ -148,7 +148,7 @@ class TestMailSchedule(EventMailCommon):
         self.assertEqual(event_next_scheduler.mail_state, 'scheduled')
         self.assertEqual(event_next_scheduler.mail_count_done, 0)
 
-    @mute_logger('odoo.addons.base.models.ir_model', 'odoo.models')
+    @mute_logger('odoo.addons.base.models.ir_access', 'odoo.models')
     @users('user_eventmanager')
     def test_event_mail_schedule(self):
         """ Test mail scheduling for events """
@@ -721,7 +721,7 @@ class TestMailSchedule(EventMailCommon):
         self.assertFalse(event_prev_scheduler.mail_done)
         self.assertSchedulerCronTriggers(capture, [slot1_before_oneday])
 
-    @mute_logger('odoo.addons.base.models.ir_model', 'odoo.models')
+    @mute_logger('odoo.addons.base.models.ir_access', 'odoo.models')
     @users('user_eventmanager')
     @warmup
     def test_event_mail_schedule_on_subscription(self):
@@ -780,7 +780,7 @@ class TestMailSchedule(EventMailCommon):
         self.assertEqual(self.mail_mail_create_mocked.call_count, 1,
                          'EventMail: should create mails in batch for new registrations')
 
-    @mute_logger('odoo.addons.base.models.ir_model', 'odoo.models')
+    @mute_logger('odoo.addons.base.models.ir_access', 'odoo.models')
     @users('user_eventmanager')
     def test_event_mail_schedule_on_subscription_async(self):
         """ Async mode for schedulers activated, should not send communication
@@ -920,8 +920,7 @@ class TestMailScheduleInternals(EventMailCommon):
                     event.event_mail_ids.execute()
                 self.assertEqual(mock_exec.called, should_call)
 
-
-    @mute_logger('odoo.addons.base.models.ir_model', 'odoo.models')
+    @mute_logger('odoo.addons.base.models.ir_access', 'odoo.models')
     def test_unique_event_mail_ids(self):
         # create event with default event_mail_ids lines
         test_event = self.env['event.event'].with_user(self.user_eventmanager).create({
@@ -1019,9 +1018,10 @@ class TestMailScheduleInternals(EventMailCommon):
             },
         )
 
-    @mute_logger('odoo.addons.base.models.ir_model', 'odoo.models')
+    @mute_logger('odoo.addons.base.models.ir_access', 'odoo.models')
     def test_scheduler_on_archived_cancelled_event(self):
         """ Test mail scheduling for archived or cancelled events """
+
         # deactivate other schedulers to avoid messing with crons
         self.env['event.mail'].search([]).unlink()
 

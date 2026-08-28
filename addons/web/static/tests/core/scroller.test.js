@@ -1,5 +1,5 @@
 import { expect, test } from "@odoo/hoot";
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import { getService, mountWithCleanup } from "@web/../tests/web_test_helpers";
 import { click, queryOne } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
@@ -16,11 +16,11 @@ test("Ignore empty hrefs", async () => {
                 <a href="#" class="inactive_link">This link does nothing</a>
                 <button class="btn btn-secondary">
                     <a href="#">
-                        <i class="fa fa-trash"/>
+                        <i class="oi oi-filled" data-icon="delete"/>
                     </a>
                 </button>
             </div>`;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -30,7 +30,7 @@ test("Ignore empty hrefs", async () => {
     await click(".inactive_link");
     await animationFrame();
 
-    await click(".fa.fa-trash");
+    await click("[data-icon='delete'].oi-filled");
     await animationFrame();
 
     expect(browser.location.hash).toBe("#testscroller");
@@ -78,7 +78,7 @@ test("Simple rendering with a scroll", async () => {
                 </div>
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
     await mountWithCleanup(MyComponent);
 
@@ -130,7 +130,7 @@ test("clicking to scroll on a web client shouldn't open the default app", async 
                 <div id="scrollToHere">sroll here!</div>
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
         static path = "my_component";
     }
     registry.category("actions").add("my_component", MyComponent);
@@ -194,7 +194,7 @@ test("Rendering with multiple anchors and scrolls", async () => {
                 </div>
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -244,7 +244,7 @@ test("clicking anchor when no scrollable", async () => {
                 </div>
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -320,7 +320,7 @@ test("clicking anchor when multi levels scrollables", async () => {
             </div>
         </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -421,7 +421,7 @@ test("Simple scroll to HTML elements", async () => {
                 </div>
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -530,7 +530,7 @@ test("scroll to anchor from load", async () => {
                 <div id="scrollToHere">sroll here!</div>
             </div>
         `;
-        static props = ["*"];
+        props = useProps();
         static path = "my_component";
     }
     registry.category("actions").add("my_component", MyComponent);

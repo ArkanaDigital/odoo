@@ -1,9 +1,10 @@
-import { useExternalListener, useLayoutEffect } from "@web/owl2/utils";
+import { OverlayPlugin } from "@web/core/overlay/overlay_plugin";
 import { Dropzone } from "@web/core/dropzone/dropzone";
 import { useService } from "@web/core/utils/hooks";
+import { useListener, useOnChange, usePlugin } from "@odoo/owl";
 
 /**
- * @param {Ref} targetRef - Element on which to place the dropzone.
+ * @param {import("@odoo/owl").Signal<HTMLElement>} targetRef - Element on which to place the dropzone.
  * @param {Class} dropzoneComponent - Class used to instantiate the dropzone component.
  * @param {Object} dropzoneComponentProps - Props given to the instantiated dropzone component.
  * @param {function} isDropzoneEnabled - Function that determines whether the dropzone should be enabled.
@@ -14,30 +15,25 @@ export function useCustomDropzone(
     dropzoneComponentProps,
     isDropzoneEnabled = () => true
 ) {
-    const overlayService = useService("overlay");
+    const overlayService = usePlugin(OverlayPlugin);
     const uiService = useService("ui");
 
-    // Transitional shim: accept both an Owl 3 signal ref (call it to get the
-    // element) and a legacy `.el` ref object. Remove once all callers pass a signal.
-    // Note: `useChildRef()` returns a *function* with an `.el` getter, so we must
-    // probe `.el` first and only fall back to calling the ref when no `.el` is
-    // exposed at all (true signal refs).
-    const getTargetEl = () => ("el" in targetRef ? targetRef.el : targetRef());
+    const getTargetEl = () => targetRef();
 
     let dragCount = 0;
     let hasTarget = false;
     let removeDropzone = false;
 
-    useExternalListener(document, "dragenter", onDragEnter, { capture: true });
-    useExternalListener(document, "dragleave", onDragLeave, { capture: true });
+    useListener(document, "dragenter", onDragEnter, { capture: true });
+    useListener(document, "dragleave", onDragLeave, { capture: true });
     // Prevents the browser to open or download the file when it is dropped
     // outside of the dropzone.
-    useExternalListener(window, "dragover", (ev) => {
+    useListener(window, "dragover", (ev) => {
         if (ev.dataTransfer && ev.dataTransfer.types.includes("Files")) {
             ev.preventDefault();
         }
     });
-    useExternalListener(
+    useListener(
         window,
         "drop",
         (ev) => {
@@ -82,17 +78,17 @@ export function useCustomDropzone(
         }
     }
 
-    useLayoutEffect(
+    useOnChange(
+        () => [getTargetEl()],
         (el) => {
             hasTarget = !!el;
             updateDropzone();
-        },
-        () => [getTargetEl()]
+        }
     );
 }
 
 /**
- * @param {Ref} targetRef - Element on which to place the dropzone.
+ * @param {import("@odoo/owl").Signal<HTMLElement>} targetRef - Element on which to place the dropzone.
  * @param {function} onDrop - Callback function called when the user drops a file on the dropzone.
  * @param {string} extraClass - Classes that will be added to the standard `Dropzone` component.
  * @param {function} isDropzoneEnabled - Function that determines whether the dropzone should be enabled.

@@ -29,6 +29,17 @@
         <field name="mode">primary</field>
         <field name="priority">10</field>
         <field name="arch" type="xml">
+            <xpath expr="//list" position="inside">
+                <header>
+                    <button
+                        name="load_public_holidays"
+                        string="Load Public Holidays"
+                        type="object"
+                        class="btn btn-secondary"
+                        display="always"
+                    />
+                </header>
+            </xpath>
             <xpath expr="//list" position="attributes">
                 <attribute name="editable">bottom</attribute>
             </xpath>
@@ -40,22 +51,30 @@
             <xpath expr="//field[@name='resource_id']" position="attributes">
                 <attribute name="column_invisible">1</attribute>
             </xpath>
-            <xpath expr="//field[@name='date_to']" position="after">
+            <xpath expr="//field[@name='date_from']" position="replace">
+                <field name="date_from"
+                    string="Period"
+                    widget="daterange"
+                    options="{'end_date_field': 'date_to'}"/>
+            </xpath>
+            <xpath expr="//field[@name='date_to']" position="replace">
                 <field name="company_id" column_invisible="True"/>
                 <xpath expr="//field[@name='calendar_id']" position="move"/>
             </xpath>
             <xpath expr="//field[@name='calendar_id']" position="attributes">
                 <attribute name="placeholder">All Schedules</attribute>
+                <attribute name="optional">hide</attribute>
             </xpath>
         </field>
     </record>
 
+<!-- deprecated: should be deleted in master -->
     <record id="resource_calendar_global_leaves_action_from_calendar" model="ir.actions.act_window">
         <field name="name">Public Holidays</field>
         <field name="res_model">resource.calendar.leaves</field>
         <field name="view_mode">list</field>
         <field name="view_id" ref="resource_calendar_leaves_tree_inherit"/>
-        <field name="domain">[('resource_id', '=', False), '|', ('calendar_id', '=', False), ('calendar_id', '=', active_id)]</field>
+        <field name="domain">[('resource_id', '=', False), '|', ('calendar_id', '=', False), ('calendar_id', '=', active_id), ('company_id', '=', company_id)]</field>
         <field name="context">{
             'default_calendar_id': active_id,
             'search_default_filter_date': True}</field>
@@ -68,8 +87,8 @@
         <field name="inherit_id" ref="resource.resource_calendar_form"/>
         <field name="arch" type="xml">
             <xpath expr="//button[@name='%(resource.resource_calendar_leaves_action_from_calendar)d']" position="before">
-                <button name="%(resource_calendar_global_leaves_action_from_calendar)d" type="action"
-                                icon="fa-sun-o" class="oe_stat_button">
+                <button name="action_open_public_holidays" type="object"
+                                icon="light_mode" class="oe_stat_button">
                     <div class="o_field_widget o_stat_info">
                         <span class="o_stat_text">
                             <field name="associated_leaves_count" string="Public Holidays" widget="statinfo"/>
@@ -81,7 +100,7 @@
     </record>
 
     <record id="open_view_public_holiday" model="ir.actions.act_window">
-        <field name="name">Public Holidays</field>
+        <field name="name">Closure Days</field>
         <field name="res_model">resource.calendar.leaves</field>
         <field name="view_mode">list,form</field>
         <field name="domain">[('resource_id', '=', False)]</field>
@@ -89,7 +108,7 @@
         <field name="context">{'search_default_filter_date': True}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_empty_folder">
-                No Public Holidays yet!
+                No Closure Days yet!
             </p>
             <p>
                 Public Holidays are non-working days that don't impact employees' balances

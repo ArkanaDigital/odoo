@@ -1,11 +1,10 @@
-import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { TranscriptSender } from "@im_livechat/core/common/transcript_sender";
 import { ExpertiseTagsAutocomplete } from "@im_livechat/core/web/expertise_tags_autocomplete";
 
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { prettifyMessageContent } from "@mail/utils/common/format";
 
-import { Component } from "@odoo/owl";
+import { Component, useEffect } from "@odoo/owl";
 
 import { startUrl } from "@web/core/browser/router";
 import { rpc } from "@web/core/network/rpc";
@@ -22,19 +21,15 @@ export class LivechatChannelInfoList extends Component {
         this.actionService = useService("action");
         this.store = useService("mail.store");
         this.ui = useService("ui");
-        useSubEnv({ inLivechatInfoPanel: true });
-        useLayoutEffect(
-            () => {
-                if (this.props.thread.hasFetchedLivechatSessionData) {
-                    return;
-                }
-                this.store.fetchStoreData("/im_livechat/session/data", {
-                    channel_id: this.props.thread.id,
-                });
-                this.props.thread.hasFetchedLivechatSessionData = true;
-            },
-            () => [this.props.thread.id, this.props.thread.hasFetchedLivechatSessionData]
-        );
+        useEffect(() => {
+            if (this.props.thread.hasFetchedLivechatSessionData) {
+                return;
+            }
+            this.store.fetchStoreData("/im_livechat/session/data", {
+                channel_id: this.props.thread.id,
+            });
+            this.props.thread.hasFetchedLivechatSessionData = true;
+        });
     }
 
     get expectAnswerSteps() {

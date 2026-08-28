@@ -1,7 +1,7 @@
 import { Plugin } from "@html_editor/plugin";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { getDeepestPosition, isElement, isIconElement } from "@html_editor/utils/dom_info";
-import { DIRECTIONS, nodeSize } from "@html_editor/utils/position";
+import { DIRECTIONS, leftPos, nodeSize, rightPos } from "@html_editor/utils/position";
 import { closestElement } from "@html_editor/utils/dom_traversal";
 
 /** @typedef {import("plugins").CSSSelector} CSSSelector */
@@ -161,22 +161,26 @@ export class BuilderSelectionRestrictionPlugin extends Plugin {
 
     /**
      * Returns the element in which the selection should be restricted (by
-     * default, the closest `div` element).
+     * default, the closest `div` element, or the closest [contenteditable=true]
+     * if the div is not editable).
      *
      * @param {Node} anchorNode the current selection anchorNode
      * @returns {HTMLElement}
      */
     getRestrictingElement(anchorNode) {
-        const closestDivEl = closestElement(anchorNode, "div");
+        let restrictingEl = closestElement(anchorNode, "div");
+        if (!restrictingEl.isContentEditable) {
+            restrictingEl = closestElement(anchorNode, "[contenteditable=true]") ?? restrictingEl;
+        }
 
-        if (!closestDivEl) {
+        if (!restrictingEl) {
             console.warn(
-                "The anchordeNode of the selection is not inside a <div> element, the selection restriction plugin might not work properly",
+                "The anchordeNode of the selection is not inside a <div> or a [contenteditable=true] element, the selection restriction plugin might not work properly",
                 anchorNode
             );
             return closestElement(anchorNode);
         }
-        return closestDivEl;
+        return restrictingEl;
     }
 
     /**
@@ -279,19 +283,19 @@ export class BuilderSelectionRestrictionPlugin extends Plugin {
                         tempFocusNode = node;
                         continue;
                     }
-                    // The node is not the first selected node and it's
-                    // uncrossable, we need to move the focusNode before
-                    // this uncrossable node (or after if we are selecting to
-                    // the left).
+                    // The node is uncrossable, we need to move the focusNode
+                    // before this uncrossable node (or after if we are selecting
+                    // to the left).
                     if (direction === DIRECTIONS.RIGHT) {
-                        tempFocusNode = node.previousElementSibling || tempFocusNode;
-                        [newFocusNode, newFocusOffset] = getDeepestPosition(
-                            tempFocusNode,
-                            nodeSize(tempFocusNode)
-                        );
+                        tempFocusNode = node.previousSibling || tempFocusNode;
+                        [newFocusNode, newFocusOffset] = tempFocusNode
+                            ? getDeepestPosition(tempFocusNode, nodeSize(tempFocusNode))
+                            : leftPos(node);
                     } else {
-                        tempFocusNode = node.nextElementSibling || tempFocusNode;
-                        [newFocusNode, newFocusOffset] = getDeepestPosition(tempFocusNode, 0);
+                        tempFocusNode = node.nextSibling || tempFocusNode;
+                        [newFocusNode, newFocusOffset] = tempFocusNode
+                            ? getDeepestPosition(tempFocusNode, 0)
+                            : rightPos(node);
                     }
 
                     selection = this.dependencies.selection.setSelection({

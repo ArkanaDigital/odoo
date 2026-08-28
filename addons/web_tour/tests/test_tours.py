@@ -7,6 +7,8 @@ from markupsafe import Markup
 @tagged('post_install', '-at_install')
 class TestTour(BaseCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -83,7 +85,7 @@ class WebTourHttp(HttpCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.eager_files = ["/web_tour/static/src/js/tour_automatic/tour_helpers.js"]
+        cls.eager_files = ["/web_tour/static/src/js/tour_helpers/tour_helpers.js"]
 
     def test_sanity_automatic(self):
         ResUsers = self.env["res.users"]

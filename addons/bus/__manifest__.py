@@ -3,9 +3,6 @@
     'category': 'Hidden',
     'description': "Instant Messaging Bus allow you to send messages to users, in live.",
     'depends': ['base', 'web'],
-    'data': [
-        'security/ir.model.access.csv',
-    ],
     'auto_install': True,
     'assets': {
         'web.assets_backend': [
@@ -18,8 +15,8 @@
         'web.assets_frontend': [
             'bus/static/src/*.js',
             'bus/static/src/services/**/*.js',
-            ('remove', 'bus/static/src/services/assets_watchdog_service.js'),
-            ('remove', 'bus/static/src/simple_notification_service.js'),
+            ('remove', 'bus/static/src/services/assets_watchdog_plugin.js'),
+            ('remove', 'bus/static/src/simple_notification_plugin.js'),
             'bus/static/src/workers/*',
             ('remove', 'bus/static/src/workers/bus_worker_script.js'),
         ],

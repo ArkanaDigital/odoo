@@ -13,7 +13,7 @@ from lxml import etree
 from odoo import SUPERUSER_ID, api, fields, models, modules
 from odoo.exceptions import RedirectWarning, UserError, ValidationError
 from odoo.fields import Domain
-from odoo.tools import config, date_utils, split_every
+from odoo.tools import SQL, config, date_utils, split_every
 from odoo.tools.image import image_data_uri
 
 from odoo.addons.account.tools import dict_to_xml
@@ -270,9 +270,8 @@ class MyInvoisDocument(models.Model):
         """ Returns the SQL WHERE statement to use when fetching the latest record with the same sequence, and its params. """
         self.ensure_one()
         if not self.myinvois_issuance_date:
-            return "WHERE FALSE", {}
-        where_string = "WHERE journal_id = %(journal_id)s AND name != '/'"
-        param = {'journal_id': self.journal_id.id}
+            return SQL("FALSE")
+        condition = SQL("journal_id = %s AND name != '/'", self.journal_id.id)
 
         if not relaxed:
             domain = [('id', '!=', self.id or self._origin.id), ('name', 'not in', ('/', '', False)), ('journal_id', '=', self.journal_id.id), ('is_consolidated_invoice', '=', self.is_consolidated_invoice)]
@@ -286,30 +285,32 @@ class MyInvoisDocument(models.Model):
                 reference_name = self.sudo().search(domain, order='myinvois_issuance_date asc', limit=1).name
             sequence_number_reset = self._deduce_sequence_number_reset(reference_name)
             date_start, date_end, *_ = self._get_sequence_date_range(sequence_number_reset)
-            where_string += """ AND myinvois_issuance_date BETWEEN %(date_start)s AND %(date_end)s"""
-            param['date_start'] = date_start
-            param['date_end'] = date_end
+            condition = SQL(
+                "%s AND myinvois_issuance_date BETWEEN %s AND %s",
+                condition, date_start, date_end)
             if sequence_number_reset in ('year', 'year_range'):
-                param['anti_regex'] = re.sub(r"\?P<\w+>", "?:", self._sequence_monthly_regex.split('(?P<seq>')[0]) + '$'
+                anti_regex = re.sub(r"\?P<\w+>", "?:", self._sequence_monthly_regex.split('(?P<seq>')[0]) + '$'
             elif sequence_number_reset == 'never':
-                param['anti_regex'] = re.sub(r"\?P<\w+>", "?:", self._sequence_yearly_regex.split('(?P<seq>')[0]) + '$'
+                anti_regex = re.sub(r"\?P<\w+>", "?:", self._sequence_yearly_regex.split('(?P<seq>')[0]) + '$'
+            else:
+                anti_regex = None
 
-            if param.get('anti_regex'):
-                where_string += " AND sequence_prefix !~ %(anti_regex)s "
+            if anti_regex:
+                condition = SQL("%s AND sequence_prefix !~ %s", condition, anti_regex)
 
         if self.journal_id.refund_sequence:
             if self.move_type in ("out_refund", "in_refund"):
-                where_string += " AND move_type IN ('out_refund', 'in_refund') "
+                condition = SQL("%s AND move_type IN ('out_refund', 'in_refund')", condition)
             else:
-                where_string += " AND move_type NOT IN ('out_refund', 'in_refund') "
+                condition = SQL("%s AND move_type NOT IN ('out_refund', 'in_refund')", condition)
 
         if self._myinvois_is_debit_sequence_used():
-            where_string += " AND is_debit_note IS " + ("TRUE" if self.is_debit_note else "NOT TRUE")
+            condition = SQL("%s AND is_debit_note IS %s", condition, SQL("TRUE") if self.is_debit_note else SQL("NOT TRUE"))
 
         if self.is_consolidated_invoice:
-            where_string += " AND is_consolidated_invoice "
+            condition = SQL("%s AND is_consolidated_invoice", condition)
 
-        return where_string, param
+        return condition
 
     def _get_sequence_date_range(self, reset):
         """ Make sure that the sequence date range follows the company's fiscal year """
@@ -503,7 +504,12 @@ class MyInvoisDocument(models.Model):
     def action_view_linked_invoices(self):
         """ Return the action used to open the order(s) linked to the selected consolidated invoice. """
         self.ensure_one()
-        return self.invoice_ids._get_records_action(name=self.env._("Invoice(s)"))
+        # Once consolidated, invoices should not be sent to MyInvois individually anymore; disabling the
+        # toolbar here hides the "Action" button from the invoices list view.
+        return self.invoice_ids._get_records_action(
+            name=self.env._("Invoice(s)"),
+            context={**self.env.context, 'disable_toolbar': True},
+        )
 
     # ----------------
     # Business methods
@@ -561,10 +567,17 @@ class MyInvoisDocument(models.Model):
     @api.model
     def _myinvois_map_error(self, error):
         """ This helper will take in an error code coming from the proxy, and return a translatable error message. """
+        error_data = error.get('data') if isinstance(error.get('data'), dict) else {}
         error_map = {
             # These errors should be returned when we send malformed request to the EDI, ... tldr; this should never happen unless we have bugs.
             "internal_server_error": self.env._(
-                "Server error; If the problem persists, please contact the Odoo support.",
+                "Server error; If the problem persists, please contact the Odoo support.\n"
+                "Details: %(details)s\n",
+                details=error_data.get('details') or self.env._('Unknown'),
+            ),
+            "myinvois_error": self.env._(
+                "%(details)s\n",
+                details=error_data.get('details') or self.env._('Please try again later.'),
             ),
             # The proxy user credentials are either incorrect, or Odoo does not have the permission to invoice on their behalf.
             "invalid_tin": self.env._(
@@ -626,6 +639,14 @@ class MyInvoisDocument(models.Model):
             return self.env._('An error occurred while validating the invoice: "%(property_name)s" is invalid.', property_name=error['target'])
 
         return error_map.get(error['reference'], self.env._("An unexpected error has occurred."))
+
+    @api.model
+    def _is_myinvois_side_error(self, error):
+        """ Whether this error genuinely comes from MyInvois's own platform (a validation issue, rate limiting, a
+        technical difficulty, ...), as opposed to anything else (our own pre-submission checks, an unexpected error, ...). """
+        return bool(error.get('target')) or error.get('reference') in {
+            'myinvois_error', 'document_tin_not_found', 'submission_too_large', 'action_forbidden', 'rate_limit_exceeded',
+        }
 
     @staticmethod
     def _can_commit():
@@ -920,11 +941,15 @@ class MyInvoisDocument(models.Model):
         :param submissions_content: A dict of the format {record: {'name': '', 'xml': ''}}
         :return: a dict of potential errors in the format {record: errors_list}
         """
-        def _format_error_messages(errors_list):
+        def _format_error_messages(errors):
             AccountMoveSend = self.env['account.move.send']
+            if errors and all(self._is_myinvois_side_error(error) for error in errors):
+                title = self.env._("MyInvois returned the following response(s):")
+            else:
+                title = self.env._("This document could not be sent for the following reason(s):")
             error_data = {
-                'error_title': self.env._("Error when sending the documents to the E-invoicing service."),
-                'errors': errors_list,
+                'error_title': title,
+                'errors': [self._myinvois_map_error(error) for error in errors],
             }
             return {
                 'html_error': AccountMoveSend._format_error_html(error_data),
@@ -963,8 +988,7 @@ class MyInvoisDocument(models.Model):
                 # If an error is present in the result itself (and not per document), it means that the whole submission failed.
                 # We don't add to the result but instead directly in the errors.
                 if 'error' in batch_result:
-                    error_string = self._myinvois_map_error(batch_result['error'])
-                    error_messages.update({record.id: _format_error_messages([error_string]) for record in batch})
+                    error_messages.update({record.id: _format_error_messages([batch_result['error']]) for record in batch})
                 else:
                     records_per_id = batch.grouped('id')
                     for document_result in batch_result['documents']:
@@ -988,9 +1012,9 @@ class MyInvoisDocument(models.Model):
                                     'myinvois_error_document_hash': document_result['error_document_hash'],
                                     'myinvois_retry_at': document_result['retry_at'],
                                 })
-                            error_messages[record.id] = _format_error_messages([self._myinvois_map_error(error) for error in document_result['errors']])
-                            if self.invoice_ids:
-                                invoice_to_cancel |= self.invoice_ids
+                            error_messages[record.id] = _format_error_messages(document_result['errors'])
+                            if record.invoice_ids:
+                                invoice_to_cancel |= record.invoice_ids
 
                         record.write(updated_values)
 
@@ -1111,9 +1135,9 @@ class MyInvoisDocument(models.Model):
                 message = None
                 if status.get('reason') or status['status'] == 'invalid':
                     if status.get('reason'):
-                        message = record.env._('The MyInvois platform returned a "%(status)s" status for this document for reason: %(reason)s', status=status['reason'], reason=status['reason'])
+                        message = record.env._('The MyInvois platform returned a "%(status)s" status for this document for reason: %(reason)s', status=status['status'], reason=status['reason'])
                     else:
-                        message = record.env._('The MyInvois platform returned an "%(status)s" status for this document.', status=status['reason'])
+                        message = record.env._('MyInvois did not return a specific reason for the invalidation. Please check the MyInvois portal for the exact reason.')
 
                 record._myinvois_set_state(status["status"], message)
                 record._myinvois_set_validation_fields(status)
@@ -1149,6 +1173,10 @@ class MyInvoisDocument(models.Model):
         Submit the documents in self to MyInvois.
         This action will re-generate a new XML file, in order to ensure that we always send an up-to-date version.
         """
+        # Check that every document's company is registered on MyInvois before generating any file.
+        for document in self:
+            document._myinvois_get_proxy_user()
+
         # Make sure that all documents in self have a file ready to be sent.
         self.action_generate_xml_file(allow_raising=allow_raising)
 

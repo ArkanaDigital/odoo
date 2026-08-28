@@ -1,16 +1,19 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+from uuid import uuid4
+
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools.translate import mark_as_copy
 
 
 class HrWorkEntryType(models.Model):
     _name = 'hr.work.entry.type'
-    _description = 'Work Entry Type'
+    _description = 'Time Type'
     _order = 'sequence'
     _inherit = ['mail.thread', 'mail.activity.mixin']
 
-    name = fields.Char(required=True, translate=True, tracking=True)
+    name = fields.Char(required=True, translate=True, tracking=True, copy=mark_as_copy('name'))
     display_code = fields.Char(string="Display Code", size=3, translate=True, tracking=True, help="This code can be changed, it is only for a display purpose (3 letters max)")
     code = fields.Char(
         string="Payroll Code",
@@ -43,11 +46,9 @@ class HrWorkEntryType(models.Model):
         default=1.0,
         tracking=True,
         help="If you want the hours to be paid double, the rate should be set to 200%.")
-    is_extra_hours = fields.Boolean(
-        string="Added to Monthly Pay",
-        tracking=True,
-        help="Check this setting if you want the hours to be considered as extra time and added as a bonus to the basic salary.")
     description = fields.Text(translate=True, tracking=True)
+    resource_calendar_attendance_ids = fields.One2many('resource.calendar.attendance', 'work_entry_type_id', readonly=True, copy=False)
+    resource_calendar_selectable = fields.Boolean(string="Selectable in Working Schedule", compute='_compute_resource_calendar_selectable', store=True, readonly=False, tracking=True)
 
     @api.constrains('code', 'country_id')
     def _check_code_unicity(self):
@@ -94,3 +95,22 @@ Time type "%(name)s" of code "%(code)s", with no country assigned, already exist
                 name=duplicate.name,
                 code=duplicate.code,
             ))
+
+    @api.constrains('country_id')
+    def _check_country_id(self):
+        for country_id, work_entry_types in self.grouped('country_id').items():
+            if work_entry_types.resource_calendar_attendance_ids.calendar_id.country_id - country_id:
+                raise ValidationError(self.env._("The country of the work entry type does not match the country of the associated resource calendar."))
+
+    def copy_data(self, default=None):
+        default = default or {}
+        data_list = super().copy_data(default)
+        for record, data in zip(self, data_list):
+            if 'code' not in default:
+                data['code'] = f"{record.code}_{uuid4().hex[:6]}"
+        return data_list
+
+    @api.depends('count_as')
+    def _compute_resource_calendar_selectable(self):
+        for we in self:
+            we.resource_calendar_selectable = bool(we.count_as == 'working_time')

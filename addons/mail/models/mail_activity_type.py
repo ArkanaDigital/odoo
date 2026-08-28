@@ -40,7 +40,7 @@ class MailActivityType(models.Model):
     delay_from = fields.Selection([
         ('current_date', 'after previous activity completion date'),
         ('previous_activity', 'after previous activity deadline')], string="Delay Type", help="Type of delay", required=True, default='previous_activity')
-    icon = fields.Char('Icon', help="Font awesome icon e.g. fa-tasks")
+    icon = fields.Char('Icon', help="Material Symbols icon e.g. checklist")
     decoration_type = fields.Selection([
         ('warning', 'Alert'),
         ('danger', 'Error')], string="Decoration Type",
@@ -64,6 +64,7 @@ class MailActivityType(models.Model):
         help='Actions may trigger specific behavior like opening calendar view or automatically mark as done when a document is uploaded')
     mail_template_ids = fields.Many2many('mail.template', string='Email templates')
     default_user_id = fields.Many2one("res.users", string="Default User")
+    default_role_id = fields.Many2one("res.role", string="Role")
     default_note = fields.Html(string="Default Note", translate=True)
     kpi_provider_visibility = fields.Selection([
             ('none', 'None'),

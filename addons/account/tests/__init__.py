@@ -12,7 +12,7 @@ from . import test_account_journal
 from . import test_account_account
 from . import test_account_tax
 from . import test_account_to_check
-from . import test_additional_identifiers
+from . import test_partner_identifiers
 from . import test_account_analytic
 from . import test_account_payment
 from . import test_account_payment_method_line
@@ -22,6 +22,7 @@ from . import test_account_invoice_report
 from . import test_account_move_line_tax_details
 from . import test_account_journal_dashboard_common
 from . import test_account_journal_dashboard
+from . import test_base_document_layout
 from . import test_account_lock_exception
 from . import test_audit_trail
 from . import test_chart_template
@@ -42,6 +43,7 @@ from . import test_taxes_downpayment
 from . import test_taxes_dispatching_base_lines
 from . import test_invoice_taxes
 from . import test_account_move_send
+from . import test_partner_matching
 from . import test_portal_attachment
 from . import test_portal_invoice
 from . import test_tax_report
@@ -50,6 +52,7 @@ from . import test_account_incoming_supplier_invoice
 from . import test_payment_term
 from . import test_account_payment_items
 from . import test_account_payment_register
+from . import test_payment_receipt
 from . import test_account_report
 from . import test_account_section_and_subsection
 from . import test_tour
@@ -60,7 +63,9 @@ from . import test_account_partner
 from . import test_setup_wizard
 from . import test_structured_reference
 from . import test_product
+from . import test_product_catalog
 from . import test_unexpected_invoice
+from . import test_mail_activity
 from . import test_mail_tracking_value
 from . import test_res_partner_merge
 from . import test_account_merge_wizard
@@ -68,3 +73,4 @@ from . import test_account_move_attachment
 from . import test_account_bill_deductibility
 from . import test_dict_to_xml
 from . import test_account_move_import_template
+from . import test_account_move_tax_mode

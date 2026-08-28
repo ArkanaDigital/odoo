@@ -1,17 +1,19 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from datetime import datetime
+
 from markupsafe import Markup
 from werkzeug.exceptions import NotFound
 
-from odoo import http
 from odoo.exceptions import UserError
 from odoo.http import request
 from odoo.tools.misc import verify_limited_field_access_token
-from odoo.addons.mail.tools.discuss import mail_route, Store
+
+from odoo.addons.mail.controllers.store import StoreController
+from odoo.addons.mail.tools.discuss import Store, mail_route
 
 
-class ThreadController(http.Controller):
+class ThreadController(StoreController):
 
     # access helpers
     # ------------------------------------------------------------
@@ -79,7 +81,12 @@ class ThreadController(http.Controller):
                 reply_discussion=True, no_create=False,
             )
         return [
-            {'id': info['partner_id'], 'email': info['email'], 'name': info['name']}
+            {
+                'email': info['email'],
+                'id': info['partner_id'],
+                'name': info['name'],
+                'recipient_type': info['recipient_type'],
+            }
             for info in suggested if info['partner_id']
         ]
 
@@ -126,7 +133,12 @@ class ThreadController(http.Controller):
         subtypes = record._mail_get_message_subtypes()
         if follower.partner_id.partner_share:
             subtypes = subtypes.filtered(lambda subtype: not subtype.internal)
-        store = Store().add(subtypes, ["name"]).add(follower, ["subtype_ids"])
+        store = Store().add(subtypes, ["name", "parent_id"]).add(follower, ["subtype_ids"])
+        relation_subtype_id = request.env["mail.message.subtype"].search_fetch(
+            [("parent_id.res_model", "=", record._name)], field_names=["relation_field"], limit=1)
+        parent_record = record[relation_subtype_id.relation_field] if relation_subtype_id else None
+        store.add(parent_record, "_store_model_name_fields", as_thread=True)
+        store.add(record, "_store_model_name_fields", as_thread=True)
         return {
             "store_data": store,
             "subtype_ids": subtypes.sorted(
@@ -137,14 +149,34 @@ class ThreadController(http.Controller):
                     s.sequence,
                 ),
             ).ids,
+            "parent_id": parent_record.id if parent_record else None,
+            "parent_model": parent_record._name if parent_record else None,
         }
 
-    def _prepare_message_data(self, post_data, *, thread, **kwargs):
+    def _prepare_message_data(self, post_data, *, thread, from_create=True, **kwargs):
         res = {
             key: value
             for key, value in post_data.items()
             if key in thread._get_allowed_message_params()
         }
+        if from_create:
+            thread_su = thread.sudo()
+            access_mode = None
+            for domain, mode in thread_su._mail_get_operation_for_mail_message_operation("create"):
+                if thread_su.filtered_domain(domain):
+                    access_mode = mode
+                    break
+            if (
+                not request.env.user._is_internal()
+                or not access_mode
+                or not thread.sudo(False)
+                .with_context(allowed_company_ids=[])
+                .has_access(access_mode)
+            ):
+                res["message_type"] = "comment"
+                res["subtype_xmlid"] = "mail.mt_comment"
+            else:
+                res.setdefault("message_type", "comment")
         if (attachment_ids := post_data.get("attachment_ids")) is not None:
             attachments = request.env["ir.attachment"].browse(map(int, attachment_ids))
             if not attachments._has_attachments_ownership(post_data.get("attachment_tokens")):
@@ -157,16 +189,12 @@ class ThreadController(http.Controller):
             # User input is HTML string, so it needs to be in a Markup.
             # It will be sanitized by the field itself when writing on it.
             res["body"] = Markup(post_data["body"]) if post_data["body"] else post_data["body"]
-        partner_ids = post_data.get("partner_ids")
+        partners = request.env["res.partner"].browse(map(int, post_data.get("partner_ids") or []))
+        partners_cc = request.env["res.partner"].browse(map(int, post_data.get("partner_cc_ids") or []))
         partner_emails = post_data.get("partner_emails")
+        partner_cc_emails = post_data.get("partner_cc_emails")
         role_ids = post_data.get("role_ids")
-        if partner_ids is not None or partner_emails is not None or role_ids is not None:
-            partners = request.env["res.partner"].browse(map(int, partner_ids or []))
-            if partner_emails:
-                partners |= thread._partner_find_from_emails_single(
-                    partner_emails,
-                    no_create=not request.env.user.has_group("base.group_partner_manager"),
-                )
+        if partners or partner_emails or partners_cc or partner_cc_emails or role_ids is not None:
             if role_ids:
                 # sudo - res.users: getting partners linked to the role is allowed.
                 partners |= (
@@ -175,18 +203,28 @@ class ThreadController(http.Controller):
                     .search_fetch([("role_ids", "in", role_ids)], ["partner_id"])
                     .partner_id
                 )
-            res["partner_ids"] = partners.filtered(
-                lambda p: (not self.env.user.share and p.has_access("read"))
-                or (
-                    verify_limited_field_access_token(
-                        p,
-                        "id",
-                        post_data.get("partner_ids_mention_token", {}).get(str(p.id), ""),
-                        scope="mail.message_mention",
-                    )
-                ),
-            ).ids
-        res.setdefault("message_type", "comment")
+            if partner_emails:
+                partners |= thread._partner_find_from_emails_single(
+                    partner_emails,
+                    no_create=not request.env.user.has_group("base.group_partner_manager"),
+                )
+            if partner_cc_emails:
+                partners_cc |= thread._partner_find_from_emails_single(
+                    partner_cc_emails,
+                    no_create=not request.env.user.has_group("base.group_partner_manager"),
+                )
+            for source, target in ((partners, 'partner_ids'), (partners_cc, 'partner_cc_ids')):
+                res[target] = source.filtered(
+                    lambda p: (not self.env.user.share and p.has_access("read"))
+                    or (
+                        verify_limited_field_access_token(
+                            p,
+                            "id",
+                            post_data.get("partner_ids_mention_token", {}).get(str(p.id), ""),
+                            scope="mail.message_mention",
+                        )
+                    ),
+                ).ids
         return res
 
     @mail_route("/mail/message/post", methods=["POST"], type="jsonrpc", auth="public")

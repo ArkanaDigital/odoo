@@ -1,11 +1,10 @@
-import { useLayoutEffect } from "@web/owl2/utils";
 import { onExternalClick } from "@mail/utils/common/hooks";
 
-import { Component, onMounted, props, types, useListener } from "@odoo/owl";
+import { Component, onMounted, signal, t, untrack, useEffect, useListener, useProps } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
 import { emojiLoader, useLoadEmoji } from "@web/core/emoji_picker/emoji_loader";
-import { useChildRef, useService } from "@web/core/utils/hooks";
+import { useService } from "@web/core/utils/hooks";
 import { TabHeader, TabPanel, Tabs } from "./tabs";
 
 export class MessageReactionMenu extends Component {
@@ -14,20 +13,18 @@ export class MessageReactionMenu extends Component {
 
     setup() {
         super.setup();
-        this.tabsRef = useChildRef();
+        this.tabsRef = signal.ref();
         this.store = useService("mail.store");
-        this.props = props({
-            close: types.function([]),
-            "initialReaction?": types.instanceOf(this.store.MessageReactions.Class),
-            message: types.instanceOf(this.store["mail.message"].Class),
+        this.props = useProps({
+            close: t.function([]),
+            initialReaction: t.instanceOf(this.store.MessageReactions).optional(),
+            message: t.instanceOf(this.store["mail.message"]),
         });
         this.ui = useService("ui");
-        useLayoutEffect(
-            (closeFn) => {
-                closeFn?.();
-            },
-            () => [this.props.message.reactions.length === 0 ? this.props.close : null]
-        );
+        useEffect(() => {
+            const closeFn = this.props.message.reactions.length === 0 ? this.props.close : null;
+            untrack(() => closeFn?.());
+        });
         useListener(document, "keydown", (ev) => this.onKeydown(ev));
         onExternalClick(this.tabsRef, () => this.props.close());
         onMounted(useLoadEmoji());

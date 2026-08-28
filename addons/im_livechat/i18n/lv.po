@@ -1,6 +1,6 @@
 # Translation of Odoo Server.
 # This file contains the translation of the following modules:
-# 	* im_livechat
+# * im_livechat
 #
 # Translators:
 # Arnis Putniņš <arnis@allegro.lv>, 2022
@@ -9,21 +9,22 @@
 # JanisJanis <jbojars@gmail.com>, 2022
 # Martin Trigaux, 2022
 # Armīns Jeltajevs <armins.jeltajevs@gmail.com>, 2023
-#
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-29 17:39+0000\n"
-"PO-Revision-Date: 2022-09-22 05:53+0000\n"
-"Last-Translator: Armīns Jeltajevs <armins.jeltajevs@gmail.com>, 2023\n"
-"Language-Team: Latvian (https://app.transifex.com/odoo/teams/41243/lv/)\n"
+"POT-Creation-Date: 2026-07-17 17:37+0000\n"
+"PO-Revision-Date: 2026-06-20 01:14+0000\n"
+"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
+"Language-Team: Latvian <https://translate.odoo.com/projects/odoo-master/"
+"im_livechat/lv/>\n"
 "Language: lv\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n != 0 ? 1 : "
-"2);\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n != 0 ? 1 : 2;\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: im_livechat
 #: model:ir.model.constraint,message:im_livechat.constraint_discuss_channel_livechat_rating_constraint
@@ -43,13 +44,15 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_report_channel_view_list
+#, fuzzy
 msgid "# Messages"
-msgstr ""
+msgstr "# Ziņojumi"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel__rating_count
+#, fuzzy
 msgid "# Ratings"
-msgstr ""
+msgstr "Vērtējumu skaits"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__message_count
@@ -73,24 +76,25 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_digest_digest__kpi_livechat_rating
+#, fuzzy
 msgid "% of Happiness"
-msgstr ""
+msgstr "%s apmierinātības"
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "%(days)sd"
 msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "%(hours)sh"
 msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "%(minutes)sm"
 msgstr ""
 
@@ -109,8 +113,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-python
 #: code:addons/im_livechat/models/chatbot_script.py:0
+#, fuzzy
 msgid "%s (copy)"
-msgstr ""
+msgstr "%s (kopija)"
 
 #. module: im_livechat
 #. odoo-python
@@ -146,7 +151,7 @@ msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.js:0
 msgid "< 1m"
 msgstr ""
 
@@ -179,8 +184,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_kanban
+#, fuzzy
 msgid "<span class=\"fw-bold\">Country: </span>"
-msgstr ""
+msgstr "<span class=\"fw-bold\">Valsts: </span>"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
@@ -241,8 +247,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_res_groups
+#, fuzzy
 msgid "Access Groups"
-msgstr ""
+msgstr "Piekļuves Grupas"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_script__active
@@ -332,8 +339,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_channel_rule__chatbot_enabled_condition__always
+#, fuzzy
 msgid "Always"
-msgstr ""
+msgstr "Vienmēr"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -381,8 +389,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__avatar_128
+#, fuzzy
 msgid "Avatar 128"
-msgstr ""
+msgstr "Ikona 128"
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_im_livechat_report_channel__time_to_answer
@@ -432,8 +441,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.ui.menu,name:im_livechat.canned_responses
+#, fuzzy
 msgid "Canned Responses"
-msgstr ""
+msgstr "Sagatavotās atbildes"
 
 #. module: im_livechat
 #. odoo-python
@@ -455,8 +465,9 @@ msgstr "Kanāls"
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_discuss_channel_member
+#, fuzzy
 msgid "Channel Member"
-msgstr ""
+msgstr "Kanāla dalībnieks"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel__name
@@ -479,10 +490,14 @@ msgstr "Kanāli"
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_discuss_channel__channel_type
+#, fuzzy
 msgid ""
 "Chat is private and unique between 2 persons. Group is private among invited "
 "persons. Channel can be freely joined (depending on its configuration)."
 msgstr ""
+"Sarakste ir privāta un unikāla starp 2 personām. Grupa ir privāta starp "
+"uzaicinātām personām. Kanālā var brīvi pievienoties (atkarībā no tā "
+"konfigurācijas."
 
 #. module: im_livechat
 #. odoo-javascript
@@ -537,8 +552,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__chatbot_message_ids
+#, fuzzy
 msgid "Chatbot Messages"
-msgstr ""
+msgstr "Čata robota ziņojumi"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.chatbot_script_view_form
@@ -620,8 +636,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_expertise__color
+#, fuzzy
 msgid "Color"
-msgstr ""
+msgstr "Krāsa"
 
 #. module: im_livechat
 #: model:ir.model.constraint,message:im_livechat.constraint_im_livechat_channel_max_sessions_mode_greater_than_zero
@@ -639,6 +656,12 @@ msgid "Configure Channel"
 msgstr ""
 
 #. module: im_livechat
+#. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "Connect"
+msgstr ""
+
+#. module: im_livechat
 #: model:ir.model,name:im_livechat.model_res_partner
 msgid "Contact"
 msgstr "Kontakts"
@@ -646,8 +669,9 @@ msgstr "Kontakts"
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/embed/common/chat_window_patch.xml:0
+#, fuzzy
 msgid "Continue"
-msgstr ""
+msgstr "Turpināt"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_report_channel__channel_id
@@ -668,8 +692,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-python
 #: code:addons/im_livechat/models/discuss_channel.py:0
+#, fuzzy
 msgid "Conversation with %s"
-msgstr ""
+msgstr "Sarakste ar %s"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_digest_digest__kpi_livechat_conversations
@@ -678,8 +703,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_rule__country_ids
+#, fuzzy
 msgid "Countries"
-msgstr ""
+msgstr "Valstis"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -707,13 +733,15 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_discuss_channel__country_id
 #: model:ir.model.fields,help:im_livechat.field_im_livechat_channel_member_history__session_country_id
+#, fuzzy
 msgid "Country of the visitor of the channel"
-msgstr ""
+msgstr "Kanāla apmeklētāja valsts"
 
 #. module: im_livechat
 #: model:ir.model,website_form_label:im_livechat.model_res_partner
+#, fuzzy
 msgid "Create a Customer"
-msgstr ""
+msgstr "Izveidot klientu"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_message__create_uid
@@ -743,8 +771,9 @@ msgstr "Izveidots"
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_report_channel__visitor_partner_id
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_tree
+#, fuzzy
 msgid "Customer"
-msgstr ""
+msgstr "Klients"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__livechat_customer_guest_ids
@@ -765,13 +794,15 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_tree
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_agent_history_view_search
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_report_channel_view_search
+#, fuzzy
 msgid "Date"
-msgstr ""
+msgstr "Datums"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_kanban
+#, fuzzy
 msgid "Date:"
-msgstr ""
+msgstr "Datums:"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_agent_history_view_search
@@ -845,14 +876,16 @@ msgstr "Apkopojums"
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/public_web/livechat_leave_dialog.xml:0
+#, fuzzy
 msgid "Discard"
-msgstr ""
+msgstr "Atmest"
 
 #. module: im_livechat
 #: model:chatbot.script.answer,name:im_livechat.chatbot_script_answer_discuss_demo
 #: model:im_livechat.expertise,name:im_livechat.chatbot_script_expertise_discuss_demo
+#, fuzzy
 msgid "Discuss"
-msgstr ""
+msgstr "Saziņa"
 
 #. module: im_livechat
 #: model:chatbot.script.answer,name:im_livechat.chatbot_script_answer_discuss_livechat_demo
@@ -862,8 +895,9 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_discuss_channel
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_message__discuss_channel_id
+#, fuzzy
 msgid "Discussion Channel"
-msgstr ""
+msgstr "Diskusiju kanāls"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_message__display_name
@@ -899,8 +933,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/web/livechat_channel_info_list.xml:0
+#, fuzzy
 msgid "Download"
-msgstr ""
+msgstr "Lejupielādēt"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -917,8 +952,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__duration
+#, fuzzy
 msgid "Duration"
-msgstr ""
+msgstr "Ilgums"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_report_channel__duration
@@ -932,13 +968,15 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_discuss_channel__duration
+#, fuzzy
 msgid "Duration of the session in hours"
-msgstr ""
+msgstr "Sesijas ilgums stundās"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_kanban
+#, fuzzy
 msgid "Duration:"
-msgstr ""
+msgstr "Ilgums:"
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__chatbot_script_step__step_type__question_email
@@ -954,6 +992,12 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_rule__chatbot_enabled_condition
 msgid "Enable ChatBot"
+msgstr ""
+
+#. module: im_livechat
+#. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "Engage with visitors to convert leads or offer services."
 msgstr ""
 
 #. module: im_livechat
@@ -1053,8 +1097,9 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_week_day__4
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__day_number__5
+#, fuzzy
 msgid "Friday"
-msgstr ""
+msgstr "Piektdiena"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -1085,8 +1130,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__guest_id
+#, fuzzy
 msgid "Guest"
-msgstr ""
+msgstr "Viesis"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_report_channel__handled_by_agent
@@ -1155,6 +1201,12 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__help_status
 msgid "Help Status"
+msgstr ""
+
+#. module: im_livechat
+#. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "Help needed"
 msgstr ""
 
 #. module: im_livechat
@@ -1323,15 +1375,17 @@ msgstr ""
 #: code:addons/im_livechat/static/src/core/public_web/discuss_channel_model_patch.js:0
 #: code:addons/im_livechat/static/src/core/web/store_service_patch.js:0
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_status__in_progress
+#, fuzzy
 msgid "In progress"
-msgstr ""
+msgstr "Procesā"
 
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/web/livechat_channel_info_list.xml:0
 #: code:addons/im_livechat/static/src/core/web/thread_actions.js:0
+#, fuzzy
 msgid "Information"
-msgstr ""
+msgstr "Informācija"
 
 #. module: im_livechat
 #. odoo-python
@@ -1358,8 +1412,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
+#, fuzzy
 msgid "Join Channel"
-msgstr ""
+msgstr "Pievienoties kanālam"
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_discuss_call_history
@@ -1389,8 +1444,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/web/channel_member_patch.xml:0
+#, fuzzy
 msgid "Lang"
-msgstr ""
+msgstr "Valoda"
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_discuss_channel__livechat_lang_id
@@ -1404,13 +1460,15 @@ msgstr ""
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__livechat_lang_id
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_report_channel__lang_id
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
+#, fuzzy
 msgid "Language"
-msgstr ""
+msgstr "Valoda"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
+#, fuzzy
 msgid "Languages"
-msgstr ""
+msgstr "Valodas"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.res_users_form_view
@@ -1425,18 +1483,21 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
+#, fuzzy
 msgid "Last 30 Days"
-msgstr ""
+msgstr "Pēdējās 30 dienas"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
+#, fuzzy
 msgid "Last 365 Days"
-msgstr ""
+msgstr "Pēdējās 365 dienas"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
+#, fuzzy
 msgid "Last 7 Days"
-msgstr ""
+msgstr "Pēdējās 7 dienas"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_message__write_uid
@@ -1507,8 +1568,6 @@ msgid "Limited"
 msgstr ""
 
 #. module: im_livechat
-#. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_app/discuss_app_model_patch.js:0
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__channel_type__livechat
 #: model:ir.ui.menu,name:im_livechat.livechat_technical
 #: model:ir.ui.menu,name:im_livechat.menu_livechat_root
@@ -1581,7 +1640,7 @@ msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_patch.js:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
 #: model_terms:ir.ui.view,arch_db:im_livechat.view_partner_form
 msgid "Live Chats"
 msgstr ""
@@ -1637,8 +1696,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_res_users__livechat_lang_ids
+#, fuzzy
 msgid "Livechat Languages"
-msgstr ""
+msgstr "Livechat valodas"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__livechat_matches_self_expertise
@@ -1700,7 +1760,6 @@ msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_app/discuss_app_model_patch.js:0
 #: code:addons/im_livechat/static/src/core/public_web/discuss_channel_model_patch.js:0
 #: code:addons/im_livechat/static/src/core/web/store_service_patch.js:0
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_status__need_help
@@ -1736,8 +1795,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__member_id
+#, fuzzy
 msgid "Member"
-msgstr ""
+msgstr "Dalībnieks"
 
 #. module: im_livechat
 #: model:ir.actions.act_window,name:im_livechat.im_livechat_channel_member_history_action
@@ -1765,8 +1825,9 @@ msgstr "Ziņojums"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_tree
+#, fuzzy
 msgid "Messages"
-msgstr ""
+msgstr "Ziņojumi"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_report_channel__nbr_message
@@ -1781,15 +1842,17 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_week_day__0
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__day_number__1
+#, fuzzy
 msgid "Monday"
-msgstr ""
+msgstr "Pirmdiena"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_agent_history_view_search
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_report_channel_view_search
+#, fuzzy
 msgid "My Sessions"
-msgstr ""
+msgstr "Manas sessijas"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_script_step__name
@@ -1829,8 +1892,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/embed/common/feedback_panel/feedback_panel.xml:0
+#, fuzzy
 msgid "New Session"
-msgstr ""
+msgstr "Jauna sesija"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.res_users_form_view
@@ -1848,6 +1912,12 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_failure__no_failure
 msgid "No Failure"
+msgstr ""
+
+#. module: im_livechat
+#. odoo-javascript
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_model_patch.js:0
+msgid "No Livechat Session!"
 msgstr ""
 
 #. module: im_livechat
@@ -1914,8 +1984,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/web/livechat_channel_info_list.xml:0
+#, fuzzy
 msgid "Notes"
-msgstr ""
+msgstr "Piezīmes"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
@@ -1971,8 +2042,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_search
+#, fuzzy
 msgid "Ongoing"
-msgstr ""
+msgstr "Ongoing"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
@@ -2047,13 +2119,15 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_report_channel_view_list
+#, fuzzy
 msgid "Participants"
-msgstr ""
+msgstr "Dalībnieki"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel_member_history__partner_id
+#, fuzzy
 msgid "Partner"
-msgstr ""
+msgstr "Partneris"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_kanban
@@ -2084,8 +2158,9 @@ msgstr "Jautājums"
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_ir_qweb
+#, fuzzy
 msgid "Qweb"
-msgstr ""
+msgstr "Qweb"
 
 #. module: im_livechat
 #. odoo-python
@@ -2095,8 +2170,9 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_tree
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_agent_history_view_search
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_report_channel_view_search
+#, fuzzy
 msgid "Rating"
-msgstr ""
+msgstr "Vērtējums"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__livechat_rating_percentage
@@ -2108,13 +2184,15 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_im_livechat_channel__rating_percentage_satisfaction
+#, fuzzy
 msgid "Rating Satisfaction"
-msgstr ""
+msgstr "Apmierinātības vērtējums"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_report_channel_view_list
+#, fuzzy
 msgid "Rating Text"
-msgstr ""
+msgstr "Vērtējuma Teksts"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -2124,8 +2202,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_script_answer__redirect_link
+#, fuzzy
 msgid "Redirect Link"
-msgstr ""
+msgstr "Novirzīšanas saite"
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_im_livechat_channel_rule__regex_url
@@ -2140,8 +2219,7 @@ msgstr ""
 
 #. module: im_livechat
 #. odoo-javascript
-#: code:addons/im_livechat/static/src/core/public_web/discuss_sidebar_channel_patch.xml:0
-#: code:addons/im_livechat/static/src/core/web/discuss_app/sidebar/category_patch.xml:0
+#: code:addons/im_livechat/static/src/core/public_web/messaging_menu_item_patch.xml:0
 msgid "Relevant to your expertise"
 msgstr ""
 
@@ -2152,8 +2230,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.ui.menu,name:im_livechat.menu_reporting_livechat
+#, fuzzy
 msgid "Reporting"
-msgstr ""
+msgstr "Atskaites"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_discuss_channel__livechat_looking_for_help_since_dt
@@ -2212,8 +2291,9 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_week_day__5
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__day_number__6
+#, fuzzy
 msgid "Saturday"
-msgstr ""
+msgstr "Sestdiena"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
@@ -2280,8 +2360,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/embed/common/feedback_panel/feedback_panel.xml:0
+#, fuzzy
 msgid "Send"
-msgstr ""
+msgstr "Nosūtīt"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -2379,8 +2460,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:chatbot.script.answer,name:im_livechat.chatbot_script_answer_setup_demo
+#, fuzzy
 msgid "Setup"
-msgstr ""
+msgstr "Uzstādīšana"
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_channel_rule__action__display_button
@@ -2435,13 +2517,15 @@ msgstr ""
 #: code:addons/im_livechat/static/src/core/web/livechat_channel_info_list.xml:0
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_agent_history_view_search
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_report_channel_view_search
+#, fuzzy
 msgid "Status"
-msgstr ""
+msgstr "Statuss"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_kanban
+#, fuzzy
 msgid "Status:"
-msgstr ""
+msgstr "Statuss:"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_script_step__step_type
@@ -2460,14 +2544,16 @@ msgstr ""
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_outcome__no_failure
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__session_outcome__no_failure
 #: model_terms:ir.ui.view,arch_db:im_livechat.discuss_channel_view_kanban
+#, fuzzy
 msgid "Success"
-msgstr ""
+msgstr "Panākumi"
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_week_day__6
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__day_number__0
+#, fuzzy
 msgid "Sunday"
-msgstr ""
+msgstr "Svētdiena"
 
 #. module: im_livechat
 #: model:chatbot.script,title:im_livechat.chatbot_script_support_bot_demo
@@ -2566,8 +2652,9 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_week_day__3
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__day_number__4
+#, fuzzy
 msgid "Thursday"
-msgstr ""
+msgstr "Ceturtdiena"
 
 #. module: im_livechat
 #: model:ir.model.fields,help:im_livechat.field_im_livechat_channel_member_history__session_duration_hour
@@ -2628,8 +2715,9 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_week_day__1
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__day_number__2
+#, fuzzy
 msgid "Tuesday"
-msgstr ""
+msgstr "Otrdiena"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_view_form
@@ -2672,8 +2760,9 @@ msgstr ""
 #. odoo-python
 #: code:addons/im_livechat/models/im_livechat_channel_member_history.py:0
 #: code:addons/im_livechat/report/im_livechat_report_channel.py:0
+#, fuzzy
 msgid "Unknown"
-msgstr ""
+msgstr "Nezināms"
 
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_channel__max_sessions_mode__unlimited
@@ -2708,8 +2797,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model:ir.model,name:im_livechat.model_res_users_settings
+#, fuzzy
 msgid "User Settings"
-msgstr ""
+msgstr "Lietotāja uzstādījumi"
 
 #. module: im_livechat
 #: model:ir.model.fields,field_description:im_livechat.field_chatbot_message__user_script_answer_id
@@ -2736,12 +2826,6 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/web/livechat_channel_info_list.xml:0
 msgid "View Contact"
-msgstr ""
-
-#. module: im_livechat
-#. odoo-javascript
-#: code:addons/im_livechat/static/src/core/web/discuss_app/sidebar/category_patch.js:0
-msgid "View or join live chat channels"
 msgstr ""
 
 #. module: im_livechat
@@ -2792,8 +2876,9 @@ msgstr ""
 #. module: im_livechat
 #: model:ir.model.fields.selection,name:im_livechat.selection__discuss_channel__livechat_week_day__2
 #: model:ir.model.fields.selection,name:im_livechat.selection__im_livechat_report_channel__day_number__3
+#, fuzzy
 msgid "Wednesday"
-msgstr ""
+msgstr "Trešdiena"
 
 #. module: im_livechat
 #: model:chatbot.script,title:im_livechat.chatbot_script_welcome_bot
@@ -2871,9 +2956,12 @@ msgstr ""
 #. module: im_livechat
 #: model_terms:chatbot.script.step,message:im_livechat.chatbot_script_welcome_step_pricing_email
 #: model_terms:chatbot.script.step,message:im_livechat.chatbot_script_welcome_step_pricing_email_demo
+#, fuzzy
 msgid ""
 "Would you mind leaving your email address so that we can reach you back?"
 msgstr ""
+"Vai Jūs vēlties atstāt Jūsu e-pasta adresi, lai mēs varētu ar Jums "
+"sazināties?"
 
 #. module: im_livechat
 #. odoo-python
@@ -2884,8 +2972,9 @@ msgstr ""
 #. module: im_livechat
 #. odoo-javascript
 #: code:addons/im_livechat/static/src/core/common/close_confirmation.xml:0
+#, fuzzy
 msgid "Yes, leave conversation"
-msgstr ""
+msgstr "Jā, pamest sarunu"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.livechat_email_template
@@ -2912,8 +3001,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.livechat_email_template
+#, fuzzy
 msgid "at"
-msgstr ""
+msgstr "at"
 
 #. module: im_livechat
 #. odoo-javascript
@@ -2977,8 +3067,9 @@ msgstr ""
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.livechat_email_template
+#, fuzzy
 msgid "on"
-msgstr ""
+msgstr "on"
 
 #. module: im_livechat
 #: model_terms:ir.ui.view,arch_db:im_livechat.im_livechat_channel_rule_view_form

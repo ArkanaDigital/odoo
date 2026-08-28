@@ -12,7 +12,7 @@
                     name="action_view_gift_cards"
                     class="oe_stat_button"
                     type="object"
-                    icon="fa-gift"
+                    icon="card_giftcard"
                     invisible="gift_card_count == 0"
                 >
                     <field string="Gift Cards" name="gift_card_count" widget="statinfo"/>
@@ -52,7 +52,7 @@
                     invisible="not (locked or state == 'cancel')"
                 />
             </button>
-            <xpath expr="//list//field[@name='product_uom_qty']" position="before">
+            <xpath expr="//list//column[@name='sol_qty']" position="before">
                 <field name="is_reward_line" column_invisible="True"/>
             </xpath>
             <xpath expr="//list//field[@name='product_uom_qty']" position="attributes">

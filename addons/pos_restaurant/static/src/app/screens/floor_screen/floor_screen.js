@@ -1,5 +1,4 @@
-import { useLayoutEffect } from "@web/owl2/utils";
-import { Component, onMounted } from "@odoo/owl";
+import { Component, onMounted, useEffect } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { registry } from "@web/core/registry";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
@@ -12,7 +11,6 @@ import { FloorPlanEditor } from "@pos_restaurant/app/screens/floor_screen/floor_
 export class FloorScreen extends Component {
     static template = "pos_restaurant.FloorScreen";
     static components = { NumpadDropdown, FloorEditorToolBar, FloorPlan, FloorPlanEditor };
-    static props = {};
     static storeOnOrder = false;
 
     setup() {
@@ -20,16 +18,13 @@ export class FloorScreen extends Component {
         this.floorPlanStore = useFloorPlanStore();
         this.ui = useService("ui");
 
-        useLayoutEffect(
-            (isEditMode) => {
-                if (isEditMode) {
-                    document.body.classList.add("o_fp_edit_mode");
-                } else {
-                    document.body.classList.remove("o_fp_edit_mode");
-                }
-            },
-            () => [this.floorPlanStore.editMode]
-        );
+        useEffect(() => {
+            if (this.floorPlanStore.editMode) {
+                document.body.classList.add("o_fp_edit_mode");
+            } else {
+                document.body.classList.remove("o_fp_edit_mode");
+            }
+        });
 
         onMounted(() => {
             this.pos.openOpeningControl();

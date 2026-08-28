@@ -1,29 +1,40 @@
 import { render } from "@web/owl2/utils";
-import { Component, onWillStart, onWillUpdateProps } from "@odoo/owl";
+import { asyncComputed, Component, onWillStart, t, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { isId } from "@web/core/tree_editor/utils";
 import { useService } from "@web/core/utils/hooks";
 import { RecordAutocomplete } from "./record_autocomplete";
 
+export const recordSelectorProps = {
+    // loose: subclasses (e.g. DomainSelectorSingleAutocomplete) also pass
+    // expressions, and the base schema is still validated for them
+    resId: t.any(),
+    virtualRecord: t.object().optional(),
+    resModel: t.string(),
+    update: t.function(),
+    domain: t.array().optional(),
+    context: t.object().optional(),
+    fieldString: t.string().optional(),
+    placeholder: t.string().optional(),
+    buildQuickCreate: t.function().optional(),
+};
+
 export class RecordSelector extends Component {
-    static props = {
-        resId: [Number, { value: false }],
-        virtualRecord: { type: Object, optional: true },
-        resModel: String,
-        update: Function,
-        domain: { type: Array, optional: true },
-        context: { type: Object, optional: true },
-        fieldString: { type: String, optional: true },
-        placeholder: { type: String, optional: true },
-        buildQuickCreate: { type: Function, optional: true },
-    };
+    props = useProps(recordSelectorProps);
     static components = { RecordAutocomplete };
     static template = "web.RecordSelector";
 
     setup() {
         this.nameService = useService("name");
-        onWillStart(() => this.computeDerivedParams());
-        onWillUpdateProps((nextProps) => this.computeDerivedParams(nextProps));
+        this.displayName = asyncComputed(
+            async () => {
+                const props = { ...this.props };
+                const displayNames = await this.getDisplayNames(props);
+                return this.getDisplayName(props, displayNames);
+            },
+            { initial: "" }
+        );
+        onWillStart(() => this.displayName.currentPromise());
     }
 
     get isAvatarModel() {
@@ -35,11 +46,6 @@ export class RecordSelector extends Component {
 
     get hasAvatarImg() {
         return this.isAvatarModel && isId(this.props.resId);
-    }
-
-    async computeDerivedParams(props = this.props) {
-        const displayNames = await this.getDisplayNames(props);
-        this.displayName = this.getDisplayName(props, displayNames);
     }
 
     async getDisplayNames(props) {

@@ -1,7 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import api, fields, models
-from odoo.tools import formatLang, SQL
+from odoo.tools import format_date, formatLang, SQL
 
 
 class PurchaseBillUnion(models.Model):
@@ -9,7 +9,7 @@ class PurchaseBillUnion(models.Model):
     _auto = False
     _description = 'Purchases & Bills Union'
     _order = "date desc, name desc"
-    _rec_names_search = ['name', 'reference']
+    _rec_names_search = ('name', 'reference')
 
     name = fields.Char(string='Reference', readonly=True)
     reference = fields.Char(string='Source', readonly=True)
@@ -21,22 +21,28 @@ class PurchaseBillUnion(models.Model):
     vendor_bill_id = fields.Many2one('account.move', string='Vendor Bill', readonly=True)
     purchase_order_id = fields.Many2one('purchase.order', string='Purchase Order', readonly=True)
 
-    @api.depends('currency_id', 'reference', 'amount', 'purchase_order_id')
-    @api.depends_context('show_total_amount')
+    @api.depends('currency_id', 'reference', 'amount', 'purchase_order_id', 'date')
+    @api.depends_context('show_total_amount', 'formatted_display_name')
     def _compute_display_name(self):
         for doc in self:
-            name = doc.name or ''
-            if doc.reference:
-                name += ' - ' + doc.reference
             amount = doc.amount
             if doc.purchase_order_id and doc.purchase_order_id.invoice_status == 'no':
                 amount = 0.0
-            name += ': ' + formatLang(self.env, amount, currency_obj=doc.currency_id)
-            doc.display_name = name
+            formatted_amount = formatLang(self.env, amount, currency_obj=doc.currency_id)
+            if self.env.context.get('formatted_display_name'):
+                header = f"**{doc.name or ''}**{f" ({doc.reference})" if doc.reference else ''}\t{formatted_amount}"
+                detail = f"{format_date(self.env, doc.date) if doc.date else ''}"
+                doc.display_name = f"{header}\t{detail}"
+            else:
+                name = doc.name or ''
+                if doc.reference:
+                    name += ' - ' + doc.reference
+                name += ': ' + formatted_amount
+                doc.display_name = name
 
     @property
-    def _table_query(self):
-        return SQL("""
+    def _table_sql(self):
+        return SQL("""(
                 SELECT id,
                        name,
                        ref as reference,
@@ -64,4 +70,4 @@ class PurchaseBillUnion(models.Model):
                   FROM purchase_order
                  WHERE state = 'purchase'
                    AND invoice_status in ('to invoice', 'no')
-        """)
+        )""")

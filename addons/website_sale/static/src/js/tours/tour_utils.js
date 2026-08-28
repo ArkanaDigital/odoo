@@ -1,4 +1,3 @@
-import { _t } from "@web/core/l10n/translation";
 import { clickOnElement } from '@website/js/tours/tour_utils';
 
 export function goToProductPage({
@@ -23,7 +22,7 @@ export function goToProductPage({
 export function increaseProductPageQuantity() {
     return {
         content: "Increase product quantity",
-        trigger: '.css_quantity button:has(i.oi-plus)',
+        trigger: '.css_quantity button:has(i[data-icon="add"])',
         run: "click",
     }
 }
@@ -238,7 +237,7 @@ export function fillAddressForm(
 
 export function goToCart({ quantity = 1, backend = false, expectUnloadPage = true } = {}) {
     return {
-        content: _t("Go to cart"),
+        content: "Go to cart",
         trigger: `${backend ? ":iframe" : ""} a sup.my_cart_quantity:text(${quantity})`,
         run: "click",
         expectUnloadPage,
@@ -320,7 +319,7 @@ export function payWithTransfer({
             {
                 content: "Last step",
                 trigger:
-                    '[name="order_confirmation"]:contains("Please use the following transfer details")',
+                    '[name="order_confirmation"]:contains("Your order will be confirmed after payment is received.")',
                 timeout: 30000,
             },
         ];
@@ -331,7 +330,7 @@ export function payWithTransfer({
             {
                 content: "Last step",
                 trigger:
-                    '[name="order_confirmation"]:contains("Please use the following transfer details")',
+                    '[name="order_confirmation"]:contains("Your order will be confirmed after payment is received.")',
                 timeout: 30000,
                 run() {
                     window.location.href = '/contactus'; // Redirect in JS to avoid the RPC loop (20x1sec)

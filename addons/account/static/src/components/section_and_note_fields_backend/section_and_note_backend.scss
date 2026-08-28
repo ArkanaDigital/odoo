@@ -15,6 +15,7 @@ table.o_section_and_note_list_view {
 
             .o_list_section_options {
                 width: 1px;  // to prevent the column to expand
+                text-overflow: unset !important;
             }
 
             .o_field_product_label_section_and_note_cell .o_input {
@@ -57,11 +58,5 @@ table.o_section_and_note_list_view {
     // the <th> els.
     &:where(:has(tbody > tr:first-child.o_is_line_section:not(.o_dragged, .d-table-row))) th {
         border-color: var(--o-SectionAndNote-border-color);
-    }
-}
-
-.o_field_section_and_note_text {
-    > span {
-        white-space: pre-wrap !important;
     }
 }

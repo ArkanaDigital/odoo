@@ -1,20 +1,12 @@
-import { after, destroy, getFixture, queryFirst, queryOne } from "@odoo/hoot";
+import { after, getFixture, queryFirst, queryOne } from "@odoo/hoot";
 import { App, Component, onWillDestroy, xml } from "@odoo/owl";
-import { appTranslateFn } from "@web/core/l10n/translation";
 import { MainComponentsContainer } from "@web/core/main_components_container";
 import { getPopoverForTarget } from "@web/core/popover/popover";
-import { getTemplate as defaultGetTemplate } from "@web/core/templates";
-import { isIterable } from "@web/core/utils/arrays";
 import { patch } from "@web/core/utils/patch";
-import {
-    customDirectives as defaultCustomDirectives,
-    globalValues as defaultGlobalValues,
-} from "@web/env";
-import { getMockEnv, makeApp, makeMockEnv } from "./env_test_helpers";
-import { patchWithCleanup } from "./patch_test_helpers";
-import { services } from "@web/core/services";
-
+import { getMockEnv, getTestApp, makeTestApp } from "./app_test_helpers";
 import { makeMockServer, MockServer } from "./mock_server/mock_server";
+import { patchWithCleanup } from "./patch_test_helpers";
+import { isSmall } from "./ui_test_helpers";
 
 /**
  * @typedef {import("@odoo/hoot").Target} Target
@@ -81,7 +73,7 @@ export function findComponent(appOrComponent, predicate) {
  * @returns {HTMLElement | undefined}
  */
 export function getDropdownMenu(togglerSelector) {
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         return queryFirst(".o-dropdown--menu", { eq: -1 });
     }
     let el = queryFirst(togglerSelector);
@@ -108,43 +100,23 @@ export function getDropdownMenu(togglerSelector) {
  * @param {AppConfig & {
  *  componentEnv?: Partial<OdooEnv>;
  *  containerEnv?: Partial<OdooEnv>;
- *  fixtureClassName?: string | string[] | null;
- *  env?: E;
  *  noMainContainer?: boolean;
  *  props?: P;
  *  target?: Target;
  * }} [options]
  */
 export async function mountWithCleanup(ComponentClass, options) {
-    const {
-        componentEnv,
-        containerEnv,
-        customDirectives = defaultCustomDirectives,
-        env,
-        fixtureClassName = "o_web_client",
-        getTemplate = defaultGetTemplate,
-        globalValues = defaultGlobalValues,
-        noMainContainer,
-        props,
-        target,
-        templates,
-        translatableAttributes,
-        translateFn = appTranslateFn,
-    } = options || {};
+    const { componentEnv, containerEnv, noMainContainer, props, target } = options || {};
 
     // Fixture
     const fixture = getFixture();
     const targetEl = target ? queryOne(target) : fixture;
-    if (fixtureClassName) {
-        const list = isIterable(fixtureClassName) ? fixtureClassName : [fixtureClassName];
-        fixture.classList.add(...list);
-    }
+    fixture.classList.add("o_web_client");
 
     if (typeof ComponentClass === "string") {
         // Convert templates to components (if needed)
         ComponentClass = class extends Component {
             static name = "anonymous component";
-            static props = {};
             static template = xml`${ComponentClass}`;
         };
     }
@@ -155,22 +127,8 @@ export async function mountWithCleanup(ComponentClass, options) {
         await makeMockServer();
     }
 
-    const app = makeApp({
-        customDirectives,
-        getTemplate,
-        globalValues,
-        name: `TEST: ${ComponentClass.name}`,
-        templates,
-        translatableAttributes,
-        translateFn,
-        // The following keys are forced to ensure validation of all tested components
-        dev: false,
-        test: true,
-        plugins: services,
-        warnIfNoStaticProps: true,
-    });
-    const commonEnv = env || getMockEnv() || (await makeMockEnv({}, { app }));
-    after(() => destroy(app));
+    const app = getTestApp() || (await makeTestApp());
+    const commonEnv = getMockEnv();
 
     const componentRoot = app.createRoot(ComponentClass, {
         env: Object.assign(Object.create(commonEnv), componentEnv),

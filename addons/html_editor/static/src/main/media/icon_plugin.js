@@ -54,7 +54,7 @@ export class IconPlugin extends Plugin {
             {
                 id: "toggleSpinIcon",
                 description: _t("Toggle icon spin"),
-                icon: "fa-play",
+                icon: "play_arrow",
                 run: this.toggleSpinIcon.bind(this),
                 isAvailable: isHtmlContentSupported,
             },
@@ -127,7 +127,7 @@ export class IconPlugin extends Plugin {
                 id: "icon_replace",
                 groupId: "icon_replace",
                 commandId: "replaceIcon",
-                text: _t("Replace"),
+                icon: "image",
             },
         ],
         click_overrides: this.onClickIcon.bind(this),
@@ -186,7 +186,7 @@ export class IconPlugin extends Plugin {
         if (!selectedIcon) {
             return;
         }
-        selectedIcon.classList.toggle("fa-spin");
+        selectedIcon.classList.toggle("oi-spin");
         this.dependencies.history.commit();
     }
 
@@ -209,7 +209,9 @@ export class IconPlugin extends Plugin {
         if (!selectedIcon) {
             return;
         }
-        return selectedIcon.classList.contains("fa-spin");
+        return (
+            selectedIcon.classList.contains("oi-spin") || selectedIcon.classList.contains("fa-spin")
+        );
     }
 
     openIconDialog() {
@@ -221,6 +223,7 @@ export class IconPlugin extends Plugin {
             visibleTabs: ["ICONS"],
             media: selectedIcon,
             save: (el) => this.onSaveIcon(el, selectedIcon),
+            document: this.document,
         });
     }
 
@@ -234,7 +237,7 @@ export class IconPlugin extends Plugin {
     computeBackgroundColorForIcon() {
         const nodes = this.dependencies.selection
             .getTargetedNodes()
-            .filter((node) => node.classList?.contains("fa"));
+            .filter((node) => node.classList?.contains("oi"));
         if (nodes.length === 0) {
             return;
         }

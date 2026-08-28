@@ -1,24 +1,23 @@
-import { useChildSubEnv, useLayoutEffect, useRef } from "@web/owl2/utils";
+import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { DateSection } from "@mail/core/common/date_section";
 import { Message } from "@mail/core/common/message";
 import { NotificationMessage } from "./notification_message";
-import { Record } from "@mail/model/export";
 import { useChildRefs, useMessageSelection, useVisible } from "@mail/utils/common/hooks";
+import { incrementFn } from "@mail/utils/common/signal";
 
 import {
     Component,
     computed,
     onMounted,
-    onWillDestroy,
+    onPatched,
     onWillPatch,
     onWillUnmount,
-    onWillUpdateProps,
     proxy,
     signal,
-    types,
+    t,
     untrack,
-    useEffect,
-    useListener,
+    useOnChange,
+    useProps,
 } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
 
@@ -40,24 +39,6 @@ export const PRESENT_VIEWPORT_THRESHOLD = 1;
  */
 export class Thread extends Component {
     static components = { Message, NotificationMessage, Transition, DateSection };
-    static props = [
-        "autofocus?",
-        "showDates?",
-        "jumpPresent?",
-        "jumpToNewMessage?",
-        "thread",
-        "order?",
-        "scrollRef?",
-        "showEmptyMessage?",
-        "showJumpPresent?",
-    ];
-    static defaultProps = {
-        jumpPresent: 0,
-        order: "asc",
-        showDates: true,
-        showEmptyMessage: true,
-        showJumpPresent: true,
-    };
     static template = "mail.Thread";
 
     /** @type {Promise|undefined} */
@@ -73,12 +54,26 @@ export class Thread extends Component {
         this.saveScroll = this.saveScroll.bind(this);
         this.onScroll = this.onScroll.bind(this);
         this.onWheel = this.onWheel.bind(this);
+        // bound once so `onParentMessageClick` is a stable (useProps.static) handler
+        this.onParentMessageClick = this.onParentMessageClick.bind(this);
+        this.startMessageAvatarRef = signal.ref(HTMLDivElement);
         this.messageRefs = useChildRefs();
-        useEffect(() => {
-            this.messageRefs.size; // trigger effect only when messageRefs changes
-            untrack(() => this.scrollToHighlighted());
-        });
+        useOnChange(
+            () => [this.messageRefs.size],
+            () => this.scrollToHighlighted()
+        );
         this.store = useService("mail.store");
+        this.props = useProps({
+            autofocus: t.or([t.number(), t.boolean()]).optional(),
+            jumpPresent: t.number().optional(0),
+            jumpToNewMessage: t.number().optional(),
+            order: t.selection(["asc", "desc"]).optional("asc"),
+            scrollRef: t.signal(t.instanceOf(HTMLElement)).optional(),
+            showDates: t.boolean().optional(true),
+            showEmptyMessage: t.boolean().optional(true),
+            showJumpPresent: t.boolean().optional(true),
+            thread: t.instanceOf(this.store["mail.thread"]),
+        });
         this.ui = useService("ui");
         this.state = proxy({
             isReplyingTo: false,
@@ -86,6 +81,13 @@ export class Thread extends Component {
             showJumpPresent: false,
             scrollTop: null,
         });
+        /**
+         * Bumped by `reset()`. Used as a dependency of the effect mirroring
+         * `isLoaded` into `mountedAndLoaded` so the mirror is re-synced after a
+         * reset without making `mountedAndLoaded` depend on itself.
+         */
+        this.resetCount = signal(0);
+        this.incrementResetCount = incrementFn(this.resetCount);
         this.lastJumpPresent = this.props.jumpPresent;
         this.orm = useService("orm");
         this.ui = useService("ui");
@@ -98,9 +100,11 @@ export class Thread extends Component {
             },
             () => [this.messageHighlight?.highlightedMessageId]
         );
-        this.present = useRef("load-newer");
-        this.jumpPresentRef = useRef("jump-present");
-        this.rootRef = signal(null, { type: types.instanceOf(HTMLDivElement) });
+        this.present = signal.ref();
+        this.jumpPresentRef = signal.ref();
+        this.loadOlderRef = signal.ref();
+        this.presentThresholdRef = signal.ref();
+        this.rootRef = signal.ref(HTMLDivElement);
         this.visibleState = useVisible(this.rootRef, () => {
             this.updateShowJumpPresent();
         });
@@ -110,19 +114,14 @@ export class Thread extends Component {
          * scrollable (in other cases).
          */
         this.scrollableRef = computed(() => this.props.scrollRef?.() ?? this.rootRef());
-        useListener(
-            this.scrollableRef,
-            "scrollend",
-            () => (this.state.scrollTop = this.scrollableRef().scrollTop)
-        );
         this.loadOlderState = useVisible(
-            "load-older",
+            this.loadOlderRef,
             async () => {
                 await Promise.all([
                     this.messageHighlight?.scrollPromise,
                     this.smoothScrollingPromise,
                 ]);
-                if (this.loadOlderState.isVisible) {
+                if (this.loadOlderState.isVisible && this.shouldTriggerLoadOnVisible) {
                     this.props.thread.fetchMoreMessages({
                         routeParams: this.messageFetchRouteParams,
                     });
@@ -131,13 +130,13 @@ export class Thread extends Component {
             { ready: false }
         );
         this.loadNewerState = useVisible(
-            "load-newer",
+            this.present,
             async () => {
                 await Promise.all([
                     this.messageHighlight?.scrollPromise,
                     this.smoothScrollingPromise,
                 ]);
-                if (this.loadNewerState.isVisible) {
+                if (this.loadNewerState.isVisible && this.shouldTriggerLoadOnVisible) {
                     this.props.thread.fetchMoreMessages({
                         epoch: "newer",
                         routeParams: this.messageFetchRouteParams,
@@ -147,7 +146,7 @@ export class Thread extends Component {
             { ready: false }
         );
         this.messageSelection = useMessageSelection();
-        this.presentThresholdState = useVisible("present-treshold", () =>
+        this.presentThresholdState = useVisible(this.presentThresholdRef, () =>
             this.updateShowJumpPresent()
         );
         this.setupScroll();
@@ -163,7 +162,7 @@ export class Thread extends Component {
             () => {
                 this.computeJumpPresentPosition();
             },
-            () => [this.jumpPresentRef.el, this.viewportEl]
+            () => [untrack(this.jumpPresentRef), untrack(() => this.viewportEl)]
         );
         useLayoutEffect(
             () => this.updateShowJumpPresent(),
@@ -196,10 +195,7 @@ export class Thread extends Component {
             () => [this.state.mountedAndLoaded]
         );
         onMounted(() => {
-            if (!this.env.chatter || this.env.chatter?.shouldFetchMessages) {
-                if (this.env.chatter) {
-                    this.env.chatter.shouldFetchMessages = false;
-                }
+            if (!this.env.inChatter) {
                 this.fetchInitialMessages();
             }
         });
@@ -213,11 +209,16 @@ export class Thread extends Component {
                 this.state.mountedAndLoaded = isLoaded;
             },
             /**
-             * Observe `mountedAndLoaded` as well because it might change from
-             * other parts of the code without `useLayoutEffect` detecting any change
-             * for `isLoaded`, and it should still be reset when patching.
+             * `reset()` forces `mountedAndLoaded` false and this effect writes
+             * it too, so it can't be its own dependency: `useLayoutEffect`
+             * records dependencies before running the body, hence a `reset()`
+             * landing while this effect is being applied would leave the
+             * recorded value matching the current one and strand
+             * `mountedAndLoaded` at false. Depend on `resetCount`, bumped by
+             * `reset()`, so every reset re-syncs `mountedAndLoaded` with
+             * `isLoaded`.
              */
-            () => [this.props.thread.isLoaded, this.state.mountedAndLoaded]
+            () => [this.props.thread.isLoaded, this.resetCount()]
         );
         useLayoutEffect(
             () => {
@@ -242,25 +243,31 @@ export class Thread extends Component {
                 this.props.thread.fetchNewMessages();
             }
         });
-        onWillUpdateProps((nextProps) => {
-            if (nextProps.thread.notEq(this.props.thread)) {
-                this.lastJumpPresent = nextProps.jumpPresent;
-            }
-            if (!this.env.chatter || this.env.chatter?.shouldFetchMessages) {
-                if (this.env.chatter) {
-                    this.env.chatter.shouldFetchMessages = false;
+        useOnChange(
+            () => [this.props.thread],
+            (thread) => {
+                this.lastJumpPresent = this.props.jumpPresent;
+                if (!this.env.inChatter) {
+                    thread.fetchNewMessages();
                 }
-                nextProps.thread.fetchNewMessages();
-            }
-        });
+            },
+            { initialRun: false }
+        );
     }
 
     get channel() {
         return this.props.thread.channel;
     }
 
+    get startMessageAvatarAttClass() {
+        return {
+            "o-mail-Thread-avatarChatWindow mt-1": this.env.inChatWindow,
+            "mt-2": !this.env.inChatWindow,
+        };
+    }
+
     computeJumpPresentPosition() {
-        if (!this.viewportEl || !this.jumpPresentRef.el) {
+        if (!this.viewportEl || !this.jumpPresentRef()) {
             return;
         }
         const width = this.viewportEl.clientWidth;
@@ -270,7 +277,7 @@ export class Thread extends Component {
         const pe = parseInt(computedStyle.getPropertyValue("padding-right"));
         const pt = parseInt(computedStyle.getPropertyValue("padding-top"));
         const pb = parseInt(computedStyle.getPropertyValue("padding-bottom"));
-        this.jumpPresentRef.el.style.transform = `translate(${
+        this.jumpPresentRef().style.transform = `translate(${
             this.env.inChatter ? 22 : width - ps - pe - 22
         }px, ${
             this.env.inChatter && !this.env.inChatter.aside
@@ -346,22 +353,15 @@ export class Thread extends Component {
          * that the value quickly changes and then back again before there is
          * any mounting/patching, and the change would therefore be undetected.
          */
-        let stopOnChange = Record.onChange(this.props.thread, "isLoaded", () => {
-            if (!this.props.thread.isLoaded || !this.state.mountedAndLoaded) {
-                this.reset();
-            }
-        });
-        onWillUpdateProps((nextProps) => {
-            if (nextProps.thread.notEq(this.props.thread)) {
-                stopOnChange();
-                stopOnChange = Record.onChange(nextProps.thread, "isLoaded", () => {
-                    if (!nextProps.thread.isLoaded || !this.state.mountedAndLoaded) {
-                        this.reset();
-                    }
-                });
-            }
-        });
-        onWillDestroy(() => stopOnChange());
+        useOnChange(
+            () => [this.props.thread.isLoaded],
+            (isLoaded) => {
+                if (!isLoaded || !this.state.mountedAndLoaded) {
+                    this.reset();
+                }
+            },
+            { initialRun: false }
+        );
         onWillPatch(() => {
             if (!this.loadedAndPatched) {
                 return;
@@ -371,8 +371,9 @@ export class Thread extends Component {
                 scrollTop: this.scrollableRef().scrollTop,
             };
         });
-        useLayoutEffect(this.applyScroll);
-        useChildSubEnv({
+        onMounted(this.applyScroll);
+        onPatched(this.applyScroll);
+        useSubEnv({
             getCurrentThread: () => this.props.thread,
             onImageLoaded: this.applyScroll,
         });
@@ -531,7 +532,15 @@ export class Thread extends Component {
         this.props.thread.fetchMoreMessages({ routeParams: this.messageFetchRouteParams });
     }
 
+    get shouldTriggerLoadOnVisible() {
+        return true;
+    }
+
     onClickRetry() {
+        if (!this.props.thread.oldestPersistentMessage) {
+            this.fetchInitialMessages();
+            return;
+        }
         this.onClickLoadOlder();
     }
 
@@ -552,18 +561,21 @@ export class Thread extends Component {
         this.props.thread.isFocusedByThread = false;
     }
 
-    async onParentMessageClick(parentMessage) {
-        if (!parentMessage) {
+    /**
+     * @type {ReturnType<typeof import("@mail/core/common/message_in_reply").onParentMessageClickType>["type"]}
+     */
+    async onParentMessageClick(ev, { parentAtRender }) {
+        if (!parentAtRender) {
             return;
         }
-        const targetThread = parentMessage.thread;
+        const targetThread = parentAtRender.thread;
         if (!targetThread) {
             return;
         }
         if (targetThread.eq(this.props.thread)) {
-            this.env.messageHighlight?.highlightMessage(parentMessage, targetThread);
+            this.env.messageHighlight?.highlightMessage(parentAtRender, targetThread);
         } else {
-            targetThread.highlightMessage = parentMessage;
+            targetThread.highlightMessage = parentAtRender;
             await targetThread.open({ focus: true });
         }
     }
@@ -589,6 +601,15 @@ export class Thread extends Component {
 
     reset() {
         this.state.mountedAndLoaded = false;
+        // Bump `resetCount` (a mirror-effect dependency) so the effect re-runs
+        // and re-syncs `mountedAndLoaded`. Only when loaded: while `!isLoaded`,
+        // `applyScroll` resets on every patch, so an unconditional bump would
+        // spin the render loop until the fetch resolves. When loaded the bump
+        // re-renders once, the mirror sets `mountedAndLoaded` true and
+        // `applyScroll` stops resetting, so it converges.
+        if (this.props.thread.isLoaded) {
+            this.incrementResetCount();
+        }
         this.loadOlderState.ready = false;
         this.loadNewerState.ready = false;
         this.lastSetValue = undefined;
@@ -600,9 +621,6 @@ export class Thread extends Component {
     }
 
     isSquashed(msg, prevMsg) {
-        if (this.props.thread.model === "mail.box") {
-            return false;
-        }
         if (!prevMsg || prevMsg.message_type === "notification" || this.env.inChatter) {
             return false;
         }
@@ -611,6 +629,9 @@ export class Thread extends Component {
             return false;
         }
         if (!msg.thread?.eq(prevMsg.thread)) {
+            return false;
+        }
+        if (msg.message_type !== prevMsg.message_type) {
             return false;
         }
         if (msg.isNote) {
@@ -683,6 +704,8 @@ export class Thread extends Component {
     }
 
     get orderedMessages() {
+        // ensure rendering observes resetCount to re-trigger the effect when reset() is called
+        void this.resetCount();
         const messages = this.state.mountedAndLoaded
             ? this.props.thread.messages
             : this.props.thread.phantomMessages;
@@ -696,6 +719,18 @@ export class Thread extends Component {
             !this.props.thread.isTransient &&
             !this.props.thread.hasLoadingFailed
         );
+    }
+
+    get loadMoreClass() {
+        return { [this.loadMoreBtnClass]: true, "opacity-0": !this.state.mountedAndLoaded };
+    }
+
+    get loadOlderWrapperAttClass() {
+        return {};
+    }
+
+    get loadMoreBtnClass() {
+        return "btn btn-link";
     }
 
     get isInErrorState() {
@@ -732,11 +767,15 @@ export class Thread extends Component {
         this.saveScroll();
     }
 
+    get startMessageChannelTypes() {
+        return ["channel", "group", "chat"];
+    }
+
     get showStartMessage() {
         return (
             this.state.mountedAndLoaded &&
             !this.props.thread.loadOlder &&
-            ["channel", "group", "chat"].includes(this.channel?.channel_type)
+            this.startMessageChannelTypes.includes(this.channel?.channel_type)
         );
     }
 

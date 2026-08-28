@@ -50,7 +50,8 @@ class StockMove(models.Model):
     byproduct_id = fields.Many2one(
         'mrp.bom.byproduct', 'By-products', check_company=True,
         help="By-product line that generated the move in a manufacturing order")
-    unit_factor = fields.Float('Unit Factor', compute='_compute_unit_factor', store=True)
+    unit_factor = fields.Float('Unit Factor', compute='_compute_unit_factor', store=True,
+        init_storage=lambda self: self.env.cr.execute("UPDATE stock_move SET unit_factor = 1 WHERE unit_factor IS NULL"))
     should_consume_qty = fields.Float('Quantity To Consume', compute='_compute_should_consume_qty', digits='Product Unit')
     cost_share = fields.Float(
         "Cost Share (%)", digits=0,
@@ -253,8 +254,11 @@ class StockMove(models.Model):
                     values['location_dest_id'] = mo.production_location_id.id
                     if not values.get('location_id'):
                         values['location_id'] = mo.location_src_id.id
-                    if mo.state in ['progress', 'to_close'] and mo.qty_producing > 0:
+                    if mo.state in ('progress', 'to_close', 'done') and mo.qty_producing > 0:
                         values['picked'] = True
+                    if mo.state == 'done':
+                        values['state'] = 'done'
+                        values['date'] = mo.date_finished
                     continue
                 # produced products + byproducts
                 values['location_id'] = mo.production_location_id.id
@@ -263,7 +267,7 @@ class StockMove(models.Model):
                 if not values.get('location_dest_id'):
                     values['location_dest_id'] = mo.location_dest_id.id
                 if not values.get('forecasted_location_id'):
-                    values['forecasted_location_id'] = mo.warehouse_id.lot_stock_id.id
+                    values['forecasted_location_id'] = mo.location_dest_id.id
         return super().create(vals_list)
 
     def write(self, vals):
@@ -413,13 +417,11 @@ class StockMove(models.Model):
         action = super().action_show_details()
         if self.raw_material_production_id:
             action['name'] = _("Components")
-            action['views'] = [(self.env.ref('mrp.view_stock_move_operations_raw').id, 'form')]
             action['context']['show_destination_location'] = False
             action['context']['force_move_picked'] = True
             action['context']['active_mo_id'] = self.raw_material_production_id.id
         elif self.production_id:
             action['name'] = _("Move Byproduct")
-            action['views'] = [(self.env.ref('mrp.view_stock_move_operations_finished').id, 'form')]
             action['context']['show_source_location'] = False
             action['context']['show_reserved_quantity'] = False
         return action
@@ -441,7 +443,7 @@ class StockMove(models.Model):
         if not 'skip_mo_check' in self.env.context:
             mo_to_cancel = self.mapped('raw_material_production_id').filtered(lambda p: all(m.state == 'cancel' for m in p.move_raw_ids))
             if mo_to_cancel:
-                mo_to_cancel._action_cancel()
+                mo_to_cancel.action_cancel()
         return res
 
     def _log_cancel_activity(self):
@@ -556,15 +558,13 @@ class StockMove(models.Model):
 
     def _prepare_move_line_vals(self, quantity=None, reserved_quant=None):
         vals = super()._prepare_move_line_vals(quantity, reserved_quant)
-        if self.raw_material_production_id:
-            vals['production_id'] = self.raw_material_production_id.id
         if self.production_id.product_tracking == 'lot' and self.product_id == self.production_id.product_id and self.production_id.lot_producing_ids:
             vals['lot_id'] = self.production_id.lot_producing_ids.ids[0]
         return vals
 
     def _key_assign_picking(self):
         keys = super(StockMove, self)._key_assign_picking()
-        return keys + (self.created_production_id,)
+        return keys + (self.created_production_id, self.production_group_id)
 
     @api.model
     def _prepare_merge_moves_distinct_fields(self):

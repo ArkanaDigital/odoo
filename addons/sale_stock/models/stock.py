@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from collections import defaultdict
 
 from odoo import api, fields, models, Command
-from odoo.tools.sql import column_exists, create_column
 
 
 class StockRoute(models.Model):
@@ -15,6 +13,25 @@ class StockRoute(models.Model):
 class StockMove(models.Model):
     _inherit = "stock.move"
     sale_line_id = fields.Many2one('sale.order.line', 'Sale Line', index='btree_not_null')
+
+    @api.depends('sale_line_id.invoice_lines.parent_state', 'is_valued')
+    def _compute_cogs_aml_ids(self):
+        super()._compute_cogs_aml_ids()
+        amls = self.env['account.move.line'].search([
+            ('cogs_origin_id', 'in', self.sale_line_id.invoice_lines.ids),
+        ])
+        aml_ids_by_sale_line = defaultdict(set)
+        for aml in amls:
+            for so_line in aml.cogs_origin_id.sale_line_ids:
+                aml_ids_by_sale_line[so_line].add(aml.id)
+        move_by_sale_order_line = defaultdict(set)
+        for move in self:
+            if not move.is_valued:
+                continue
+            move_by_sale_order_line[move.sale_line_id].add(move.id)
+        for sale_order_line_id, aml_ids in aml_ids_by_sale_line.items():
+            moves = self.env['stock.move'].browse(move_by_sale_order_line[sale_order_line_id])
+            moves.cogs_aml_ids = self.env['account.move.line'].browse(aml_ids)
 
     @api.depends('sale_line_id', 'sale_line_id.product_uom_id')
     def _compute_packaging_uom_id(self):
@@ -29,9 +46,10 @@ class StockMove(models.Model):
         for move in self:
             if move.sale_line_id and not move.description_picking_manual:
                 sale_line_id = move.sale_line_id.with_context(lang=move.sale_line_id.order_id.partner_id.lang)
-                if move.description_picking == move.product_id.display_name:
+                multiline_description = sale_line_id._get_sale_order_line_multiline_description_variants()
+                if move.description_picking == move.product_id.display_name and multiline_description:
                     move.description_picking = ''
-                move.description_picking = (sale_line_id._get_sale_order_line_multiline_description_variants() + '\n' + move.description_picking).strip()
+                move.description_picking = (multiline_description + '\n' + move.description_picking).strip()
 
     def _action_synch_order(self):
         sale_order_lines_vals = []
@@ -57,7 +75,7 @@ class StockMove(models.Model):
 
             so_line_vals = {
                 'move_ids': [(4, move.id, 0)],
-                'name': product.display_name,
+                'name': product.with_context(lang=sale_order.partner_id.lang).get_product_multiline_description_sale(),
                 'order_id': sale_order.id,
                 'product_id': product.id,
                 'product_uom_qty': 0,
@@ -91,16 +109,6 @@ class StockMove(models.Model):
         distinct_fields.append('sale_line_id')
         return distinct_fields
 
-    def _get_related_invoices(self):
-        """ Overridden from stock_account to return the customer invoices
-        related to this stock move.
-        """
-        rslt = super(StockMove, self)._get_related_invoices()
-        invoices = self.mapped('picking_id.sale_id.invoice_ids').filtered(lambda x: x.state == 'posted')
-        rslt += invoices
-        #rslt += invoices.mapped('reverse_entry_ids')
-        return rslt
-
     def _get_source_document(self):
         res = super()._get_source_document()
         return self.sale_line_id.order_id or res
@@ -122,14 +130,11 @@ class StockMove(models.Model):
                     subtype_xmlid='mail.mt_note',
                 )
 
-    def _get_all_related_sm(self, product):
-        return super()._get_all_related_sm(product) | self.filtered(lambda m: m.sale_line_id.product_id == product)
-
     def write(self, vals):
         res = super().write(vals)
         if 'product_id' in vals:
             for move in self:
-                if move.sale_line_id and move.product_id != move.sale_line_id.product_id:
+                if move.sale_line_id and move.product_id != move.sale_line_id.product_id and move.sale_line_id.order_id.state != 'draft':
                     move.sale_line_id = False
         return res
 
@@ -199,7 +204,8 @@ class StockPicking(models.Model):
     _inherit = 'stock.picking'
 
     allow_spontaneous_returns = fields.Boolean(related="company_id.allow_spontaneous_returns")
-    sale_id = fields.Many2one('sale.order', compute="_compute_sale_id", inverse="_set_sale_id", string="Sales Order", store=True, index='btree_not_null')
+    sale_id = fields.Many2one('sale.order', compute="_compute_sale_id", inverse="_set_sale_id", string="Sales Order", store=True, index='btree_not_null', init_storage=lambda model: None)
+    # init_storage: Since group_id.sale_id is created in this module, no need for an UPDATE statement.
     return_reason_id = fields.Many2one("return.reason")
 
     @api.depends('reference_ids.sale_ids', 'move_ids.sale_line_id.order_id')
@@ -237,18 +243,6 @@ class StockPicking(models.Model):
                 })
                 self._add_reference(reference)
         self.move_ids._reassign_sale_lines(self.sale_id)
-
-    def _auto_init(self):
-        """
-        Create related field here, too slow
-        when computing it afterwards through _compute_related.
-
-        Since group_id.sale_id is created in this module,
-        no need for an UPDATE statement.
-        """
-        if not column_exists(self.env.cr, 'stock_picking', 'sale_id'):
-            create_column(self.env.cr, 'stock_picking', 'sale_id', 'int4')
-        return super()._auto_init()
 
     def _action_done(self):
         res = super()._action_done()

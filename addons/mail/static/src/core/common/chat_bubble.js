@@ -1,10 +1,10 @@
-import { useRef, useSubEnv } from "@web/owl2/utils";
+import { useSubEnv } from "@web/owl2/utils";
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { MessageSeenIndicator } from "@mail/discuss/core/common/message_seen_indicator";
 
-import { Component, computed, props, signal, types, useEffect } from "@odoo/owl";
+import { Component, computed, signal, types, useEffect, useListener, useProps } from "@odoo/owl";
 
-import { useChildRef, useService } from "@web/core/utils/hooks";
+import { useService } from "@web/core/utils/hooks";
 import { useHover } from "@mail/utils/common/hooks";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { CountryFlag } from "@mail/core/common/country_flag";
@@ -18,8 +18,8 @@ class ChatBubblePreview extends Component {
     setup() {
         super.setup(...arguments);
         this.store = useService("mail.store");
-        this.props = props({
-            chatWindow: types.instanceOf(this.store.ChatWindow.Class),
+        this.props = useProps({
+            chatWindow: types.instanceOf(this.store.ChatWindow),
         });
     }
 
@@ -38,13 +38,15 @@ export class ChatBubble extends Component {
     static components = { CountryFlag, DiscussAvatar };
     static template = "mail.ChatBubble";
 
+    rootRef = signal.ref();
+
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props({
-            chatWindow: types.instanceOf(this.store.ChatWindow.Class),
+        this.props = useProps({
+            chatWindow: types.instanceOf(this.store.ChatWindow),
         });
-        const popoverRef = useChildRef();
+        const popoverRef = signal.ref();
         this.isMobileOS = isMobileOS();
         this.isPopoverOpen = signal(false);
         this.popover = usePopover(ChatBubblePreview, {
@@ -55,21 +57,20 @@ export class ChatBubble extends Component {
                 "dropdown-menu bg-view border-0 p-0 overflow-visible o-rounded-bubble mx-1",
             ref: popoverRef,
         });
-        this.env.bus.addEventListener("ChatBubble:preview-will-open", ({ detail }) => {
+        useListener(this.env.bus, "ChatBubble:preview-will-open", ({ detail }) => {
             if (detail === this) {
                 return;
             }
             this.popover.close();
         });
-        this.hover = useHover(["root", popoverRef], {
+        this.hover = useHover([this.rootRef, popoverRef], {
             onHover: () => {
                 this.env.bus.trigger("ChatBubble:preview-will-open", this);
-                this.popover.open(this.rootRef.el, { chatWindow: this.props.chatWindow });
+                this.popover.open(this.rootRef(), { chatWindow: this.props.chatWindow });
                 this.isPopoverOpen.set(true);
             },
             onAway: () => this.popover.close(),
         });
-        this.rootRef = useRef("root");
         this.bouncing = signal(false);
         const isImportant = computed(() => Boolean(this.channel?.importantCounter));
         useEffect(() => this.bouncing.set(isImportant));

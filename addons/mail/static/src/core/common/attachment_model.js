@@ -12,19 +12,27 @@ export class Attachment extends FileModelMixin(Record) {
     static new() {
         /** @type {import("models").Attachment} */
         const attachment = super.new(...arguments);
-        attachment.registerRecordOnChange(attachment, ["extension", "name"], () => {
-            if (!attachment.extension && attachment.name) {
-                attachment.extension = attachment.name.split(".").pop();
-            }
-        });
+        attachment.onChange(
+            () => [attachment.extension, attachment.name],
+            function onChangeName(extension, name) {
+                if (!extension && name) {
+                    this.extension = name.split(".").pop();
+                }
+            },
+            { immediate: true }
+        );
         return attachment;
     }
 
     composer = fields.One("Composer", { inverse: "attachments" });
     thread = fields.One("mail.thread", { inverse: "attachments" });
+    /** @type {number} */
+    file_size;
     /** @type {string} */
     raw_access_token;
     res_name;
+    /** @type {string} */
+    res_model;
     /** @type {string} */
     thumbnail_access_token;
     message = fields.One("mail.message", { inverse: "attachment_ids" });
@@ -141,13 +149,7 @@ export class Attachment extends FileModelMixin(Record) {
      * globally.
      */
     async remove() {
-        if (this.id > 0) {
-            await rpc(
-                "/mail/attachment/delete",
-                assignDefined({ attachment_id: this.id }, { access_token: this.ownership_token })
-            );
-        }
-        this.delete();
+        await this.store.removeAttachments([this]);
     }
 
     get previewName() {
@@ -177,6 +179,26 @@ export class Attachment extends FileModelMixin(Record) {
                 )
             );
         }
+    }
+
+    get textThumbnailUrl() {
+        if (this.id < 0) {
+            return "";
+        }
+        return url(`/mail/attachment/render_text/${encodeURIComponent(this.id)}`, {
+            ...this.urlQueryParams,
+            head: "1",
+        });
+    }
+
+    get defaultSource() {
+        if (this.isText) {
+            return url(
+                `/mail/attachment/render_text/${encodeURIComponent(this.id)}`,
+                this.urlQueryParams
+            );
+        }
+        return super.defaultSource;
     }
 }
 

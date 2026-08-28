@@ -1,15 +1,18 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+from collections import defaultdict
+
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 from odoo.fields import Domain
+from odoo.tools.translate import mark_as_copy
 
 
 class ProductPricelist(models.Model):
     _name = 'product.pricelist'
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _description = "Pricelist"
-    _rec_names_search = ['name', 'currency_id']  # TODO check if should be removed
+    _rec_names_search = ('name', 'currency_id')  # TODO check if should be removed
     _order = "sequence, id, name"
 
     def _default_currency_id(self):
@@ -21,7 +24,7 @@ class ProductPricelist(models.Model):
             '|', ('product_id', '=', None), ('product_id.active', '=', True),
         ]
 
-    name = fields.Char(string="Pricelist Name", required=True, translate=True)
+    name = fields.Char(string="Pricelist Name", required=True, translate=True, copy=mark_as_copy('name'))
 
     active = fields.Boolean(
         string="Active",
@@ -74,14 +77,6 @@ class ProductPricelist(models.Model):
             self.item_ids._check_company()
 
         return res
-
-    def copy_data(self, default=None):
-        default = dict(default or {})
-        vals_list = super().copy_data(default=default)
-        if 'name' not in default:
-            for pricelist, vals in zip(self, vals_list):
-                vals['name'] = pricelist.env._("%s (copy)", pricelist.name)
-        return vals_list
 
     def _get_products_price(self, products, *args, **kwargs):
         """Compute the pricelist prices for the specified products, quantity & uom.
@@ -221,6 +216,7 @@ class ProductPricelist(models.Model):
         currency=None,
         uom=None,
         compute_price=True,
+        depth=0,
         **kwargs,
     ):
         """Pick the first applicable rule per product and optionally compute its price.
@@ -240,6 +236,7 @@ class ProductPricelist(models.Model):
         :rtype: dict[int, tuple[float, int]]
         """
         results = {}
+        products_by_rule = defaultdict(list)
         for product in products:
             suitable_rule = self.env['product.pricelist.item']
 
@@ -251,15 +248,36 @@ class ProductPricelist(models.Model):
                     suitable_rule = rule
                     break
 
+            price = 0.0
             if compute_price:
-                price = suitable_rule._compute_price(
-                    product, quantity, quantity_uom, date=date, currency=currency, **kwargs
-                )
-            else:
-                # Skip price computation when only the rule is requested.
-                price = 0.0
+                products_by_rule[suitable_rule].append(product.id)
 
             results[product.id] = (price, suitable_rule.id)
+
+        for rule, product_ids in products_by_rule.items():
+            products_for_rule = products.browse(product_ids).with_prefetch(
+                products._prefetch_ids
+            )
+
+            base_prices = None
+            if rule.base == 'pricelist' and rule.base_pricelist_id:
+                base_prices = rule.base_pricelist_id._get_products_price(
+                    products_for_rule, quantity, uom=uom, date=date, depth=depth + 1, **kwargs
+                )
+
+            for product in products_for_rule:
+                price = rule._compute_price(
+                    product,
+                    quantity,
+                    uom,
+                    date=date,
+                    currency=currency,
+                    base_prices=base_prices,
+                    depth=depth,
+                    **kwargs,
+                )
+
+                results[product.id] = (price, rule.id)
 
         return results
 

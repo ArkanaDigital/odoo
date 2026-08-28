@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@odoo/hoot";
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import { defineModels, fields, models, mountWithSearch } from "@web/../tests/web_test_helpers";
 import { mockDate, mockTimeZone } from "@odoo/hoot-mock";
 
@@ -7,7 +7,7 @@ describe.current.tags("headless");
 
 class TestComponent extends Component {
     static template = xml`<div class="o_test_component"/>`;
-    static props = ["*"];
+    props = useProps();
 }
 
 async function createSearchModel(searchProps = {}, config = {}) {
@@ -32,6 +32,7 @@ function sanitizeSearchItems(model) {
         delete copy.groupId;
         delete copy.groupNumber;
         delete copy.id;
+        delete copy.relativeFilterId;
         return copy;
     });
 }
@@ -202,7 +203,7 @@ test("parsing one filter tag with default_period date attribute", async () => {
             </search>
         `,
     });
-    expect(sanitizeSearchItems(model)).toEqual([
+    expect(sanitizeSearchItems(model).filter((i) => i.type !== "relativeFilter")).toEqual([
         {
             defaultGeneratorIds: ["year", "year-1"],
             description: "Date",
@@ -213,34 +214,25 @@ test("parsing one filter tag with default_period date attribute", async () => {
             name: "date_filter",
             optionsParams: {
                 customOptions: [],
-                endMonth: 0,
-                endYear: 0,
-                startMonth: -2,
-                startYear: -2,
             },
         },
     ]);
 });
 
-test("parsing date filter with start_month, end_month, start_year, end_year attributes", async () => {
+test("parsing one filter tag with a relative option as default_period", async () => {
     const model = await createSearchModel({
         searchViewArch: `
             <search>
-                <filter
-                    name="date_filter"
-                    string="Date"
-                    date="date_field"
-                    start_month="-4"
-                    end_month="-1"
-                    start_year="-1"
-                    end_year="3"
-                />
+                <filter name="date_filter" string="Date" date="date_field" default_period="year-1,this_month"/>
             </search>
         `,
     });
-    expect(sanitizeSearchItems(model)).toEqual([
+    // The relative option is extracted from the declared periods: it is the
+    // companion relative filter that must be activated, not a period option.
+    expect(sanitizeSearchItems(model).filter((i) => i.type !== "relativeFilter")).toEqual([
         {
-            defaultGeneratorIds: ["month-1"],
+            defaultGeneratorIds: [],
+            defaultRelativeOptionId: "this_month",
             description: "Date",
             domain: "[]",
             fieldName: "date_field",
@@ -249,13 +241,12 @@ test("parsing date filter with start_month, end_month, start_year, end_year attr
             name: "date_filter",
             optionsParams: {
                 customOptions: [],
-                endMonth: -1,
-                endYear: 3,
-                startMonth: -4,
-                startYear: -1,
             },
         },
     ]);
+    expect(
+        sanitizeSearchItems(model).find((i) => i.type === "relativeFilter").defaultOptionId
+    ).toBe("this_month");
 });
 
 test("parsing date filter with custom options", async () => {
@@ -269,7 +260,7 @@ test("parsing date filter with custom options", async () => {
             </search>
         `,
     });
-    expect(sanitizeSearchItems(model)).toEqual([
+    expect(sanitizeSearchItems(model).filter((i) => i.type !== "relativeFilter")).toEqual([
         {
             defaultGeneratorIds: ["month"],
             description: "Date",
@@ -292,10 +283,6 @@ test("parsing date filter with custom options", async () => {
                         type: "innerFilter",
                     },
                 ],
-                endMonth: 0,
-                endYear: 0,
-                startMonth: -2,
-                startYear: -2,
             },
             type: "dateFilter",
         },
@@ -310,7 +297,7 @@ test("parsing one filter tag with date attribute ", async () => {
             </search>
         `,
     });
-    expect(sanitizeSearchItems(model)).toEqual([
+    expect(sanitizeSearchItems(model).filter((i) => i.type !== "relativeFilter")).toEqual([
         {
             defaultGeneratorIds: ["month"],
             description: "Date",
@@ -320,10 +307,6 @@ test("parsing one filter tag with date attribute ", async () => {
             name: "date_filter",
             optionsParams: {
                 customOptions: [],
-                endMonth: 0,
-                endYear: 0,
-                startMonth: -2,
-                startYear: -2,
             },
             type: "dateFilter",
         },
@@ -494,7 +477,8 @@ test("parsing a searchpanel field select one", async () => {
             expand: false,
             fieldName: "company_id",
             hierarchize: true,
-            icon: "fa-folder",
+            icon: "folder",
+            iconClass: "oi-filled",
             id: 1,
             limit: 200,
             parentField: "parent_id",
@@ -564,7 +548,8 @@ test("parsing a searchpanel field select multi", async () => {
             expand: false,
             fieldName: "company_id",
             groupBy: null,
-            icon: "fa-filter",
+            icon: "filter_alt",
+            iconClass: "oi-filled",
             id: 1,
             limit: 200,
             type: "filter",
@@ -600,7 +585,7 @@ test("parsing a filter and a dateFilter", async () => {
         `,
     });
     const groupNumbers = model.getSearchItems(() => true).map((i) => i.groupNumber);
-    expect(groupNumbers).toEqual([1, 1]);
+    expect(groupNumbers).toEqual([1, 1, 1]);
 });
 
 test("parsing a groupBy and a dateGroupBy", async () => {

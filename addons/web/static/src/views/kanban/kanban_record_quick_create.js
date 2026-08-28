@@ -1,10 +1,22 @@
-import { reactive, useExternalListener, useRef, useSubEnv } from "@web/owl2/utils";
+import { useSubEnv } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { parseXML } from "@web/core/utils/xml";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { useBus, useOwnedDialogs, useService } from "@web/core/utils/hooks";
 
-import { Component, EventBus, onMounted, onWillStart, proxy } from "@odoo/owl";
+import {
+    Component,
+    EventBus,
+    onMounted,
+    onWillStart,
+    usePlugin,
+    proxy,
+    signal,
+    t,
+    useListener,
+    useProps,
+} from "@odoo/owl";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { RPCError } from "@web/core/network/rpc";
 import { extractFieldsFromArchInfo } from "@web/model/relational_model/utils";
 import { useSetupAction } from "@web/search/action_hook";
@@ -29,7 +41,7 @@ export class QuickCreateState {
         this.isOpen = false;
         this.id = null;
         this.bus = new EventBus();
-        return reactive(this);
+        return proxy(this);
     }
 
     async openQuickCreate(id) {
@@ -57,26 +69,31 @@ export class QuickCreateState {
 }
 
 export class KanbanQuickCreateController extends Component {
-    static props = {
-        Model: Function,
-        Renderer: Function,
-        Compiler: Function,
-        quickCreateState: QuickCreateState,
-        resModel: String,
-        onValidate: Function,
-        fields: { type: Object },
-        context: { type: Object },
-        archInfo: { type: Object },
-    };
+    props = useProps({
+        Model: t.function(),
+        Renderer: t.function(),
+        Compiler: t.function(),
+        quickCreateState: t.instanceOf(QuickCreateState),
+        resModel: t.string(),
+        onValidate: t.function(),
+        fields: t.object(),
+        context: t.object(),
+        archInfo: t.object(),
+    });
     static template = "web.KanbanQuickCreateController";
+
+    rootRef = signal.ref();
+
     setup() {
         super.setup();
 
         this.uiService = useService("ui");
-        this.offlineService = useService("offline");
-        this.rootRef = useRef("root");
+        this.offlinePlugin = usePlugin(OfflinePlugin);
         this.state = proxy({ disabled: false });
         this.addDialog = useOwnedDialogs();
+        this.formInDialog = 0;
+        useBus(this.env.bus, "FORM-CONTROLLER:FORM-IN-DIALOG:ADD", () => this.formInDialog++);
+        useBus(this.env.bus, "FORM-CONTROLLER:FORM-IN-DIALOG:REMOVE", () => this.formInDialog--);
 
         const { activeFields, fields } = extractFieldsFromArchInfo(
             this.props.archInfo,
@@ -112,12 +129,12 @@ export class KanbanQuickCreateController extends Component {
             this.uiActiveElement = this.uiService.activeElement;
         });
         // Close on outside click
-        useExternalListener(window, "mousedown", (/** @type {MouseEvent} */ ev) => {
+        useListener(window, "mousedown", (/** @type {MouseEvent} */ ev) => {
             // This target is kept in order to impeach close on outside click behavior if the click
             // has been initiated from the quickcreate root element (mouse selection in an input...)
             this.mousedownTarget = ev.target;
         });
-        useExternalListener(
+        useListener(
             window,
             "click",
             async (/** @type {MouseEvent} */ ev) => {
@@ -126,9 +143,9 @@ export class KanbanQuickCreateController extends Component {
                     return;
                 }
                 const target = this.mousedownTarget || ev.target;
-                if (!this.rootRef.el.contains(target)) {
+                if (!this.rootRef().contains(target)) {
                     const isSameOverlay =
-                        this.rootRef.el.closest(".o-overlay-item") ===
+                        this.rootRef().closest(".o-overlay-item") ===
                         target.closest(".o-overlay-item");
                     if (isSameOverlay) {
                         if (!target.closest(".o_kanban_quick_add,.o-kanban-button-new")) {
@@ -158,7 +175,7 @@ export class KanbanQuickCreateController extends Component {
 
         // Key Navigation
         useHotkey("enter", () => this.validate("add"), {
-            area: () => this.rootRef.el.querySelector(".o_kanban_quick_create_form"),
+            area: () => this.rootRef().querySelector(".o_kanban_quick_create_form"),
             bypassEditableProtection: true,
         });
         useHotkey("escape", () => this.cancel(true));
@@ -184,7 +201,7 @@ export class KanbanQuickCreateController extends Component {
     }
 
     beforeVisibilityChange() {
-        if (document.visibilityState === "hidden") {
+        if (document.visibilityState === "hidden" && this.formInDialog === 0) {
             return this.validate("close");
         }
     }
@@ -218,7 +235,7 @@ export class KanbanQuickCreateController extends Component {
             this.state.disabled = false;
             return true;
         } else {
-            if (this.offlineService.offline && isValid) {
+            if (this.offlinePlugin.isOffline() && isValid) {
                 this.props.quickCreateState.closeQuickCreate();
             }
             this.state.disabled = false;
@@ -293,12 +310,12 @@ export class KanbanQuickCreateController extends Component {
 export class KanbanRecordQuickCreate extends Component {
     static components = { KanbanQuickCreateController };
     static template = "web.KanbanRecordQuickCreate";
-    static props = {
-        quickCreateState: QuickCreateState,
-        onValidate: Function,
-        resModel: String,
-        context: Object,
-    };
+    props = useProps({
+        quickCreateState: t.instanceOf(QuickCreateState),
+        onValidate: t.function(),
+        resModel: t.string(),
+        context: t.object(),
+    });
 
     setup() {
         this.state = proxy({

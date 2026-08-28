@@ -1,7 +1,7 @@
 from .test_project_base import TestProjectCommon
 from odoo import Command
 from odoo.addons.mail.tests.common import MailCase
-from odoo.tests import tagged
+from odoo.tests import Form, tagged
 
 from odoo.exceptions import AccessError
 
@@ -272,6 +272,13 @@ class TestProjectFlow(TestProjectCommon, MailCase):
                 self.assertEqual(task.rating_ids.rated_partner_id, task.user_ids.partner_id, 'The rating should have an assigned user if the task has only one assignee.')
                 self.assertEqual(rating_request_message.email_from, task.user_ids.partner_id.email_formatted, 'The message should have the email of the assigned user in the task as email from.')
             self.assertTrue(self.partner_1 in rating_request_message.partner_ids, 'The customer of the task should be in the partner_ids of the rating request message.')
+        # even if the ask for rating is not active in any stage the raiting mail template should remain active
+        all_active_rating_stages = self.env['project.task.type'].search([('rating_active', '=', True)])
+        all_active_rating_stages.write({'rating_active': False})
+        self.assertTrue(
+            rating_request_mail_template.active,
+            'The rating email template should remain active even when rating_active is disabled on ALL stages.'
+        )
 
     def test_email_track_template(self):
         """ Update some tracked fields linked to some template -> message with onchange """
@@ -490,3 +497,31 @@ class TestProjectFlow(TestProjectCommon, MailCase):
             self.partner_1, project.message_partner_ids,
             "Customer should be automatically subscribed to the project when visibility is set to 'public'."
         )
+
+    def test_partner_follows_project_change_on_new_task(self):
+        """ Selecting the project of a new task should set the customer to that
+        project's customer. """
+        project = self.env['project.project'].create({
+            'name': 'Project with partner',
+            'partner_id': self.partner_2.id,
+        })
+        task_form = Form(self.env['project.task'])
+        task_form.project_id = self.project_pigs
+        task_form.project_id = project
+        self.assertEqual(task_form.partner_id, self.partner_2)
+
+    def test_partner_kept_on_existing_task_project_change(self):
+        """ Changing the project of an existing task should keep its customer,
+        which may already carry linked records. """
+        project = self.env['project.project'].create({
+            'name': 'Project with partner',
+            'partner_id': self.partner_2.id,
+        })
+        task = self.env['project.task'].create({
+            'name': 'Task',
+            'project_id': self.project_pigs.id,
+            'partner_id': self.partner_1.id,
+        })
+        with Form(task) as task_form:
+            task_form.project_id = project
+        self.assertEqual(task.partner_id, self.partner_1)

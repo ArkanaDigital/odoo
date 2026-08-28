@@ -75,7 +75,7 @@ class TestMailPerformance(FullBaseMailPerformance):
         self.push_to_end_point_mocked.reset_mock()  # reset as executed twice
         self.flush_tracking()
 
-        with self.assertQueryCount(employee=101):  # test_mail_full: ??
+        with self.assertQueryCount(employee=103):  # test_mail_full: ??
             new_message = record_ticket.message_post(
                 attachment_ids=attachments.ids,
                 body=Markup('<p>Test Content</p>'),
@@ -91,7 +91,11 @@ class TestMailPerformance(FullBaseMailPerformance):
             new_message.notified_partner_ids,
             self.user_follower_emp_email.partner_id + self.user_admin.partner_id + self.customers + self.user_follower_portal.partner_id
         )
-        self.assertEqual(self.push_to_end_point_mocked.call_count, 8, "Not sure why 8")
+        self.assertEqual(
+            self.push_to_end_point_mocked.call_count,
+            2,
+            "Mentioned/Subscribed internal users with a device",
+        )
 
 
 @tagged('mail_performance', 'post_install', '-at_install')
@@ -246,7 +250,6 @@ class TestPortalFormatPerformance(FullBaseMailPerformance):
                 [
                     {
                         'checksum': message.attachment_ids[0].checksum,
-                        'filename': 'Test file 1',
                         'has_thumbnail': False,
                         'id': message.attachment_ids[0].id,
                         'mimetype': 'text/plain',
@@ -257,7 +260,6 @@ class TestPortalFormatPerformance(FullBaseMailPerformance):
                         'thumbnail_access_token': message.attachment_ids[0]._get_thumbnail_token(),
                     }, {
                         'checksum': message.attachment_ids[1].checksum,
-                        'filename': 'Test file 0',
                         'has_thumbnail': False,
                         'id': message.attachment_ids[1].id,
                         'mimetype': 'text/plain',

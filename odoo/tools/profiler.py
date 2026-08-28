@@ -6,10 +6,10 @@ import re
 import sys
 import threading
 import time
-import tracemalloc
 from contextlib import ExitStack, nullcontext
 from datetime import datetime
 
+import psutil
 from psycopg2 import OperationalError
 
 from odoo import tools
@@ -116,10 +116,14 @@ class Collector:
 
     def add(self, entry=None, frame=None, check_limit=True):
         """ Add an entry (dict) to this collector. """
+        exceeded_entry_count = bool(self.profiler.entry_count_limit) \
+                                and self.profiler.counter >= self.profiler.entry_count_limit
+        exceeded_time_limit = bool(self.profiler.time_limit) \
+                              and self.profiler.time_limit < real_time() - self.profiler.start_time
         if (
             check_limit
-            and self.profiler.entry_count_limit
-            and self.profiler.counter >= self.profiler.entry_count_limit
+            and exceeded_entry_count
+            and exceeded_time_limit
         ):
             self.profiler.end()
             return
@@ -134,6 +138,7 @@ class Collector:
         if 'exec_context' not in entry:
             entry['exec_context'] = getattr(self.profiler.init_thread, 'exec_context', ())
         self._entries.append(entry)
+        return entry
 
     def post_process(self):
         for entry in self._entries:
@@ -170,12 +175,18 @@ class SQLCollector(Collector):
         self.profiler.init_thread.query_hooks.remove(self.hook)
 
     def hook(self, cr, query, params, query_start, query_time):
-        self.add({
+        entry = {
             'query': str(query),
             'full_query': str(cr._format(query, params)),
             'start': query_start,
             'time': query_time,
-        })
+        }
+        sample = self.add(entry)
+
+        def update_sample(delay):
+            sample['time'] = delay
+
+        return update_sample
 
     def summary(self):
         total_time = sum(entry['time'] for entry in self._entries) or 1
@@ -243,6 +254,11 @@ class PeriodicCollector(_BasePeriodicCollector):
         self._last_frame_id = 0  # incremental identifier if the frame has been seen
         self._last_time = 0
 
+    def start(self):
+        self._memory_profile = self.profiler.memory_profile
+        self._process = self.profiler.process
+        super().start()
+
     def add(self, entry=None, frame=None, check_limit=True):
         """ Add an entry (dict) to this collector. """
         now = real_time()
@@ -263,45 +279,9 @@ class PeriodicCollector(_BasePeriodicCollector):
             return
         frame_locals['$__PeriodicCollectorId'] = self._last_frame_id = last_frame_id + 1
         entry = {'start': now}
+        if self._memory_profile:
+            entry = {'memory': self._process.memory_info().rss, **(entry or {})}
         super().add(entry, frame, check_limit=check_limit)
-
-
-_lock = threading.Lock()
-
-
-class MemoryCollector(_BasePeriodicCollector):
-
-    name = 'memory'
-    _store = 'others'
-    _min_interval = 0.01  # minimum interval allowed
-    _default_interval = 1
-
-    def start(self):
-        _lock.acquire()
-        tracemalloc.start()
-        super().start()
-
-    def add(self, entry=None, frame=None, check_limit=True):
-        """ Add an entry (dict) to this collector. """
-        assert entry is None
-        super().add({
-            'start': real_time(),
-            'memory': tracemalloc.take_snapshot(),
-            'stack': None,  # prevent getting the stack trace
-        }, check_limit=check_limit)
-
-    def stop(self):
-        super().stop()
-        _lock.release()
-        tracemalloc.stop()
-
-    def post_process(self):
-        for i, entry in enumerate(self._entries):
-            if entry.get("memory", False):
-                entry_statistics = entry["memory"].statistics('traceback')
-                modified_entry_statistics = [{'traceback': list(statistic.traceback._frames),
-                                            'size': statistic.size} for statistic in entry_statistics]
-                self._entries[i] = {"memory_tracebacks": modified_entry_statistics, "start": entry['start']}
 
 
 class QwebTracker:
@@ -509,9 +489,12 @@ class Profiler:
         self.profile_id = None
         self.log = log
         self.sub_profilers = []
-        self.entry_count_limit = int(self.params.get("entry_count_limit",0)) # the limit could be set using a smarter way
+        self.entry_count_limit = int(self.params.get("entry_count_limit", 0))
+        self.time_limit = int(self.params.get("time_limit", 0))
         self.done = False
         self.exit_stack = ExitStack()
+        self.process = psutil.Process()
+        self.memory_profile = self.params.get("memory_profile", False)
         self.counter = 0
 
         if db is ...:
@@ -621,8 +604,8 @@ class Profiler:
             if self.log:
                 _logger.info(self.summary())
 
-    def _get_cm_proxy(self):
-        return Nested(self)
+    def _get_cm_proxy(self, context_manager=None):
+        return Nested(self, context_manager)
 
     def _add_file_lines(self, stack):
         for index, frame in enumerate(stack):
@@ -707,7 +690,11 @@ class Nested:
 
     def __enter__(self):
         self._profiler__.__enter__()
-        return self.context_manager.__enter__()
+        try:
+            return self.context_manager.__enter__()
+        except BaseException:
+            self._profiler__.__exit__(*sys.exc_info())
+            raise
 
     def __exit__(self, exc_type, exc_value, traceback):
         try:

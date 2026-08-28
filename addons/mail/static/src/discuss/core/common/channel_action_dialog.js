@@ -1,4 +1,4 @@
-import { Component, props, types, xml } from "@odoo/owl";
+import { Component, t, useProps, xml } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
 
@@ -12,11 +12,11 @@ export class ChannelActionDialog extends Component {
 
     setup() {
         super.setup(...arguments);
-        this.props = props({
-            "contentClass?": types.string(),
-            contentComponent: types.component(),
-            contentProps: types.object(),
-            title: types.string(),
+        this.props = useProps({
+            contentClass: t.string().optional(),
+            contentComponent: t.component(),
+            contentProps: t.record(),
+            title: t.string(),
         });
     }
 }

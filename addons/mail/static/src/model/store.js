@@ -1,8 +1,8 @@
 import { PgSnapshot } from "@mail/model/field_version";
 import { Record } from "./record";
-import { STORE_SYM, modelRegistry } from "./misc";
+import { STORE_SYM, modelRegistry, untrackFunctions } from "./misc";
 
-import { immediateEffect, proxy, toRaw, untrack } from "@odoo/owl";
+import { immediateEffect, toRaw, untrack } from "@odoo/owl";
 
 /** @typedef {import("./record_list").RecordList} RecordList */
 
@@ -11,16 +11,7 @@ export class Store extends Record {
     /** @type {import("./store_internal").StoreInternal} */
     _;
     [STORE_SYM] = true;
-    /** @type {Map<string, Record>} */
-    recordByLocalId;
     storeReady = false;
-    /**
-     * @param {string} localId
-     * @returns {Record}
-     */
-    get(localId) {
-        return this.recordByLocalId.get(localId);
-    }
 
     handleError(err) {
         this._.ERRORS.push(err);
@@ -30,6 +21,7 @@ export class Store extends Record {
 
     /** @param {() => any} fn */
     MAKE_UPDATE(fn) {
+        this._.raiseUpdateDepth();
         this._.UPDATE++;
         let res;
         try {
@@ -38,50 +30,33 @@ export class Store extends Record {
             this.handleError(err);
         }
         this._.UPDATE--;
-        const deletingRecordsByLocalId = new Map();
+        this._.lowerUpdateDepth();
         if (this._.UPDATE === 0) {
             // pretend an increased update cycle so that nothing in queue creates many small update cycles
             this._.UPDATE++;
             while (
                 this._.FC_QUEUE.size > 0 ||
-                this._.FS_QUEUE.size > 0 ||
                 this._.FA_QUEUE.size > 0 ||
                 this._.FD_QUEUE.size > 0 ||
                 this._.FU_QUEUE.size > 0 ||
-                this._.RO_QUEUE.size > 0 ||
-                this._.RD_QUEUE.size > 0 ||
-                this._.RHD_QUEUE.size > 0
+                this._.RD_QUEUE.size > 0
             ) {
                 const FC_QUEUE = new Map(this._.FC_QUEUE);
-                const FS_QUEUE = new Map(this._.FS_QUEUE);
                 const FA_QUEUE = new Map(this._.FA_QUEUE);
                 const FD_QUEUE = new Map(this._.FD_QUEUE);
                 const FU_QUEUE = new Map(this._.FU_QUEUE);
-                const RO_QUEUE = new Map(this._.RO_QUEUE);
                 const RD_QUEUE = new Map(this._.RD_QUEUE);
-                const RHD_QUEUE = new Map(this._.RHD_QUEUE);
                 this._.FC_QUEUE.clear();
-                this._.FS_QUEUE.clear();
                 this._.FA_QUEUE.clear();
                 this._.FD_QUEUE.clear();
                 this._.FU_QUEUE.clear();
-                this._.RO_QUEUE.clear();
                 this._.RD_QUEUE.clear();
-                this._.RHD_QUEUE.clear();
                 while (FC_QUEUE.size > 0) {
                     /** @type {[Record, Map<string, true>]} */
                     const [record, recMap] = FC_QUEUE.entries().next().value;
                     FC_QUEUE.delete(record);
                     for (const fieldName of recMap.keys()) {
                         record._.requestCompute(record, fieldName, { force: true });
-                    }
-                }
-                while (FS_QUEUE.size > 0) {
-                    /** @type {[Record, Map<string, true>]} */
-                    const [record, recMap] = FS_QUEUE.entries().next().value;
-                    FS_QUEUE.delete(record);
-                    for (const fieldName of recMap.keys()) {
-                        record._.requestSort(record, fieldName, { force: true });
                     }
                 }
                 while (FA_QUEUE.size > 0) {
@@ -131,38 +106,28 @@ export class Store extends Record {
                         record._.onUpdate(record, fieldName);
                     }
                 }
-                while (RO_QUEUE.size > 0) {
-                    /** @type {Map<Function, true>} */
-                    const cb = RO_QUEUE.keys().next().value;
-                    RO_QUEUE.delete(cb);
-                    try {
-                        cb();
-                    } catch (err) {
-                        this.handleError(err);
-                    }
-                }
                 while (RD_QUEUE.size > 0) {
                     /** @type {Record} */
                     const record = RD_QUEUE.keys().next().value;
                     RD_QUEUE.delete(record);
-                    for (const [localId, names] of record._.uses.data.entries()) {
+                    record._.isDeleted.set(true);
+                    delete record.Model.records[record.localId];
+                    for (const [usingRecord, names] of record._.uses.data.entries()) {
                         for (const [name2, count] of names.entries()) {
-                            const existingRecordProxyInternal = toRaw(this.recordByLocalId).get(
-                                localId
-                            );
-                            const usingRecord =
-                                (existingRecordProxyInternal &&
-                                    toRaw(existingRecordProxyInternal)?._raw) ||
-                                deletingRecordsByLocalId.get(localId);
-                            if (!usingRecord) {
-                                // record already deleted, clean inverses
-                                record._.uses.data.delete(localId);
-                                continue;
-                            }
                             for (let c = 0; c < count; c++) {
                                 usingRecord[name2].delete(record);
                             }
                         }
+                    }
+                    for (const name of [
+                        ...record.Model._.fieldsOne.keys(),
+                        ...record.Model._.fieldsMany.keys(),
+                    ]) {
+                        const recordList = record[name];
+                        for (const usedRecord of recordList._.data) {
+                            usedRecord._.uses.delete(recordList);
+                        }
+                        recordList._.data.length = 0;
                     }
                     for (const lsFieldName of record.Model._.fieldsLocalStorage) {
                         const { localStorageKeyToRecordFields } = record.store._;
@@ -173,17 +138,7 @@ export class Store extends Record {
                             localStorageKeyToRecordFields.delete(key);
                         }
                     }
-                    deletingRecordsByLocalId.set(record.localId, record);
-                    this.recordByLocalId.delete(record.localId);
-                    this._.ADD_QUEUE("hard_delete", toRaw(record));
-                }
-                while (RHD_QUEUE.size > 0) {
-                    // effectively delete the record
-                    /** @type {Record} */
-                    const record = RHD_QUEUE.keys().next().value;
                     record._runDisposeFns();
-                    RHD_QUEUE.delete(record);
-                    deletingRecordsByLocalId.delete(record.localId);
                 }
             }
             this._.UPDATE--;
@@ -252,39 +207,17 @@ export class Store extends Record {
             }
         }
     }
-    onChange(record, name, cb) {
-        return this._onChange(record, name, (observe) => {
-            const fn = () => {
-                observe();
-                untrack(() => {
-                    try {
-                        cb();
-                    } catch (err) {
-                        this.handleError(err);
-                    }
-                });
-            };
-            if (this._.UPDATE !== 0) {
-                if (!this._.RO_QUEUE.has(fn)) {
-                    this._.RO_QUEUE.set(fn, true);
-                }
-            } else {
-                fn();
-            }
-        });
-    }
     /**
      * Version of onChange where the callback receives observe function as param.
      * This is useful when there's desire to postpone calling the callback function,
      * in which the observe is also intended to have its invocation postponed.
      *
-     * @param {Record} record
+     * @param {Record} recordProxy
      * @param {string|string[]} key
      * @param {(observe: Function) => any} callback
      * @returns {function} function to call to stop observing changes
      */
-    _onChange(record, key, callback) {
-        let recordProxy;
+    _onChange(recordProxy, key, callback) {
         function _observe() {
             // access recordProxy[key] only once to avoid triggering reactive get() many times
             const val = recordProxy[key];
@@ -300,7 +233,7 @@ export class Store extends Record {
             /** @type {Function[]} */
             const arrayDisposeFns = [];
             for (const k of key) {
-                arrayDisposeFns.push(this._onChange(record, k, callback));
+                arrayDisposeFns.push(this._onChange(recordProxy, k, callback));
             }
             return () => {
                 arrayDisposeFns.forEach((f) => f());
@@ -308,7 +241,6 @@ export class Store extends Record {
             };
         }
         let running = false;
-        recordProxy = proxy(record);
         const disposeFn = untrack(() =>
             immediateEffect(() => {
                 if (!running) {
@@ -331,3 +263,5 @@ export class Store extends Record {
         }
     }
 }
+
+untrackFunctions(Store.prototype, ["handleError", "insert"]);

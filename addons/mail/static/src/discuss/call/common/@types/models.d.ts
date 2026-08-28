@@ -21,9 +21,12 @@ declare module "models" {
         isCallDisplayedInChatWindow: Readonly<boolean>;
         isSelfInCall: Readonly<boolean>;
         lastSessionIds: Set<number>;
+        pin: (session: RtcSession) => void;
+        pinnedRtcSession: RtcSession;
         promoteFullscreen: typeof CALL_PROMOTE_FULLSCREEN[keyof CALL_PROMOTE_FULLSCREEN];
         rtc_session_ids: RtcSession[];
         showCallView: Readonly<boolean>;
+        unpin: () => void;
         updateCallFocusStack: (session: RtcSession) => void;
         useCameraByDefault: null;
         videoCount: number;
@@ -36,13 +39,10 @@ declare module "models" {
     export interface ResPartner {
         currentRtcSession: RtcSession;
     }
-    export interface Settings {
-        getVolume: (rtcSession: RtcSession) => number;
-    }
     export interface Store {
         _hasFullscreenUrl: boolean;
         _hasFullscreenUrlOnUpdate: () => void;
-        allActiveRtcSessions: RtcSession[];
+        _shareUrl: undefined|unknown;
         "discuss.channel.rtc.session": StaticMailRecord<RtcSession, typeof RtcSessionClass>;
         fullscreenChannel: DiscussChannel;
         meetingViewOpened: boolean;

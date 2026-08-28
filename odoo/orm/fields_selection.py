@@ -4,7 +4,6 @@ import typing
 from collections import defaultdict
 
 from odoo.tools.misc import SENTINEL, Sentinel, merge_sequences
-from odoo.tools.sql import pg_varchar
 
 from .fields import Field, _logger, determine, resolve_mro
 
@@ -60,7 +59,7 @@ class Selection(Field[str | typing.Literal[False]]):
     ``related`` or extended fields.
     """
     type = 'selection'
-    _column_type = ('varchar', pg_varchar())
+    _column_type = ('varchar', 'varchar')
 
     selection: list[SelectValue] | str | Callable[[BaseModel], list[SelectValue]] | None = None  # [(value, string), ...], function or method name
     validate: bool = True       # whether validating upon write
@@ -221,12 +220,12 @@ class Selection(Field[str | typing.Literal[False]]):
         selection = self.selection
         if isinstance(selection, str) or callable(selection):
             selection = determine(selection, env[self.model_name].with_context(lang=None))
-        return [value for value, _ in selection]
+        return [str(value) for value, _ in selection]
 
     def convert_to_column(self, value, record, values=None, validate=True):
         return self.convert_to_cache(value, record, validate=validate)
 
-    def convert_to_cache(self, value, record, validate=True):
+    def convert_to_cache(self, value, records, validate=True):
         if value is False or value is None:
             return None
         if self.validate and validate and self._selection is not None and str(value) not in self._selection:

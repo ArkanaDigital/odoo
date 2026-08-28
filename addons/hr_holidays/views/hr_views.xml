@@ -124,11 +124,11 @@
                 <field name="show_leaves" invisible="1"/>
                 <field name="is_absent" invisible="1"/>
                 <field name="hr_icon_display" invisible="1"/>
-                <button name="action_time_off_employee"
+                <button name="action_time_off_dashboard"
                         type="object"
                         class="oe_stat_button"
-                        icon="fa-calendar"
-                        invisible="not show_leaves or company_id not in allowed_company_ids"
+                        icon="calendar_today"
+                        invisible="not show_leaves or company_id not in allowed_company_ids or not id"
                         groups="base.group_user"
                         help="Remaining leaves">
                     <div class="o_field_widget o_stat_info">
@@ -165,7 +165,7 @@
                 <button name="action_open_time_off_calendar"
                         type="object"
                         class="oe_stat_button"
-                        icon="fa-calendar"
+                        icon="calendar_today"
                         invisible="show_leaves"
                         groups="base.group_user"
                         help="Remaining leaves">
@@ -182,7 +182,7 @@
                 <button name="%(hr_leave_action_new_request)d"
                         type="action"
                         class="oe_stat_button"
-                        icon="fa-calendar"
+                        icon="calendar_today"
                         invisible="not is_user or not show_leaves"
                         groups="base.group_user"
                         help="Remaining leaves">

@@ -292,6 +292,15 @@ describe("isVisible", () => {
 
             expect(result).toBe(true);
         });
+
+        test("should identify a space between feff and text as visible", () => {
+            const [p] = insertTestHtml("<p>\ufeff</p>");
+            const space = document.createTextNode(" ");
+            p.appendChild(space);
+            p.appendChild(document.createTextNode("a"));
+            const result = isVisibleTextNode(space);
+            expect(result).toBe(true);
+        });
     });
     describe("elements", () => {
         test("should identify a table containing only zero-width spaces as visible", () => {
@@ -580,7 +589,7 @@ describe("isEmptyBlock", () => {
     });
 
     test("should identify span with icon classes as non-empty", () => {
-        const [span] = insertTestHtml('<span class="fa fa-trash-o"></span>');
+        const [span] = insertTestHtml('<span class="oi" data-icon="delete"></span>');
         const result = isEmptyBlock(span);
         expect(result).toBe(false);
     });

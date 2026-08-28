@@ -1,3 +1,6 @@
+export type CustomDirectives = Record<string, (node: Element, value: string, modifier: string[]) => void>;
+export type Template = (context: any, vnode: any, key?: string) => any;
+export type TemplateFunction = (app: any, bdom: any, helpers: any) => Template;
 declare class VToggler {
 	key: string;
 	child: VNode;
@@ -95,52 +98,24 @@ export type BDom = VNode<any>;
 declare function mount(vnode: VNode, fixture: MountTarget, afterNode?: Node | null): void;
 declare function patch(vnode1: VNode, vnode2: VNode, withBeforeRemove?: boolean): void;
 declare function remove(vnode: VNode, withBeforeRemove?: boolean): void;
-export interface ResourceOptions<T> {
-	name?: string;
-	validation?: T;
+export declare class OwlError extends Error {
+	cause?: any;
 }
-export declare class Resource<T> {
-	private _items;
-	private _name?;
-	private _validation?;
-	constructor(options?: ResourceOptions<T>);
-	items: ReactiveValue<T[], T[]>;
-	add(item: T, options?: {
-		sequence?: number;
-	}): Resource<T>;
-	delete(item: T): Resource<T>;
-	has(item: T): boolean;
-}
-export declare function useResource<T>(r: Resource<T>, elements: T[]): void;
-export interface RegistryOptions<T> {
-	name?: string;
-	validation?: T;
-}
-export declare class Registry<T> {
-	private _map;
-	private _name;
-	private _validation?;
-	constructor(options?: RegistryOptions<T>);
-	entries: ReactiveValue<[
-		string,
-		T
-	][], [
-		string,
-		T
-	][]>;
-	items: ReactiveValue<T[], T[]>;
-	addById<U extends {
-		id: string;
-	} & T>(item: U, options?: {
-		sequence?: number;
-	}): Registry<T>;
-	add(key: string, value: T, options?: {
-		sequence?: number;
-	}): Registry<T>;
-	get(key: string, defaultValue?: T): T;
-	delete(key: string): void;
-	has(key: string): boolean;
-}
+declare const STATUS: {
+	readonly NEW: 0;
+	readonly MOUNTED: 1;
+	readonly DESTROYED: 2;
+};
+export type StatusValue = (typeof STATUS)[keyof typeof STATUS];
+export type Callback = (...args: any[]) => void;
+/**
+ * Creates a batched version of a callback so that all calls to it in the same
+ * microtick will only call the original callback once.
+ *
+ * @param callback the callback to batch
+ * @returns a batched version of the original callback
+ */
+export declare function batched(callback: Callback): Callback;
 export interface ReactiveValue<TRead, TWrite = TRead> {
 	(): TRead;
 	/**
@@ -150,6 +125,15 @@ export interface ReactiveValue<TRead, TWrite = TRead> {
 	 */
 	set(nextValue: TWrite): void;
 }
+/**
+ * The `equals` option accepted by `signal` and `computed`: a custom equality
+ * used to decide whether a new value should notify observers. Defaults to
+ * `Object.is`. Pass `false` to disable the check entirely (every write or
+ * recompute notifies, even with an identical value — useful for values that
+ * are mutated in place). The function receives (previous, next) and runs
+ * untracked: it can safely read reactive values without subscribing to them.
+ */
+export type Equals<T> = false | ((a: T, b: T) => boolean);
 declare enum ComputationState {
 	EXECUTED = 0,
 	STALE = 1,
@@ -166,23 +150,220 @@ export interface ComputationAtom<T = any> extends Atom<T> {
 	state: ComputationState;
 }
 export declare function untrack<T>(fn: (...args: any[]) => T): T;
-declare const STATUS: {
-	readonly NEW: 0;
-	readonly MOUNTED: 1;
-	readonly CANCELLED: 2;
-	readonly DESTROYED: 3;
+export type Constructor<T = any> = {
+	new (...args: any[]): T;
 };
-export type STATUS = (typeof STATUS)[keyof typeof STATUS];
-export type STATUS_DESCR = "new" | "started" | "mounted" | "cancelled" | "destroyed";
-declare function status$1(entity: Component | Plugin$1): STATUS_DESCR;
+export declare const hasDefault: unique symbol;
+export type WithDefault<T> = T & {
+	[hasDefault]: T;
+};
+export declare const isOptional: unique symbol;
+export type Optional<T> = T & {
+	[isOptional]: T;
+};
+export declare const typeBrand: unique symbol;
+export type Type<T> = T & {
+	[typeBrand]: T;
+	/**
+	 * Marks the type as optional: `undefined` passes validation, and an object
+	 * key with an optional type may be omitted.
+	 */
+	optional(): Optional<T>;
+	/**
+	 * Marks the type as optional, with a default value to fill it: the reader
+	 * of the value always gets one (the default replaces an omitted value). The
+	 * default can be given as a factory (`() => value`), which is called once
+	 * per consumer, so mutable defaults ([], {}) are not shared. A default for
+	 * a function type must use the factory form.
+	 */
+	optional(value: T extends Function ? () => T : T | (() => T)): WithDefault<T>;
+	type: T;
+};
+/**
+ * A {@link Type} that also carries the object shape it was built from, exposed
+ * through `toShape()`: `t.object`/`t.strictObject` return their own shape, and
+ * `t.and` merges the shapes of the members that have one. The shape is the
+ * `{ key: type }` map (with `.optional()` brands intact), so it can be reused —
+ * most notably to drive component props: `props(schema.toShape())`.
+ */
+export type ShapeType<Shape, T> = Type<T> & {
+	toShape(): Shape;
+};
+export type MemberShape<M> = M extends {
+	toShape(): infer S;
+} ? S : never;
+export type MergedShape<T extends any[]> = UnionToIntersection<MemberShape<T[number]>>;
+export type IsAny<T> = 0 extends 1 & T ? true : false;
+export type HasDefault<T> = IsAny<T> extends true ? false : T extends {
+	[hasDefault]: any;
+} ? true : false;
+export type IsOptional<T> = IsAny<T> extends true ? false : T extends {
+	[isOptional]: any;
+} ? true : false;
+export type StripDefault<T> = T extends {
+	[hasDefault]: infer U;
+} ? U : T;
+export type StripOptional<T> = T extends {
+	[isOptional]: infer U;
+} ? U | undefined : T;
+export type StripType<T> = T extends {
+	[typeBrand]: infer U;
+} ? U : T;
+export type StripBrands<T> = StripType<StripDefault<StripOptional<T>>>;
+export type StripBrandsAll<T extends any[]> = {
+	[K in keyof T]: StripBrands<T[K]>;
+};
+export type GetDefaultedKeys<T> = keyof T extends infer K ? K extends keyof T ? HasDefault<T[K]> extends true ? K : never : never : never;
+export type GetOptionalEntries<T> = {
+	[K in keyof T as IsOptional<T[K]> extends true ? K : HasDefault<T[K]> extends true ? K : never]?: StripBrands<T[K]>;
+};
+export type GetRequiredEntries<T> = {
+	[K in keyof T as IsOptional<T[K]> extends true ? never : HasDefault<T[K]> extends true ? never : K]: StripBrands<T[K]>;
+};
+export type PrettifyShape<T> = T extends Function ? T : {
+	[K in keyof T]: T[K];
+};
+export type ResolveOptionalEntries<T> = PrettifyShape<GetRequiredEntries<T> & GetOptionalEntries<T>>;
+export type ResolveReaderObjectType<T> = PrettifyShape<{
+	[K in keyof T as IsOptional<T[K]> extends true ? never : K]: StripBrands<T[K]>;
+} & {
+	[K in keyof T as IsOptional<T[K]> extends true ? K : never]?: StripBrands<T[K]>;
+}>;
+export type KeyedObject<K extends string[]> = {
+	[P in K[number]]: any;
+};
+export type ResolveShapedObject<T extends {}> = PrettifyShape<ResolveOptionalEntries<T>>;
+export type ResolveObjectType<T extends {}> = ResolveShapedObject<T extends string[] ? KeyedObject<T> : T>;
+export type UnionToIntersection<U> = (U extends any ? (_: U) => any : never) extends (_: infer I) => void ? I : never;
+/**
+ * Returns the default value factory attached to a type by `.optional(value)`,
+ * if any. This is how consumers (props, config, ...) resolve defaults at
+ * runtime: validation only runs in dev mode, so defaults are metadata on the
+ * schema, not a validation side-effect.
+ */
+export declare function getDefault(type: any): (() => any) | undefined;
+/**
+ * Returns `value` with defaults from the schema filled in, at any depth: a
+ * default fires when the value at its schema position is `undefined`. The
+ * input is never mutated; objects are copied along the changed paths only, so
+ * if nothing is filled in, `value` is returned as is.
+ *
+ * Note that this only recurses through object shapes, tuples and arrays
+ * (unions are ambiguous, records have no fixed keys).
+ */
+export declare function applyDefaults<T>(value: unknown, type: T): StripBrands<T>;
+declare function anyType(): Type<any>;
+declare function booleanType(): Type<boolean>;
+declare function numberType<T extends number = number>(): Type<T>;
+declare function stringType<T extends string = string>(): Type<T>;
+declare function arrayType(): Type<any[]>;
+declare function arrayType<T>(): Type<T[]>;
+declare function arrayType<T>(elementType: T): Type<StripBrands<T>[]>;
+declare function constructorType<T extends Constructor>(constructor: T): Type<T>;
+declare function customValidator<T>(type: T, validator: (value: StripBrands<T>) => boolean, errorMessage?: string): Type<StripBrands<T>>;
+declare function functionType(): Type<(...parameters: any[]) => any>;
+declare function functionType<const P extends unknown[]>(parameters: P): Type<(...parameters: StripBrandsAll<P>) => void>;
+declare function functionType<const P extends unknown[], R>(): Type<(...parameters: P) => R>;
+declare function functionType<const P extends unknown[], R>(parameters: P, result: R): Type<(...parameters: StripBrandsAll<P>) => StripBrands<R>>;
+declare function instanceType<T extends Constructor>(constructor: T): Type<InstanceType<T>>;
+declare function intersection<T extends any[]>(types: T): ShapeType<MergedShape<T>, UnionToIntersection<StripBrands<T[number]>>>;
+export type LiteralTypes = number | string | boolean | null | undefined;
+declare function literalType<const T extends LiteralTypes>(literal: T): Type<T>;
+declare function literalSelection<const T extends LiteralTypes>(literals: T[]): Type<T>;
+declare function objectType(): ShapeType<Record<string, any>, Record<string, any>>;
+declare function objectType<const Keys extends string[]>(keys: Keys): ShapeType<Keys, ResolveOptionalEntries<KeyedObject<Keys>>>;
+declare function objectType<Shape extends {}>(): ShapeType<Shape, ResolveOptionalEntries<Shape>>;
+declare function objectType<Shape extends {}>(shape: Shape): ShapeType<Shape, ResolveOptionalEntries<Shape>>;
+declare function strictObjectType<const Keys extends string[]>(keys: Keys): ShapeType<Keys, ResolveOptionalEntries<KeyedObject<Keys>>>;
+declare function strictObjectType<Shape extends {}>(shape: Shape): ShapeType<Shape, ResolveOptionalEntries<Shape>>;
+declare function promiseType(): Type<Promise<void>>;
+declare function promiseType<T>(type: T): Type<Promise<StripBrands<T>>>;
+declare function recordType(): Type<Record<PropertyKey, any>>;
+declare function recordType<V>(valueType: V): Type<Record<PropertyKey, StripBrands<V>>>;
+declare function tuple<const T extends unknown[]>(types: T): Type<StripBrandsAll<T>>;
+declare function union<T extends unknown[]>(types: T): Type<StripBrands<T[number]>>;
+declare function reactiveValueType(): Type<ReactiveValue<any>>;
+declare function reactiveValueType<T>(): Type<ReactiveValue<T>>;
+declare function reactiveValueType<T>(type: T): Type<ReactiveValue<StripBrands<T>>>;
+declare function ref(): Type<HTMLElement | null>;
+declare function ref<T extends Constructor<HTMLElement>>(type: T): Type<InstanceType<T> | null>;
+declare const types: {
+	and: typeof intersection;
+	any: typeof anyType;
+	array: typeof arrayType;
+	boolean: typeof booleanType;
+	constructor: typeof constructorType;
+	customValidator: typeof customValidator;
+	function: typeof functionType;
+	instanceOf: typeof instanceType;
+	literal: typeof literalType;
+	number: typeof numberType;
+	object: typeof objectType;
+	or: typeof union;
+	promise: typeof promiseType;
+	record: typeof recordType;
+	ref: typeof ref;
+	selection: typeof literalSelection;
+	signal: typeof reactiveValueType;
+	strictObject: typeof strictObjectType;
+	string: typeof stringType;
+	tuple: typeof tuple;
+};
+export interface ResourceOptions<T> {
+	name?: string;
+	validation?: T;
+}
+export interface ResourceAddOptions {
+	sequence?: number;
+}
+export type Item<T> = StripBrands<T>;
+export declare class Resource<T> {
+	private _items;
+	private _name?;
+	private _validation?;
+	constructor(options?: ResourceOptions<T>);
+	items: ReactiveValue<Item<T>[]>;
+	add(item: Item<T>, options?: ResourceAddOptions): Resource<T>;
+	delete(item: Item<T>): Resource<T>;
+	clear(): void;
+	has(item: Item<T>): boolean;
+	use(item: Item<T>, options?: ResourceAddOptions): Resource<T>;
+}
 export interface PluginConstructor {
 	new (...args: any[]): Plugin$1;
 	id: string;
+	sequence: number;
+	/**
+	 * Optional factory producing a specialized view of the plugin for a
+	 * consumer scope. When defined, `usePlugin` returns
+	 * `scoped(plugin, scope)` instead of the plugin itself, where `scope` is
+	 * the caller's scope (a component node or a plugin manager). Typical use:
+	 * wrap async methods with `scope.run` so their results are guarded by the
+	 * consumer's lifetime, and expose the raw instance as an escape hatch:
+	 *
+	 * ```ts
+	 * class ORM extends Plugin {
+	 *   static scoped(self: ORM, scope: Scope): ORM {
+	 *     return Object.assign(Object.create(self), {
+	 *       read: scope.run.bind(scope, self.read),
+	 *     });
+	 *   }
+	 *   unscoped = this;
+	 *   read = async (...) => { ... };
+	 * }
+	 * ```
+	 *
+	 * Called once per `usePlugin` call — the returned view is not cached.
+	 * It is a static (not an instance method) so the scoped view, usually
+	 * created with `Object.create(plugin)`, does not inherit it.
+	 */
+	scoped?(plugin: any, scope: Scope): object;
 }
 declare class Plugin$1 {
 	private static _shadowId;
 	static get id(): string;
 	static set id(shadowId: string);
+	static sequence: number;
 	__owl__: PluginManager;
 	constructor(manager: PluginManager);
 	setup(): void;
@@ -191,27 +372,368 @@ export interface PluginManagerOptions {
 	parent?: PluginManager | null;
 	config?: Record<string, any>;
 }
-declare class PluginManager {
-	app: App;
+declare class PluginManager extends Scope {
 	config: Record<string, any>;
-	onDestroyCb: Function[];
-	computations: ComputationAtom[];
 	plugins: Record<string, Plugin$1>;
-	status: STATUS;
-	constructor(app: App, options?: PluginManagerOptions);
+	ready: Promise<void>;
+	private hasPendingReady;
+	constructor(app: any, options?: PluginManagerOptions);
 	destroy(): void;
 	getPluginById<T extends Plugin$1>(id: string): T | null;
 	getPlugin<T extends PluginConstructor>(pluginConstructor: T): InstanceType<T> | null;
 	startPlugin<T extends PluginConstructor>(pluginConstructor: T): InstanceType<T> | null;
 	startPlugins(pluginConstructors: PluginConstructor[]): void;
 }
+/**
+ * Returns the active scope. Throws if no scope is active — use this inside
+ * hooks and setup functions where the caller is expected to be in a scope.
+ */
+export declare function useScope(): Scope;
+export declare abstract class Scope {
+	app: any;
+	pluginManager: PluginManager;
+	status: StatusValue;
+	computations: ComputationAtom[];
+	willStart: Array<() => any>;
+	private _controller;
+	private _destroyCbs;
+	constructor(app: any);
+	/**
+	 * Pushes this scope on the stack for the duration of `fn`, invoking it with
+	 * the given arguments. Any code executed synchronously inside `fn` can reach
+	 * this scope via `useScope()`.
+	 *
+	 * If the scope is already dead when `run` is called, it throws an
+	 * `OwlError` (a programming error — nothing should schedule work in a
+	 * destroyed scope). This is deliberately *not* an AbortError.
+	 *
+	 * If `fn` returns a promise, `run` guards the await with the scope's
+	 * lifetime: the returned promise rejects with an AbortError if the scope
+	 * dies during the await. AbortError is part of the normal async workflow,
+	 * unlike the up-front OwlError above. This does not allocate an
+	 * AbortController — status checks are sufficient for guarding between awaits.
+	 */
+	run<Args extends any[], T>(fn: (...args: Args) => T, ...args: Args): T;
+	private _guard;
+	/**
+	 * An AbortSignal tied to this scope's lifetime. If the scope is already
+	 * dead, returns a pre-aborted signal. Lazily allocates an AbortController
+	 * on first access.
+	 */
+	get abortSignal(): AbortSignal;
+	/**
+	 * Returns true once the scope has been destroyed, i.e. `finalize` has run:
+	 * the abort signal is aborted, onDestroy callbacks have executed and
+	 * computations are disposed.
+	 */
+	isDestroyed(): boolean;
+	/**
+	 * Registers a callback to run when the scope is destroyed. If the scope is
+	 * already destroyed, the callback is invoked immediately.
+	 */
+	onDestroy(cb: () => void): void;
+	/**
+	 * Aborts the scope's signal, runs all registered onDestroy callbacks in
+	 * reverse registration order, disposes any computations attached to this
+	 * scope, and transitions status to DESTROYED. Callbacks run *before* the
+	 * status transition so they can still observe the pre-destroyed state
+	 * (matching the prior onWillDestroy contract). Errors in callbacks are
+	 * routed to `reportError`.
+	 */
+	finalize(reportError: (e: unknown) => void): void;
+	/**
+	 * Wrapper applied to lifecycle callbacks before they are stored. The base
+	 * implementation prepends the scope as the first argument, so every
+	 * lifecycle callback receives the scope it was registered in.
+	 * ComponentNode overrides to additionally bind `this` to the component and,
+	 * in dev mode, to rename the bound function so the hook shows up as
+	 * `ComponentName.hookName` in stack traces.
+	 */
+	decorate(fn: Function, _hookName: string): Function;
+}
+/**
+ * Returns the scope currently active on the stack, or null if none. Prefer
+ * `useScope()` in hook-like code that expects to be called inside a scope;
+ * reach for `getScope()` only when the absence of a scope is meaningful.
+ */
+export declare function getScope(): Scope | null;
+export type Target = object;
+export type Reactive<T extends Target> = T;
+/**
+ * Mark an object or array so that it is ignored by the reactivity system
+ *
+ * @param value the value to mark
+ * @returns the object itself
+ */
+export declare function markRaw<T extends Target>(value: T): T;
+/**
+ * Given a proxy objet, return the raw (non proxy) underlying object
+ *
+ * @param value a proxy value
+ * @returns the underlying value
+ */
+export declare function toRaw<T extends Target, U extends Reactive<T>>(value: U | T): T;
+/**
+ * Wraps an object so it behaves like a signal, but with the familiar
+ * property-access API: instead of `count()` / `count.set(n)`, you write
+ * `state.count` and `state.count = n`. Reading and writing the proxy
+ * transparently looks and feels like reading and writing the original object.
+ *
+ * Reactivity is nested: reading a property that holds another object/array
+ * returns a proxy for that value too, recursively. Arrays, Maps, Sets, and
+ * WeakMaps are also wrapped, so `state.items.push(x)` or `state.map.set(k, v)`
+ * notify subscribers the same way property writes do.
+ *
+ * Subscriptions are only created when a read happens *while a computation is
+ * active* — i.e. inside a component's render, or inside an `effect`,
+ * `computed`, or `asyncComputed`. Reading the proxy from a plain function
+ * with no surrounding computation just returns the value without subscribing
+ * anything.
+ *
+ * @param target the object to make reactive
+ * @returns a proxy that tracks reads/writes against `target`
+ */
+export declare function proxy<T extends Target>(target: T): T;
+export interface Signal<T> extends ReactiveValue<T> {
+	/**
+	 * Update the value of the signal with a new value. If the new value is different
+	 * from the previous values, all computations that depends on this signal will
+	 * be invalidated, and effects will rerun.
+	 */
+	set(nextValue: T): void;
+}
+export interface SignalOptions<TValue, TElem = TValue> {
+	type?: TElem;
+	/** Custom equality used by `set` to decide whether to notify (see Equals). */
+	equals?: Equals<TValue>;
+}
+declare function triggerSignal(signal: Signal<any>): void;
+declare function signalRef(): Signal<HTMLElement | null>;
+declare function signalRef<T extends Constructor<HTMLElement>>(type: T): Signal<InstanceType<T> | null>;
+declare function signalArray<T>(): Signal<T[]>;
+declare function signalArray<T>(initialValue: T[], options?: {
+	equals?: Equals<T[]>;
+}): Signal<T[]>;
+declare function signalArray<T>(initialValue: NoInfer<T>[], options: SignalOptions<T[], T>): Signal<T[]>;
+declare function signalObject<T extends Record<PropertyKey, any>>(): Signal<T>;
+declare function signalObject<T extends Record<PropertyKey, any>>(initialValue: T, options?: {
+	equals?: Equals<T>;
+}): Signal<T>;
+declare function signalObject<T extends Record<PropertyKey, any>>(initialValue: NoInfer<T>, options: SignalOptions<T>): Signal<T>;
+export interface MapSignalOptions<K, V> {
+	name?: string;
+	keyType?: K;
+	valueType?: V;
+	/** Custom equality used by `set` to decide whether to notify (see Equals). */
+	equals?: Equals<Map<K, V>>;
+}
+declare function signalMap<K, V>(): Signal<Map<K, V>>;
+declare function signalMap<K, V>(initialValue: Map<K, V>, options?: {
+	name?: string;
+	equals?: Equals<Map<K, V>>;
+}): Signal<Map<K, V>>;
+declare function signalMap<K, V>(initialValue: NoInfer<Map<K, V>>, options: MapSignalOptions<K, V>): Signal<Map<K, V>>;
+declare function signalSet<T>(): Signal<Set<T>>;
+declare function signalSet<T>(initialValue: Set<T>, options?: {
+	equals?: Equals<Set<T>>;
+}): Signal<Set<T>>;
+declare function signalSet<T>(initialValue: Set<NoInfer<T>>, options: SignalOptions<Set<T>, T>): Signal<Set<T>>;
+export declare function signal<T>(value: T, options?: {
+	equals?: Equals<T>;
+}): Signal<T>;
+export declare function signal<T>(value: NoInfer<T>, options: SignalOptions<T>): Signal<T>;
+export declare namespace signal {
+	var trigger: typeof triggerSignal;
+	var ref: typeof signalRef;
+	var Array: typeof signalArray;
+	var Map: typeof signalMap;
+	var Object: typeof signalObject;
+	var Set: typeof signalSet;
+}
+export interface ComputedOptions<TRead, TWrite = TRead> {
+	set?(value: TWrite): void;
+	/**
+	 * Custom equality used after a recompute to decide whether observers should
+	 * be notified (see Equals). Useful when the getter builds a fresh object
+	 * each time (e.g. a filtered array): with a structural equality such as
+	 * `shallowEqual`, an equal result stops the propagation.
+	 */
+	equals?: Equals<TRead>;
+}
+export declare function computed<TRead, TWrite = TRead>(getter: () => TRead, options?: ComputedOptions<TRead, TWrite>): ReactiveValue<TRead, TWrite>;
+export declare function effect<T>(fn: () => T): () => void;
+export interface AsyncComputedContext {
+	readonly abortSignal: AbortSignal;
+}
+export interface AsyncComputedOptions<T> {
+	initial?: T;
+	/**
+	 * Custom equality for the resolved value (see Equals): a fetch resolving to
+	 * an equal value does not notify observers. Note that the previous value is
+	 * `undefined` before the first resolution when no `initial` is given.
+	 */
+	equals?: Equals<T | undefined>;
+}
+export interface AsyncComputed<T> {
+	(): T | undefined;
+	loading(): boolean;
+	error(): Error | null;
+	refresh(): void;
+	dispose(): void;
+	/**
+	 * Returns a promise that resolves as soon as no run is in flight: if a run
+	 * is currently running it resolves once that run (or any run that supersedes
+	 * it) settles, otherwise it resolves immediately. It never rejects — fetcher
+	 * errors are surfaced through `error()`. Handy to await the value in
+	 * `onWillStart`: `onWillStart(() => data.currentPromise())`.
+	 */
+	currentPromise(): Promise<void>;
+}
+/**
+ * @experimental The exact API is subject to change in future versions.
+ */
+export declare function asyncComputed<T>(fetcher: (ctx: AsyncComputedContext) => Promise<T>, options?: AsyncComputedOptions<T>): AsyncComputed<T>;
+export interface ValidationIssue {
+	message: string;
+	path?: string;
+	received?: any;
+	[K: string]: any;
+}
+export declare function assertType(value: any, validation: any, errorMessage?: string): void;
+export declare function validateType(value: any, validation: any): ValidationIssue[];
+export interface RegistryOptions<T> {
+	name?: string;
+	validation?: T;
+}
+export interface RegistryAddOptions extends ResourceAddOptions {
+	force?: boolean;
+}
+type Item$1<T> = StripBrands<T>;
+export declare class Registry<T> {
+	private _map;
+	private _name;
+	private _validation?;
+	constructor(options?: RegistryOptions<T>);
+	entries: ReactiveValue<[
+		string,
+		Item$1<T>
+	][]>;
+	items: ReactiveValue<Item$1<T>[]>;
+	addById<U extends {
+		id: string;
+	} & Item$1<T>>(item: U, options?: RegistryAddOptions): Registry<T>;
+	add(key: string, value: Item$1<T>, options?: RegistryAddOptions): Registry<T>;
+	get(key: string, defaultValue?: Item$1<T>): Item$1<T>;
+	delete(key: string): Registry<T>;
+	clear(): void;
+	has(key: string): boolean;
+	use(key: string, value: Item$1<T>, options?: RegistryAddOptions): Registry<T>;
+	useById<U extends {
+		id: string;
+	} & Item$1<T>>(item: U, options?: RegistryAddOptions): Registry<T>;
+}
+/**
+ * Creates a reactive effect bound to the surrounding component or plugin.
+ * Equivalent to `onWillDestroy(effect(fn))`: the effect runs once immediately,
+ * re-runs whenever any reactive value (signal, computed, proxy property) read
+ * during its execution changes, and is disposed when the owning scope is
+ * destroyed. If the callback returns a function, that function is called as
+ * cleanup before each re-run and on disposal.
+ */
+export declare function useEffect(fn: Parameters<typeof effect>[0]): void;
+export type Cleanup = (() => void) | void;
+/**
+ * Identity mapped type over a tuple. It keeps the type of each position when
+ * `callback` is contextually typed, while preventing typescript from inferring
+ * the dependency tuple from `callback`'s own (possibly shorter) parameter list.
+ */
+export type Args<T extends unknown[]> = {
+	[K in keyof T]: T[K];
+};
+/**
+ * Runs `callback` whenever the array returned by `dependencies` changes.
+ * Contrary to `useEffect`, only the `dependencies` function is tracked:
+ * reactive values read inside `callback` do not become dependencies, so the
+ * callback cannot retrigger itself.
+ *
+ * The dependency array is compared with `shallowEqual`, so `callback` only
+ * runs when one of the values it receives actually changed: with
+ * `() => [count() > 10]`, `count` going from 2 to 3 does not run it.
+ *
+ * `dependencies` must return an array of values, which are spread as the
+ * arguments of `callback`. As with `useEffect`, if `callback` returns a
+ * function, that function is called as cleanup before the next run and when
+ * the owning scope is destroyed.
+ *
+ * By default the callback also runs on the initial execution. Pass
+ * `{ initialRun: false }` to only react to subsequent changes.
+ *
+ * Example — refetch a record whenever its id changes, without subscribing to
+ * everything `loadRecord` happens to read:
+ *   useOnChange(
+ *     () => [this.props.recordId],
+ *     (recordId) => {
+ *       this.loadRecord(recordId);
+ *     }
+ *   );
+ */
+export declare function useOnChange<T extends unknown[]>(dependencies: () => [
+	...T
+], callback: (...args: Args<T>) => Cleanup, { initialRun }?: {
+	initialRun?: boolean;
+}): void;
+/**
+ * Adds an event listener to a target and automatically removes it when the
+ * surrounding component or plugin is destroyed.
+ *
+ * `target` can be either an `EventTarget` (the listener is attached
+ * immediately) or a `Signal<EventTarget | null>` such as a `t-ref` (the
+ * listener is attached through a `useEffect` and re-attaches when the signal's
+ * value changes; nothing is attached while the signal is null).
+ *
+ * The handler is not bound: it is passed as-is to `addEventListener`, so inside
+ * it `this` is the event target, not the calling component. Wrap a method in an
+ * arrow function (or bind it) if it relies on `this`.
+ *
+ * Example — close a menu when the user clicks anywhere on `window`:
+ *   useListener(window, "click", () => this.close());
+ */
+export declare function useListener(target: EventTarget | Signal<EventTarget | null>, eventName: string, handler: EventListener, eventParams?: AddEventListenerOptions): void;
+export declare function onWillStart(fn: (scope: Scope) => Promise<void> | void | any): void;
+export declare function onWillDestroy(fn: (scope: Scope) => void | any): void;
+export type PluginInstance<T extends PluginConstructor> = Omit<InstanceType<T>, "setup">;
+export declare function usePlugin<T extends PluginConstructor>(pluginType: T): PluginInstance<T>;
+/** @deprecated alias for {@link usePlugin} */
+export declare const plugin: typeof usePlugin;
+export declare function useConfig<T = any>(key: string): T;
+export declare function useConfig<T>(key: string, type: WithDefault<T>): T;
+export declare function useConfig<T>(key: string, type: Optional<T>): T | undefined;
+export declare function useConfig<T>(key: string, type: T): StripBrands<T>;
+/** @deprecated alias for {@link useConfig} */
+export declare const config: typeof useConfig;
+export declare class EventBus extends EventTarget {
+	trigger(name: string, payload?: any): void;
+}
+/**
+ * Compares two values one level deep: arrays element by element, plain
+ * objects own key by own key (with `Object.is` on each value). Anything else
+ * (Map, Set, class instances, ...) only compares equal by identity. Meant to
+ * be used as the `equals` option of `signal` or `computed` when a fresh
+ * array/object is produced on each recompute.
+ */
+export declare function shallowEqual(a: unknown, b: unknown): boolean;
+declare class Markup extends String {
+}
+export declare function htmlEscape(str: any): Markup;
+export declare function markup(strings: TemplateStringsArray, ...placeholders: unknown[]): Markup;
+export declare function markup(value: string): Markup;
 declare class Fiber {
 	node: ComponentNode;
 	bdom: BDom | null;
 	root: RootFiber | null;
 	parent: Fiber | null;
 	children: Fiber[];
-	appliedToDom: boolean;
+	renderState: number;
 	deep: boolean;
 	childrenMap: ComponentNode["children"];
 	constructor(node: ComponentNode, parent: Fiber | null);
@@ -229,47 +751,66 @@ declare class RootFiber extends Fiber {
 export type Position = "first-child" | "last-child";
 export interface MountOptions {
 	position?: Position;
+	afterNode?: Node | null;
 }
 declare class MountFiber extends RootFiber {
-	target: MountTarget;
+	target: MountTarget | null;
 	position: Position;
-	constructor(node: ComponentNode, target: MountTarget, options?: MountOptions);
+	afterNode: Node | null;
+	prepared: boolean;
+	onPrepared: (() => void) | null;
+	constructor(node: ComponentNode, target: MountTarget | null, options?: MountOptions);
 	complete(): void;
+	commit(target: MountTarget, options?: MountOptions): void;
+	private _mount;
 }
 export type LifecycleHook = Function;
-declare class ComponentNode implements VNode<ComponentNode> {
-	app: App;
+declare class ComponentNode extends Scope implements VNode<ComponentNode> {
 	fiber: Fiber | null;
 	component: Component;
 	bdom: BDom | null;
-	status: STATUS;
+	componentName: string;
 	forceNextRender: boolean;
 	parentKey: string | null;
 	props: Record<string, any>;
-	defaultProps: Record<string, any>;
+	defaultProps: Record<string, any> | null;
 	renderFn: Function;
 	parent: ComponentNode | null;
 	children: {
 		[key: string]: ComponentNode;
 	};
-	willStart: LifecycleHook[];
 	willUpdateProps: LifecycleHook[];
+	propsUpdated: LifecycleHook[];
 	willUnmount: LifecycleHook[];
 	mounted: LifecycleHook[];
 	willPatch: LifecycleHook[];
 	patched: LifecycleHook[];
-	willDestroy: LifecycleHook[];
 	signalComputation: ComputationAtom;
-	computations: ComputationAtom[];
-	pluginManager: PluginManager;
+	trackedRefs: Map<{
+		set(v: null): void;
+	}, {
+		value: HTMLElement | null;
+	}> | null;
 	constructor(C: ComponentConstructor, props: Record<string, any>, app: App, parent: ComponentNode | null, parentKey: string | null);
+	decorate(f: Function, hookName: string): Function;
 	initiateRender(fiber: Fiber | MountFiber): Promise<void>;
 	render(deep: boolean): Promise<void>;
 	cancel(): void;
-	_cancel(): void;
 	destroy(): void;
 	_destroy(): void;
-	updateAndRender(props: Record<string, any>, parentFiber: Fiber): Promise<void>;
+	/**
+	 * Unset any tracked t-ref whose element is no longer in the document, and stop
+	 * tracking it (createRef re-registers it on the next render if the element
+	 * comes back). `isConnected` is the discriminator: a ref the block's own
+	 * remove() failed to clear (bulk removal) points at a detached element and is
+	 * cleared, while a ref a surviving sibling just took over (t-if/t-else with a
+	 * shared signal) points at a still-connected element and is left alone.
+	 *
+	 * Called after this component's dom settles: at the tail of `_patch` (before
+	 * user `onPatched`), so an element removed in place is caught, and — for the
+	 * nodes collected during `_destroy` — after a removed subtree is detached.
+	 */
+	sweepRefs(): void;
 	/**
 	 * Finds a child that has dom that is not yet updated, and update it. This
 	 * method is meant to be used only in the context of repatching the dom after
@@ -280,6 +821,16 @@ declare class ComponentNode implements VNode<ComponentNode> {
 	mount(parent: HTMLElement, anchor: ChildNode): void;
 	moveBeforeDOMNode(node: Node | null, parent?: HTMLElement): void;
 	moveBeforeVNode(other: ComponentNode | null, afterNode: Node | null): void;
+	/**
+	 * Register a t-ref signal bound to an element this component hosts, so its
+	 * lifecycle can clear it (see sweepRefs / _destroy). Idempotent — re-tracking
+	 * the same signal on each render just refreshes its atom.
+	 */
+	trackRef(ref: {
+		set(v: null): void;
+	}, atom: {
+		value: HTMLElement | null;
+	}): void;
 	patch(): void;
 	_patch(): void;
 	beforeRemove(): void;
@@ -300,154 +851,50 @@ export declare class Component {
 	constructor(node: ComponentNode);
 	setup(): void;
 }
-export type Constructor<T = any> = {
-	new (...args: any[]): T;
-};
-export type GetOptionalEntries<T> = {
-	[K in keyof T as K extends `${infer P}?` ? P : never]?: T[K];
-};
-export type GetRequiredEntries<T> = {
-	[K in keyof T as K extends `${string}?` ? never : K]: T[K];
-};
-export type PrettifyShape<T> = T extends Function ? T : {
-	[K in keyof T]: T[K];
-};
-export type ResolveOptionalEntries<T> = PrettifyShape<GetRequiredEntries<T> & GetOptionalEntries<T>>;
-export type KeyedObject<K extends string[]> = {
-	[P in K[number]]: any;
-};
-export type ResolveShapedObject<T extends {}> = PrettifyShape<ResolveOptionalEntries<T>>;
-export type ResolveObjectType<T extends {}> = ResolveShapedObject<T extends string[] ? KeyedObject<T> : T>;
-export type UnionToIntersection<U> = (U extends any ? (_: U) => any : never) extends (_: infer I) => void ? I : never;
-declare function anyType(): any;
-declare function booleanType(): boolean;
-declare function numberType(): number;
-declare function stringType(): string;
-declare function arrayType(): any[];
-declare function arrayType<T>(elementType: T): T[];
-declare function constructorType<T extends Constructor>(constructor: T): T;
-declare function customValidator<T>(type: T, validator: (value: T) => boolean, errorMessage?: string): T;
-declare function functionType(): (...parameters: any[]) => any;
-declare function functionType<const P extends any[]>(parameters: P): (...parameters: P) => void;
-declare function functionType<const P extends any[], R>(parameters: P, result: R): (...parameters: P) => R;
-declare function instanceType<T extends Constructor>(constructor: T): InstanceType<T>;
-declare function intersection<T extends any[]>(types: T): UnionToIntersection<T[number]>;
-export type LiteralTypes = number | string | boolean | null | undefined;
-declare function literalType<const T extends LiteralTypes>(literal: T): T;
-declare function literalSelection<const T extends LiteralTypes>(literals: T[]): T;
-declare function objectType(): Record<string, any>;
-declare function objectType<const Keys extends string[]>(keys: Keys): ResolveOptionalEntries<KeyedObject<Keys>>;
-declare function objectType<Shape extends {}>(shape: Shape): ResolveOptionalEntries<Shape>;
-declare function strictObjectType<const Keys extends string[]>(keys: Keys): ResolveOptionalEntries<KeyedObject<Keys>>;
-declare function strictObjectType<Shape extends {}>(shape: Shape): ResolveOptionalEntries<Shape>;
-declare function promiseType(): Promise<void>;
-declare function promiseType<T>(type: T): Promise<T>;
-declare function recordType(): Record<PropertyKey, any>;
-declare function recordType<V>(valueType: V): Record<PropertyKey, V>;
-declare function tuple<const T extends any[]>(types: T): T;
-declare function union<T extends any[]>(types: T): T[number];
-declare function reactiveValueType(): ReactiveValue<any>;
-declare function reactiveValueType<T>(type: T): ReactiveValue<T>;
-declare function componentType(): typeof Component;
-declare function ref(): HTMLElement | null;
-declare function ref<T extends Constructor<HTMLElement>>(type: T): InstanceType<T> | null;
-export declare const types: {
-	and: typeof intersection;
-	any: typeof anyType;
-	array: typeof arrayType;
-	boolean: typeof booleanType;
-	component: typeof componentType;
-	constructor: typeof constructorType;
-	customValidator: typeof customValidator;
-	function: typeof functionType;
-	instanceOf: typeof instanceType;
-	literal: typeof literalType;
-	number: typeof numberType;
-	object: typeof objectType;
-	or: typeof union;
-	promise: typeof promiseType;
-	record: typeof recordType;
-	ref: typeof ref;
-	selection: typeof literalSelection;
-	signal: typeof reactiveValueType;
-	strictObject: typeof strictObjectType;
-	string: typeof stringType;
-	tuple: typeof tuple;
-};
-declare const isProps: unique symbol;
-export type WithDefaults<T, D> = T & Required<D>;
+declare function staticProp<T = any>(key: string): T;
+declare function staticProp<T>(key: string, type: WithDefault<T>): T;
+declare function staticProp<T>(key: string, type: Optional<T>): T | undefined;
+declare function staticProp<T>(key: string, type: T): StripBrands<T>;
+export declare const isProps: unique symbol;
 export type Props<T extends {}> = T & {
-	[isProps]: true;
+	[isProps]: never;
 };
-export type GetPropsDefaults<T extends object> = PrettifyShape<GetOptionalEntries<T>>;
-export type GetPropsWithOptionals<T> = T extends Props<infer P> ? (P extends WithDefaults<infer R, any> ? R : P) : never;
+export type PropsWithDefaults<T extends {}, DK extends PropertyKey> = T & {
+	[isProps]: DK;
+};
+export type GetPropsWithOptionals<T> = T extends {
+	[isProps]: infer DK extends PropertyKey;
+} ? Omit<T, typeof isProps | (DK & keyof T)> & Partial<Pick<T, DK & keyof T>> : never;
 export type GetProps<T> = {
 	[K in keyof T]: T[K] extends {
-		[isProps]: true;
+		[isProps]: PropertyKey;
 	} ? (x: GetPropsWithOptionals<T[K]>) => void : never;
 }[keyof T] extends (x: infer I) => void ? {
 	[K in keyof I]: I[K];
 } : never;
-export declare function props(): Props<Record<string, any>>;
-export declare function props<const Keys extends string[]>(keys: Keys): Props<ResolveObjectType<Keys>>;
-export declare function props<const Keys extends string[], Defaults>(keys: Keys, defaults: Defaults & GetPropsDefaults<KeyedObject<Keys>>): Props<WithDefaults<ResolveObjectType<Keys>, Defaults>>;
-export declare function props<Shape extends {}>(shape: Shape): Props<ResolveObjectType<Shape>>;
-export declare function props<Shape extends {}, Defaults>(shape: Shape, defaults: Defaults & GetPropsDefaults<Shape>): Props<WithDefaults<ResolveObjectType<Shape>, Defaults>>;
-export type Target = object;
-export type Reactive<T extends Target> = T;
-/**
- * Mark an object or array so that it is ignored by the reactivity system
- *
- * @param value the value to mark
- * @returns the object itself
- */
-export declare function markRaw<T extends Target>(value: T): T;
-/**
- * Given a proxy objet, return the raw (non proxy) underlying object
- *
- * @param value a proxy value
- * @returns the underlying value
- */
-export declare function toRaw<T extends Target, U extends Reactive<T>>(value: U | T): T;
-/**
- * Creates a reactive proxy for an object. Reading data on the proxy object
- * subscribes to changes to the data. Writing data on the object will cause the
- * notify callback to be called if there are suscriptions to that data. Nested
- * objects and arrays are automatically made reactive as well.
- *
- * Whenever you are notified of a change, all subscriptions are cleared, and if
- * you would like to be notified of any further changes, you should go read
- * the underlying data again. We assume that if you don't go read it again after
- * being notified, it means that you are no longer interested in that data.
- *
- * Subscriptions:
- * + Reading a property on an object will subscribe you to changes in the value
- *    of that property.
- * + Accessing an object's keys (eg with Object.keys or with `for..in`) will
- *    subscribe you to the creation/deletion of keys. Checking the presence of a
- *    key on the object with 'in' has the same effect.
- * - getOwnPropertyDescriptor does not currently subscribe you to the property.
- *    This is a choice that was made because changing a key's value will trigger
- *    this trap and we do not want to subscribe by writes. This also means that
- *    Object.hasOwnProperty doesn't subscribe as it goes through this trap.
- *
- * @param target the object for which to create a proxy proxy
- * @param callback the function to call when an observed property of the
- *  proxy has changed
- * @returns a proxy that tracks changes to it
- */
-export declare function proxy<T extends Target>(target: T): T;
+export type ResolveProps<Shape> = [
+	GetDefaultedKeys<Shape>
+] extends [
+	never
+] ? Props<ResolveReaderObjectType<Shape>> : PropsWithDefaults<ResolveReaderObjectType<Shape>, GetDefaultedKeys<Shape> & PropertyKey>;
+export interface PropsFunction {
+	(): Props<Record<string, any>>;
+	<const Keys extends string[]>(keys: Keys): Props<ResolveObjectType<Keys>>;
+	<Shape extends {}>(shape: Shape): ResolveProps<Shape>;
+	static: typeof staticProp;
+}
+export declare const useProps: PropsFunction;
+/** @deprecated alias for {@link useProps} */
+export declare const props: PropsFunction;
 declare class Scheduler {
 	static requestAnimationFrame: (callback: FrameRequestCallback) => number;
 	tasks: Set<RootFiber>;
 	requestAnimationFrame: Window["requestAnimationFrame"];
 	frame: number;
 	delayedRenders: Fiber[];
-	cancelledNodes: Set<ComponentNode>;
 	processing: boolean;
 	constructor();
 	addFiber(fiber: Fiber): void;
-	scheduleDestroy(node: ComponentNode): void;
 	/**
 	 * Process all current tasks. This only applies to the fibers that are ready.
 	 * Other tasks are left unchanged.
@@ -455,19 +902,16 @@ declare class Scheduler {
 	flush(): void;
 	processTasks(): void;
 }
-export type CustomDirectives = Record<string, (node: Element, value: string, modifier: string[]) => void>;
-export type Template = (context: any, vnode: any, key?: string) => BDom;
-export type TemplateFunction = (app: TemplateSet, bdom: any, helpers: any) => Template;
 export interface TemplateSetConfig {
 	dev?: boolean;
 	translatableAttributes?: string[];
 	translateFn?: (s: string, translationCtx: string) => string;
-	templates?: string | Document | Record<string, string>;
+	templates?: string | Document | Record<string, string | TemplateFunction>;
 	getTemplate?: (s: string) => Element | Function | string | void;
 	customDirectives?: CustomDirectives;
 	globalValues?: object;
 }
-declare class TemplateSet {
+export declare class TemplateSet {
 	static registerTemplate(name: string, fn: TemplateFunction): void;
 	dev: boolean;
 	rawTemplates: typeof globalTemplates;
@@ -481,37 +925,21 @@ declare class TemplateSet {
 	runtimeUtils: object;
 	hasGlobalValues: boolean;
 	constructor(config?: TemplateSetConfig);
-	addTemplate(name: string, template: string | Element): void;
+	addTemplate(name: string, template: string | Element | TemplateFunction): void;
 	addTemplates(xml: string | Document): void;
 	getTemplate(name: string): Template;
 	private _compileTemplate;
+	private _parseXML;
 }
-declare const globalTemplates: {
+export declare const globalTemplates: {
 	[key: string]: string | Element | TemplateFunction;
 };
 export declare function xml(...args: Parameters<typeof String.raw>): string;
 export declare namespace xml {
 	var nextId: number;
 }
-export type Callback = (...args: any[]) => void;
-/**
- * Creates a batched version of a callback so that all calls to it in the same
- * microtick will only call the original callback once.
- *
- * @param callback the callback to batch
- * @returns a batched version of the original callback
- */
-export declare function batched(callback: Callback): Callback;
 declare function validateTarget(target: HTMLElement | ShadowRoot): void;
-export declare class EventBus extends EventTarget {
-	trigger(name: string, payload?: any): void;
-}
 export declare function whenReady(fn?: any): Promise<void>;
-declare class Markup extends String {
-}
-export declare function htmlEscape(str: any): Markup;
-export declare function markup(strings: TemplateStringsArray, ...placeholders: unknown[]): Markup;
-export declare function markup(value: string): Markup;
 export type ComponentInstance<C extends ComponentConstructor> = C extends new (...args: any) => infer T ? T : never;
 export interface RootConfig<P> {
 	props?: P;
@@ -523,8 +951,9 @@ export interface AppConfig extends TemplateSetConfig {
 	test?: boolean;
 }
 export interface Root<T extends ComponentConstructor> {
-	node: ComponentNode;
 	promise: Promise<ComponentInstance<T>>;
+	readonly prepared: boolean;
+	prepare(): Promise<void>;
 	mount(target: MountTarget, options?: MountOptions): Promise<ComponentInstance<T>>;
 	destroy(): void;
 }
@@ -536,114 +965,57 @@ export declare class App extends TemplateSet {
 	scheduler: Scheduler;
 	roots: Set<Root<any>>;
 	pluginManager: PluginManager;
+	destroyed: boolean;
 	constructor(config?: AppConfig);
 	createRoot<T extends ComponentConstructor>(Root: T, config?: RootConfig<GetProps<ComponentInstance<T>>>): Root<T>;
 	destroy(): void;
 	_handleError(error: any): void;
 }
 declare function mount$1<T extends ComponentConstructor>(C: T, target: MountTarget, config?: AppConfig & RootConfig<GetProps<ComponentInstance<T>>> & MountOptions): Promise<ComponentInstance<T>>;
-export interface Signal<T> extends ReactiveValue<T> {
-	/**
-	 * Update the value of the signal with a new value. If the new value is different
-	 * from the previous values, all computations that depends on this signal will
-	 * be invalidated, and effects will rerun.
-	 */
-	set(nextValue: T): void;
+export declare class ErrorBoundary extends Component {
+	static template: string;
+	props: PropsWithDefaults<{
+		error: ReactiveValue<any, any>;
+	}, "error">;
+	setup(): void;
 }
-export interface SignalOptions<T> {
-	type?: T;
+export declare class Portal extends Component {
+	static template: string;
+	props: Props<{
+		slots: {
+			default: any;
+		};
+		target: string | HTMLElement | ReactiveValue<HTMLElement, HTMLElement>;
+	}>;
+	setup(): void;
 }
-declare function invalidateSignal(signal: Signal<any>): void;
-declare function signalArray<T>(initialValue: T[]): Signal<T[]>;
-declare function signalArray<T>(initialValue: NoInfer<T>[], options: SignalOptions<T>): Signal<T[]>;
-declare function signalObject<T extends Record<PropertyKey, any>>(initialValue: T): Signal<T>;
-declare function signalObject<T extends Record<PropertyKey, any>>(initialValue: NoInfer<T>, options: SignalOptions<T>): Signal<T>;
-export interface MapSignalOptions<K, V> {
-	name?: string;
-	keyType?: K;
-	valueType?: V;
+export declare class Suspense extends Component {
+	static template: string;
+	props: Props<{
+		slots: {
+			default: any;
+			fallback: any;
+		};
+	}>;
+	private prepared;
+	private mounted;
+	private subRootMounted;
+	setup(): void;
 }
-declare function signalMap<K, V>(initialValue: Map<K, V>): Signal<Map<K, V>>;
-declare function signalMap<K, V>(initialValue: NoInfer<Map<K, V>>, options: MapSignalOptions<K, V>): Signal<Map<K, V>>;
-declare function signalSet<T>(initialValue: Set<T>): Signal<Set<T>>;
-declare function signalSet<T>(initialValue: Set<NoInfer<T>>, options: SignalOptions<T>): Signal<Set<T>>;
-export declare function signal<T>(value: T): Signal<T>;
-export declare function signal<T>(value: NoInfer<T>, options: SignalOptions<T>): Signal<T>;
-export declare namespace signal {
-	var invalidate: typeof invalidateSignal;
-	var Array: typeof signalArray;
-	var Map: typeof signalMap;
-	var Object: typeof signalObject;
-	var Set: typeof signalSet;
-}
-export interface ComputedOptions<TWrite> {
-	set?(value: TWrite): void;
-}
-export declare function computed<TRead, TWrite = TRead>(getter: () => TRead, options?: ComputedOptions<TWrite>): ReactiveValue<TRead, TWrite>;
-export declare function effect<T>(fn: () => T): () => void;
-/**
- * This hook will run a callback when a component is mounted and patched, and
- * will run a cleanup function before patching and before unmounting the
- * the component.
- *
- * @template T
- * @param {Effect<T>} effect the effect to run on component mount and/or patch
- * @param {()=>[...T]} [computeDependencies=()=>[NaN]] a callback to compute
- *      dependencies that will decide if the effect needs to be cleaned up and
- *      run again. If the dependencies did not change, the effect will not run
- *      again. The default value returns an array containing only NaN because
- *      NaN !== NaN, which will cause the effect to rerun on every patch.
- */
-export declare function useEffect(fn: Parameters<typeof effect>[0]): void;
-/**
- * When a component needs to listen to DOM Events on element(s) that are not
- * part of his hierarchy, we can use the `useListener` hook.
- * It will immediately add the listener, and remove it whenever the plugin or
- * component is destroyed.
- *
- * Example:
- *  a menu needs to listen to the click on window to be closed automatically
- *
- * Usage:
- *  in the constructor of the OWL component that needs to be notified,
- *  `useListener(window, 'click', () => this._doSomething());`
- * */
-export declare function useListener(target: EventTarget | Signal<EventTarget | null>, eventName: string, handler: EventListener, eventParams?: AddEventListenerOptions): void;
-export declare function useApp(): App;
-export declare function onWillStart(fn: () => Promise<void> | void | any): void;
-export declare function onWillUpdateProps(fn: (nextProps: any) => Promise<void> | void | any): void;
-export declare function onMounted(fn: () => void | any): void;
-export declare function onWillPatch(fn: () => any | void): void;
-export declare function onPatched(fn: () => void | any): void;
-export declare function onWillUnmount(fn: () => void | any): void;
-export declare function onWillDestroy(fn: () => void | any): void;
+export type STATUS_DESCR = "new" | "started" | "mounted" | "destroyed";
+declare function status$1(entity: Component | Plugin$1): STATUS_DESCR;
+export declare const useApp: () => App;
+export declare function onWillUpdateProps(fn: (nextProps: any, scope: ComponentNode) => Promise<void> | void | any): void;
+export declare function onMounted(fn: (scope: ComponentNode) => void | any): void;
+export declare function onWillPatch(fn: (scope: ComponentNode) => any | void): void;
+export declare function onPatched(fn: (scope: ComponentNode) => void | any): void;
+export declare function onWillUnmount(fn: (scope: ComponentNode) => void | any): void;
 export type OnErrorCallback = (error: any) => void | any;
 export declare function onError(callback: OnErrorCallback): void;
-export interface ValidationIssue {
-	message: string;
-	path?: PropertyKey[];
-	received?: any;
-	[K: string]: any;
-}
-export declare function assertType(value: any, validation: any, errorMessage?: string): void;
-export declare function validateType(value: any, validation: any): ValidationIssue[];
-export declare class OwlError extends Error {
-	cause?: any;
-}
-export type PluginInstance<T extends PluginConstructor> = Omit<InstanceType<T>, "setup">;
-export declare function plugin<T extends PluginConstructor>(pluginType: T): PluginInstance<T>;
-export declare function config<T = any>(name: string, type?: T): T;
+declare const types$1: typeof types & {
+	component: () => Type<typeof Component>;
+};
 export declare function providePlugins(pluginConstructors: PluginConstructor[] | Resource<PluginConstructor>, config?: Record<string, any>): void;
-export interface CapturedContext {
-	run<T = void>(callback: () => T): T;
-	protectAsync<P extends any[], R>(callback: (...args: P) => Promise<R>): (...args: P) => Promise<R>;
-	runWithAsyncProtection<T>(callback: () => Promise<T>): Promise<T>;
-}
-/**
- * Captures the current context and gives methods to run
- * functions within the captured context.
- */
-export declare function useContext(): CapturedContext;
 export declare const blockDom: {
 	config: {
 		shouldNormalizeDom: boolean;
@@ -665,6 +1037,8 @@ export {
 	Plugin$1 as Plugin,
 	mount$1 as mount,
 	status$1 as status,
+	types$1 as t,
+	types$1 as types,
 };
 
 export {};

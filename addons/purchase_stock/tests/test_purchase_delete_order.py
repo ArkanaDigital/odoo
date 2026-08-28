@@ -11,6 +11,8 @@ from .common import PurchaseTestCommon
 @tagged('at_install', '-post_install')  # LEGACY at_install
 class TestDeleteOrder(PurchaseTestCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @users('purchase_user')
     def test_00_delete_order(self):
         ''' Testcase for deleting purchase order with purchase user group'''
@@ -69,7 +71,7 @@ class TestDeleteOrder(PurchaseTestCommon):
         })
         purchase_order.button_confirm()
 
-        self.env['report.stock.report_reception'].action_assign(move.ids, [1], purchase_order.order_line.move_ids.ids)
+        self.env['stock.allocation.report'].action_assign(purchase_order.order_line.move_ids.ids, move.ids, 1)
         self.assertEqual(move.state, 'waiting', 'Move should be waiting for the linked purchase')
         purchase_order.button_cancel()
         # Check purchase order and related move are canceled while linked move state is not

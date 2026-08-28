@@ -1,13 +1,13 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import json
 
+from collections import defaultdict
+
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.fields import Command, Domain
 from odoo.tools import float_compare
 from odoo.tools.misc import clean_context
-
-from collections import defaultdict
 
 
 class MrpBom(models.Model):
@@ -16,7 +16,7 @@ class MrpBom(models.Model):
     _description = 'Bill of Material'
     _inherit = ['mail.thread', 'product.catalog.mixin']
     _rec_name = 'product_tmpl_id'
-    _rec_names_search = ['product_tmpl_id', 'code']
+    _rec_names_search = ('product_tmpl_id', 'code')
     _order = "sequence, id"
     _check_company_auto = True
 
@@ -84,8 +84,10 @@ class MrpBom(models.Model):
     batch_size = fields.Float('Batch Size Value', default=1.0, digits='Product Unit', help="All automatically generated manufacturing orders for this product will be of this size.")
     enable_batch_size = fields.Boolean('Batch Size', default=False)
     json_popover = fields.Char('JSON data for the popover widget', compute='_compute_json_popover')
-
     note = fields.Html(string="Additional Notes", help="Additional notes for the manufacturing order. Notes added here will also be displayed in the Shop Floor.")
+    continuous = fields.Boolean('Continuous Production', default=False,
+        help="If active, registering production on a work order will automatically unblock the next work order if it is blocked."
+    )
 
     _qty_positive = models.Constraint(
         'check (product_qty > 0)',
@@ -519,88 +521,35 @@ class MrpBom(models.Model):
             if list_of_domain_by_bom_to_unmark:
                 self.env['mrp.production'].search(Domain.OR(list_of_domain_by_bom_to_unmark)).write({'is_outdated_bom': False})
 
-    # -------------------------------------------------------------------------
-    # CATALOG
-    # -------------------------------------------------------------------------
-
-    def _get_action_add_from_catalog_extra_context(self):
-        return {
-            **super()._get_action_add_from_catalog_extra_context(),
-            'product_catalog_currency_id': self.env.company.currency_id.id,
-        }
-
-    def _default_order_line_values(self, child_field=False):
-        default_data = super()._default_order_line_values(child_field)
-        new_default_data = self[child_field]._get_product_catalog_lines_data(default=True)
-
-        return {**default_data, **new_default_data}
-
-    def _get_product_catalog_record_lines(self, product_ids, *, child_field=False, **kwargs):
-        if not child_field:
-            return {}
-        lines = self[child_field].filtered(lambda line: line.product_id.id in product_ids)
-        return lines.grouped('product_id')
-
-    def _update_order_line_info(self, product, quantity, uom, *, child_field=False, **kwargs):
-        if not child_field:
-            return 0
-        entity = self[child_field].filtered(lambda line: line.product_id.id == product.id)
-        bom_line_uom_id = entity.uom_id if entity else uom or product.uom_id
-        price_unit = product.uom_id._compute_price(product.standard_price, bom_line_uom_id)
-        if entity:
-            if quantity != 0:
-                entity.product_qty = quantity
-            else:
-                entity.unlink()
-        elif quantity > 0:
-            command = Command.create({
-                'product_qty': quantity,
-                'product_id': product.id,
-                'sequence': (self[child_field][-1:].sequence or 1) + 1,
-                'uom_id': bom_line_uom_id.id,
-            })
-            self.write({child_field: [command]})
-
-        return price_unit
-
     @api.model
     def _skip_for_no_variant(self, product, bom_attribule_values, never_attribute_values=False):
         """ Controls if a Component/Operation/Byproduct line should be skipped based on the 'no_variant' attributes
             Cases:
                 - no_variant:
                     1. attribute present on the line
-                        => need to be at least one attribute value matching between the one passed as args and the ones one the line
+                        => Every attribute on the line must have at least one of its values match with a value passed as args.
                     2. attribute not present on the line
                         => valid if the line has no attribute value selected for that attribute
                 - always and dynamic: match_all_variant_values()
         """
-        no_variant_bom_attributes = bom_attribule_values.filtered(lambda av: av.attribute_id.create_variant == 'no_variant')
+        no_variant_bom_attribute_values = bom_attribule_values.filtered(lambda av: av.attribute_id.create_variant == 'no_variant')
 
         # Attributes create_variant 'always' and 'dynamic'
-        other_attribute_valid = product._match_all_variant_values(bom_attribule_values - no_variant_bom_attributes)
+        other_attribute_valid = product._match_all_variant_values(bom_attribule_values - no_variant_bom_attribute_values)
 
         # If there are no never attribute values on the line => 'always' and 'dynamic'
-        if not no_variant_bom_attributes:
+        if not no_variant_bom_attribute_values:
             return not other_attribute_valid
 
         # Or if there are never attribute on the line values but no value is passed => impossible to match
         if not never_attribute_values:
             return True
 
-        bom_values_by_attribute = no_variant_bom_attributes.grouped('attribute_id')
-        never_values_by_attribute = never_attribute_values.grouped('attribute_id')
+        # Check that every no-variant attribute on the bom line has a matching value.
+        never_attribute_valid = len((no_variant_bom_attribute_values & never_attribute_values).attribute_id) == len(no_variant_bom_attribute_values.attribute_id)
 
-        # Or if there is no overlap between given line values attributes and the ones on on the bom
-        if not any(never_att_id in no_variant_bom_attributes.attribute_id.ids for never_att_id in never_attribute_values.attribute_id.ids):
-            return True
-
-        # Check that at least one variant attribute is correct
-        for attribute, values in bom_values_by_attribute.items():
-            if never_values_by_attribute.get(attribute) and any(val.id in never_values_by_attribute[attribute].ids for val in values):
-                return not other_attribute_valid
-
-        # None were found, so we skip the line
-        return True
+        # If all the attributes values on the line are accounted for, it should not be skipped.
+        return not (other_attribute_valid and never_attribute_valid)
 
     # -------------------------------------------------------------------------
     # REPLENISHMENT WIZARD
@@ -660,6 +609,7 @@ class MrpBomLine(models.Model):
     _rec_name = "product_id"
     _description = 'Bill of Material Line'
     _check_company_auto = True
+    _inherit = ["product.catalog.line.mixin"]
 
     def _default_uom_id(self):
         return self.env['uom.uom'].search([], limit=1, order='id').id
@@ -722,6 +672,17 @@ class MrpBomLine(models.Model):
         for line in self:
             line.child_line_ids = line.child_bom_id.bom_line_ids.ids or False
 
+    @api.constrains('bom_product_template_attribute_value_ids')
+    def _check_bom_product_template_attribute_value_ids(self):
+        errors = defaultdict(set)
+        for record in self:
+            invalid_variants = [v.name for v in record.bom_product_template_attribute_value_ids if v not in record.possible_bom_product_template_attribute_value_ids]
+            if invalid_variants:
+                errors[record.bom_product_tmpl_id.name].update(invalid_variants)
+        if errors:
+            error_lines = '\n\t'.join((f'{p}: {', '.join(v)}' for p, v in errors.items()))
+            raise ValidationError(_('Some product have invalid variants.\n\t%(error_message)s', error_message=error_lines))
+
     @api.onchange('product_id')
     def onchange_product_id(self):
         if self.product_id:
@@ -778,22 +739,11 @@ class MrpBomLine(models.Model):
         bom = self.env['mrp.bom'].browse(self.env.context.get('order_id'))
         return bom.with_context(child_field='bom_line_ids').action_add_from_catalog()
 
-    def _get_product_catalog_lines_data(self, default=False, **kwargs):
-        if self and not default:
-            self.product_id.ensure_one()
-            price = self[0].product_id.uom_id._compute_price(self.product_id.standard_price, self[0].uom_id)
-            return {
-                'price': price,
-                'quantity': self[0].product_qty,
-                'readOnly': len(self) > 1,
-                'uomDisplayName': len(self) == 1 and self.uom_id.display_name or self.product_id.uom_id.display_name,
-                'uomId': self[0].uom_id.id,
-                'productUomDisplayName': self[0].product_id.uom_id.display_name,
-                'productUomFactor': self[0].product_id.uom_id.factor / self[0].uom_id.factor,
-            }
-        return {
-            'quantity': 0,
-        }
+    def _get_quantity_field(self) -> str:
+        return "product_qty"
+
+    def _get_product_uom_field(self) -> str:
+        return "uom_id"
 
     def _prepare_bom_done_values(self, quantity, product, original_quantity, boms_done):
         return {'qty': quantity, 'product': product, 'original_qty': original_quantity, 'parent_line': self}
@@ -807,6 +757,7 @@ class MrpBomByproduct(models.Model):
     _description = 'Byproduct'
     _rec_name = "product_id"
     _check_company_auto = True
+    _inherit = ["product.catalog.line.mixin"]
     _order = 'sequence, id'
 
     product_id = fields.Many2one('product.product', 'By-product', required=True, check_company=True)
@@ -856,19 +807,8 @@ class MrpBomByproduct(models.Model):
         bom = self.env['mrp.bom'].browse(self.env.context.get('order_id'))
         return bom.with_context(child_field='byproduct_ids').action_add_from_catalog()
 
-    def _get_product_catalog_lines_data(self, default=False, **kwargs):
-        if self and not default:
-            self.product_id.ensure_one()
-            price = self[0].product_id.uom_id._compute_price(self.product_id.standard_price, self[0].uom_id)
-            return {
-                'price': price,
-                'quantity': self[0].product_qty,
-                'readOnly': len(self) > 1,
-                'uomDisplayName': len(self) == 1 and self.uom_id.display_name or self.product_id.uom_id.display_name,
-                'uomId': self[0].uom_id.id,
-                'productUomDisplayName': self[0].product_id.uom_id.display_name,
-                'productUomFactor': self[0].product_id.uom_id.factor / self[0].uom_id.factor,
-            }
-        return {
-            'quantity': 0,
-        }
+    def _get_quantity_field(self) -> str:
+        return "product_qty"
+
+    def _get_product_uom_field(self) -> str:
+        return "uom_id"

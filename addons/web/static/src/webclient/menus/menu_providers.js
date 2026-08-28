@@ -2,17 +2,18 @@ import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { fuzzyLookup } from "@web/core/utils/search";
 import { computeAppsAndMenuItems } from "@web/webclient/menus/menu_helpers";
-import { DefaultCommandItem } from "@web/core/commands/command_palette";
-
-import { Component } from "@odoo/owl";
+import { defaultCommandItemProps } from "@web/core/commands/command_palette";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
+import { Component, usePlugin, t, useProps } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
 
 class AppIconCommand extends Component {
     static template = "web.AppIconCommand";
-    static props = {
-        webIconData: { type: String, optional: true },
-        webIcon: { type: Object, optional: true },
-        ...DefaultCommandItem.props,
-    };
+    props = useProps({
+        webIconData: t.string().optional(),
+        webIcon: t.object().optional(),
+        ...defaultCommandItemProps,
+    });
 }
 
 const commandCategoryRegistry = registry.category("command_categories");
@@ -30,21 +31,20 @@ const commandProviderRegistry = registry.category("command_provider");
 commandProviderRegistry.add("menu", {
     namespace: "/",
     async provide(env, options) {
+        const offlinePlugin = usePlugin(OfflinePlugin);
         const result = [];
-        const menuService = env.services.menu;
+        const menuService = useService("menu");
         let { apps, menuItems } = computeAppsAndMenuItems(menuService.getMenuAsTree("root"));
         function isAvailable(menu) {
-            return (
-                env.services.offline.offline &&
-                !env.services.offline.isAvailableOffline(menu.actionID)
-            );
+            return offlinePlugin.isOffline() && !offlinePlugin.isAvailableOffline(menu.actionID);
         }
         if (options.searchValue !== "") {
             apps = fuzzyLookup(options.searchValue, apps, (menu) => menu.label);
 
-            fuzzyLookup(options.searchValue, menuItems, (menu) =>
-                (menu.parents + " / " + menu.label).split("/").reverse().join("/")
-            ).forEach((menu) => {
+            fuzzyLookup(options.searchValue, menuItems, (menu) => {
+                const breadcrumb = `${menu.parents} / ${menu.label}`;
+                return [breadcrumb, breadcrumb.split("/").reverse().join("/")];
+            }).forEach((menu) => {
                 result.push({
                     action() {
                         menuService.selectMenu(menu);

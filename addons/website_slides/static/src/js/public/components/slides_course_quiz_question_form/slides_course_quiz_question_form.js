@@ -1,17 +1,20 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, props, signal, t, useListener } from "@odoo/owl";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
 
 export class WebsiteSlidesCourseQuizQuestionForm extends Component {
     static template = "slide.quiz.question.input";
-    static props = {
-        update: Boolean,
-        question: Object,
-        onSave: Function,
-        onCancel: Function,
-    };
+    props = props({
+        update: t.boolean(),
+        question: t.object(),
+        onSave: t.function(),
+        onCancel: t.function(),
+    });
+
+    inputRef = signal.ref();
+    formRef = signal.ref();
+    sequenceRef = signal.ref();
 
     setup() {
         this.slidesService = useService("website_slides");
@@ -22,7 +25,7 @@ export class WebsiteSlidesCourseQuizQuestionForm extends Component {
             error: null,
         });
         if (this.props.update) {
-            this.question = this.props.question;
+            this.question = proxy({ ...this.props.question });
             for (const answer of this.question.answers) {
                 this.state.answerLines.push({
                     id: answer.id,
@@ -33,7 +36,11 @@ export class WebsiteSlidesCourseQuizQuestionForm extends Component {
                 });
             }
         } else {
-            this.question = {};
+            this.question = proxy({
+                sequence: this.props.question.sequence ?? 1,
+                text: "",
+                ...this.props.question,
+            });
             this.state.answerLines = [
                 { id: 1, placeholder: "A giraffe", text: "", isCorrect: false, comment: "" },
                 { id: 2, placeholder: "A bird", text: "", isCorrect: false, comment: "" },
@@ -41,27 +48,17 @@ export class WebsiteSlidesCourseQuizQuestionForm extends Component {
             ];
         }
 
-        this.inputRef = useAutofocus({ refName: "input" });
-        this.formRef = useRef("form");
-        this.sequenceRef = useRef("sequence");
+        useAutofocus({ ref: this.inputRef });
 
-        useLayoutEffect(
-            (update) => {
-                if (!update) {
-                    return;
-                }
-                const questionsReorderHandler = this.onQuestionsReordered.bind(this);
-                this.bus.addEventListener("questions_reordered", questionsReorderHandler);
-                return () => {
-                    this.bus.removeEventListener("questions_reordered", questionsReorderHandler);
-                };
-            },
-            () => [this.props.update]
-        );
+        useListener(this.bus, "questions_reordered", () => {
+            if (this.props.update) {
+                this.onQuestionsReordered();
+            }
+        });
     }
 
     onQuestionsReordered() {
-        this.props.question.sequence = parseInt(this.sequenceRef.el.textContent);
+        this.question.sequence = parseInt(this.sequenceRef().textContent);
     }
 
     onIsCorrectClick(answer, isCorrect) {
@@ -122,8 +119,8 @@ export class WebsiteSlidesCourseQuizQuestionForm extends Component {
      * Handler when user click on 'Save' or 'Update' buttons.
      */
     async onValidateQuestionClick() {
-        if (this.isValidForm(this.formRef.el)) {
-            const values = this.serializeForm(this.formRef.el);
+        if (this.isValidForm(this.formRef())) {
+            const values = this.serializeForm(this.formRef());
             const renderedQuestion = await rpc("/slides/slide/quiz/question_add_or_update", values);
             if (typeof renderedQuestion === "object" && renderedQuestion.error) {
                 this.state.error = renderedQuestion.error;
@@ -133,7 +130,7 @@ export class WebsiteSlidesCourseQuizQuestionForm extends Component {
             }
         } else {
             this.state.error = _t("Please fill in the question");
-            this.inputRef.el.focus();
+            this.inputRef().focus();
         }
     }
 
@@ -170,8 +167,8 @@ export class WebsiteSlidesCourseQuizQuestionForm extends Component {
         }
         return {
             existing_question_id: this.question.id,
-            sequence: this.props.question.sequence,
-            question: this.props.question.text,
+            sequence: this.question.sequence,
+            question: this.question.text,
             slide_id: this.slide.id,
             answer_ids: answers,
         };

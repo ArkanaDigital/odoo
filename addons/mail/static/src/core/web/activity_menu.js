@@ -12,7 +12,6 @@ import { _t } from "@web/core/l10n/translation";
 
 export class ActivityMenu extends Component {
     static components = { Dropdown };
-    static props = [];
     static template = "mail.ActivityMenu";
 
     setup() {
@@ -37,6 +36,14 @@ export class ActivityMenu extends Component {
 
     onBeforeOpen() {
         this.store.fetchStoreData("systray_get_activities");
+    }
+
+    openUnassignedRoleActivities(newWindow) {
+        this.dropdown.close();
+        this.action.doAction("mail.mail_activity_action_to_assign", {
+            newWindow,
+            clearBreadcrumbs: true,
+        });
     }
 
     availableViews(group) {

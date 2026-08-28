@@ -46,7 +46,13 @@ class PosOrder(models.Model):
         moves = self.mapped('picking_ids.move_ids')\
             .filtered(lambda m: m.is_valued and m.product_id.valuation == 'real_time' and m.product_id.id == product.id)\
             .sorted(lambda x: x.date)
-        return moves._get_price_unit()
+        if moves:
+            return moves._get_price_unit()
+        else:
+            if product.cost_method in ['standard', 'average']:
+                return product.standard_price
+            else:
+                return product._run_fifo(quantity) / quantity if quantity else 0
 
     def process_saved_payments(self, order, existing_order):
         # update pickings
@@ -58,7 +64,7 @@ class PosOrder(models.Model):
     def _get_total_cost_in_real_time_lines(self):
         lines = super()._get_total_cost_in_real_time_lines()
         if not self._should_create_picking_real_time():
-            storable_fifo_avco_lines = lines.filtered(lambda l: l._is_product_storable_fifo_avco())
+            storable_fifo_avco_lines = lines.filtered(lambda line: line._is_product_storable_fifo_avco())
             lines -= storable_fifo_avco_lines
         return lines
 
@@ -68,7 +74,7 @@ class PosOrder(models.Model):
         containing a storable product with a fifo/avco cost method and then compute the order margin
         """
         for order in self:
-            storable_fifo_avco_lines = order.lines.filtered(lambda l: l._is_product_storable_fifo_avco())
+            storable_fifo_avco_lines = order.lines.filtered(lambda line: line._is_product_storable_fifo_avco())
             storable_fifo_avco_lines._compute_total_cost(at_closing=True)
 
     def action_stock_picking(self):
@@ -86,38 +92,6 @@ class PosOrder(models.Model):
             self._create_order_picking()
         return move
 
-    def _prepare_aml_values_list_per_nature(self):
-        aml_vals_list_per_nature = super()._prepare_aml_values_list_per_nature()
-        commercial_partner = self.partner_id.commercial_partner_id
-        if self.picking_ids.ids:
-            stock_moves = self.env['stock.move'].sudo().search([
-                ('picking_id', 'in', self.picking_ids.ids),
-                ('product_id.valuation', '=', 'real_time'),
-            ])
-            for stock_move in stock_moves:
-                product_accounts = stock_move.with_company(stock_move.company_id).product_id._get_product_accounts()
-                expense_account = product_accounts['expense']
-                stock_account = product_accounts['stock_valuation']
-                balance = stock_move.value if stock_move.is_out else -stock_move.value
-                aml_vals_list_per_nature['stock'].append({
-                    'name': self.env._("Stock variation for %s", stock_move.product_id.name),
-                    'account_id': expense_account.id,
-                    'partner_id': commercial_partner.id,
-                    'currency_id': self.company_id.currency_id.id,
-                    'amount_currency': balance,
-                    'balance': balance,
-                })
-                aml_vals_list_per_nature['stock'].append({
-                    'name': self.env._("Stock variation for %s", stock_move.product_id.name),
-                    'account_id': stock_account.id,
-                    'partner_id': commercial_partner.id,
-                    'currency_id': self.company_id.currency_id.id,
-                    'amount_currency': -balance,
-                    'balance': -balance,
-                })
-
-        return aml_vals_list_per_nature
-
     def _should_create_picking_real_time(self):
         return not self.session_id.update_stock_at_closing or self._force_create_picking_real_time()
 
@@ -132,3 +106,7 @@ class PosOrder(models.Model):
     @api.model
     def _should_update_quantity_on_product(self):
         return False
+
+    def get_stock_reports_to_print(self):
+        self.ensure_one()
+        return self.picking_ids._get_autoprint_report_actions()

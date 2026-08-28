@@ -1,5 +1,4 @@
-import { useSubEnv } from "@web/owl2/utils";
-import { Component, onWillDestroy, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillDestroy, onWillStart, proxy, t, useProps } from "@odoo/owl";
 import { Dialog } from "@web/core/dialog/dialog";
 import { generatePdfThumbnail } from "@web/core/utils/pdfjs";
 import { ShareTargetItem } from "@web/webclient/share_target/share_target_item";
@@ -9,10 +8,12 @@ import { registry } from "@web/core/registry";
 export class ShareTargetDialog extends Component {
     static template = "web.ShareTargetDialog";
     static components = { Dialog, ShareTargetItem };
-    static props = {
-        close: { type: Function },
-        files: { type: Array, element: File },
-    };
+    props = useProps({
+        close: t.function(),
+        files: t.array(t.instanceOf(File)),
+    });
+
+    shareTarget = useService("share_target");
 
     setup() {
         super.setup();
@@ -25,14 +26,6 @@ export class ShareTargetDialog extends Component {
             selectedShareTargetItemIndex: 0,
             previewFileUrl: URL.createObjectURL(this.props.files[0]),
             previewFileIndex: 0,
-        });
-        this.hooks = {
-            save: async () => {},
-        };
-        useSubEnv({
-            setHook: (hooks) => {
-                this.hooks = hooks;
-            },
         });
         onWillStart(async () => {
             // generate preview if we use pdf
@@ -71,7 +64,7 @@ export class ShareTargetDialog extends Component {
 
     async save(ev) {
         ev.target.disabled = true;
-        await this.hooks.save();
+        await this.shareTarget.callHook("save");
         this.props.close();
     }
 }

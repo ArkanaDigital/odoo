@@ -1,13 +1,9 @@
-import { onWillRender } from "@web/owl2/utils";
-import { Component, onPatched } from "@odoo/owl";
+import { computed, onPatched, t, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { x2ManyCommands } from "@web/core/orm_plugin";
 import { registry } from "@web/core/registry";
-import { CharField } from "@web/views/fields/char/char_field";
-import { standardFieldProps } from "@web/views/fields/standard_field_props";
-import { ListTextField, TextField } from "@web/views/fields/text/text_field";
-import { X2ManyField, x2ManyField } from "@web/views/fields/x2many/x2many_field";
-import { ListRenderer } from "@web/views/list/list_renderer";
+import { X2ManyField, x2ManyField, x2ManyFieldProps } from "@web/views/fields/x2many/x2many_field";
+import { ListRenderer, listRendererProps } from "@web/views/list/list_renderer";
 
 const SHOW_ALL_ITEMS_TOOLTIP = _t("Some lines can be on the next page, display them to unlock actions on section.");
 const DISABLED_MOVE_DOWN_ITEM_TOOLTIP = _t("Some lines of the next section can be on the next page, display them to unlock the action.");
@@ -46,6 +42,10 @@ function getRecordsUntilSection(list, record, asc, subSection) {
 
     const sectionRecords = [];
     let index = list.records.findIndex(listRecord => listRecord.id === record.id);
+    if (index === -1) {
+        // The record is no longer part of the list
+        return { sectionRecords, sectionIndex: index };
+    }
     if (asc) {
         sectionRecords.push(list.records[index]);
         index++;
@@ -71,13 +71,13 @@ function getRecordsUntilSection(list, record, asc, subSection) {
 export class SectionAndNoteListRenderer extends ListRenderer {
     static template = "account.SectionAndNoteListRenderer";
     static recordRowTemplate = "account.SectionAndNoteListRenderer.RecordRow";
-    static props = [
-        ...super.props,
-        "aggregatedFields",
-        "subsections",
-        "hidePrices",
-        "hideComposition",
-    ];
+    props = useProps({
+        ...listRendererProps,
+        aggregatedFields: t.any(),
+        subsections: t.any(),
+        hidePrices: t.any(),
+        hideComposition: t.any(),
+    });
 
     /**
      * The purpose of this extension is to allow sections and notes in the one2many list
@@ -91,14 +91,14 @@ export class SectionAndNoteListRenderer extends ListRenderer {
         this.priceColumns = [...this.props.aggregatedFields, "price_unit"];
         // invisible fields to force copy when duplicating a section
         this.copyFields = ["display_type", "collapse_composition", "collapse_prices"];
-        this.parentSectionMap = new Map();
         onPatched(() => {
             this.focusToName(this.editedRecord());
         });
-        onWillRender(() => {
-            this.buildParentSectionMap();
-        });
     }
+
+    parentSectionMap = computed(() =>
+        this.buildParentSectionMap(this.props.list.records)
+    );
 
     get disabledMoveDownItemTooltip() {
         return DISABLED_MOVE_DOWN_ITEM_TOOLTIP;
@@ -130,23 +130,24 @@ export class SectionAndNoteListRenderer extends ListRenderer {
         return [...this.props.aggregatedFields, 'section_state'];
     }
 
-    buildParentSectionMap() {
-        this.parentSectionMap.clear();
+    buildParentSectionMap(records) {
+        const parentSectionMap = new Map();
         let lastSection = null;
         let lastSubSection = null;
 
-        for (const record of this.props.list.records) {
+        for (const record of records) {
             if (record.data.display_type === DISPLAY_TYPES.SECTION) {
                 lastSection = record;
                 lastSubSection = null;
-                this.parentSectionMap.set(record, null);
+                parentSectionMap.set(record, null);
             } else if (record.data.display_type === DISPLAY_TYPES.SUBSECTION) {
                 lastSubSection = record;
-                this.parentSectionMap.set(record, lastSection);
+                parentSectionMap.set(record, lastSection);
             } else {
-                this.parentSectionMap.set(record, lastSubSection ?? lastSection);
+                parentSectionMap.set(record, lastSubSection ?? lastSection);
             }
         }
+        return parentSectionMap;
     }
 
     async toggleCollapse(record, fieldName) {
@@ -319,6 +320,10 @@ export class SectionAndNoteListRenderer extends ListRenderer {
         return [DISPLAY_TYPES.SECTION, DISPLAY_TYPES.SUBSECTION].includes(record.data.display_type);
     }
 
+    isNote(record = null) {
+        return record.data.display_type === DISPLAY_TYPES.NOTE;
+    }
+
     isSectionInPage(record) {
         if (this.props.list.count <= this.props.list.offset + this.props.list.limit) {
             // if last page
@@ -351,7 +356,7 @@ export class SectionAndNoteListRenderer extends ListRenderer {
      * @returns {boolean}
      */
     shouldCollapse(record, fieldName, checkSection = false) {
-        const parentSection = this.parentSectionMap.get(record);
+        const parentSection = this.parentSectionMap().get(record);
 
         // --- For sections ---
         if (this.isSection(record) && checkSection) {
@@ -375,7 +380,7 @@ export class SectionAndNoteListRenderer extends ListRenderer {
 
         // --- For regular lines ---
         if (this.isSubSection(parentSection)) {
-            const grandParent = this.parentSectionMap.get(parentSection);
+            const grandParent = this.parentSectionMap().get(parentSection);
             return parentSection.data[fieldName] || grandParent?.data[fieldName];
         }
 
@@ -386,7 +391,7 @@ export class SectionAndNoteListRenderer extends ListRenderer {
         const existingClasses = super.getRowClass(record);
         let newClasses = `${existingClasses} o_is_${record.data.display_type}`;
         if (this.props.hideComposition && this.shouldCollapse(record, 'collapse_composition')) {
-            newClasses += " text-muted";
+            newClasses += " text-muted o_hide_composition";
         }
         return newClasses;
     }
@@ -503,7 +508,7 @@ export class SectionAndNoteListRenderer extends ListRenderer {
         await super.sortDrop(dataRowId, dataGroupId, options);
 
         const record = this.props.list.records.find(r => r.id === dataRowId);
-        const parentSection = this.parentSectionMap.get(record);
+        const parentSection = this.parentSectionMap().get(record);
         const commands = [];
 
         if (this.resetOnResequence(record, parentSection)) {
@@ -536,13 +541,13 @@ export class SectionAndNoteFieldOne2Many extends X2ManyField {
         ...super.components,
         ListRenderer: SectionAndNoteListRenderer,
     };
-    static props = {
-        ...super.props,
-        aggregatedFields: Array,
-        hideComposition: Boolean,
-        hidePrices: Boolean,
-        subsections: Boolean,
-    };
+    props = useProps({
+        ...x2ManyFieldProps,
+        aggregatedFields: t.array(),
+        hideComposition: t.boolean(),
+        hidePrices: t.boolean(),
+        subsections: t.boolean(),
+    });
 
     get rendererProps() {
         const rp = super.rendererProps;
@@ -553,23 +558,6 @@ export class SectionAndNoteFieldOne2Many extends X2ManyField {
             rp.subsections = this.props.subsections;
         }
         return rp;
-    }
-}
-
-export class SectionAndNoteText extends Component {
-    static template = "account.SectionAndNoteText";
-    static props = { ...standardFieldProps };
-
-    get componentToUse() {
-        return this.props.record.data.display_type === "line_section" ? CharField : TextField;
-    }
-}
-
-export class ListSectionAndNoteText extends SectionAndNoteText {
-    get componentToUse() {
-        return this.props.record.data.display_type !== "line_section"
-            ? ListTextField
-            : super.componentToUse;
     }
 }
 
@@ -590,16 +578,4 @@ export const sectionAndNoteFieldOne2Many = {
     },
 };
 
-export const sectionAndNoteText = {
-    component: SectionAndNoteText,
-    additionalClasses: ["o_field_text"],
-};
-
-export const listSectionAndNoteText = {
-    ...sectionAndNoteText,
-    component: ListSectionAndNoteText,
-};
-
 registry.category("fields").add("section_and_note_one2many", sectionAndNoteFieldOne2Many);
-registry.category("fields").add("section_and_note_text", sectionAndNoteText);
-registry.category("fields").add("list.section_and_note_text", listSectionAndNoteText);

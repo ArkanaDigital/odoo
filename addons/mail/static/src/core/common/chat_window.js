@@ -1,22 +1,32 @@
-import { useChildSubEnv, useSubEnv } from "@web/owl2/utils";
+import { useSubEnv } from "@web/owl2/utils";
 import { ActionList } from "@mail/core/common/action_list";
 import { Composer } from "@mail/core/common/composer";
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { Thread } from "@mail/core/common/thread";
 import { AutoresizeInput } from "@mail/core/common/autoresize_input";
 import { CountryFlag } from "@mail/core/common/country_flag";
+import { RenameThreadPlugin } from "@mail/core/common/rename_thread_plugin";
 import { useThreadActions } from "@mail/core/common/thread_actions";
 import { useHover, useMessageScrolling } from "@mail/utils/common/hooks";
 import { isEventHandled } from "@web/core/utils/misc";
 
-import { Component, computed, props, proxy, signal, types } from "@odoo/owl";
+import {
+    Component,
+    computed,
+    providePlugins,
+    proxy,
+    signal,
+    t,
+    useProps,
+    usePlugin,
+} from "@odoo/owl";
 
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { localization } from "@web/core/l10n/localization";
 import { _t } from "@web/core/l10n/translation";
 import { useBackButton, useService } from "@web/core/utils/hooks";
 import { Typing } from "@mail/discuss/typing/common/typing";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { isMobileOS } from "@web/core/browser/feature_detection";
 
 export class ChatWindow extends Component {
@@ -32,30 +42,44 @@ export class ChatWindow extends Component {
     };
     static template = "mail.ChatWindow";
 
+    actionsMenuButtonRef = signal.ref();
+    parentChannelRef = signal.ref();
+    needactionCounterRef = signal.ref();
+    composerHiddenContainerRef = signal.ref();
+
     setup() {
         super.setup(...arguments);
         this.store = useService("mail.store");
-        this.props = props({
-            chatWindow: types.instanceOf(this.store.ChatWindow.Class),
-            "right?": types.number(),
+        this.props = useProps({
+            chatWindow: t.instanceOf(this.store.ChatWindow),
+            right: t.number().optional(),
         });
         useSubEnv({ inChatWindow: true });
         this.messageHighlight = useMessageScrolling({ thread: () => this.channel?.thread });
+        providePlugins([RenameThreadPlugin]);
+        this.editingName = usePlugin(RenameThreadPlugin).editingName;
         this.state = proxy({
             actionsMenuOpened: false,
             jumpThreadPresent: 0,
             editingGuestName: false,
-            editingName: false,
         });
         this.ui = useService("ui");
-        this.chatWindowContentRef = signal(null, { type: types.instanceOf(HTMLDivElement) });
+        this.chatWindowContentRef = signal.ref(HTMLDivElement);
         this.threadActions = useThreadActions({ thread: () => this.channel?.thread });
-        this.actionsMenuButtonHover = useHover("actionsMenuButton");
-        this.parentChannelHover = useHover("parentChannel");
+        this.quickActionsList = computed(() =>
+            this.threadActions.partition.quick.slice(0, this.ui.isSmall ? 2 : 4).reverse()
+        );
+        this.dropdownActionsList = computed(() => {
+            const partition = this.threadActions.partition;
+            const quickInDropdown = partition.quick.slice(this.ui.isSmall ? 2 : 4);
+            return [quickInDropdown, partition.other, ...partition.group];
+        });
+        this.actionsMenuButtonHover = useHover(this.actionsMenuButtonRef);
+        this.parentChannelHover = useHover(this.parentChannelRef);
         this.isMobileOS = isMobileOS();
         this.selfGuestName = computed(() => this.store.self_guest?.name);
         this.channelDisplayName = computed(() => this.props.chatWindow.channel?.displayName);
-        useChildSubEnv({ messageHighlight: this.messageHighlight });
+        useSubEnv({ messageHighlight: this.messageHighlight });
         useBackButton(() => this.close());
     }
 
@@ -90,8 +114,16 @@ export class ChatWindow extends Component {
     get attClass() {
         return {
             "w-100 h-100 o-mobile": this.ui.isSmall,
-            "o-rounded-bubble border border-dark o-border-opacity-15 mb-2": !this.ui.isSmall,
+            "o-rounded-bubble border border-dark o-border-opacity-7_5 mb-2": !this.ui.isSmall,
             "o-highlighted": this.props.chatWindow.highlighted,
+        };
+    }
+
+    get threadAvatarAttClass() {
+        return {
+            "py-1": !(this.threadActions.actions.length > 3),
+            "py-2": this.threadActions.actions.length <= 3,
+            "ps-2": !this.hasActionsMenu,
         };
     }
 
@@ -121,8 +153,8 @@ export class ChatWindow extends Component {
                 ) {
                     return;
                 }
-                if (this.state.editingName) {
-                    this.state.editingName = false;
+                if (this.editingName()) {
+                    this.editingName.set(false);
                     return;
                 }
                 this.close({ escape: true });
@@ -148,7 +180,7 @@ export class ChatWindow extends Component {
     onClickHeader(ev) {
         if (
             this.ui.isSmall ||
-            this.state.editingName ||
+            this.editingName() ||
             this.props.chatWindow.actionsDisabled ||
             isEventHandled(ev, "Action.onSelected")
         ) {
@@ -174,7 +206,7 @@ export class ChatWindow extends Component {
 
     async renameChannel(name) {
         await this.channel.rename(name);
-        this.state.editingName = false;
+        this.editingName.set(false);
     }
 
     async renameGuest(name) {

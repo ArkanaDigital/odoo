@@ -1,15 +1,6 @@
 /** @odoo-module */
 
-import {
-    Component,
-    computed,
-    onPatched,
-    onWillPatch,
-    plugin,
-    signal,
-    types as t,
-    xml,
-} from "@odoo/owl";
+import { Component, computed, onPatched, onWillPatch, signal, t, usePlugin, xml } from "@odoo/owl";
 import { getActiveElement } from "@web/../lib/hoot-dom/helpers/dom";
 import { R_REGEX, REGEX_MARKER } from "@web/../lib/hoot-dom/hoot_dom_utils";
 import { Suite } from "../core/suite";
@@ -236,21 +227,20 @@ const TEMPLATE_FILTERS_AND_CATEGORIES = /* xml */ `
         </t>
     </div>
     <t t-foreach="this.categoryKeys" t-as="category" t-key="category">
-        <t t-set="jobs" t-value="this.categories[category]()[0]" />
-        <t t-set="remainingCount" t-value="this.categories[category]()[1]" />
-        <t t-if="jobs?.length">
+        <t t-set="values" t-value="this.categories[category]()" />
+        <t t-if="values.items?.length">
             <div class="flex flex-col mb-2 max-h-48 overflow-hidden">
                 <h4
                     class="text-primary font-bold flex items-center mb-2"
                     t-out="this.title(category)"
                 />
                 <ul class="flex flex-col overflow-y-auto gap-1">
-                    <t t-foreach="jobs" t-as="job" t-key="job.id">
+                    <t t-foreach="values.items" t-as="job" t-key="job.id">
                         ${templateIncludeWidget("li")}
                     </t>
-                    <t t-if="remainingCount > 0">
+                    <t t-if="values.count > 0">
                         <div class="italic">
-                            <t t-out="remainingCount" /> more items ...
+                            <t t-out="values.count" /> more items ...
                         </div>
                     </t>
                 </ul>
@@ -287,7 +277,7 @@ const TEMPLATE_SEARCH_DASHBOARD = /* xml */ `
                 </span>
             </h4>
             <ul class="flex flex-col overflow-y-auto gap-1">
-                <t t-foreach="this.getTop(this.runner.rootSuites)" t-as="job" t-key="job.id">
+                <t t-foreach="this.getTop(this.runner.rootSuites())" t-as="job" t-key="job.id">
                     <t t-set="category" t-value="'suite'" />
                     ${templateIncludeWidget("li")}
                 </t>
@@ -364,7 +354,7 @@ export class HootSearch extends Component {
                             t-att-disabled="isRunning"
                             t-on-change="this.toggleExact"
                         />
-                        <i class="fa fa-quote-right text-gray transition-colors" />
+                        <i class="oi oi-filled text-gray transition-colors" data-icon="format_quote" />
                     </label>
                     <label
                         class="hoot-search-icon cursor-pointer p-1"
@@ -379,7 +369,7 @@ export class HootSearch extends Component {
                             t-att-disabled="isRunning"
                             t-on-change="this.toggleRegExp"
                         />
-                        <i class="fa fa-asterisk text-gray transition-colors" />
+                        <i class="oi text-gray transition-colors" data-icon="emergency" />
                     </label>
                     <label
                         class="hoot-search-icon cursor-pointer p-1"
@@ -393,7 +383,7 @@ export class HootSearch extends Component {
                             t-att-disabled="isRunning"
                             t-on-change="this.toggleDebug"
                         />
-                        <i class="fa fa-bug text-gray transition-colors" />
+                        <i class="oi text-gray transition-colors" data-icon="bug_report" />
                     </label>
                 </div>
                 <t t-if="this.showDropdown()">
@@ -413,18 +403,42 @@ export class HootSearch extends Component {
     // Props & plugins
     config = getConfigPlugin();
     runner = getRunnerPlugin();
-    ui = plugin(UiPlugin);
+    ui = usePlugin(UiPlugin);
 
     // Reactive values
-    rootRef = signal(null, { type: t.ref(HTMLElement) });
-    searchInputRef = signal(null, { type: t.ref(HTMLInputElement) });
+    rootRef = signal.ref(HTMLElement);
+    searchInputRef = signal.ref(HTMLInputElement);
     categories = {
-        suite: signal.Array([], { type: t.instanceOf(Suite) }),
-        tag: signal.Array([], { type: t.instanceOf(Tag) }),
-        test: signal.Array([], { type: t.instanceOf(Test) }),
+        suite: signal(
+            { items: [], count: 0 },
+            {
+                type: t.object({
+                    items: t.array(t.instanceOf(Suite)),
+                    count: t.number(),
+                }),
+            }
+        ),
+        tag: signal(
+            { items: [], count: 0 },
+            {
+                type: t.object({
+                    items: t.array(t.instanceOf(Tag)),
+                    count: t.number(),
+                }),
+            }
+        ),
+        test: signal(
+            { items: [], count: 0 },
+            {
+                type: t.object({
+                    items: t.array(t.instanceOf(Test)),
+                    count: t.number(),
+                }),
+            }
+        ),
     };
     query = signal(this.config.filter() || "", { type: t.string() });
-    isEmpty = signal(!this.query().trim(), { type: t.string() });
+    isEmpty = signal(!this.query().trim(), { type: t.boolean() });
     showDropdown = signal(false, { type: t.boolean() });
     trimmedQuery = computed(() => this.query().trim());
 
@@ -489,21 +503,24 @@ export class HootSearch extends Component {
     filterItems(parsedQuery, items, category) {
         const checked = this.runner.includeSpecs[category];
 
-        const result = [];
+        const filteredItems = [];
         const remaining = [];
         for (const item of items.values()) {
             const value = $abs(checked[item.id]);
             if (value === INCLUDE_LEVEL.url) {
-                result.push(item);
+                filteredItems.push(item);
             } else {
                 remaining.push(item);
             }
         }
 
         const matching = lookup(parsedQuery, remaining);
-        result.push(...matching.slice(0, RESULT_LIMIT));
+        filteredItems.push(...matching.slice(0, RESULT_LIMIT));
 
-        return [result, matching.length - RESULT_LIMIT];
+        return {
+            items: filteredItems,
+            count: matching.length - RESULT_LIMIT,
+        };
     }
 
     updateSuggestedCategories() {

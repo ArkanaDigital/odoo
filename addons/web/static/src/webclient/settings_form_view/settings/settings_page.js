@@ -1,20 +1,22 @@
-import { onWillRender, useLayoutEffect, useRef } from "@web/owl2/utils";
-
-import { Component, proxy } from "@odoo/owl";
+import { Component, computed, proxy, signal, t, useProps } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
+import { useService } from "@web/core/utils/hooks";
+import { useLayoutEffect } from "@web/owl2/utils";
 
 export class SettingsPage extends Component {
     static template = "web.SettingsPage";
     static components = { Dropdown, DropdownItem };
-    static props = {
-        modules: Array,
-        anchors: Array,
-        initialTab: { type: String, optional: true },
-        slots: Object,
-    };
+    props = useProps({
+        modules: t.array(),
+        anchors: t.array(),
+        initialTab: t.string().optional(),
+        slots: t.object(),
+    });
+    settingsRef = signal.ref();
     setup() {
+        this.uiService = useService("ui");
         this.state = proxy({
             selectedTab: "",
             search: this.env.searchState,
@@ -38,7 +40,6 @@ export class SettingsPage extends Component {
             this.state.selectedTab = selectedTab;
         }
 
-        this.settingsRef = useRef("settings");
         this.scrollMap = Object.create(null);
         useLayoutEffect(
             (settingsEl, currentTab) => {
@@ -50,14 +51,13 @@ export class SettingsPage extends Component {
                 settingsEl.scrollTop = scrollTop;
                 this.tabChangeProm?.resolve();
             },
-            () => [this.settingsRef.el, this.state.selectedTab]
+            () => [this.settingsRef(), this.state.selectedTab]
         );
-        onWillRender(() => {
-            this.selectedModule = this.props.modules.find(
-                (module) => module.key === this.state.selectedTab
-            );
-        });
     }
+
+    selectedModule = computed(() =>
+        this.props.modules.find((module) => module.key === this.state.selectedTab)
+    );
 
     get invalidApps() {
         const invalidApps = [];
@@ -71,12 +71,16 @@ export class SettingsPage extends Component {
         return invalidApps;
     }
 
-    onSettingTabClick(key) {
-        if (this.settingsRef.el) {
-            const { scrollTop } = this.settingsRef.el;
+    onSettingTabClick(key, updateUrl = false) {
+        const el = this.settingsRef();
+        if (el) {
+            const { scrollTop } = el;
             this.scrollMap[this.state.selectedTab] = { scrollTop };
         }
         this.state.selectedTab = key;
+        if (updateUrl) {
+            browser.location.hash = key;
+        }
         this.env.searchState.clearSearch();
     }
 }

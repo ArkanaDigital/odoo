@@ -1,10 +1,9 @@
 import { after, expect, registerDebugInfo } from "@odoo/hoot";
 import {
-    MockServer,
     defineModels,
     getMockEnv,
     getService,
-    mockService,
+    MockServer,
     patchWithCleanup,
     webModels,
 } from "@web/../tests/web_test_helpers";
@@ -12,12 +11,13 @@ import { BusBus } from "./mock_server/mock_models/bus_bus";
 import { IrWebSocket } from "./mock_server/mock_models/ir_websocket";
 import { getWebSocketWorker, onWebsocketEvent } from "./mock_websocket";
 
-import { busService } from "@bus/services/bus_service";
+import { BusPlugin } from "@bus/services/bus_plugin";
 import { WEBSOCKET_CLOSE_CODES } from "@bus/workers/websocket_worker";
-import { on, runAllTimers, waitUntil } from "@odoo/hoot-dom";
+import { runAllTimers, waitUntil } from "@odoo/hoot-dom";
 import { registry } from "@web/core/registry";
 import { deepEqual } from "@web/core/utils/objects";
 import { patch } from "@web/core/utils/patch";
+import { useListener } from "@odoo/owl";
 
 /**
  * @typedef {[
@@ -41,21 +41,28 @@ import { patch } from "@web/core/utils/patch";
 // Setup
 //-----------------------------------------------------------------------------
 
-patch(busService, {
-    _onMessage(env, id, type, payload) {
-        // Generic handlers (namely: debug info)
-        if (type in busMessageHandlers) {
-            busMessageHandlers[type](env, id, payload);
-        } else {
-            registerDebugInfo("bus message", { id, type, payload });
+patch(BusPlugin.prototype, {
+    handleMessage(messageEv) {
+        super.handleMessage(messageEv);
+        const { type, data } = messageEv.data;
+        if (type !== "BUS:NOTIFICATION") {
+            return;
         }
-
-        // Notifications
-        if (!busNotifications.has(env)) {
-            busNotifications.set(env, []);
-            after(() => busNotifications.clear());
+        for (const { id, message } of data) {
+            const { type, payload } = message;
+            // Generic handlers (namely: debug info)
+            if (type in busMessageHandlers) {
+                busMessageHandlers[type](this.env, id, payload);
+            } else {
+                registerDebugInfo("bus message", { id, type, payload });
+            }
+            // Notifications
+            if (!busNotifications.has(this.env)) {
+                busNotifications.set(this.env, []);
+                after(() => busNotifications.clear());
+            }
+            busNotifications.get(this.env).push({ id, type, payload });
         }
-        busNotifications.get(env).push({ id, type, payload });
     },
 });
 
@@ -141,7 +148,7 @@ viewsRegistry.category("form").add(
 
 // should be enough to decide whether or not notifications/channel
 // subscriptions... are received.
-const TIMEOUT = 2000;
+const TIMEOUT = 10000;
 
 //-----------------------------------------------------------------------------
 // Exports
@@ -163,12 +170,18 @@ export function addBusMessageHandler(type, handler) {
  * @param  {...[string, (event: CustomEvent) => any]} listeners
  */
 export function addBusServiceListeners(...listeners) {
-    mockService("bus_service", (env, dependencies) => {
-        const busServiceInstance = busService.start(env, dependencies);
-        for (const [type, handler] of listeners) {
-            after(on(busServiceInstance, type, handler));
-        }
-        return busServiceInstance;
+    let bound = false;
+    patchWithCleanup(BusPlugin.prototype, {
+        setup() {
+            super.setup();
+
+            if (!bound) {
+                bound = true;
+                for (const [type, handler] of listeners) {
+                    useListener(this.bus, type, handler);
+                }
+            }
+        },
     });
 }
 
@@ -321,12 +334,8 @@ export function lockWebsocketConnect() {
     return patchWithCleanup(window, { WebSocket: LockedWebSocket });
 }
 
-/**
- * @param {OdooEnv} [env]
- */
-export async function startBusService(env) {
-    const busService = env ? env.services.bus_service : getService("bus_service");
-    busService.start();
+export async function startBusService() {
+    getService(BusPlugin).start();
     await runAllTimers();
 }
 

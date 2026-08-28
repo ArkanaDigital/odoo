@@ -1,22 +1,25 @@
 import { AvatarCard } from "@mail/core/web/avatar_card/avatar_card";
-import { onWillStart } from "@odoo/owl";
+import { onWillStart, useProps, t } from "@odoo/owl";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { user } from "@web/core/user";
+import { useService } from "@web/core/utils/hooks";
 
 /**
  * Mixin that handles public/private access of employee records in many2X fields
  * @param { Class } fieldClass
+ * @param { Object } parentProps the props schema of `fieldClass`
  * @returns Class
  */
-export function EmployeeFieldRelationMixin(fieldClass) {
+export function EmployeeFieldRelationMixin(fieldClass, parentProps) {
     return class extends fieldClass {
-        static props = {
-            ...fieldClass.props,
-            relation: { type: String, optional: true },
-        };
+        props = useProps({
+            ...parentProps,
+            relation: t.string().optional(),
+        });
 
         setup() {
             super.setup();
+            this.uiService = useService("ui");
             onWillStart(async () => {
                 this.isHrUser = await user.hasGroup("hr.group_hr_user");
             });

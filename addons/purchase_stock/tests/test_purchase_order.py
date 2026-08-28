@@ -6,13 +6,15 @@ from unittest import skip
 from odoo import Command, fields
 from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from odoo.addons.stock_account.tests.test_anglo_saxon_valuation_reconciliation_common import ValuationReconciliationTestCommon
-from odoo.exceptions import UserError
 from odoo.tests import Form, tagged, freeze_time
+from odoo.tools import mute_logger
 
 
 @freeze_time("2021-01-14 09:12:15")
 @tagged('post_install', '-at_install')
 class TestPurchaseOrder(ValuationReconciliationTestCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -79,7 +81,8 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
 
         move_form = Form(self.env['account.move'].with_context(default_move_type='in_invoice'))
         move_form.partner_id = self.partner_a
-        move_form.purchase_vendor_bill_id = self.env['purchase.bill.union'].browse(-self.po.id)
+        with mute_logger('odoo.tests.form.onchange'):  # Mute "x PO lines added to the bill" notification
+            move_form.purchase_vendor_bill_id = self.env['purchase.bill.union'].browse(-self.po.id)
         self.invoice = move_form.save()
 
         self.assertEqual(self.po.order_line.mapped('qty_invoiced'), [5.0, 5.0], 'Purchase: all products should be invoiced"')
@@ -113,7 +116,8 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         move_form = Form(self.env['account.move'].with_context(default_move_type='in_invoice'))
         move_form.invoice_date = move_form.date
         move_form.partner_id = self.partner_a
-        move_form.purchase_vendor_bill_id = self.env['purchase.bill.union'].browse(-self.po.id)
+        with mute_logger('odoo.tests.form.onchange'):  # Mute "x PO lines added to the bill" notification
+            move_form.purchase_vendor_bill_id = self.env['purchase.bill.union'].browse(-self.po.id)
         self.invoice = move_form.save()
         self.invoice.action_post()
 
@@ -145,7 +149,8 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         # <field name="purchase_vendor_bill_id" nolabel="1"
         #         invisible="state != 'draft' or move_type != 'in_invoice'"
         move_form._view['modifiers']['purchase_id']['invisible'] = 'False'
-        move_form.purchase_id = self.po
+        with mute_logger('odoo.tests.form.onchange'):  # Mute "x PO lines added to the bill" notification
+            move_form.purchase_id = self.po
         self.invoice = move_form.save()
         move_form = Form(self.invoice)
         with move_form.invoice_line_ids.edit(0) as line_form:
@@ -501,6 +506,28 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
                 pol_form.product_qty = 25
         self.assertEqual(pol.name, "[C02] Name02")
 
+    def test_duplicated_and_modified_picking(self):
+        """ Test that the purchase order's received quantity is not modified by a duplicated picking
+            whose picking type has been changed.
+        """
+        po = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [
+                Command.create({
+                    'name': self.product_a.name,
+                    'product_id': self.product_a.id,
+                    'product_qty': 10.0,
+                })],
+        })
+        po.button_confirm()
+        po.picking_ids.button_validate()
+        self.assertEqual(po.order_line.qty_received, 10.0)
+        outgoing_picking_type = self.env['stock.picking.type'].search([('code', '=', 'outgoing')])
+        duplicated_picking = po.picking_ids.copy()
+        duplicated_picking.picking_type_id = outgoing_picking_type[0]
+        duplicated_picking.button_validate()
+        self.assertEqual(po.order_line.qty_received, 10.0)
+
     def test_putaway_strategy_in_backorder(self):
         stock_location = self.company_data['default_warehouse'].lot_stock_id
         sub_loc_01 = self.env['stock.location'].create([{
@@ -555,6 +582,8 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         self.assertEqual(quant.quantity, 5)
 
     def test_po_edit_after_receive(self):
+        # Picking types can be detached from any warehouse; ensure PO confirmation still works.
+        self.company_data['default_warehouse'].in_type_id.warehouse_id = False
         self.po = self.env['purchase.order'].create(self.po_vals)
         self.po.button_confirm()
         self.po.picking_ids.move_ids.quantity = 5
@@ -563,6 +592,16 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         self.assertEqual(self.po.picking_ids.move_ids.mapped('product_uom_qty'), [5.0, 5.0])
         self.po.with_context(import_file=True).order_line[0].product_qty = 10
         self.assertEqual(self.po.picking_ids.move_ids.mapped('product_uom_qty'), [5.0, 5.0, 5.0])
+
+    def test_po_edit_after_receive_2_steps_route(self):
+        self.company_data['default_warehouse'].reception_steps = 'two_steps'
+        self.po = self.env['purchase.order'].create(self.po_vals)
+        self.po.button_confirm()
+        self.po.picking_ids.move_ids.quantity = 1
+        Form.from_action(self.env, self.po.picking_ids.button_validate()).save().process()
+        self.assertEqual(self.po.picking_ids.sorted('id').move_ids.mapped('product_uom_qty'), [1.0, 1.0, 4.0, 4.0])
+        self.po.order_line[0].product_qty = 3
+        self.assertEqual(self.po.picking_ids.sorted('id').move_ids.mapped('product_uom_qty'), [1.0, 1.0, 2.0, 4.0])
 
     def test_receive_returned_product_without_po_update(self):
         """
@@ -721,7 +760,8 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         picking.button_validate()
 
         move_form = Form(self.env['account.move'].with_context(default_move_type='in_invoice'))
-        move_form.purchase_vendor_bill_id = self.env['purchase.bill.union'].browse(-po.id)
+        with mute_logger('odoo.tests.form.onchange'):  # Mute "x PO lines added to the bill" notification
+            move_form.purchase_vendor_bill_id = self.env['purchase.bill.union'].browse(-po.id)
         invoice = move_form.save()
 
         self.assertEqual(invoice.currency_id, currency)
@@ -1064,3 +1104,23 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
 
         cogs_lines = bill.line_ids.filtered(lambda l: l.display_type == 'cogs')
         self.assertRecordValues(cogs_lines, [{'tax_ids': []} for _ in cogs_lines])
+
+    def test_po_late_receipt_ignores_cancelled_receipts(self):
+        """Tests that a cancelled backorder doesn't comes under the PO late"""
+        po = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [
+                Command.create({
+                    'product_id': self.product.id,
+                    'product_qty': 5.0,
+                    'date_planned': fields.Datetime.now() - timedelta(days=1),
+                }),
+            ],
+        })
+        po.button_confirm()
+        self.assertIn(po, self.env['purchase.order'].search([('is_late', '=', True)]))
+        picking = po.picking_ids
+        picking.move_ids.quantity = 2
+        Form.from_action(self.env, picking.button_validate()).save().process()
+        picking.backorder_ids.action_cancel()
+        self.assertNotIn(po, self.env['purchase.order'].search([('is_late', '=', True)]))

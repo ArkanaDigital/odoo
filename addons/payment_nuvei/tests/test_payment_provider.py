@@ -7,14 +7,12 @@ from odoo.addons.payment_nuvei.tests.common import NuveiCommon
 
 @tagged("post_install", "-at_install")
 class TestPaymentProvider(NuveiCommon):
-    def test_incompatible_with_unsupported_currencies(self):
-        """Test that Nuvei providers are filtered out from compatible providers when the currency
-        is not supported."""
+    def test_not_available_for_unsupported_currencies(self):
         currency_id = self.env.ref("base.AFN").id
-        compatible_providers = self.env["payment.provider"]._get_compatible_providers(
+        available_providers = self.env["payment.provider"]._find_available_providers(
             self.env.company.id, self.partner.id, self.amount, currency_id=currency_id
         )
-        self.assertNotIn(self.provider, compatible_providers)
+        self.assertNotIn(self.provider, available_providers)
 
     def test_signature_calculation_for_outgoing_data(self):
         """Test that the calculated signature matches the expected signature for outgoing data."""
@@ -24,7 +22,7 @@ class TestPaymentProvider(NuveiCommon):
                 "item_amount_1": self.amount,
                 "item_name_1": self.reference,
                 "item_quantity_1": 1,
-                "invoice_id": self.reference,
+                "productId": self.reference,
                 "merchant_id": self.provider.nuvei_merchant_identifier,
                 "merchant_site_id": self.provider.nuvei_site_identifier,
                 "payment_method_mode": "filter",

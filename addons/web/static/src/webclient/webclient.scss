@@ -55,11 +55,11 @@ kbd {
 //== Badges
 .badge {
   min-width: $o-badge-min-width;
-  line-height: 1.1;
+  line-height: var(--o-Badge-lineHeight, 1.166);
   border: 0;
-  font-size: 0.85em;
+  font-size:  var(--o-Badge-fontSize, 0.85714em);
   user-select: none;
-  font-weight: 500;
+  font-weight: var(--o-Badge-fontWeight, 500);
   @include o-text-overflow;
   transition: none; // remove transition to prevent badges from flickering at reload
   color: $o-black;
@@ -79,10 +79,10 @@ kbd {
     &:not(.dropdown-item_active_noarrow) {
       &:before {
         @include o-position-absolute(0);
-        transform: translate(-1.5em, 90%);
-        font: .7em/1em FontAwesome;
+        transform: translate(-1.25em, 50%);
+        font: 1em/1 "Material Symbols Outlined";
         color: $link-color;
-        content: "\f00c";
+        content: "check";
       }
 
       &.disabled:before {
@@ -97,11 +97,11 @@ kbd {
   &.active, &.selected {
     &::after {
       @include o-position-absolute(0, $left: 90%);
-      transform: translate(0, 90%);
-      font: .7em/1em FontAwesome;
+      transform: translate(0, 50%);
+      font: 1em/1 "Material Symbols Outlined";
       color: $link-color;
       display: inline-block;
-      content: "\f00c";
+      content: "check";
       border: 0;
     }
 
@@ -145,12 +145,14 @@ kbd {
       &, .btn-sm {
         &:where(:not(.dropdown-item)) {
           font-size: $font-size-base;
-          padding: $o-touch-btn-padding;
+          --btn-padding-x: 14px;
+          --btn-padding-y: 7px;
         }
       }
 
-      &:has(.fa-fw:only-child, .oi-fw:only-child) {
-          padding: $o-touch-btn-with-icon-padding;
+      &:has(.oi-fw:only-child) {
+        --btn-padding-x: 10px;
+        --btn-padding-y: 7px;
       }
   }
 }

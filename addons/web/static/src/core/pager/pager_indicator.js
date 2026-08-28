@@ -9,7 +9,6 @@ import { PAGER_UPDATED_EVENT, pagerBus } from "./pager";
 export class PagerIndicator extends Component {
     static template = "web.PagerIndicator";
     static components = { Transition };
-    static props = {};
 
     setup() {
         this.state = proxy({
@@ -18,7 +17,7 @@ export class PagerIndicator extends Component {
             total: 0,
         });
         this.startShowTimer = null;
-        useBus(pagerBus, PAGER_UPDATED_EVENT, this.pagerUpdate);
+        useBus(pagerBus, PAGER_UPDATED_EVENT, this.pagerUpdate.bind(this));
     }
 
     pagerUpdate({ detail }) {

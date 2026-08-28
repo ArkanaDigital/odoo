@@ -1,9 +1,18 @@
-import { useRef } from "@web/owl2/utils";
 import { Dialog } from "@web/core/dialog/dialog";
 import { useService } from "@web/core/utils/hooks";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { memoize } from "@web/core/utils/functions";
-import { Component, onMounted, markup, onWillStart, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    markup,
+    onWillStart,
+    useProps,
+    proxy,
+    signal,
+    t,
+    usePlugin,
+} from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { user } from "@web/core/user";
 import { HtmlViewer } from "@html_editor/components/html_viewer/html_viewer";
@@ -13,31 +22,27 @@ import { cookie } from "@web/core/browser/cookie";
 import { loadBundle } from "@web/core/assets";
 import { htmlReplaceAll } from "@web/core/utils/html";
 import { scrollTo } from "@web/core/utils/scrolling";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 const { DateTime } = luxon;
 
 export class HistoryDialog extends Component {
     static template = "html_editor.HistoryDialog";
     static components = { Dialog, HtmlViewer };
-    static props = {
-        recordId: Number,
-        recordModel: String,
-        close: Function,
-        restoreRequested: Function,
-        historyMetadata: Array,
-        versionedFieldName: String,
-        title: { type: String, optional: true },
-        noContentHelper: { type: String, optional: true }, //Markup
-        embeddedComponents: { type: Array, optional: true },
-    };
+    props = useProps({
+        recordId: t.number(),
+        recordModel: t.string(),
+        close: t.function(),
+        restoreRequested: t.function(),
+        historyMetadata: t.array(),
+        versionedFieldName: t.string(),
+        title: t.string().optional(_t("History")),
+        noContentHelper: t.string().optional(markup("")), //Markup
+        embeddedComponents: t.array().optional([...READONLY_MAIN_EMBEDDINGS]),
+    });
 
     DEFAULT_AVATAR = "/mail/static/src/img/smiley/avatar.jpg";
-
-    static defaultProps = {
-        title: _t("History"),
-        noContentHelper: markup(""),
-        embeddedComponents: [...READONLY_MAIN_EMBEDDINGS],
-    };
+    listboxRef = signal.ref();
 
     state = proxy({
         revisionsData: [],
@@ -51,11 +56,12 @@ export class HistoryDialog extends Component {
         mobileActiveTab: "revisions",
     });
 
+    debugMode = usePlugin(DebugModePlugin);
+
     setup() {
         this.title = this.props.title;
         this.orm = useService("orm");
         this.toggleFullscreen = this.toggleFullscreen.bind(this);
-        this.listboxRef = useRef("listbox");
 
         useHotkey("ArrowUp", () => this.navigateRevisions("PREV"), { allowRepeat: true });
         useHotkey("ArrowDown", () => this.navigateRevisions("NEXT"), { allowRepeat: true });
@@ -125,7 +131,7 @@ export class HistoryDialog extends Component {
 
     async init() {
         // Load diff2html only in debug mode, as the side-by-side comparison is only available in debug mode.
-        if (this.env.debug) {
+        if (this.debugMode.isActive()) {
             await loadBundle("html_editor.assets_history_diff");
         }
         await this.updateCurrentRevision(this.state.revisionsData[0]["revision_id"]);
@@ -168,7 +174,7 @@ export class HistoryDialog extends Component {
 
     getRevisionComparisonSplit = memoize(
         async function getRevisionComparisonSplit(revisionId) {
-            if (!this.env.debug || revisionId === -1) {
+            if (!this.debugMode.isActive() || revisionId === -1) {
                 return "";
             }
             let unifiedDiffString = await this.orm.call(
@@ -310,13 +316,14 @@ export class HistoryDialog extends Component {
         const nextRevision = this.state.revisionsData[nextIndex];
         this.updateCurrentRevision(nextRevision.revision_id);
 
-        if (this.listboxRef.el) {
-            const revisionElement = this.listboxRef.el.querySelector(
+        const el = this.listboxRef();
+        if (el) {
+            const revisionElement = el.querySelector(
                 `[data-revision-id="${nextRevision.revision_id}"]`
             );
             if (revisionElement) {
                 revisionElement.focus();
-                scrollTo(revisionElement, { scrollable: this.listboxRef.el });
+                scrollTo(revisionElement, { scrollable: el });
             }
         }
     }

@@ -11,7 +11,7 @@ import {
     setInputFiles,
     edit,
 } from "@odoo/hoot-dom";
-import { advanceTime, runAllTimers } from "@odoo/hoot-mock";
+import { advanceTime, mockDate, runAllTimers } from "@odoo/hoot-mock";
 
 import { contains, onRpc } from "@web/../tests/web_test_helpers";
 
@@ -119,7 +119,7 @@ const formWithRestrictedFieldsTemplate = /* html */ `
             <div class="container-fluid">
                 <form action="/website/form/" method="post" enctype="multipart/form-data" class="o_mark_required" data-mark="*" data-pre-fill="true" data-model_name="mail.mail" data-success-mode="redirect" data-success-page="/contactus-thank-you">
                     <div class="s_website_form_rows row s_col_no_bgcolor">
-                        <div data-name="Field" data-requirement-comparator="substring" data-requirement-condition="[{&quot;requirement_text&quot;:&quot;hello&quot;,&quot;_id&quot;:&quot;0&quot;,&quot;id&quot;:&quot;hello&quot;},{&quot;requirement_text&quot;:&quot;noway&quot;,&quot;_id&quot;:&quot;1&quot;,&quot;id&quot;:&quot;noway&quot;}]" data-error-message="This field must contain one of the keyword(s): 'hello and noway'" class="s_website_form_field mb-3 col-12 s_website_form_custom s_website_form_required" data-type="char" data-translated-name="Your Name">
+                        <div data-name="Field" data-requirement-comparator="substring" data-requirement-condition="[{&quot;requirement_text&quot;:&quot;hello&quot;,&quot;_id&quot;:&quot;0&quot;,&quot;id&quot;:&quot;hello&quot;},{&quot;requirement_text&quot;:&quot;noway&quot;,&quot;_id&quot;:&quot;1&quot;,&quot;id&quot;:&quot;noway&quot;}]" data-error-message="This field must contain one of the keyword(s): 'hello and noway'" class="s_website_form_field mb-3 col-12 s_website_form_custom s_website_form_required" data-type="char">
                             <div class="row s_col_no_resize s_col_no_bgcolor">
                                 <label class="col-form-label col-sm-auto s_website_form_label" style="width: 200px" for="o5vq2ntfwjaw">
                                     <span class="s_website_form_label_content">Your Name</span>
@@ -130,7 +130,7 @@ const formWithRestrictedFieldsTemplate = /* html */ `
                                 </div>
                             </div>
                         </div>
-                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_model_required" data-type="email" data-translated-name="Your Email" data-requirement-comparator="domain" data-requirement-condition="[{&quot;requirement_text&quot;:&quot;gmail.com&quot;,&quot;_id&quot;:&quot;0&quot;,&quot;id&quot;:&quot;gmail.com&quot;},{&quot;requirement_text&quot;:&quot;icloud.com&quot;,&quot;_id&quot;:&quot;1&quot;,&quot;id&quot;:&quot;icloud.com&quot;}]" data-error-message="This field must have one of these email domain(s): gmail.com and icloud.com.">
+                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_model_required" data-type="email" data-requirement-comparator="domain" data-requirement-condition="[{&quot;requirement_text&quot;:&quot;gmail.com&quot;,&quot;_id&quot;:&quot;0&quot;,&quot;id&quot;:&quot;gmail.com&quot;},{&quot;requirement_text&quot;:&quot;icloud.com&quot;,&quot;_id&quot;:&quot;1&quot;,&quot;id&quot;:&quot;icloud.com&quot;}]" data-error-message="This field must have one of these email domain(s): gmail.com and icloud.com.">
                             <div class="row s_col_no_resize s_col_no_bgcolor">
                                 <label class="col-form-label col-sm-auto s_website_form_label" style="width: 200px" for="odfcbsocir26">
                                     <span class="s_website_form_label_content">Your Email</span>
@@ -141,7 +141,7 @@ const formWithRestrictedFieldsTemplate = /* html */ `
                                 </div>
                             </div>
                         </div>
-                        <div data-name="Field" data-requirement-comparator="!substring" data-requirement-condition="[{&quot;requirement_text&quot;:&quot;football&quot;,&quot;_id&quot;:&quot;0&quot;,&quot;id&quot;:&quot;football&quot;},{&quot;requirement_text&quot;:&quot;cricket&quot;,&quot;_id&quot;:&quot;1&quot;,&quot;id&quot;:&quot;cricket&quot;}]" data-error-message="This field must not include the keyword(s): 'football and cricket'" class="s_website_form_field mb-3 col-12 s_website_form_model_required" data-type="char" data-translated-name="Subject">
+                        <div data-name="Field" data-requirement-comparator="!substring" data-requirement-condition="[{&quot;requirement_text&quot;:&quot;football&quot;,&quot;_id&quot;:&quot;0&quot;,&quot;id&quot;:&quot;football&quot;},{&quot;requirement_text&quot;:&quot;cricket&quot;,&quot;_id&quot;:&quot;1&quot;,&quot;id&quot;:&quot;cricket&quot;}]" data-error-message="This field must not include the keyword(s): 'football and cricket'" class="s_website_form_field mb-3 col-12 s_website_form_model_required" data-type="char">
                             <div class="row s_col_no_resize s_col_no_bgcolor">
                                 <label class="col-form-label col-sm-auto s_website_form_label" style="width: 200px" for="ogrut2y7e6ld">
                                     <span class="s_website_form_label_content">Subject</span>
@@ -170,7 +170,7 @@ const formWithCharacterLimitRuleTemplate = /* html */ `
             <div class="container-fluid">
                 <form action="/website/form/" method="post" enctype="multipart/form-data" class="o_mark_required" data-mark="*" data-pre-fill="true" data-model_name="mail.mail" data-success-mode="redirect" data-success-page="/contactus-thank-you">
                     <div class="s_website_form_rows row s_col_no_bgcolor">
-                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_custom s_website_form_required" data-type="char" data-translated-name="Your Name">
+                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_custom s_website_form_required" data-type="char">
                             <div class="row s_col_no_resize s_col_no_bgcolor">
                                 <label class="col-form-label col-sm-auto s_website_form_label" style="width: 200px" for="ok0ney2v8rwf">
                                     <span class="s_website_form_label_content">Your Name</span>
@@ -199,7 +199,7 @@ const formWithRestrictedFileTypesTemplate = /* html */ `
             <div class="container-fluid">
                 <form action="/website/form/" method="post" enctype="multipart/form-data" class="o_mark_required" data-mark="*" data-pre-fill="true" data-model_name="mail.mail" data-success-mode="redirect" data-success-page="/contactus-thank-you">
                     <div class="s_website_form_rows row s_col_no_bgcolor">
-                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_model_required" data-type="email" data-translated-name="Your Email">
+                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_model_required" data-type="email">
                             <div class="row s_col_no_resize s_col_no_bgcolor">
                                 <label class="col-form-label col-sm-auto s_website_form_label" style="width: 200px" for="ooas5l5yuhg">
                                     <span class="s_website_form_label_content">Your Email</span>
@@ -210,7 +210,7 @@ const formWithRestrictedFileTypesTemplate = /* html */ `
                                 </div>
                             </div>
                         </div>
-                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_custom" data-type="binary" data-translated-name="Photo">
+                        <div data-name="Field" class="s_website_form_field mb-3 col-12 s_website_form_custom" data-type="binary">
                             <div class="row s_col_no_resize s_col_no_bgcolor">
                                 <label class="col-form-label col-sm-auto s_website_form_label" style="width: 200px" for="onfhvm7weawe">
                                     <span class="s_website_form_label_content">Photo</span>
@@ -919,4 +919,36 @@ test("validates file input against allowed filetypes", async () => {
     await runAllTimers();
     await click("a.s_website_form_send");
     checkField(fileEl, true, false);
+});
+
+test("validates a date against today resolved when the form is mounted", async () => {
+    mockDate("2025-11-14 12:00:00");
+    onRpc("/website/form/mail.mail", async () => ({}));
+    await startInteractions(/* html */ `
+        <div id="wrapwrap">
+            <section class="s_website_form">
+                <form action="/website/form/" method="post" data-model_name="mail.mail">
+                    <div class="s_website_form_field s_website_form_custom"
+                            data-type="date" data-requirement-comparator="after"
+                            data-requirement-condition="today">
+                        <div class="s_website_form_date input-group date">
+                            <input class="form-control datetimepicker-input s_website_form_input"
+                                type="text" name="date"/>
+                        </div>
+                    </div>
+                    <div class="s_website_form_submit">
+                        <span id="s_website_form_result"></span>
+                        <a href="#" role="button" class="s_website_form_send">Submit</a>
+                    </div>
+                </form>
+            </section>
+        </div>
+    `);
+    const dateInputEl = queryOne("input[name='date']");
+
+    await fillAndSubmitForm(dateInputEl, "11/14/2025");
+    checkField(dateInputEl, true, true);
+
+    await fillAndSubmitForm(dateInputEl, "11/15/2025");
+    checkField(dateInputEl, true, false);
 });

@@ -1,5 +1,5 @@
 import { registry } from "@web/core/registry";
-import { SIZES } from "@web/core/ui/ui_service";
+import { SIZES } from "@web/core/ui/ui_utils";
 import {
     append,
     combineAttributes,
@@ -66,10 +66,7 @@ export class FormCompiler extends ViewCompiler {
     compile(key, params = {}) {
         const compiled = super.compile(...arguments);
         if (!params.isSubView) {
-            compiled.children[0].setAttribute(
-                "t-ref",
-                "__globals__.createRefSignal(__comp__, 'compiled_view_root', 1)"
-            );
+            compiled.children[0].setAttribute("t-ref", "__comp__.rootRef");
         }
         return compiled;
     }
@@ -168,7 +165,7 @@ export class FormCompiler extends ViewCompiler {
             if (child.tagName === "field") {
                 child.classList.add("d-inline-block", "mb-0", "z-0");
             }
-            append(mainSlot, this.compileNode(child, params, false));
+            append(mainSlot, this.compileNode(child, { ...params, currentSlot: mainSlot }, false));
             append(buttonBox, mainSlot);
         }
 

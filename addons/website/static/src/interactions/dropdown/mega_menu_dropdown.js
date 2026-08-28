@@ -5,9 +5,9 @@ export class MegaMenuDropdown extends Interaction {
     static selector = "header#top";
     dynamicContent = {
         ".o_mega_menu_toggle": {
-            "t-on-mouseenter.withTarget": this.onHoverMegaMenu,
-            "t-on-mousedown.withTarget": this.onTriggerMegaMenu,
-            "t-on-keyup.withTarget": this.onTriggerMegaMenu,
+            "t-on-mouseenter": this.onHoverMegaMenu,
+            "t-on-mousedown": this.onTriggerMegaMenu,
+            "t-on-keyup": this.onTriggerMegaMenu,
         },
         _root: {
             "t-on-mousedown": this.onTriggerExtraMenu, // delegated to ".o_extra_menu_items"
@@ -97,33 +97,33 @@ export class MegaMenuDropdown extends Interaction {
 
     /**
      * @param {Event} ev
-     * @param {HTMLElement} currentTargetEl
      */
-    onTriggerMegaMenu(ev, currentTargetEl) {
+    onTriggerMegaMenu(ev) {
         // Hoverable menus are clicked in mobile view
         if (
             this.el.classList.contains("o_hoverable_dropdown") &&
-            !currentTargetEl.closest(".o_header_mobile") &&
+            !ev.currentTarget.closest(".o_header_mobile") &&
             ev.type !== "keyup"
         ) {
             return;
         }
-        this.moveMegaMenu(currentTargetEl);
+        this.moveMegaMenu(ev.currentTarget);
     }
 
     /**
      * @param {MouseEvent} ev
-     * @param {HTMLElement} currentTargetEl
      */
-    onHoverMegaMenu(ev, currentTargetEl) {
+    onHoverMegaMenu(ev) {
         // Hoverable menus are clicked in mobile view
+        const megaMenuToggleEl = ev.currentTarget;
         if (
             !this.el.classList.contains("o_hoverable_dropdown") ||
-            currentTargetEl.closest(".o_header_mobile")
+            megaMenuToggleEl.closest(".o_header_mobile")
         ) {
             return;
         }
-        this.moveMegaMenu(currentTargetEl);
+        this.moveMegaMenu(megaMenuToggleEl);
+        this.setHoverBridgeHeight(megaMenuToggleEl);
     }
 
     /**
@@ -140,6 +140,22 @@ export class MegaMenuDropdown extends Interaction {
             .closest(".o_extra_menu_items")
             .querySelectorAll(".o_mega_menu_toggle");
         megaMenuToggleEls.forEach((el) => this.moveMegaMenu(el));
+    }
+
+    /**
+     * Sets the height of the invisible hover bridge that fills the gap between
+     * the mega menu toggle and the mega menu. It prevents the mega menu from
+     * closing while the cursor travels across that gap.
+     *
+     * @param {Element} megaMenuToggleEl the mega menu dropdown
+     */
+    setHoverBridgeHeight(megaMenuToggleEl) {
+        const offsetParentRect = megaMenuToggleEl.offsetParent.getBoundingClientRect();
+        const toggleRect = megaMenuToggleEl.getBoundingClientRect();
+        megaMenuToggleEl.style.setProperty(
+            "--o-mega-menu-bridge-height",
+            `${Math.round(offsetParentRect.bottom - toggleRect.bottom)}px`
+        );
     }
 }
 

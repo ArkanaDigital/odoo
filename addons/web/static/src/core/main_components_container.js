@@ -1,5 +1,5 @@
 import { render } from "@web/owl2/utils";
-import { Component, types as t, xml } from "@odoo/owl";
+import { Component, t, xml } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useRegistry } from "@web/core/registry_hook";
 import { ErrorHandler } from "@web/core/utils/components";
@@ -10,13 +10,12 @@ const mainComponents = registry.category("main_components");
 mainComponents.addValidation(
     t.object({
         Component: t.component(),
-        "props?": t.object(),
+        props: t.object().optional(),
     })
 );
 
 export class MainComponentsContainer extends Component {
     static components = { ErrorHandler };
-    static props = {};
     static template = xml`
     <div class="o-main-components-container" t-att-class="{'o_rtl': this.isRTL}">
         <t t-foreach="this.Components.entries" t-as="C" t-key="C[0]">

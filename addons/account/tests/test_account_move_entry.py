@@ -14,6 +14,8 @@ from itertools import zip_longest
 @tagged('post_install', '-at_install')
 class TestAccountMove(AccountTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -345,7 +347,7 @@ class TestAccountMove(AccountTestInvoicingCommon):
             'invoice_cash_rounding_id': 42424242,
         }
         for fname, value in readonly_fields.items():
-            with self.assertRaisesRegex(UserError, "You cannot modify the following readonly fields on a posted move"):
+            with self.assertRaisesRegex(UserError, "You cannot modify the following readonly fields on the posted move %s" % self.test_move.name):
                 self.test_move.write({fname: value})
         for fname in readonly_fields:
             if fname.endswith('_ids'):
@@ -790,15 +792,8 @@ class TestAccountMove(AccountTestInvoicingCommon):
         # unreconcile
         debit_aml = move.line_ids.filtered('debit')
         debit_aml.remove_move_reconcile()
-        # check caba move reverse is same as caba move with only debit/credit inverted
-        reversed_caba_move = self.env['account.move'].search([('reversed_entry_id', '=', caba_move.id)])
-        for value in expected_values:
-            value.update({
-                'debit': value['credit'],
-                'credit': value['debit'],
-            })
-        self.assertRecordValues(reversed_caba_move.line_ids, expected_values)
-        self.assertEqual(reversed_caba_move.state, 'posted')
+        # unlocked caba moves should get deleted upon unreconciliation
+        self.assertFalse(caba_move.exists())
 
     def _get_cache_count(self, model_name='account.move', field_name='name'):
         model = self.env[model_name]

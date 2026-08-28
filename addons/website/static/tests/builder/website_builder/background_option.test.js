@@ -1,13 +1,25 @@
 import { BackgroundOption } from "@html_builder/plugins/background_option/background_option";
 import { addBuilderOption } from "@html_builder/../tests/helpers";
 import { Plugin } from "@html_editor/plugin";
-import { expect, test } from "@odoo/hoot";
+import { t } from "@odoo/owl";
+import {
+    advanceTime,
+    click,
+    edit,
+    expect,
+    mockFetch,
+    queryAttribute,
+    test,
+    waitForNone,
+} from "@odoo/hoot";
 import { animationFrame, queryOne, scroll, waitFor } from "@odoo/hoot-dom";
 import { contains } from "@web/../tests/web_test_helpers";
+import { PLATFORMS } from "@html_editor/main/media/media_dialog/video_selector";
 import {
     addPlugin,
     defineWebsiteModels,
     setupWebsiteBuilder,
+    setupWebsiteBuilderWithSnippet,
     toggleMobilePreview,
 } from "@website/../tests/builder/website_helpers";
 import { patchDragImage } from "@website/../tests/builder/image_test_helpers";
@@ -25,18 +37,12 @@ test("change the background shape of elements", async () => {
         selector: ".selector",
         applyTo: ".applyTo",
         Component: class TestBackgroundOption extends BackgroundOption {
-            static props = {
-                ...BackgroundOption.props,
-                withColors: { type: Boolean, optional: true },
-                withImages: { type: Boolean, optional: true },
-                withColorCombinations: { type: Boolean, optional: true },
-            };
-            static defaultProps = {
-                withColors: true,
-                withImages: true,
+            static propShape = {
+                withColors: t.boolean().optional(true),
+                withImages: t.boolean().optional(true),
                 // todo: handle with_videos
-                withShapes: true,
-                withColorCombinations: false,
+                withShapes: t.boolean().optional(true),
+                withColorCombinations: t.boolean().optional(false),
             };
         },
     });
@@ -111,21 +117,21 @@ test("Change the background position and apply", async () => {
     await dragAndDropBgImage();
     await contains(".o_we_image_position_overlay .btn-primary").click();
     expect(".o_we_image_position_overlay").toHaveCount(0);
-    expect("button.fa-undo").toBeEnabled();
+    expect("button[data-icon='undo']").toBeEnabled();
 });
 
 test("Change the background position and discard", async () => {
     await dragAndDropBgImage();
     await contains(".o_we_image_position_overlay .btn-danger").click();
     expect(".o_we_image_position_overlay").toHaveCount(0);
-    expect("button.fa-undo").not.toBeEnabled();
+    expect("button[data-icon='undo']").not.toBeEnabled();
 });
 
 test("Change the background position and click out of the iframe", async () => {
     await dragAndDropBgImage();
     await contains(".o_customize_tab").click();
     expect(".o_we_image_position_overlay").toHaveCount(0);
-    expect("button.fa-undo").not.toBeEnabled();
+    expect("button[data-icon='undo']").not.toBeEnabled();
 });
 
 test("Background position overlay layout", async () => {
@@ -653,7 +659,7 @@ test("Connections shape do not update if it is inside an invisible element", asy
         }
     );
     await contains(":iframe #section1").click();
-    await contains(".overlay .fa-angle-down").click();
+    await contains(".overlay [data-icon='keyboard_arrow_down']").click();
     let shapeData = JSON.parse(queryOne(":iframe #section1").dataset.oeShapeData);
     expect(shapeData.colors.c5).toBe(HEX_GREEN);
     await contains(
@@ -661,7 +667,7 @@ test("Connections shape do not update if it is inside an invisible element", asy
     ).click();
     await waitSidebarUpdated();
     await contains(".o_we_invisible_entry").click();
-    await contains(".overlay .fa-angle-up").click();
+    await contains(".overlay [data-icon='keyboard_arrow_up']").click();
     shapeData = JSON.parse(queryOne(":iframe #section1").dataset.oeShapeData);
     expect(shapeData.colors.c5).toBe(HEX_GREEN);
 });
@@ -729,3 +735,72 @@ test("Change the background position when multiple background layer is applied",
     expect(section).toHaveStyle("background-size: 100px, cover");
     expect("[data-action-value='repeat-pattern']").toHaveClass("active");
 });
+
+for (const [platform, platformClass] of Object.entries(PLATFORMS)) {
+    if ("hideControls" in platformClass.optionsConfig) {
+        test(`background video applies hideControls & hideFullscreen options to video selector ${platform}`, async () => {
+            await setupWebsiteBuilderWithSnippet("s_cover");
+            const videoUrl = platformClass.exampleUrls.base;
+
+            mockFetch(() => '{"data": "mockFetch api result data"}');
+
+            await contains(":iframe .s_cover").click();
+            await contains('[data-container-title="Cover"]').click();
+            await contains('[data-action-id="toggleBgVideo"]').click();
+
+            await click("#o_video_text");
+            await edit(videoUrl);
+
+            await advanceTime(100);
+
+            await contains("div.modal .modal-footer button.btn-primary").click();
+            await waitForNone(`div.modal`);
+
+            const videoSrc = queryAttribute(":iframe .o_background_video", "data-bg-video-src");
+            for (const paramName of platformClass.optionsConfig.hideControls.params) {
+                expect(videoSrc).toMatch(`${paramName}=0`);
+            }
+
+            if (platformClass.optionsConfig.hideControls?.linkedParams?.length) {
+                for (const paramName of platformClass.optionsConfig.hideControls.linkedParams) {
+                    expect(videoSrc).toMatch(`${paramName}=0`);
+                }
+            }
+        });
+    }
+}
+
+for (const [platform, platformClass] of Object.entries(PLATFORMS)) {
+    if ("loop" in platformClass.optionsConfig) {
+        test(`background video applies the loop option to video selector ${platform}`, async () => {
+            await setupWebsiteBuilderWithSnippet("s_cover");
+            const videoUrl = platformClass.exampleUrls.base;
+
+            mockFetch(() => '{"data": "mockFetch api result data"}');
+
+            await contains(":iframe .s_cover").click();
+            await contains('[data-container-title="Cover"]').click();
+            await contains('[data-action-id="toggleBgVideo"]').click();
+
+            await click("#o_video_text");
+            await edit(videoUrl);
+
+            await advanceTime(100);
+
+            await contains("div.modal .modal-footer button.btn-primary").click();
+            await waitForNone(`div.modal`);
+
+            const videoSrc = queryAttribute(":iframe .o_background_video", "data-bg-video-src");
+            const loopConfig = platformClass.optionsConfig.loop;
+            const enabledValue = loopConfig.type === Boolean ? "true" : "1";
+            for (const paramName of loopConfig.params) {
+                expect(videoSrc).toMatch(`${paramName}=${enabledValue}`);
+            }
+
+            if (platform === "youtube") {
+                const videoId = platformClass.isValidVideoUrl(videoUrl).groups.id;
+                expect(videoSrc).toMatch(`playlist=${videoId}`);
+            }
+        });
+    }
+}

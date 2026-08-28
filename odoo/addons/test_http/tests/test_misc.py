@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import json
+import logging
 from importlib import metadata
 from io import StringIO
 from socket import gethostbyname
@@ -9,7 +10,7 @@ from unittest.mock import patch
 from odoo.http.requestlib import Request
 from odoo.http.router import root
 from odoo.http.stream import content_disposition
-from odoo.tests import tagged
+from odoo.tests import Like, tagged
 from odoo.tests.common import HOST, BaseCase, get_db_name, new_test_user
 from odoo.tools import DotDict, config, file_path, mute_logger, parse_version
 
@@ -42,7 +43,7 @@ class TestHttpMisc(TestHttpBase):
             'Host': '',
             'X-Forwarded-For': client_ip,
             'X-Forwarded-Host': host,
-            'X-Forwarded-Proto': 'https'
+            'X-Forwarded-Proto': 'https',
         }
 
         # Don't trust client-sent forwarded headers
@@ -102,8 +103,8 @@ class TestHttpMisc(TestHttpBase):
 
         payload = json.dumps({'jsonrpc': '2.0', 'method': 'call', 'id': None, 'params': {
             'service': 'object', 'method': 'execute', 'args': [
-                get_db_name(), jack.id, 'jackoneill', 'test_http.galaxy', 'render', milky_way.id
-            ]
+                get_db_name(), jack.id, 'jackoneill', 'test_http.galaxy', 'render', milky_way.id,
+            ],
         }})
 
         for method in (self.db_url_open, self.nodb_url_open):
@@ -134,7 +135,7 @@ class TestHttpMisc(TestHttpBase):
             'Host': '',
             'X-Forwarded-For': TEST_IP,
             'X-Forwarded-Host': 'odoo.com',
-            'X-Forwarded-Proto': 'https'
+            'X-Forwarded-Proto': 'https',
         }
         with patch.dict(config.options, {'proxy_mode': True}):
             res = self.nodb_url_open('/test_http/geoip', headers=headers)
@@ -311,3 +312,34 @@ class TestContentDisposition(BaseCase):
         ]
         for filename, pct_encoded, hint in assertions:
             self.assertEqual(content_disposition(filename), f"attachment; filename*=UTF-8''{pct_encoded}", f'{hint} should be percent encoded')
+
+
+@tagged('-at_install', 'post_install')
+class TestFragmentToQueryString(TestHttpBase):
+    def test_fragment_to_query_string(self):
+        # This tests several behavior of `fragment_to_query_string`.
+        # To avoid starting a chrome headless client for each test,
+        # we plug the controllers into each other via
+        # `request.redirect`.
+        # The real tests happens in the controllers.
+        fake_success = "console.log('test successful')"
+        test_start = '/test_http/f2qs/step1/no-operation-to-perform?race=Asgard'
+        with self.assertLogs(
+            'odoo.addons.test_http.controllers.test_fragment_to_query_string',
+            logging.INFO,
+        ) as capture:
+            self.browser_js(test_start, fake_success)
+
+        # Ensure all controllers ran
+        self.assertEqual(
+            [
+                Like('...step 1: passed...'),
+                Like('...step 2: passed...'),
+                Like('...step 3: passed...'),
+                Like('...step 4: passed...'),
+                Like('...step 5: passed...'),
+                Like('...step 6: passed...'),
+            ],
+            capture.output,
+            "It seems all the controller testing fragment_to_query_string weren't run.",
+        )

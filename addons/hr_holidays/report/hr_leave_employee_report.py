@@ -34,11 +34,11 @@ class HrLeaveEmployeeReport(models.Model):
     color = fields.Integer(string="Color", related='work_entry_type_id.color')
 
     @property
-    def _table_query(self):
+    def _table_sql(self):
         fetched_leave_field_names, leave_records = self._fetch_leave_data()
         report_records = self._create_report_records_from_leave_records(leave_records, fetched_leave_field_names)
         self._compute_leave_duration(report_records)
-        return self._generate_report_query(report_records)
+        return SQL("(%s)", self._generate_report_query(report_records))
 
     def _fetch_leave_data(self):
         self.env.cr.execute(SQL(
@@ -81,12 +81,18 @@ class HrLeaveEmployeeReport(models.Model):
             return
         leave_ids = [report_record['leave_id'] for report_record in report_records]
         leaves = self.env['hr.leave'].browse(leave_ids)
-        work_entry_type_id_by_leave_id = {leave.id: leave.work_entry_type_id.id for leave in leaves}
+        leave_info_by_id = {
+            leave.id: {
+                'work_entry_type_id': leave.work_entry_type_id.id,
+                'resource_calendar_id': leave.resource_calendar_id.id,
+            }
+            for leave in leaves
+        }
         virtual_leaves_data = [{
             'date_from': report_record['working_schedule_aligned_date_from'],
             'date_to': report_record.pop('day_aligned_date_to'),
             'employee_id': report_record['employee_id'],
-            'work_entry_type_id': work_entry_type_id_by_leave_id[report_record['leave_id']],
+             **leave_info_by_id[report_record['leave_id']],
         } for report_record in report_records]
         virtual_leaves = self.env['hr.leave']
         for virtual_leave_data in virtual_leaves_data:

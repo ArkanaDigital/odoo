@@ -34,11 +34,14 @@ class HrWorkEntryType(models.Model):
 
     @api.model
     def _model_sorting_key(self, work_entry_type):
-        remaining = work_entry_type.virtual_remaining_leaves > 0
-        taken = work_entry_type.leaves_taken > 0
-        return -1 * work_entry_type.sequence, not work_entry_type.employee_requests and remaining, work_entry_type.employee_requests and remaining, taken
+        return work_entry_type.sequence
 
-    create_calendar_meeting = fields.Boolean(string="Display Time Off in Calendar", default=True, tracking=True)
+    create_calendar_meeting = fields.Boolean(
+        string="Display Time Off in Calendar",
+        default=True,
+        tracking=True,
+        help="If this field is checked, every leave request of this type will have a corresponding entry in the calendar application. There will be no entry if this stays unchecked.",
+    )
     color = fields.Integer(string='Color', help="The color selected here will be used in every screen with the time type.")
     hide_on_dashboard = fields.Boolean(default=False, string="Hide On Dashboard", tracking=True, help="Non-visible allocations can still be selected when taking a leave, but will simply not be displayed on the leave dashboard.")
 
@@ -90,14 +93,14 @@ class HrWorkEntryType(models.Model):
         ('hour', 'Custom Hours')], default='day', string='Duration Type', required=True,
         tracking=True,
         help="""Define the minimum time off duration in which an employee can take when requesting a leave""")
-    unit_of_measure = fields.Selection([('hour', 'Hours'), ('day', 'Days')], default="hour", string="Unit of measure", required=True,
+    unit_of_measure = fields.Selection([('hour', 'Hours'), ('day', 'Days')], default="hour", string="Unit of Measure", required=True,
                                        tracking=True,
                                        help="Define if the time type will be allocated/accrued in hours or days")
     unpaid = fields.Boolean('Is Unpaid', default=False, tracking=True)
     include_public_holidays_in_duration = fields.Boolean('Ignore Public Holidays', default=False, tracking=True, help="Public holidays should be counted in the leave duration when applying for leaves")
     leave_notif_subtype_id = fields.Many2one('mail.message.subtype', string='Time Off Notification Subtype', tracking=True, default=lambda self: self.env.ref('hr_holidays.mt_leave', raise_if_not_found=False))
     allocation_notif_subtype_id = fields.Many2one('mail.message.subtype', string='Allocation Notification Subtype', tracking=True, default=lambda self: self.env.ref('hr_holidays.mt_leave_allocation', raise_if_not_found=False))
-    support_document = fields.Boolean(string='Supporting Document', tracking=True)
+    support_document = fields.Boolean(string='Supporting Document Expected', tracking=True, help="When enabled, employees will see a notice that this leave type requires a supporting document.")
     allow_request_on_top = fields.Boolean(string='Allow Request on Top', default=False,
         tracking=True,
         help="If checked, users can request another leave on top of the ones of this type.")
@@ -107,7 +110,7 @@ class HrWorkEntryType(models.Model):
     count_days_as = fields.Selection([
         ('working', 'Working Days'),
         ('calendar', 'Calendar Days'),
-        ], string='Count Days as', default='working',
+        ], string='Count Days as', default='working', tracking=True,
         help="If you take a leave on the whole week, worked days will result in a various number based on the working hours of the employee, calendar days will result in 7 in every case.")
     # negative time off
     allows_negative = fields.Boolean(string='Allow Negative',
@@ -198,8 +201,8 @@ class HrWorkEntryType(models.Model):
                 public_holiday_to_date = public_holiday.date_to.date()
 
                 if leave_from_date <= public_holiday_to_date and leave_to_date >= public_holiday_from_date:
-                    raise ValidationError(_("You cannot modify the 'Public Holiday Included' setting since one or more leaves for that \
-                        time type are overlapping with public holidays, meaning that the balance of those employees would be affected by this change."))
+                    raise ValidationError(self.env._("You cannot modify the 'Public Holiday Included' setting since one or more leaves for that \
+time type are overlapping with public holidays, meaning that the balance of those employees would be affected by this change."))
 
     @api.constrains('count_days_as')
     def _check_leaves_for_count_days_as(self):
@@ -209,7 +212,7 @@ class HrWorkEntryType(models.Model):
         ], limit=1)
         if leave_count:
             raise ValidationError(self.env._("You cannot modify the 'Duration Count' setting because one or more leaves have already \
-                been taken for this time off type. Changing it now would affect existing employee balances."))
+been taken for this time off type. Changing it now would affect existing employee balances."))
 
     def get_work_entry_types_with_valid_allocations(self, date_from, date_to, employee_id):
         allocation_by_work_entry_type = dict(self.env['hr.leave.allocation']._read_group(
@@ -372,21 +375,34 @@ class HrWorkEntryType(models.Model):
     @api.depends('requires_allocation', 'virtual_remaining_leaves', 'max_leaves', 'unit_of_measure', 'country_id')
     @api.depends_context('work_entry_type_display_name', 'employee_id', 'company')
     def _compute_display_name(self):
+        display_country_name = not bool(self.env.companies and len(self.env.companies.mapped('country_id')) == 1)
         for record in self:
             if not record.requested_display_name():
                 # leave counts is based on employee_id, would be inaccurate if not based on correct employee
-                record.display_name = f"{record.name} ({record.country_id.name or self.env._("Generic")})"
+                if display_country_name:
+                    record.display_name = f"{record.name} ({record.country_id.name or self.env._("Generic")})"
+                else:
+                    record.display_name = record.name
                 continue
             name = record.name
-            if record.requires_allocation and self.env.context.get('default_date_from'):
+            if record.requires_allocation:
                 remaining_time = float_round(record.virtual_remaining_leaves, precision_digits=2) or 0.0
                 maximum = float_round(record.max_leaves, precision_digits=2) or 0.0
 
-                if record.unit_of_measure == "hour":
+                is_popover = self.env.context.get("is_popover", False)
+                is_hour = record.unit_of_measure == "hour"
+                if is_popover and is_hour:
+                    name = self.env._("%(name)s (%(time)g/%(maximum)g hours)", name=record.name, time=remaining_time, maximum=maximum)
+                elif is_popover:
+                    name = self.env._("%(name)s (%(time)g/%(maximum)g days)", name=record.name, time=remaining_time, maximum=maximum)
+                elif is_hour:
                     name = self.env._("%(name)s (%(time)g remaining out of %(maximum)g hours)", name=record.name, time=remaining_time, maximum=maximum)
                 else:
                     name = self.env._("%(name)s (%(time)g remaining out of %(maximum)g days)", name=record.name, time=remaining_time, maximum=maximum)
-            record.display_name = f"{name} ({record.country_id.name or self.env._("Generic")})"
+            if display_country_name:
+                record.display_name = f"{name} ({record.country_id.name or self.env._("Generic")})"
+            else:
+                record.display_name = name
         return None
 
     @api.depends('count_as')
@@ -411,14 +427,10 @@ class HrWorkEntryType(models.Model):
         if order == self._order and employee:
             # retrieve all leaves, sort them, then apply offset and limit
             leaves = self.browse(super()._search(domain, **kwargs))
-            leaves = leaves.sorted(key=self._model_sorting_key, reverse=True)
+            leaves = leaves.sorted(key=self._model_sorting_key)
             leaves = leaves[offset:(offset + limit) if limit else None]
             return leaves._as_query()
         return super()._search(domain, offset, limit, order, **kwargs)
-
-    def copy_data(self, default=None):
-        vals_list = super().copy_data(default=default)
-        return [dict(vals, name=self.env._("%s (copy)", work_entry_type.name)) for work_entry_type, vals in zip(self, vals_list)]
 
     def action_see_days_allocated(self):
         self.ensure_one()
@@ -535,6 +547,7 @@ class HrWorkEntryType(models.Model):
                         'max_allowed_negative': work_entry_type.max_allowed_negative,
                         'employee_company': employee.company_id.id,
                         'employee_country': employee.company_id.country_id.id,
+                        'color': work_entry_type.color,
                     },
                     work_entry_type.requires_allocation,
                     work_entry_type.id)

@@ -1,7 +1,4 @@
-import {
-    insertText as htmlInsertText,
-    pasteHtml,
-} from "@html_editor/../tests/_helpers/user_actions";
+import { pasteHtml } from "@html_editor/../tests/_helpers/user_actions";
 import {
     click,
     contains,
@@ -11,6 +8,7 @@ import {
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
+import { htmlInsertText } from "@mail/../tests/mail_test_helpers_html";
 import { describe, expect, test } from "@odoo/hoot";
 import { queryFirst } from "@odoo/hoot-dom";
 import { disableAnimations } from "@odoo/hoot-mock";
@@ -246,7 +244,7 @@ test("Replying to a message containing attachments should display an attachment 
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-mail-MessageInReply .fa-file");
+    await contains(".o-mail-MessageInReply [data-icon='description']");
 });
 
 test("reply with only attachment shows parent message context", async () => {
@@ -296,33 +294,6 @@ test("replying to a note restores focus on an already open composer", async () =
     await click(".o-mail-Message-actions [title='Expand']");
     await click(".o-dropdown-item:text('Reply')");
     await contains(".o-mail-Composer.o-focused");
-});
-
-test("click on message in reply in inbox navigates to the parent message", async () => {
-    const pyEnv = await startServer();
-    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
-    const messageId = pyEnv["mail.message"].create({
-        body: "Parent message",
-        message_type: "comment",
-        model: "discuss.channel",
-        res_id: channelId,
-    });
-    pyEnv["mail.message"].create({
-        body: "Reply to parent message",
-        message_type: "comment",
-        model: "discuss.channel",
-        needaction: true,
-        parent_id: messageId,
-        res_id: channelId,
-    });
-    await start();
-    await openDiscuss("mail.box_inbox");
-    await click(".o-mail-MessageInReply-message", {
-        parent: [".o-mail-Message", { text: "Reply to parent message" }],
-    });
-    await contains(
-        ".o-mail-DiscussContent:has(.o-mail-DiscussContent-threadName[title='General']) .o-mail-Message.o-highlighted .o-mail-Message-content:has(:text('Parent message'))"
-    );
 });
 
 test.tags("focus required", "html composer");

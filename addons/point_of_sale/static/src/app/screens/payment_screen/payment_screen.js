@@ -1,20 +1,20 @@
-import { _t } from "@web/core/l10n/translation";
-import { parseFloat } from "@web/views/fields/parsers";
 import { formatCurrency } from "@web/core/currency";
-import { useErrorHandlers } from "@point_of_sale/app/hooks/hooks";
+import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
+import { parseFloat } from "@web/views/fields/parsers";
 
-import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { NumberPopup } from "@point_of_sale/app/components/popups/number_popup/number_popup";
 import { PriceFormatter } from "@point_of_sale/app/components/price_formatter/price_formatter";
+import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 
+import { Component, onMounted, useProps, t, usePlugin } from "@odoo/owl";
+import { Numpad, enhancedButtons } from "@point_of_sale/app/components/numpad/numpad";
+import { usePos } from "@point_of_sale/app/hooks/pos_hook";
+import { useRouterParamsChecker } from "@point_of_sale/app/hooks/pos_router_hook";
 import { PaymentScreenPaymentLines } from "@point_of_sale/app/screens/payment_screen/payment_lines/payment_lines";
 import { PaymentScreenStatus } from "@point_of_sale/app/screens/payment_screen/payment_status/payment_status";
-import { usePos } from "@point_of_sale/app/hooks/pos_hook";
-import { Component, onMounted } from "@odoo/owl";
-import { Numpad, enhancedButtons } from "@point_of_sale/app/components/numpad/numpad";
-import { useRouterParamsChecker } from "@point_of_sale/app/hooks/pos_router_hook";
+import { PosNumberBufferPlugin } from "@point_of_sale/app/plugins/pos_number_buffer_plugin";
 
 export class PaymentScreen extends Component {
     static template = "point_of_sale.PaymentScreen";
@@ -24,9 +24,9 @@ export class PaymentScreen extends Component {
         PaymentScreenStatus,
         PriceFormatter,
     };
-    static props = {
-        orderUuid: String,
-    };
+    props = useProps({
+        orderUuid: t.string(),
+    });
 
     setup() {
         this.pos = usePos();
@@ -35,12 +35,18 @@ export class PaymentScreen extends Component {
         this.invoiceService = useService("account_move");
         this.notification = useService("notification");
         this.payment_methods_from_config = this.configPaymentMethods || [];
-        this.numberBuffer = useService("number_buffer");
+        this.numberBuffer = usePlugin(PosNumberBufferPlugin);
         this.numberBuffer.use(this._getNumberBufferConfig);
-        useRouterParamsChecker();
-        useErrorHandlers();
         this.error = false;
+
+        useRouterParamsChecker(this.constructor.name);
         onMounted(this.onMounted);
+    }
+
+    get isForcedToInvoice() {
+        // When using customer account, is now mandatory to create an invoice.
+        const payments = this.currentOrder.payment_ids;
+        return payments.some((p) => p.payment_method_id.type === "pay_later");
     }
 
     get configPaymentMethods() {
@@ -143,13 +149,19 @@ export class PaymentScreen extends Component {
             this.makeAnimation();
         }
 
+        const pmCurrency = args.currency || this.pos.config.currency_id;
+        if (this.paymentLines.length && this.paymentLines[0].currency !== pmCurrency) {
+            this.dialog.add(AlertDialog, {
+                title: _t("Oh snap !"),
+                body: "Only one currency by order is allowed",
+            });
+            return;
+        }
+
         const result = this.currentOrder.addPaymentline(paymentMethod, args);
         if (result.status) {
             this.numberBuffer.set(result.data.amount.toString());
-            if (
-                !this.isRefundOrder &&
-                (paymentMethod.payment_interface?.fastPayments || paymentMethod.useBankQrCode)
-            ) {
+            if (!this.isRefundOrder && paymentMethod.useBankQrCode) {
                 const newPaymentLine = this.paymentLines.at(-1);
                 this.sendPaymentRequest(newPaymentLine);
             }
@@ -158,6 +170,7 @@ export class PaymentScreen extends Component {
             this.dialog.add(AlertDialog, {
                 title: _t("Oh snap !"),
                 body: result.data,
+                size: result.size,
             });
             return false;
         }
@@ -187,7 +200,7 @@ export class PaymentScreen extends Component {
             !hasCashPaymentMethod &&
             amount > this.currentOrder.remainingDue + this.selectedPaymentLine.amount
         ) {
-            this.selectedPaymentLine.setAmount(0);
+            this.selectedPaymentLine.setAmount(0, this.selectedPaymentLine.currency);
             this.numberBuffer.set(this.currentOrder.remainingDue.toString());
             amount = this.currentOrder.remainingDue;
             this.showMaxValueError();
@@ -201,18 +214,10 @@ export class PaymentScreen extends Component {
         if (amount === null) {
             this.deletePaymentLine(this.selectedPaymentLine.uuid);
         } else {
-            this.selectedPaymentLine.setAmount(amount);
+            this.selectedPaymentLine.setAmount(amount, this.selectedPaymentLine.currency);
         }
     }
     async toggleIsToInvoice() {
-        if (!this.pos.config.canInvoice) {
-            this.notification.add(
-                _t("To enable invoice creation, please add a journal for it in the settings."),
-                { type: "warning" }
-            );
-            return;
-        }
-
         this.currentOrder.setToInvoice(!this.currentOrder.isToInvoice());
     }
     async addTip() {

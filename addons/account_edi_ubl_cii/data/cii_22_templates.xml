@@ -24,8 +24,9 @@
                         <ram:SellerAssignedID
                             t-if="line.product_id and line.product_id.default_code"
                             t-out="line.product_id.default_code"/>
-                        <ram:Name t-out="line.product_id.name"/>
-                        <ram:Description t-out="line.name" t-if="line.name != line.product_id.name"/>
+                        <t t-set="item_name" t-value="line.product_id.name or line.name"/>
+                        <ram:Name t-out="item_name"/>
+                        <ram:Description t-out="line.name" t-if="item_name != line.name"/>
                     </ram:SpecifiedTradeProduct>
 
                     <!-- Amounts. -->
@@ -69,7 +70,7 @@
                         </t>
 
                         <!-- Billing Period -->
-                        <ram:BillingSpecifiedPeriod t-if="line_vals.get('billing_start') and line_vals.get('billing_end')"> 
+                        <ram:BillingSpecifiedPeriod t-if="line_vals.get('billing_start') and line_vals.get('billing_end')">
                             <ram:StartDateTime>
                                 <udt:DateTimeString format="102" t-out="format_date(line_vals['billing_start'])"/>
                             </ram:StartDateTime>
@@ -197,8 +198,8 @@
                                 partner="record.company_id.partner_id"
                                 specified_legal_organization_val="seller_specified_legal_organization"/>
 
-                            <ram:URIUniversalCommunication t-if="record.company_id.partner_id.peppol_eas and record.company_id.partner_id.peppol_endpoint">
-                                <ram:URIID t-att-schemeID="record.company_id.partner_id.peppol_eas" t-out="record.company_id.partner_id.peppol_endpoint"/>
+                            <ram:URIUniversalCommunication t-if="record.company_id.partner_id.routing_scheme and record.company_id.partner_id.routing_endpoint">
+                                <ram:URIID t-att-schemeID="record.company_id.partner_id.routing_scheme" t-out="record.company_id.partner_id.routing_endpoint"/>
                             </ram:URIUniversalCommunication>
 
                             <!-- VAT. -->
@@ -218,8 +219,8 @@
                                 partner="record.partner_id"
                                 specified_legal_organization_val="buyer_specified_legal_organization"/>
 
-                            <ram:URIUniversalCommunication t-if="record.partner_id.peppol_eas and record.partner_id.peppol_endpoint">
-                                <ram:URIID t-att-schemeID="record.partner_id.peppol_eas" t-out="record.partner_id.peppol_endpoint"/>
+                            <ram:URIUniversalCommunication t-if="record.partner_id.routing_scheme and record.partner_id.routing_endpoint">
+                                <ram:URIID t-att-schemeID="record.partner_id.routing_scheme" t-out="record.partner_id.routing_endpoint"/>
                             </ram:URIUniversalCommunication>
 
                             <!-- VAT. -->
@@ -410,7 +411,7 @@
                         </pdfaExtension:schemas>
                     </rdf:Description>
                     <rdf:Description xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#" rdf:about="">
-                        <fx:ConformanceLevel>EXTENDED</fx:ConformanceLevel>
+                        <fx:ConformanceLevel t-translation="off">EXTENDED</fx:ConformanceLevel>
                         <fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>
                         <fx:DocumentType t-translation="off">INVOICE</fx:DocumentType>
                         <fx:Version>1.0</fx:Version>

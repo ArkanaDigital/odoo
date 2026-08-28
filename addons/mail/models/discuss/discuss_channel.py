@@ -1,30 +1,47 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from collections import defaultdict
+from datetime import datetime, time, timedelta, UTC
 from hashlib import sha512
 from secrets import choice
-from markupsafe import Markup
-from datetime import timedelta
 
-from odoo import _, api, fields, models, tools, Command
-from odoo.addons.base.models.avatar_mixin import get_random_ui_color_from_seed
+import psycopg2
+from markupsafe import Markup
+
+from odoo import Command, SUPERUSER_ID, _, api, fields, models, tools
+from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.fields import Domain
+from odoo.modules.registry import Registry
+from odoo.tools import BinaryBytes, email_normalize, format_list, html_escape
+from odoo.tools.misc import OrderedSet, hash_sign, limited_field_access_token
+from odoo.tools.sql import SQL
+
+from odoo.addons.base.models.avatar_mixin import generate_text_avatar_svg, get_random_ui_color_from_seed
 from odoo.addons.base.models.ir_mail_server import MailDeliveryException
 from odoo.addons.mail.tools.discuss import Store
 from odoo.addons.mail.tools.web_push import PUSH_NOTIFICATION_TYPE
-from odoo.exceptions import AccessError, UserError, ValidationError
-from odoo.fields import Domain
-from odoo.tools import BinaryBytes, format_list, email_normalize, html_escape
-from odoo.tools.misc import hash_sign, limited_field_access_token, OrderedSet
-from odoo.tools.sql import SQL
 
-channel_avatar = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 530.06 530.06">
-<rect width="530.06" height="530.06" fill="#875a7b"/>
-<path d="M416.74,217.29l5-28a8.4,8.4,0,0,0-8.27-9.88H361.09l10.24-57.34a8.4,8.4,0,0,0-8.27-9.88H334.61a8.4,8.4,0,0,0-8.27,6.93L315.57,179.4H246.5l10.24-57.34a8.4,8.4,0,0,0-8.27-9.88H220a8.4,8.4,0,0,0-8.27,6.93L201,179.4H145.6a8.42,8.42,0,0,0-8.28,6.93l-5,28a8.4,8.4,0,0,0,8.27,9.88H193l-16,89.62H121.59a8.4,8.4,0,0,0-8.27,6.93l-5,28a8.4,8.4,0,0,0,8.27,9.88H169L158.73,416a8.4,8.4,0,0,0,8.27,9.88h28.45a8.42,8.42,0,0,0,8.28-6.93l10.76-60.29h69.07L273.32,416a8.4,8.4,0,0,0,8.27,9.88H310a8.4,8.4,0,0,0,8.27-6.93l10.77-60.29h55.38a8.41,8.41,0,0,0,8.28-6.93l5-28a8.4,8.4,0,0,0-8.27-9.88H337.08l16-89.62h55.38A8.4,8.4,0,0,0,416.74,217.29ZM291.56,313.84H222.5l16-89.62h69.07Z" fill="#ffffff"/>
-</svg>'''
 group_avatar = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 530.06 530.06">
 <rect width="530.06" height="530.06" fill="#875a7b"/>
 <path d="m184.356059,265.030004c-23.740561,0.73266 -43.157922,10.11172 -58.252302,28.136961l-29.455881,0c-12.0169,0 -22.128621,-2.96757 -30.335161,-8.90271s-12.309921,-14.618031 -12.309921,-26.048671c0,-51.730902 9.08582,-77.596463 27.257681,-77.596463c0.87928,0 4.06667,1.53874 9.56217,4.61622s12.639651,6.19167 21.432451,9.34235s17.512401,4.72613 26.158581,4.72613c9.8187,0 19.563981,-1.68536 29.236061,-5.05586c-0.73266,5.4223 -1.0991,10.25834 -1.0991,14.508121c0,20.370061 5.93514,39.127962 17.805421,56.273922zm235.42723,140.025346c0,17.585601 -5.34888,31.470971 -16.046861,41.655892s-24.912861,15.277491 -42.645082,15.277491l-192.122688,0c-17.732221,0 -31.947101,-5.09257 -42.645082,-15.277491s-16.046861,-24.070291 -16.046861,-41.655892c0,-7.7669 0.25653,-15.350691 0.76937,-22.751371s1.53874,-15.387401 3.07748,-23.960381s3.48041,-16.523211 5.82523,-23.850471s5.4955,-14.471411 9.45226,-21.432451s8.49978,-12.89618 13.628841,-17.805421c5.12906,-4.90924 11.393931,-8.82951 18.794611,-11.76037s15.570511,-4.3964 24.509931,-4.3964c1.46554,0 4.61622,1.57545 9.45226,4.72613s10.18492,6.6678 16.046861,10.55136c5.86194,3.88356 13.702041,7.40068 23.520741,10.55136s19.710601,4.72613 29.675701,4.72613s19.857001,-1.57545 29.675701,-4.72613s17.658801,-6.6678 23.520741,-10.55136c5.86194,-3.88356 11.21082,-7.40068 16.046861,-10.55136s7.98672,-4.72613 9.45226,-4.72613c8.93942,0 17.109251,1.46554 24.509931,4.3964s13.665551,6.85113 18.794611,11.76037c5.12906,4.90924 9.67208,10.844381 13.628841,17.805421s7.10744,14.105191 9.45226,21.432451s4.28649,15.277491 5.82523,23.850471s2.56464,16.559701 3.07748,23.960381s0.76937,14.984471 0.76937,22.751371zm-225.095689,-280.710152c0,15.534021 -5.4955,28.796421 -16.486501,39.787422s-24.253401,16.486501 -39.787422,16.486501s-28.796421,-5.4955 -39.787422,-16.486501s-16.486501,-24.253401 -16.486501,-39.787422s5.4955,-28.796421 16.486501,-39.787422s24.253401,-16.486501 39.787422,-16.486501s28.796421,5.4955 39.787422,16.486501s16.486501,24.253401 16.486501,39.787422zm154.753287,84.410884c0,23.300921 -8.24325,43.194632 -24.729751,59.681133s-36.380212,24.729751 -59.681133,24.729751s-43.194632,-8.24325 -59.681133,-24.729751s-24.729751,-36.380212 -24.729751,-59.681133s8.24325,-43.194632 24.729751,-59.681133s36.380212,-24.729751 59.681133,-24.729751s43.194632,8.24325 59.681133,24.729751s24.729751,36.380212 24.729751,59.681133zm126.616325,49.459502c0,11.43064 -4.10338,20.113531 -12.309921,26.048671s-18.318261,8.90271 -30.335161,8.90271l-29.455881,0c-15.094381,-18.025241 -34.511741,-27.404301 -58.252302,-28.136961c11.87028,-17.145961 17.805421,-35.903862 17.805421,-56.273922c0,-4.24978 -0.36644,-9.08582 -1.0991,-14.508121c9.67208,3.3705 19.417361,5.05586 29.236061,5.05586c8.64618,0 17.365781,-1.57545 26.158581,-4.72613s15.936951,-6.26487 21.432451,-9.34235s8.68289,-4.61622 9.56217,-4.61622c18.171861,0 27.257681,25.865561 27.257681,77.596463zm-28.136961,-133.870386c0,15.534021 -5.4955,28.796421 -16.486501,39.787422s-24.253401,16.486501 -39.787422,16.486501s-28.796421,-5.4955 -39.787422,-16.486501s-16.486501,-24.253401 -16.486501,-39.787422s5.4955,-28.796421 16.486501,-39.787422s24.253401,-16.486501 39.787422,-16.486501s28.796421,5.4955 39.787422,16.486501s16.486501,24.253401 16.486501,39.787422z" fill="#ffffff"/>
 </svg>'''
+
+
+def avatar_initials(name):
+    """Build the initials shown on a generated avatar from a display name.
+
+    The first letter of the first and of the last word are used (a single word
+    yields a single letter), so ``"John Doe"`` becomes ``"JD"``.
+
+    :param str name: the display name to derive the initials from.
+    :return: the uppercased initials (empty string if no name).
+    :rtype: str
+    """
+    words = (name or "").split()
+    if not words:
+        return ""
+    initials = words[0][0] + (words[-1][0] if len(words) > 1 else "")
+    return initials.upper()
 
 
 def is_channel(channel):
@@ -34,6 +51,24 @@ def is_channel(channel):
     :rtype: bool
     """
     return channel.channel_type == "channel"
+
+
+def is_videocall(channel):
+    """Predicate to filter the channels hosting a video call meeting.
+
+    :returns: Whether the channel is displayed as a full screen video call.
+    :rtype: bool
+    """
+    return channel.default_display_mode == "video_full_screen"
+
+
+def is_meeting(channel):
+    """Predicate to filter the channels a meeting takes place in, its threads included.
+
+    :returns: Whether the channel hosts a video call meeting or is a thread of one.
+    :rtype: bool
+    """
+    return is_videocall(channel) or bool(channel.parent_channel_id)
 
 
 def is_channel_or_group(channel):
@@ -104,6 +139,8 @@ class DiscussChannel(models.Model):
     can_self_edit_readonly_channel = fields.Boolean(compute="_compute_can_self_edit_readonly_channel")
     # sudo: discuss.channel - sudo for performance, invited members can be accessed on accessible channel
     invited_member_ids = fields.One2many("discuss.channel.member", compute="_compute_invited_member_ids", compute_sudo=True)
+    meeting_start_dt = fields.Datetime("Meeting Start", compute="_compute_meeting_dt")
+    meeting_stop_dt = fields.Datetime("Meeting End", compute="_compute_meeting_dt")
     member_count = fields.Integer(string="Member Count", compute='_compute_member_count', compute_sudo=True)
     message_count = fields.Integer("# Messages", readonly=True, compute="_compute_message_count")
     last_interest_dt = fields.Datetime(
@@ -256,12 +293,15 @@ class DiscussChannel(models.Model):
         for channel in self:
             channel.is_editable = channel.has_access("write")
 
-    @api.depends('channel_type', 'image_128', 'uuid')
+    @api.depends('channel_type', 'default_display_mode', 'display_name', 'image_128', 'uuid',
+                 'channel_member_ids.partner_id.image_128', 'channel_member_ids.partner_id.name')
+    @api.depends_context('uid', 'guest')
     def _compute_avatar_128(self):
         for record in self:
             record.avatar_128 = record.image_128 or record._generate_avatar()
 
     @api.depends('avatar_128')
+    @api.depends_context('uid', 'guest')
     def _compute_avatar_cache_key(self):
         for channel in self:
             if not channel.avatar_128:
@@ -279,12 +319,36 @@ class DiscussChannel(models.Model):
         return limited_field_access_token(self, "avatar_128", scope="binary")
 
     def _generate_avatar(self):
-        if self.channel_type not in ('channel', 'group'):
-            return False
-        avatar = group_avatar if self.channel_type == 'group' else channel_avatar
-        bgcolor = get_random_ui_color_from_seed(str(self.id))
-        avatar = avatar.replace('fill="#875a7b"', f'fill="{bgcolor}"')
-        return BinaryBytes(avatar.encode())
+        """Generate the default avatar shown when no custom image is uploaded.
+
+        The generated content depends on the conversation kind:
+
+        - a chat shows the correspondent's first and last name initials, and
+          falls back to the correspondent's own avatar (``False`` here) when that
+          partner has a real uploaded photo;
+        - a meeting (a group meant to be displayed as a full screen video) shows
+          the day of month of its creation date;
+        - a regular group shows a group glyph;
+        - a channel shows the first initial of its name.
+
+        :return: the SVG avatar bytes, or ``False`` to defer to another avatar.
+        :rtype: odoo.tools.BinaryBytes | bool
+        """
+        if self.channel_type == "chat":
+            correspondent = (
+                self.channel_member_ids.filtered(lambda member: not member.is_self)
+                or self.channel_member_ids
+            ).partner_id[:1]
+            if not correspondent or correspondent.image_128:
+                return False
+            return generate_text_avatar_svg(avatar_initials(correspondent.name), str(correspondent.id))
+        if self.channel_type == "group":
+            if self.default_display_mode == "video_full_screen":
+                return generate_text_avatar_svg(str(self.create_date.day) if self.create_date else "", str(self.id))
+            bgcolor = get_random_ui_color_from_seed(str(self.id))
+            avatar = group_avatar.replace('fill="#875a7b"', f'fill="{bgcolor}"')
+            return BinaryBytes(avatar.encode())
+        return generate_text_avatar_svg(avatar_initials(self.display_name)[:1], str(self.id))
 
     @api.depends('channel_member_ids.partner_id')
     def _compute_channel_partner_ids(self):
@@ -350,11 +414,11 @@ class DiscussChannel(models.Model):
             channel.self_member_id = member_by_channel.get(channel)
 
     def _search_self_member_id(self, operator, operand):
-        if operator == "in":
-            return [("channel_member_ids", "any", [("is_self", "=", True), ("id", "in", operand)])]
-        if operator in ('any', 'any!'):
-            return Domain('channel_member_ids', operator, Domain('is_self', '=', True) & operand)
-        return NotImplemented
+        if operator not in ('in', 'any', 'any!'):
+            return NotImplemented
+        if operator != 'any!':
+            operator = 'any'
+        return Domain("channel_member_ids", operator, [("is_self", "=", True), ("id", "in", operand)])
 
     @api.depends_context("uid", "guest")
     @api.depends("is_readonly", "self_member_id.channel_role")
@@ -378,6 +442,20 @@ class DiscussChannel(models.Model):
         }
         for channel in self:
             channel.invited_member_ids = members_by_channel.get(channel)
+
+    @api.depends("call_history_ids.end_dt", "create_date", "default_display_mode", "parent_channel_id")
+    def _compute_meeting_dt(self):
+        """When the meeting hosted by a video call channel takes place. An ad-hoc meeting
+        ("Start Now") starts when its channel is created and lasts as long as the call it was
+        started for, and a thread of a meeting takes place along with the meeting it belongs to."""
+        # sudo: discuss.call.history - when the call of an accessible channel ended is not private
+        calls_by_meeting = (self | self.parent_channel_id).sudo().call_history_ids.grouped("channel_id")
+        for channel in self:
+            meeting = channel.parent_channel_id or channel
+            is_meeting = meeting.default_display_mode == "video_full_screen"
+            last_call = calls_by_meeting.get(meeting, self.env["discuss.call.history"])[:1]
+            channel.meeting_start_dt = is_meeting and meeting.create_date
+            channel.meeting_stop_dt = is_meeting and (last_call.end_dt or meeting.create_date)
 
     @api.depends('channel_member_ids')
     def _compute_member_count(self):
@@ -549,6 +627,20 @@ class DiscussChannel(models.Model):
                             channels=", ".join(failing_channels.mapped("name")),
                         )
                     )
+        if (
+            "default_display_mode" in vals
+            and not self.env.user._is_admin()
+            and self.filtered(
+                lambda channel: (
+                    channel.default_display_mode != vals["default_display_mode"]
+                    # sudo: discuss.channel.member - allow reading channel_role for access checks
+                    and channel.self_member_id.sudo().channel_role not in ("owner", "admin")
+                ),
+            )
+        ):
+            raise AccessError(
+                self.env._("Only the channel owner or database admins can convert a meeting to a chat."),
+            )
         result = super().write(vals)
         if vals.get('group_ids'):
             self._subscribe_users_automatically()
@@ -557,8 +649,8 @@ class DiscussChannel(models.Model):
     def _sync_field_names(self, res):
         # keys are bus subchannel names, values are lists of field names to sync
         super()._sync_field_names(res)
-        res[None].attr("avatar_cache_key", predicate=is_channel_or_group)
-        res[None].attr("avatar_128_access_token", lambda c: c._get_avatar_128_access_token(), predicate=is_channel_or_group)
+        res[None].attr("avatar_cache_key")
+        res[None].attr("avatar_128_access_token", lambda c: c._get_avatar_128_access_token())
         # sudo: discuss.category - guests can read categories of accessible channels
         res[None].one("discuss_category_id", "_store_category_fields", sudo=True)
         res[None].extend(["channel_type", "create_uid", "default_display_mode"])
@@ -567,6 +659,123 @@ class DiscussChannel(models.Model):
         res[None].one("group_public_id", ["full_name"], predicate=is_channel)
         res[None].attr("is_readonly", predicate=is_channel)
         res[None].extend(["last_interest_dt", "member_count", "name", "uuid"])
+
+    def _update_last_interest_dt(self, date=None):
+        """Update last_interest_dt while avoiding concurrency errors between parallel posters.
+
+        Updating it to a recent value is important to unhide (if necessary) and to bump the channel
+        to the top of the list when new messages are posted.
+
+        Writing the channel row directly would lock it for the rest of the (possibly slow, e.g. AI
+        flow) request transaction, so parallel posts on a busy channel pile up on that lock and crash
+        with a Postgres serialization error (could not serialize access due to concurrent update).
+        Instead the new value is appended to ``discuss.channel.last.interest.update`` (an INSERT never
+        serializes against parallel posters and commits atomically with the message) and synced onto
+        the channel after commit by ``_sync_last_interest_dt``. The ``ir_cron_discuss_channel_sync_last_interest_dt``
+        cron is triggered up front, committing with the rows as a durable safety net, and the post-commit
+        sync cancels it once the rows are drained; if that sync never runs or fails, the cron drains them.
+        Tests and module install/upgrade keep writing synchronously (see below). Reads and sorting keep
+        using the indexed channel column.
+        """
+        date = date or fields.Datetime.now()
+        # Postcommit hooks are skipped by TestCursor.commit() in tests, and the separate transaction
+        # below is unsafe while the registry is still loading (module install/upgrade); in both cases
+        # nothing drains the queue, so write synchronously to avoid stale reads.
+        if tools.config['test_enable'] or not self.env.registry.ready:
+            # sudo: discuss.channel - can update last interest in controlled flows
+            self.sudo().last_interest_dt = date
+            return
+        # sudo: discuss.channel.last.interest.update - internal bookkeeping in controlled flows
+        self.env["discuss.channel.last.interest.update"].sudo().create(
+            [{"channel_id": channel.id, "last_interest_dt": date} for channel in self]
+        )
+        cr = self.env.cr
+        channel_ids = cr.postcommit.data.get("mail.sync_last_interest_dt")
+        if channel_ids is None:
+            channel_ids = cr.postcommit.data["mail.sync_last_interest_dt"] = OrderedSet()
+            dbname = cr.dbname
+            # sudo: ir.cron - the poster may be a public/guest visitor with no access to the cron.
+            trigger = self.env.ref("mail.ir_cron_discuss_channel_sync_last_interest_dt").sudo()._trigger(
+                at=fields.Datetime.now() + timedelta(minutes=1)
+            )
+
+            @cr.postcommit.add
+            def sync_last_interest_dt():
+                # Fast path: a fresh transaction (hence a fresh snapshot) so the channel UPDATE does not
+                # conflict with writes committed during the request, applying the update within a second
+                # and dropping the trigger so the cron never fires. If every channel drained, cancel the
+                # trigger; if some were locked (or the sync raised) the committed trigger stays and the
+                # cron drains the leftover rows a minute later.
+                # SUPERUSER_ID: the request user is gone in this detached transaction, and the poster may
+                # be a public/guest visitor with no write access to the channel, so the sync must run as
+                # superuser (same as the cron, which runs as root).
+                try:
+                    with Registry(dbname).cursor() as new_cr:
+                        env = api.Environment(new_cr, SUPERUSER_ID, {})
+                        synced = env["discuss.channel"]._sync_last_interest_dt(channel_ids)
+                        if len(synced) == len(channel_ids):
+                            with tools.mute_logger('odoo.models.unlink'):
+                                env["ir.cron.trigger"].browse(trigger.id).unlink()
+                except psycopg2.OperationalError:  # transient (serialization/lock/connection): leave the trigger so the cron drains the durable rows
+                    pass
+        channel_ids.update(self.ids)
+
+    def _sync_last_interest_dt(self, channel_ids):
+        """Apply the appended ``last_interest_dt`` updates onto the given channel rows.
+
+        Meant to run in a privileged background transaction (the post-commit hook builds a superuser
+        environment, the cron runs as root), hence with a fresh snapshot, so the channel UPDATE does
+        not conflict with writes committed during the original request. Channel rows are locked with
+        ``try_lock_for_update`` (``FOR NO KEY UPDATE SKIP LOCKED``, allowed since ``last_interest_dt``
+        is not an identifier): a row held by a concurrent syncer or a direct writer is skipped so we
+        neither block nor delete its pending rows. Rows inserted after the read also stay queued.
+
+        Returns the channels whose updates were applied (the lockable subset), letting the caller tell
+        genuine batch overflow from rows left behind by locks and decide whether/when to retrigger the
+        cron to drain what remains.
+        """
+        LastInterestUpdate = self.env["discuss.channel.last.interest.update"]
+        channels = self.browse(channel_ids)
+        lockable = channels.try_lock_for_update(allow_referencing=True)
+        pending = LastInterestUpdate.search_fetch([("channel_id", "in", lockable.ids)])
+        max_by_channel_id = {}
+        for update in pending:
+            channel_id = update.channel_id.id
+            if channel_id not in max_by_channel_id or max_by_channel_id[channel_id] < update.last_interest_dt:
+                max_by_channel_id[channel_id] = update.last_interest_dt
+        for channel in lockable:
+            max_dt = max_by_channel_id.get(channel.id)
+            if max_dt and (not channel.last_interest_dt or channel.last_interest_dt < max_dt):
+                channel.last_interest_dt = max_dt
+        with tools.mute_logger('odoo.models.unlink'):
+            pending.unlink()
+        return lockable
+
+    def _cron_sync_last_interest_dt(self, batch_size=1000):
+        """Drain pending appended ``last_interest_dt`` updates (durable fallback for the post-commit
+        sync; also recovers updates whose worker died before the post-commit hook ran).
+
+        Sustained backlog and parallel conflicting posters would otherwise pile up ``ir.cron.trigger``
+        rows (each retry queues its own), so this run first collapses every trigger for this cron and
+        recreates at most one: none if the queue is now empty, immediately if it made progress and a
+        drainable row remains, otherwise in a minute (nothing moved, or only locked channels are left)
+        to let the lock holders release.
+        """
+        LastInterestUpdate = self.env["discuss.channel.last.interest.update"]
+        cron = self.env.ref("mail.ir_cron_discuss_channel_sync_last_interest_dt")
+        with tools.mute_logger('odoo.models.unlink'):
+            self.env["ir.cron.trigger"].search([("cron_id", "=", cron.id)]).unlink()
+        channel_ids = LastInterestUpdate.search_fetch([], limit=batch_size).channel_id.ids
+        if not channel_ids:
+            return
+        synced = self._sync_last_interest_dt(channel_ids)
+        locked_ids = list(set(channel_ids) - set(synced.ids))
+        drainable = LastInterestUpdate.search_count([("channel_id", "not in", locked_ids)], limit=1)
+        if synced and drainable:
+            cron._trigger()  # progress made and a reachable row remains: drain it right away
+        elif locked_ids or drainable:
+            # only locked channels left, or no progress this run: retry after a delay to let locks release
+            cron._trigger(at=fields.Datetime.now() + timedelta(minutes=1))
 
     # ------------------------------------------------------------
     # MEMBERS MANAGEMENT
@@ -749,10 +958,27 @@ class DiscussChannel(models.Model):
             return self.env._("joined the channel")
         return self.env._("invited %s to the channel", member._get_member_html_link())
 
+    def _get_invite_urls_by_emails(self, emails):
+        """Return {email: invitation_url} for every address to invite.
+        Override to customise the URL per recipient in a single batch query."""
+        return {
+            email: f"{self.invitation_url}?email_token={hash_sign(self.env(su=True), "mail.invite_email", email)}"
+            for email in emails
+        }
+
+    @api.readonly
+    def get_invite_partner_domain(self):
+        """Returns the domain of the partners that may still be invited to this channel."""
+        self.ensure_one()
+        if not self.env.user._is_internal() or not self.has_access("read"):
+            raise AccessError(self.env._("You don't have access to invite users to this channel."))
+        return list(self.env["res.partner"]._get_channel_invite_domain(self))
+
     def invite_by_email(self, emails):
         """
-        Send channel invitation emails to a list of email addresses. Existing members'
-        email addresses are ignored.
+        Send channel invitation emails to a list of email addresses.
+        This creates "pending" members until the member has joined the conversation.
+        These "pending" members can have their invitation sent again by email.
 
         :param emails: List of email addresses to invite.
         :type emails: list[str]
@@ -766,7 +992,8 @@ class DiscussChannel(models.Model):
                 % self.channel_type
             )
         eligible_emails = OrderedSet(norm for email in emails if email and (norm := email_normalize(email)))
-        # Removing emails linked to members of this channel.
+        # Removing emails linked to members of this channel, keeping the ones
+        # whose invitation is still pending to send them the link again.
         member_domain = Domain("channel_id", "=", self.id) & Domain.OR(
             [
                 [(field, "=ilike", email)]
@@ -774,6 +1001,7 @@ class DiscussChannel(models.Model):
                 for field in ("guest_id.email", "partner_id.email")
             ],
         )
+        member_domain &= Domain("invitation_sent_dt", "=", False)
         eligible_emails -= set(
             self.env["discuss.channel.member"]
             .search_fetch(member_domain, ["partner_id", "guest_id"])
@@ -787,6 +1015,7 @@ class DiscussChannel(models.Model):
             "strong_start": Markup("<strong>"),
             "strong_end": Markup("</strong>"),
         }
+        invite_urls = self._get_invite_urls_by_emails(eligible_emails)
         to_create = []
         for addr in eligible_emails:
             body = self.env["ir.qweb"]._render(
@@ -794,7 +1023,7 @@ class DiscussChannel(models.Model):
                 {
                     "base_url": self.env["ir.config_parameter"].get_base_url(),
                     "channel": self,
-                    "email_token": hash_sign(self.env(su=True), "mail.invite_email", addr),
+                    "invitation_url": invite_urls[addr],
                     "mail_body": mail_body,
                     "user": self.env.user,
                 },
@@ -826,10 +1055,67 @@ class DiscussChannel(models.Model):
                     "Could not contact the mail server, please check your outgoing email server configuration."
                 )
             raise UserError(error_msg) from mde
+        invited_emails = list(eligible_emails)
+        found_partners = self.env["res.partner"]._find_or_create_from_emails(
+            invited_emails, no_create=True
+        )
+        partners = self.env["res.partner"].union(*found_partners)
+        guest_emails = [
+            email for email, partner in zip(invited_emails, found_partners) if not partner
+        ]
+        guests = self.env["mail.guest"].search_fetch([("email", "in", guest_emails)])
+        if guests_to_create := [
+            {"email": email, "name": email}
+            for email in guest_emails
+            if email not in guests.mapped("email")
+        ]:
+            # sudo: mail.guest - internal users only have read access on guests, and the
+            # invited addresses back no contact to invite under their own identity.
+            guests |= self.env["mail.guest"].sudo().create(guests_to_create).sudo(False)
+        invitation_sent_dt = fields.Datetime.now()
+        create_member_params = {"invitation_sent_dt": invitation_sent_dt}
+        new_members = self._add_members(
+            guests=guests, create_member_params=create_member_params, post_joined_message=False
+        )
+        new_members += self._add_members(
+            partners=partners, create_member_params=create_member_params
+        )
+        resent_members = self.env["discuss.channel.member"].sudo().search_fetch(
+            Domain("channel_id", "=", self.id)
+            & (Domain("guest_id", "in", guests.ids) | Domain("partner_id", "in", partners.ids))
+            & Domain("id", "not in", new_members.ids),
+            ["invitation_sent_dt"],
+        )
+        resent_members.invitation_sent_dt = invitation_sent_dt
 
     # ------------------------------------------------------------
     # RTC
     # ------------------------------------------------------------
+
+    def _get_today_bounds(self):
+        """Start and end of the current day of the user asking, in UTC."""
+        today = fields.Date.context_today(self)
+        return tuple(
+            datetime.combine(today, bound, tzinfo=self.env.tz).astimezone(UTC).replace(tzinfo=None)
+            for bound in (time.min, time.max)
+        )
+
+    def _get_meeting_today_domain(self):
+        """Channels hosting a meeting that takes place today. An ad-hoc meeting ("Start Now")
+        takes place the day its channel is created."""
+        start_of_day, end_of_day = self._get_today_bounds()
+        return (
+            Domain("default_display_mode", "=", "video_full_screen")
+            & Domain("create_date", ">=", start_of_day)
+            & Domain("create_date", "<=", end_of_day)
+        )
+
+    def _get_meeting_ongoing_domain(self):
+        """Channels whose meeting is not over yet. An ad-hoc meeting ("Start Now") lasts as
+        long as the call it was started for."""
+        return Domain("default_display_mode", "=", "video_full_screen") & Domain(
+            "call_history_ids", "any", [("end_dt", "=", False)]
+        )
 
     def _get_call_notification_tag(self):
         self.ensure_one()
@@ -883,27 +1169,40 @@ class DiscussChannel(models.Model):
 
         # notify only user input (comment, whatsapp messages or incoming / outgoing emails)
         message_type = message.message_type
-        if message_type not in ('comment', 'email', 'email_outgoing', 'whatsapp_message'):
+        if (
+            message_type not in ("comment", "email", "email_outgoing", "whatsapp_message")
+            and not (
+                message_type == "notification"
+                and message.subtype_id.id == self.env["ir.model.data"]._xmlid_to_res_id("mail.mt_important_notification")
+            )
+        ):
             return []
 
         recipients_data = []
         author_id = message.author_id.id
-        pids = message.partner_ids.ids
+        pids = (message.partner_ids | message.partner_cc_ids).ids
         if pids:
             email_from = tools.email_normalize(message.email_from)
             self.env['res.partner'].flush_model(['active', 'email', 'partner_share'])
-            self.env['res.users'].flush_model(['notification_type', 'partner_id'])
+            self.env['res.users'].flush_model(['active', 'partner_id', 'share'])
             sql_query = SQL(
                 """
-                SELECT DISTINCT ON (partner.id) partner.id,
+                SELECT partner.id,
                        partner.email_normalized,
                        partner.lang,
                        partner.name,
                        partner.partner_share,
-                       users.id as uid,
-                       COALESCE(users.share, FALSE) as ushare
+                       sub_user.uid as uid,
+                       COALESCE(sub_user.share, FALSE) as ushare
                   FROM res_partner partner
-             LEFT JOIN res_users users on partner.id = users.partner_id
+     LEFT JOIN LATERAL (
+                        SELECT users.id AS uid,
+                               users.share AS share
+                          FROM res_users users
+                         WHERE users.partner_id = partner.id AND users.active
+                      ORDER BY users.share ASC NULLS FIRST, users.id ASC
+                         FETCH FIRST ROW ONLY
+                       ) sub_user ON TRUE
                  WHERE partner.active IS TRUE
                        AND partner.email != %(email)s
                        AND partner.id IN %(partner_ids)s AND partner.id != %(author_id)s
@@ -919,6 +1218,7 @@ class DiscussChannel(models.Model):
                     'active': True,
                     'email_normalized': email_normalized,
                     'id': partner_id,
+                    'is_cc': False,
                     'is_follower': False,
                     'groups': [],
                     'lang': lang,
@@ -968,6 +1268,7 @@ class DiscussChannel(models.Model):
             recipients_data.append({
                 "active": True,
                 "id": member.partner_id.id,
+                "is_cc": False,
                 "is_follower": False,
                 "groups": [],
                 "lang": member.partner_id.lang,
@@ -1065,10 +1366,17 @@ class DiscussChannel(models.Model):
 
     def message_post(self, *, message_type="notification", partner_ids=None, **kwargs):
         if message_type not in ["notification", "user_notification"]:
-            # sudo: discuss.channel - write to discuss.channel is not accessible for most users
-            self.sudo().last_interest_dt = fields.Datetime.now()
-        if "everyone" in kwargs.pop("special_mentions", []):
-            partner_ids = list(OrderedSet((partner_ids or []) + self.channel_member_ids.partner_id.ids))
+            self._update_last_interest_dt()
+        if special_mentions := kwargs.pop("special_mentions", []):
+            partners = self.env['res.partner'].browse(partner_ids or [])
+            partner_members = self.channel_member_ids.partner_id
+            if "everyone" in special_mentions:
+                partners |= partner_members
+            if "here" in special_mentions:
+                partners |= partner_members.filtered(
+                    lambda p: any(u.im_status != "offline" for u in p.user_ids),
+                )
+            partner_ids = partners.ids
         if partner_ids:
             kwargs["partner_ids"] = self._get_allowed_message_partner_ids(partner_ids)
         # mail_post_autofollow=False is necessary to prevent adding followers
@@ -1094,13 +1402,20 @@ class DiscussChannel(models.Model):
                 ("channel_id", "=", self.parent_channel_id.id),
                 ("partner_id", "in", message.partner_ids.ids),
             ])
+
+            def wants_channel_notifications(partner):
+                return not partner.user_ids or any(
+                    user.res_users_settings_id.channel_notifications != "no_notif"
+                    for user in partner.user_ids
+                )
+
             to_invite = members.filtered(lambda m:
                 m.custom_notifications != "no_notif" if m.custom_notifications
-                else m.partner_id.user_ids.res_users_settings_id.channel_notifications != "no_notif"
+                else wants_channel_notifications(m.partner_id)
             ).partner_id
             if self.parent_channel_id.channel_type == "channel":
-                to_invite |= (message.partner_ids - members.partner_id).filtered(lambda p:
-                    p.user_ids.res_users_settings_id.channel_notifications != "no_notif"
+                to_invite |= (message.partner_ids - members.partner_id).filtered(
+                    wants_channel_notifications
                 )
             self._add_members(partners=to_invite)
         return super()._message_post_after_hook(message)
@@ -1175,10 +1490,9 @@ class DiscussChannel(models.Model):
             :param users : the users to notify
         """
         for user in users:
-            Store(bus_channel=user).add(
-                self.with_user(user).with_context(allowed_company_ids=[]),
-                "_store_channel_fields",
-            )
+            channel = self.with_user(user).with_context(allowed_company_ids=[])
+            if channel.has_access("read"):
+                Store(bus_channel=user).add(channel, "_store_channel_fields")
 
     # ------------------------------------------------------------
     # INSTANT MESSAGING API
@@ -1243,6 +1557,8 @@ class DiscussChannel(models.Model):
         self.ensure_one()
         guest = self.env["mail.guest"]
         if member := self.self_member_id:
+            if member.invitation_sent_dt:
+                member.invitation_sent_dt = False
             return member.partner_id, member.guest_id
         if not self.env.user._is_public():
             self._add_members(users=self.env.user, post_joined_message=post_joined_message)
@@ -1299,13 +1615,13 @@ class DiscussChannel(models.Model):
             all_members,
             "_store_member_fields",
         )._build_result()
-        res.attr("avatar_cache_key", predicate=is_channel_or_group)
-        res.attr("avatar_128_access_token", lambda c: c._get_avatar_128_access_token(), predicate=is_channel_or_group)
+        res.attr("avatar_cache_key")
+        res.attr("avatar_128_access_token", lambda c: c._get_avatar_128_access_token())
         # sudo: discuss.category - guests can read categories of accessible channels
         res.one("discuss_category_id", "_store_category_fields", sudo=True)
         res.attr("channel_type")
         res.attr("create_uid")
-        res.attr("create_date", predicate=lambda channel: channel.default_display_mode == "video_full_screen" or channel.parent_channel_id)
+        res.attr("create_date", predicate=is_meeting)
         res.many(
             "channel_member_ids",
             "_store_member_fields",
@@ -1319,9 +1635,19 @@ class DiscussChannel(models.Model):
         # sudo: we are reading only the ids (comodel is inaccessible)
         res.many("group_ids", [], predicate=is_channel, sudo=True)
         res.one("group_public_id", ["full_name"], predicate=is_channel)
+        videocalls = self.filtered(is_videocall)
+        today_meetings = self.browse()
+        if videocalls:
+            # sudo: discuss.channel: when an accessible video call takes place is not private
+            today_meetings = videocalls.sudo().search(
+                Domain("id", "in", videocalls.ids) & self._get_meeting_today_domain()
+            )
+        res.attr("has_meeting_today", lambda channel: channel in today_meetings, predicate=is_videocall)
         res.many("invited_member_ids", "_store_avatar_card_fields", mode="ADD")
         res.attr("is_readonly", predicate=is_channel)
         res.attr("last_interest_dt")
+        res.attr("meeting_start_dt", predicate=is_meeting)
+        res.attr("meeting_stop_dt", predicate=is_meeting)
         res.attr("member_count")
         res.attr("message_count", predicate=lambda c: c.parent_channel_id)
         res.attr("name")
@@ -1373,6 +1699,7 @@ class DiscussChannel(models.Model):
             self.env["res.partner"]
             .with_context(active_test=False)
             .search([("id", "in", partners_to)])
+            .with_env(self.env)
         ) | self.env.user.partner_id
         if len(partners) > 2:
             raise UserError(_("A chat should not be created with more than 2 persons. Create a group instead."))
@@ -1431,7 +1758,7 @@ class DiscussChannel(models.Model):
                     "name": ", ".join(partners.mapped("name")),
                 }
             )
-            channel._broadcast(partners.user_ids)
+            channel._broadcast(partners.with_context(active_test=True).user_ids)
         return channel
 
     def _allow_invite_by_email(self):
@@ -1501,35 +1828,35 @@ class DiscussChannel(models.Model):
         return new_channel
 
     @api.model
-    def _create_group(self, partners_to, default_display_mode=False, name=''):
+    def _create_group(self, users_to, default_display_mode=False, name=''):
         """ Creates a group channel.
 
-            :param partners_to : list of res.partner ids to add to the conversation
+            :param users_to: res.users recordset to add to the conversation
             :param str default_display_mode: how the channel will be displayed by default
             :param str name: group name. default name is computed client side from the list of members if no name is set
             :returns: channel_info of the created channel
             :rtype: dict
         """
-        partners_to = OrderedSet(partners_to)
+        partners = users_to.partner_id
         channel = self.create(
             {
                 "channel_member_ids": [
                     Command.create(
                         {
-                            "partner_id": partner_id,
+                            "partner_id": partner.id,
                             "channel_role": "owner"
-                            if partner_id == self.env.user.partner_id.id and not self.env.user._is_public()
+                            if partner == self.env.user.partner_id and not self.env.user._is_public()
                             else None,
                         }
                     )
-                    for partner_id in partners_to
+                    for partner in partners
                 ],
                 "channel_type": "group",
                 "default_display_mode": default_display_mode,
                 "name": name,
             }
         )
-        channel._broadcast(channel.channel_member_ids.partner_id.user_ids)
+        channel._broadcast(users_to)
         return channel
 
     def _create_sub_channel(self, from_message_id=None, name=None):
@@ -1557,39 +1884,11 @@ class DiscussChannel(models.Model):
             partners=message.author_id,
             post_joined_message=False,
         )
-        notification = (
-            Markup('<div class="o_mail_notification">%s</div>')
-            % _(
-                "%(user)s started a thread: %(goto)s%(thread_name)s%(goto_end)s."
-            )
-        ) % {
-            "user": self.env.user.display_name,
-            "goto": Markup(
-                "<a href='#' class='o_channel_redirect' data-oe-id='%s' data-oe-model='discuss.channel'>"
-            )
-            % sub_channel.id,
-            "goto_end": Markup("</a>"),
-            "thread_name": sub_channel.name,
-        }
+        notification = Markup('<div class="o_mail_notification" data-oe-type="thread_creation" data-oe-id="%s"></div>') % sub_channel.id
         self.message_post(
             body=notification, message_type="notification", subtype_xmlid="mail.mt_comment"
         )
         return sub_channel
-
-    @api.readonly
-    @api.model
-    def get_mention_suggestions(self, search, limit=8):
-        """ Return 'limit'-first channels' name, channel_type and group_public_id fields such that the
-            name matches a 'search' string. Exclude channels of type chat (DM) and group.
-        """
-        return Store().add(
-            self.search([("name", "ilike", search), ("channel_type", "=", "channel")], limit=limit),
-            lambda res: (
-                res.extend(["name", "channel_type"]),
-                res.one("group_public_id", ["full_name"]),
-                res.attr("parent_channel_id"),
-            ),
-        )
 
     def _get_last_messages(self):
         """ Return the last message for each of the given channels."""
@@ -1610,6 +1909,33 @@ class DiscussChannel(models.Model):
         LEFT JOIN LATERAL %s AS t(last_message_id) ON TRUE
                     WHERE discuss_channel.id IN %s
                  GROUP BY discuss_channel.id, t.last_message_id
+                 ORDER BY discuss_channel.id
+            """,
+            messages_query.subselect(),
+            tuple(self.ids),
+        )
+        return messages.browse(mid for mid, in self.env.execute_query(sql) if mid)
+
+    def _get_last_needaction_messages(self):
+        """Return the last needaction message for each of the given channels."""
+        messages = self.env["mail.message"]
+        if not self.ids:
+            return messages
+        domain = (
+            Domain("model", "=", self._name)
+            & Domain("needaction", "=", True)
+            & Domain.custom(
+                to_sql=lambda table: SQL("%s = discuss_channel.id", table.res_id),
+            )
+        )
+        messages_query = messages._search(domain, order="id desc", limit=1)
+        sql = SQL(
+            """
+                   SELECT last_needaction_message_id
+                     FROM discuss_channel
+        LEFT JOIN LATERAL %s AS t(last_needaction_message_id) ON TRUE
+                    WHERE discuss_channel.id IN %s
+                 GROUP BY discuss_channel.id, t.last_needaction_message_id
                  ORDER BY discuss_channel.id
             """,
             messages_query.subselect(),
@@ -1661,7 +1987,6 @@ class DiscussChannel(models.Model):
             "%(new_line)s"
             "%(new_line)s%(bold_start)s@username%(bold_end)s to mention someone"
             "%(new_line)s%(bold_start)s@role%(bold_end)s to notify multiple people"
-            "%(new_line)s%(bold_start)s#channel%(bold_end)s to link a channel"
             "%(new_line)s%(bold_start)s/command%(bold_end)s to run a command"
             "%(new_line)s%(bold_start)s::shortcut%(bold_end)s to insert a canned response"
             "%(new_line)s%(bold_start)s:emoji:%(bold_end)s to insert an emoji",
@@ -1684,9 +2009,49 @@ class DiscussChannel(models.Model):
                 for member in members
             }
             msg = _(
-                "Users in this channel: %(members)s.",
+                "Members of this conversation: %(members)s.",
                 members=member_names,
             )
         else:
             msg = _("You are alone in this channel.")
         self.env.user._bus_send_transient_message(self, msg)
+
+    @api.model
+    def web_read_group(
+        self,
+        domain,
+        groupby,
+        aggregates=(),
+        limit=None,
+        offset=0,
+        order=None,
+        *,
+        auto_unfold=False,
+        opening_info=None,
+        unfold_read_specification=None,
+        unfold_read_default_limit=80,
+        groupby_read_specification=None,
+    ):
+        if opening_info is None and groupby and groupby[0] == "discuss_category_id":
+            # Open the "None" group initially, most of the channels aren't linked to any category.
+            opening_info = [
+                {
+                    "value": False,
+                    "folded": False,
+                    "offset": 0,
+                    "limit": unfold_read_default_limit,
+                },
+            ]
+        return super().web_read_group(
+            domain,
+            groupby,
+            aggregates,
+            limit,
+            offset,
+            order,
+            auto_unfold=auto_unfold,
+            opening_info=opening_info,
+            unfold_read_specification=unfold_read_specification,
+            unfold_read_default_limit=unfold_read_default_limit,
+            groupby_read_specification=groupby_read_specification,
+        )

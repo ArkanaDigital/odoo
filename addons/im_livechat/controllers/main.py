@@ -46,9 +46,9 @@ class LivechatController(http.Controller):
         stream = request.env['ir.binary']._get_stream_from(getattr(asset, ext)())
         return stream.get_response()
 
-    @http.route('/im_livechat/font-awesome', type='http', auth='none', cors="*")
-    def fontawesome(self, **kwargs):
-        return Stream.from_path('web/static/src/libs/fontawesome/fonts/fontawesome-webfont.woff2').get_response()
+    @http.route('/im_livechat/material_symbols_outlined', type='http', auth='none', cors="*")
+    def material_symbols(self, **kwargs):
+        return Stream.from_path('web/static/src/libs/materialsymbols/material_symbols_outlined_subset.woff2').get_response()
 
     @http.route('/im_livechat/odoo_ui_icons', type='http', auth='none', cors="*")
     def odoo_ui_icons(self, **kwargs):
@@ -191,7 +191,11 @@ class LivechatController(http.Controller):
             )
         if not request.env.user._is_public():
             store.add(request.env.user.partner_id, ["email"])
-        return {"store_data": store, "channel_id": channel_id}
+        return {
+            "bus_info": request.env["ir.http"]._get_bus_session_info(),
+            "store_data": store,
+            "channel_id": channel_id,
+        }
 
     @mail_route("/im_livechat/feedback", type="jsonrpc", auth="public")
     def feedback(self, channel_id, rate, reason=None, **kwargs):

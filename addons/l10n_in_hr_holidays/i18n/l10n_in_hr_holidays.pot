@@ -4,10 +4,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Odoo Server 19.3a1+e\n"
+"Project-Id-Version: Odoo Server 19.5a1+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-03-12 19:14+0000\n"
-"PO-Revision-Date: 2026-03-12 19:14+0000\n"
+"POT-Creation-Date: 2026-08-14 18:20+0000\n"
+"PO-Revision-Date: 2026-08-14 18:20+0000\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
@@ -73,11 +73,6 @@ msgid ""
 msgstr ""
 
 #. module: l10n_in_hr_holidays
-#: model:ir.model,name:l10n_in_hr_holidays.model_hr_work_entry_type
-msgid "HR Work Entry Type"
-msgstr ""
-
-#. module: l10n_in_hr_holidays
 #: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_employee__id
 #: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_leave__id
 #: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_work_entry_type__id
@@ -94,18 +89,18 @@ msgid ""
 msgstr ""
 
 #. module: l10n_in_hr_holidays
-#: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_leave__l10n_in_contains_sandwich_leaves
-msgid "L10N In Contains Sandwich Leaves"
-msgstr ""
-
-#. module: l10n_in_hr_holidays
 #: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_work_entry_type__l10n_in_is_limited_to_optional_days
-msgid "L10N In Is Limited To Optional Days"
+msgid "Is Limited To Optional Days"
 msgstr ""
 
 #. module: l10n_in_hr_holidays
 #: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_work_entry_type__l10n_in_is_sandwich_leave
-msgid "L10N In Is Sandwich Leave"
+msgid "Is Sandwich Leave"
+msgstr ""
+
+#. module: l10n_in_hr_holidays
+#: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_leave__l10n_in_contains_sandwich_leaves
+msgid "L10N In Contains Sandwich Leaves"
 msgstr ""
 
 #. module: l10n_in_hr_holidays
@@ -116,11 +111,6 @@ msgstr ""
 #. module: l10n_in_hr_holidays
 #: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_l10n_in_hr_leave_optional_holiday__write_date
 msgid "Last Updated on"
-msgstr ""
-
-#. module: l10n_in_hr_holidays
-#: model_terms:ir.ui.view,arch_db:l10n_in_hr_holidays.hr_work_entry_type_view_form_inherit
-msgid "Limited to Optional Holidays"
 msgstr ""
 
 #. module: l10n_in_hr_holidays
@@ -149,11 +139,6 @@ msgid "Public Holiday-Only Policy"
 msgstr ""
 
 #. module: l10n_in_hr_holidays
-#: model_terms:ir.ui.view,arch_db:l10n_in_hr_holidays.hr_work_entry_type_view_form_inherit
-msgid "Sandwich Leave Policies"
-msgstr ""
-
-#. module: l10n_in_hr_holidays
 #: model:ir.model.fields,field_description:l10n_in_hr_holidays.field_hr_work_entry_type__l10n_in_sandwich_policy
 msgid "Sandwich Leave Policy"
 msgstr ""
@@ -179,6 +164,11 @@ msgstr ""
 #. module: l10n_in_hr_holidays
 #: model:ir.model,name:l10n_in_hr_holidays.model_hr_leave
 msgid "Time Off"
+msgstr ""
+
+#. module: l10n_in_hr_holidays
+#: model:ir.model,name:l10n_in_hr_holidays.model_hr_work_entry_type
+msgid "Time Type"
 msgstr ""
 
 #. module: l10n_in_hr_holidays

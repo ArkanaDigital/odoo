@@ -1,14 +1,14 @@
+import { Component, t, usePlugin, useProps, xml } from "@odoo/owl";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 import { Domain } from "@web/core/domain";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { evaluateBooleanExpr, evaluateExpr } from "@web/core/py_js/py";
 import { registry } from "@web/core/registry";
-import { utils } from "@web/core/ui/ui_service";
+import { utils } from "@web/core/ui/ui_utils";
 import { exprToBoolean } from "@web/core/utils/strings";
 import { getFieldContext } from "@web/model/relational_model/utils";
 import { X2M_TYPES, getClassNameFromDecoration } from "@web/views/utils";
 import { getTooltipInfo } from "./field_tooltip";
-
-import { Component, types as t, xml } from "@odoo/owl";
-import { useService } from "@web/core/utils/hooks";
 
 const isSmall = utils.isSmall;
 
@@ -43,66 +43,73 @@ const supportedInfoValidation = t.array(
         label: t.string(),
         name: t.string(),
         type: t.string(),
-        "availableTypes?": t.array(t.string()),
-        "default?": t.any(),
-        "help?": t.string(),
-        "choices?": /* choices if type == selection */ t.array(
-            t.object({
-                label: t.string(),
-                value: t.any(),
-            })
-        ),
+        availableTypes: t.array(t.string()).optional(),
+        default: t.any().optional(),
+        help: t.string().optional(),
+        choices: /* choices if type == selection */ t
+            .array(
+                t.object({
+                    label: t.string(),
+                    value: t.any(),
+                })
+            )
+            .optional(),
         /**
          * If true, the listed fields come from the relation.
          * e.g.: the field is a relational one like many2many_tags, so
          * property 'field' will search on the relation.
          * */
-        "isRelationalField?": t.boolean(),
+        isRelationalField: t.boolean().optional(),
     })
 );
 
 fieldRegistry.addValidation(
     t.object({
         component: t.component(),
-        "displayName?": t.string(),
-        "supportedAttributes?": supportedInfoValidation,
-        "supportedOptions?": supportedInfoValidation,
-        "supportedTypes?": t.customValidator(t.array(t.string()), (array) =>
-            array.every((x) => x in validFieldTypes)
-        ),
-        "extractProps?": t.function(),
-        "isEmpty?": t.function(),
-        "isValid?": t.function(), // Override the validation for the validation visual feedbacks
-        "additionalClasses?": t.array(t.string()),
-        "fieldDependencies?": t.or([
-            t.function(),
-            t.array(t.object({ name: t.string(), type: t.string() })),
-        ]),
-        "relatedFields?": t.or([
-            t.function(),
-            t.array(
-                t.object({
-                    name: t.string(),
-                    type: t.string(),
-                    "readonly?": t.boolean(),
-                    "selection?": t.array(t.tuple([t.any(), t.string()])),
-                })
-            ),
-        ]),
-        "useSubView?": t.boolean(),
-        "label?": t.or([t.string(), t.literal(false)]),
-        "listViewWidth?": t.or([
-            t.number(),
-            t.tuple([t.number()]),
-            t.tuple([t.number(), t.number()]),
-            t.function(),
-        ]),
+        displayName: t.string().optional(),
+        supportedAttributes: supportedInfoValidation.optional(),
+        supportedOptions: supportedInfoValidation.optional(),
+        supportedTypes: t
+            .customValidator(t.array(t.string()), (array) =>
+                array.every((x) => x in validFieldTypes)
+            )
+            .optional(),
+        extractProps: t.function().optional(),
+        isEmpty: t.function().optional(),
+        isValid: t.function().optional(), // Override the validation for the validation visual feedbacks
+        additionalClasses: t.array(t.string()).optional(),
+        fieldDependencies: t
+            .or([t.function(), t.array(t.object({ name: t.string(), type: t.string() }))])
+            .optional(),
+        relatedFields: t
+            .or([
+                t.function(),
+                t.array(
+                    t.object({
+                        name: t.string(),
+                        type: t.string(),
+                        readonly: t.boolean().optional(),
+                        selection: t.array(t.tuple([t.any(), t.string()])).optional(),
+                    })
+                ),
+            ])
+            .optional(),
+        useSubView: t.boolean().optional(),
+        label: t.or([t.string(), t.literal(false)]).optional(),
+        listViewWidth: t
+            .or([
+                t.number(),
+                t.tuple([t.number()]),
+                t.tuple([t.number(), t.number()]),
+                t.function(),
+            ])
+            .optional(),
     })
 );
 
 class DefaultField extends Component {
     static template = xml``;
-    static props = ["*"];
+    props = useProps();
 }
 
 export function getFieldFromRegistry(fieldType, widget, viewType, jsClass) {
@@ -209,7 +216,9 @@ export function getPropertyFieldInfo(propertyField) {
 }
 export class Field extends Component {
     static template = "web.Field";
-    static props = ["fieldInfo?", "*"];
+    // Field forwards arbitrary props to the underlying field component, so it
+    // accepts any prop (fieldInfo among them).
+    props = useProps();
     static parseFieldNode = function (node, models, modelName, viewType, jsClass) {
         const name = node.getAttribute("name");
         const widget = node.getAttribute("widget");
@@ -343,8 +352,10 @@ export class Field extends Component {
         return fieldInfo;
     };
 
+    debugMode = usePlugin(DebugModePlugin);
+
     setup() {
-        this.offlineService = useService("offline");
+        this.offlinePlugin = usePlugin(OfflinePlugin);
         if (this.props.fieldInfo) {
             this.field = this.props.fieldInfo.field;
         } else {
@@ -402,7 +413,7 @@ export class Field extends Component {
         // Disable edition in offline mode, except for a some fields
         let readonly =
             this.props.readonly ||
-            (this.offlineService.offline &&
+            (this.offlinePlugin.isOffline() &&
                 !validFieldTypes[this.props.record.fields[this.props.name].type]
                     .availableOffline) ||
             false;
@@ -471,7 +482,7 @@ export class Field extends Component {
                 field: this.props.record.fields[this.props.name],
                 fieldInfo: this.props.fieldInfo || {},
             });
-            if (Boolean(odoo.debug) || (tooltip && JSON.parse(tooltip).field.help)) {
+            if (this.debugMode.isActive() || (tooltip && JSON.parse(tooltip).field.help)) {
                 return tooltip;
             }
         }

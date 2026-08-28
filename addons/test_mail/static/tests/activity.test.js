@@ -61,7 +61,7 @@ testMailModels.MailActivity._views = {
     form: `
         <form>
             <footer>
-                <button string="Delete" type="object" name="unlink" icon="fa-trash" class="btn-danger ms-auto"/>
+                <button string="Delete" type="object" name="unlink" icon="delete" icon_class="oi-filled" class="btn-danger ms-auto"/>
             </footer>
         </form>`,
 };
@@ -332,14 +332,14 @@ test("activity view: Activity rendering with done activities", async () => {
     await contains(".o-mail-ActivityListPopover .badge.text-bg-success", { text: "3" }); // 3 planned
     for (const actIdx of [0, 1, 2]) {
         await contains(".o-mail-ActivityListPopoverItem", {
-            text: uploadPlannedActs[actIdx].user_id[1],
+            text: `${uploadPlannedActs[actIdx].user_id[1]}-`,
         });
     }
     await contains(".o-mail-ActivityListPopoverItem", { text: "Due in 4 days" });
     await contains(".o-mail-ActivityListPopoverItem", { text: "Due in 5 days" });
     await contains(".o-mail-ActivityListPopoverItem", { text: "Due in 6 days" });
     await contains(".o-mail-ActivityListPopover .badge.text-bg-secondary", { text: "1" }); // 1 done
-    await contains(".o-mail-ActivityListPopoverItem", { text: uploadDoneActs[0].user_id[1] });
+    await contains(".o-mail-ActivityListPopoverItem", { text: `${uploadDoneActs[0].user_id[1]}-` });
     await contains(".o-mail-ActivityListPopoverItem", {
         text: formatDate(luxon.DateTime.fromISO(uploadDoneActs[0].date_done)),
     });
@@ -352,7 +352,7 @@ test("activity view: Activity rendering with done activities", async () => {
             text: formatDate(luxon.DateTime.fromISO(uploadDoneActs[actIdx].date_done)),
         });
         await contains(".o-mail-ActivityListPopoverItem", {
-            text: uploadDoneActs[actIdx].user_id[1],
+            text: `${uploadDoneActs[actIdx].user_id[1]}-`,
         });
     }
 });
@@ -547,10 +547,19 @@ test("activity view: activity widget", async () => {
 test("activity widget: delete an activity from the widget", async () => {
     const [mailActivityId] = pyEnv["mail.activity"].search([["state", "=", "planned"]]);
     const [mailActivityTypeId] = pyEnv["mail.activity.type"].search([["name", "=", "Email"]]);
-    pyEnv["res.users"].write([serverState.userId], {
+    const testRecordId =
+        pyEnv["mail.test.activity"].search([])[0] || pyEnv["mail.test.activity"].create({});
+    pyEnv["mail.activity"].write([mailActivityId], {
+        res_model: "mail.test.activity",
+        res_id: testRecordId,
+    });
+    pyEnv["mail.test.activity"].write([testRecordId], {
         activity_ids: [mailActivityId],
         activity_type_id: mailActivityTypeId,
+        activity_state: "planned",
     });
+    pyEnv["mail.test.activity"]._applyComputesAndValidate();
+
     onRpc("mail.activity", "unlink", ({ args, route }) => {
         expect(args).toEqual([[mailActivityId]]);
         expect(route).toInclude("mail.activity");
@@ -1172,4 +1181,28 @@ test("Activity View: Hide 'New' button in SelectCreateDialog based on action con
     expect(".o_create_button").toHaveCount(0, {
         message: "'New' button should be hidden",
     });
+});
+
+test("activity view: apply limit on fetching records", async () => {
+    onRpc("web_search_read", ({ kwargs }) => {
+        expect.step("web_search_read");
+        expect(kwargs.limit).toBe(1);
+    });
+    registerArchs(archs);
+
+    MailTestActivity._views.list = `
+            <list string="MailTestActivity">
+                <field name="name"/>
+                <field name="activity_ids" widget="list_activity"/>
+            </list>`;
+
+    await start();
+    await openView({
+        res_model: "mail.test.activity",
+        views: [[false, "activity"]],
+        context: { create: false },
+        limit: 1,
+    });
+
+    expect.verifySteps(["web_search_read"]);
 });

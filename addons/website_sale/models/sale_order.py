@@ -9,7 +9,7 @@ from odoo import SUPERUSER_ID, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Command, Domain
 from odoo.http import request
-from odoo.tools import SQL, float_round
+from odoo.tools import float_round
 
 from odoo.addons.website_sale.models.website import (
     FISCAL_POSITION_SESSION_CACHE_KEY,
@@ -28,11 +28,20 @@ class SaleOrder(models.Model):
     ]
 
     website_id = fields.Many2one(
+        string="eCommerce Website",
         help="Website through which this order was placed for eCommerce orders.",
         comodel_name="website",
         readonly=True,
         check_company=True,
-    )
+    )  # Website through which the eCommerce order is placed.
+
+    assigned_website_id = fields.Many2one(
+        string="Website",
+        comodel_name="website",
+        check_company=True,
+        compute="_compute_assigned_website_id",
+        store=True,
+    )  # Mirror the website_id field or the website set manually by the user.
 
     cart_recovery_email_sent = fields.Boolean(string="Cart recovery email already sent")
 
@@ -53,12 +62,15 @@ class SaleOrder(models.Model):
         string="Abandoned Cart", compute="_compute_abandoned_cart", search="_search_abandoned_cart"
     )
     # filter related fields
-    is_unfulfilled = fields.Boolean(
-        string="Unfulfilled Orders", search="_search_is_unfulfilled", store=False
-    )
     is_rating_email_sent = fields.Boolean(string="Rating email already sent")
 
     # === COMPUTE METHODS ===#
+
+    @api.depends("website_id")
+    def _compute_assigned_website_id(self):
+        for order in self:
+            if not order.assigned_website_id:
+                order.assigned_website_id = order.website_id
 
     @api.depends("order_line")
     def _compute_website_order_line(self):
@@ -66,7 +78,7 @@ class SaleOrder(models.Model):
         order_lines = self.env["sale.order.line"].search_fetch([("order_id", "in", self.ids)])
         for order in self:
             order.website_order_line = order_lines.filtered(
-                lambda sol: sol.order_id == order and sol._is_product_line()
+                lambda sol: sol.order_id == order and sol._show_line_in_cart()
             )
 
     @api.depends("order_line.price_total", "order_line.price_subtotal")
@@ -196,20 +208,6 @@ class SaleOrder(models.Model):
     def _default_team_id(self):
         return super()._default_team_id() or self.website_id.salesteam_id.id
 
-    def _search_is_unfulfilled(self, operator, value):  # noqa: PLR6301
-        if operator not in {"=", "!="}:
-            return NotImplemented
-
-        if (operator == "=" and value) or (operator == "!=" and not value):
-            effective_operator = "any"
-        else:
-            effective_operator = "not any"
-
-        line_domain = Domain.custom(
-            to_sql=lambda table: SQL("%s < %s", table.qty_delivered, table.product_uom_qty)
-        )
-        return Domain("state", "=", "sale") & Domain("order_line", effective_operator, line_domain)
-
     # === CRUD METHODS ===#
 
     @api.model_create_multi
@@ -286,8 +284,133 @@ class SaleOrder(models.Model):
         """Exclude delivery-related lines."""
         return self.order_line.filtered(lambda line: not line.is_delivery)
 
+    def _get_update_prices_lines(self):
+        """Exclude donation lines from pricelist recomputation."""
+        return super()._get_update_prices_lines().filtered(lambda line: not line.is_donation)
+
     def _get_amount_total_excluding_delivery(self):
         return sum(self._get_non_delivery_lines().mapped("price_total"))
+
+    def _get_order_tracking_info(self):
+        """Return base GA4 tracking payload for cart, payment, and purchase events.
+
+        :rtype: dict
+        """
+        self.ensure_one()
+        return {
+            "currency": self.currency_id.name,
+            "value": self.currency_id.round(
+                sum(line.price_subtotal for line in self._get_order_tracking_lines())
+            ),
+            "items": self._get_order_tracking_items(),
+        }
+
+    def _get_order_tracking_items(self):
+        """Return GA4 items array for an order.
+
+        :rtype: list[dict]
+        """
+        self.ensure_one()
+        items = []
+        for line in self._get_order_tracking_lines():
+            tracking_data = self._get_order_line_tracking_data(line)
+            items.append({**tracking_data, "quantity": line.product_uom_qty})
+        return items
+
+    def _get_order_tracking_lines(self):
+        """Return order lines to include in GA4 tracking payloads.
+
+        :rtype: sale.order.line recordset
+        """
+        self.ensure_one()
+        return self.order_line.filtered(lambda line: not line.is_delivery and line.product_id)
+
+    def _get_order_line_tracking_data(self, line):
+        """Build a GA4 tracking dict for a single order line.
+
+        :param line: a `sale.order.line` record
+        :rtype: dict
+        """
+        price_unit_taxexcl = line.tax_ids.compute_all(
+            line.price_unit,
+            currency=line.currency_id,
+            quantity=1,
+            product=line.product_id,
+            partner=line.order_id.partner_id,
+        )["total_excluded"]
+        return line.product_id.product_tmpl_id._get_google_analytics_data(
+            line.product_id,
+            {
+                "combination": line.product_id.product_template_attribute_value_ids
+                | line.product_no_variant_attribute_value_ids,
+                "display_name": line.product_id.with_context(
+                    display_default_code=False
+                ).display_name,
+                "currency": line.currency_id,
+                "price": line.price_reduce_taxexcl,
+                "list_price": price_unit_taxexcl,
+            },
+        )
+
+    def _get_cart_lines_tracking_info(self, line_ids, added_qty_per_line=None):
+        """Get GA4 tracking data for specific cart lines with delta quantities.
+
+        :param list[int] line_ids: The ids of the lines to track.
+        :param dict added_qty_per_line: Delta quantities per line id (can be negative).
+        :rtype: list[dict]
+        """
+        self.ensure_one()
+        added_qty_per_line = added_qty_per_line or {}
+        lines = self.env["sale.order.line"].browse(line_ids)
+        result = []
+        for line in lines:
+            delta = added_qty_per_line.get(line.id, line.product_uom_qty)
+            if not delta:
+                continue
+            tracking_data = self._get_order_line_tracking_data(line)
+            # delta_quantity: used by tracking.js to route add_to_cart (positive)
+            # vs remove_from_cart (negative) events, stripped before reaching GA4.
+            result.append({
+                **tracking_data,
+                "quantity": abs(delta),
+                "delta_quantity": delta,
+                "subtotal": line.currency_id.round(line.price_reduce_taxexcl * abs(delta)),
+            })
+        return result
+
+    def _get_purchase_tracking_info(self):
+        """Return GA4 tracking data for the purchase event.
+
+        :rtype: dict
+        """
+        tracking_dict = {
+            **self._get_order_tracking_info(),
+            "transaction_id": self.name,
+            "affiliation": self.website_id.name,
+            "tax": self.amount_tax,
+        }
+
+        delivery_line = self.order_line.filtered("is_delivery")
+        if delivery_line:
+            tracking_dict["shipping"] = delivery_line.price_subtotal
+
+        has_previous = bool(
+            self
+            .env["sale.order"]
+            .sudo()
+            .search_count(
+                [
+                    ("partner_id", "=", self.partner_id.id),
+                    ("state", "=", "sale"),
+                    ("id", "!=", self.id),
+                    ("date_order", ">=", fields.Datetime.now() - relativedelta(days=540)),
+                ],
+                limit=1,
+            )
+        )
+        tracking_dict["customer_type"] = "returning" if has_previous else "new"
+
+        return tracking_dict
 
     def _get_confirmation_template(self):
         """Override of `sale` to use the website specific order confirmation email template if
@@ -343,7 +466,16 @@ class SaleOrder(models.Model):
         fpos_before = self.fiscal_position_id
         pricelist_before = self.pricelist_id
 
-        self.write(dict.fromkeys(fnames, partner_id))
+        address_vals = dict.fromkeys(fnames, partner_id)
+        if "partner_id" in fnames:
+            commercial_partner = self.env["res.partner"].browse(partner_id).commercial_partner_id
+            address_vals.update({
+                fname: self[fname].id
+                for fname in ("partner_invoice_id", "partner_shipping_id")
+                if fname not in fnames and self[fname].commercial_partner_id == commercial_partner
+            })
+
+        self.write(address_vals)
 
         fpos_changed = fpos_before != self.fiscal_position_id
         if fpos_changed:
@@ -432,6 +564,14 @@ class SaleOrder(models.Model):
             "line_id": order_line.id,
             "quantity": quantity,
             "warning": warning,
+            "tracking_info": (
+                self._get_cart_lines_tracking_info(
+                    [order_line.id] if order_line else [],
+                    {order_line.id: quantity} if order_line else {},
+                )
+                if self.website_id.google_analytics_key
+                else []
+            ),
         }
 
     def _cart_find_product_line(
@@ -458,11 +598,13 @@ class SaleOrder(models.Model):
         :rtype: `sale.order.line` recordset
         """
         self.ensure_one()
-
         if not self.order_line:
             return self.env["sale.order.line"]
 
         product = self.env["product.product"].browse(product_id)
+        if product._is_donation():
+            return self.env["sale.order.line"]
+
         if product.type == "combo":
             return self.env["sale.order.line"]
 
@@ -531,31 +673,75 @@ class SaleOrder(models.Model):
             warning = ""
 
         added_qty = quantity - order_line.product_uom_qty  # new_qty - old_qty
+
+        # Capture tracking before deletion since the line will no longer exist after.
+        if quantity <= 0:
+            tracking_info = (
+                self._get_cart_lines_tracking_info(
+                    [order_line.id], {order_line.id: -order_line.product_uom_qty}
+                )
+                if self.website_id.google_analytics_key
+                else []
+            )
+
         order_line = self._cart_update_order_line(order_line, quantity, **kwargs)
         if not self.env.context.get("skip_cart_verification"):
             self._verify_cart_after_update()
+
+        if quantity > 0:
+            tracking_info = (
+                self._get_cart_lines_tracking_info([order_line.id], {order_line.id: added_qty})
+                if self.website_id.google_analytics_key
+                else []
+            )
 
         return {
             "added_qty": added_qty,
             "line_id": order_line.id,
             "quantity": quantity,
             "warning": warning,
+            "tracking_info": tracking_info,
         }
 
     # hook to be overridden
     def _verify_updated_quantity(self, order_line, product_id, new_qty, uom_id, **_kwargs):  # noqa: ARG002, PLR6301
         self.ensure_one()
         product = self.env["product.product"].browse(product_id)
-        if product.is_storable and not product.allow_out_of_stock_order:
-            uom = self.env["uom.uom"].browse(uom_id)
-            product_uom = product.uom_id
+        uom = self.env["uom.uom"].browse(uom_id)
 
+        # Update new_qty to respect the minimum quantity constraint
+        new_qty = max(
+            new_qty, self._get_remaining_minimum_qty(product, exclude_line=order_line, uom=uom)
+        )
+
+        if product.is_storable and not product.allow_out_of_stock_order:
             product_qty_in_cart, available_qty = self._get_cart_and_free_qty(product)
 
             # Convert cart and available quantities to the requested uom
+            product_uom = product.uom_id
             product_qty_in_cart = product_uom._compute_quantity(product_qty_in_cart, uom)
             available_qty = product_uom._compute_quantity(available_qty, uom, round=False)
             available_qty = float_round(available_qty, precision_digits=0, rounding_method="DOWN")
+
+            if product.minimum_quantity:
+                min_qty = float_round(
+                    product_uom._compute_quantity(product.minimum_quantity, uom, round=False),
+                    precision_digits=0,
+                    rounding_method="UP",
+                )
+                if available_qty < min_qty:
+                    if order_line:
+                        warning = self.env._(
+                            "Some products became unavailable and your cart has been updated."
+                            " We're sorry for the inconvenience."
+                        )
+                    else:
+                        warning = self.env._(
+                            "%(product_name)s was not added to your cart because it is"
+                            " unavailable.",
+                            product_name=product.display_name,
+                        )
+                    return 0, warning
 
             old_qty = order_line.product_uom_qty if order_line else 0
             added_qty = new_qty - old_qty
@@ -658,6 +844,7 @@ class SaleOrder(models.Model):
         # item lines.
         if line.product_type != "combo":
             line._check_validity()
+
         return line
 
     def _prepare_order_line_values(
@@ -670,6 +857,7 @@ class SaleOrder(models.Model):
         no_variant_attribute_value_ids=None,
         product_custom_attribute_values=None,
         combo_item_id=None,
+        donation_amount=None,
         **_kwargs,
     ):
         self.ensure_one()
@@ -708,6 +896,9 @@ class SaleOrder(models.Model):
             "linked_line_id": linked_line_id,
             "combo_item_id": combo_item_id,
         }
+        # Set price_unit with the user-selected donation amount
+        if product._is_donation() and donation_amount is not None:
+            values["price_unit"] = max(float(donation_amount), 1)
 
         # add no_variant attributes that were not received
         no_variant_attribute_values |= combination.filtered(
@@ -828,12 +1019,14 @@ class SaleOrder(models.Model):
         Similar method to action_recovery_email_send, made to be called in automation rules.
         Contrary to the former, it will use the website-specific template for each order."""
         sent_orders = self.env["sale.order"]
-        for order in self:
-            template = order._get_cart_recovery_template()
+        for template, orders in self.grouped(
+            lambda order: order._get_cart_recovery_template()
+        ).items():
             if template:
-                order._portal_ensure_token()
-                template.send_mail(order.id)
-                sent_orders |= order
+                for order in orders:
+                    order._portal_ensure_token()
+                template.send_mail_batch(orders.ids)
+                sent_orders += orders
         sent_orders.write({"cart_recovery_email_sent": True})
 
     def _message_mail_after_hook(self, mails):
@@ -877,7 +1070,7 @@ class SaleOrder(models.Model):
             line._is_reorder_allowed() for line in self.order_line if line.product_id
         )
 
-    def _filter_can_send_abandoned_cart_mail(self):
+    def _filter_can_send_abandoned_cart_followup(self):
         self.website_id.ensure_one()
         abandoned_datetime = datetime.utcnow() - relativedelta(
             hours=self.website_id.cart_abandoned_delay
@@ -919,8 +1112,7 @@ class SaleOrder(models.Model):
 
         return self.filtered(
             lambda abandoned_sale_order: (
-                abandoned_sale_order.partner_id.email
-                and not any(
+                not any(
                     transaction.sudo().state == "error"
                     for transaction in abandoned_sale_order.transaction_ids
                 )
@@ -1039,6 +1231,20 @@ class SaleOrder(models.Model):
 
     # === TOOLING ===#
 
+    def get_base_url(self):
+        if not self:
+            return super().get_base_url()
+        self.ensure_one()
+        if self.sudo().assigned_website_id.domain:
+            return self.sudo().assigned_website_id.domain
+        return super().get_base_url()
+
+    def _filter_product_documents(self, documents):
+        docs = documents.filtered(
+            lambda document: document.attached_on_sale == "shown_on_product_page"
+        )
+        return docs | super()._filter_product_documents(documents)
+
     def _is_anonymous_cart(self):
         """Return whether the cart was created by the public user and no address was added yet.
 
@@ -1048,8 +1254,7 @@ class SaleOrder(models.Model):
         :rtype: bool
         """
         self.ensure_one()
-        website = self.env["website"].get_current_website()
-        return self.partner_id.id == website.user_id.sudo().partner_id.id
+        return self.partner_id.id == self.env.website.user_id.sudo().partner_id.id
 
     def _get_lang(self):
         res = super()._get_lang()
@@ -1081,6 +1286,15 @@ class SaleOrder(models.Model):
         if not all([sol._check_availability() for sol in self.order_line]):  # noqa: C419
             self._add_warning_alert(
                 self.env._("Unfortunately, there is no longer enough stock to fulfill your order.")
+            )
+            return False
+
+        # Uses list comprehension to ensure all products are checked and potential alerts are saved.
+        if not all([sol._check_minimum_qty() for sol in self.order_line]):  # noqa: C419
+            self._add_warning_alert(
+                self.env._(
+                    "Some products don't meet the minimum quantity required to be purchased."
+                )
             )
             return False
 
@@ -1181,45 +1395,14 @@ class SaleOrder(models.Model):
         self.order_line._clear_alerts()
         return super()._clear_alerts()
 
-    def _validate_order(self):
-        super()._validate_order()
-        # After SO confirmation and email sending, archive customers without accounts
-        self.filtered("website_id")._archive_partner_if_no_user()
-
-    def _archive_partner_if_no_user(self):
-        """Archive SO customer if it has no linked users."""
-        if (
-            not self
-            .env["ir.config_parameter"]
-            .sudo()
-            .get_bool("website_sale.automatic_archiving_of_guest_contacts", True)
-        ):
-            return
-        partners_to_archive = self.env["res.partner"]
-        for order in self:
-            customer = order.partner_id
-            customer_comm_partner_contacts = (
-                customer | customer.commercial_partner_id | customer.commercial_partner_id.child_ids
-            )
-            if not customer_comm_partner_contacts.user_ids:
-                partners_to_archive |= customer_comm_partner_contacts
-
-        partners_to_archive.active = False
-
     @api.model
     def retrieve_ecommerce_dashboard(self, period_days):
         """Retrieve statistics for the eCommerce dashboard for a given period(number of days).
-
-        This includes:
-        - Current period metrics: total visitors, total sales, and total orders.
-        - Period-over-period gains: comparison with the previous equivalent period.
-        - Overall global counts: orders to fulfill, to confirm, and to invoice.
 
         :param int period_days: The selected days used to filter orders and visitors.
         :return: A dictionary containing all computed dashboard statistics.
         :rtype: dict
         """
-        # Shape of the return value
         dashboard_data = {
             "visitors": {"total": 0, "gain": None},
             "sales": {"total": 0, "gain": None},
@@ -1230,39 +1413,33 @@ class SaleOrder(models.Model):
             "currency_id": self.env.company.currency_id.id,
         }
 
-        # Build domain for the given period
         ecommerce_orders_domain = Domain("website_id", "!=", False) & Domain("state", "=", "sale")
-
-        sale_report_period_domain = (
-            self._get_period_domain("date", period_days) & ecommerce_orders_domain
-        )
-        sale_report_previous_period_domain = (
-            self._get_period_domain("date", period_days, previous=True) & ecommerce_orders_domain
-        )
 
         visitor_period_domain = self._get_period_domain("last_connection_datetime", period_days)
         visitor_previous_period_domain = self._get_period_domain(
             "last_connection_datetime", period_days, previous=True
         )
 
-        current_period_totals = self._get_period_totals(
-            sale_report_period_domain, visitor_period_domain
-        )
-        previous_period_totals = self._get_period_totals(
-            sale_report_previous_period_domain, visitor_previous_period_domain
+        current_order_totals = self._get_sale_period_totals(period_days, ecommerce_orders_domain)
+        previous_order_totals = self._get_sale_period_totals(
+            period_days, ecommerce_orders_domain, previous=True
         )
 
-        # update totals + compute gain
-        for key in current_period_totals:
-            current_total = current_period_totals[key]
-            previous_total = previous_period_totals[key]
+        current_period_totals = {
+            "orders": current_order_totals["orders"],
+            "sales": current_order_totals["sales_amount"],
+            "visitors": self.env["website.visitor"].sudo().search_count(visitor_period_domain),
+        }
+        previous_period_totals = {
+            "orders": previous_order_totals["orders"],
+            "sales": previous_order_totals["sales_amount"],
+            "visitors": self
+            .env["website.visitor"]
+            .sudo()
+            .search_count(visitor_previous_period_domain),
+        }
 
-            dashboard_data[key]["total"] = current_total
-            dashboard_data[key]["gain"] = (
-                round(((current_total - previous_total) / previous_total) * 100)
-                if previous_total
-                else None
-            )
+        self._fill_dashboard_gains(dashboard_data, current_period_totals, previous_period_totals)
 
         dashboard_data.update({
             "to_fulfill": self.search_count(
@@ -1277,40 +1454,6 @@ class SaleOrder(models.Model):
         })
 
         return dashboard_data
-
-    def _get_period_domain(self, field, period_days, previous=False):  # noqa: PLR6301
-        """Build a domain to filter records for a given time period.
-
-        :param str field: The datetime field used for date filtering.
-        :param int period_days: Number of days representing the target period.
-        :param bool previous: When True, returns a domain for the previous equivalent period.
-        :return: Domain used to filter records by date range.
-        """
-        if not previous:
-            return Domain(field, ">", f"today -{period_days}d +1d")
-        return Domain(field, ">", f"today -{period_days * 2}d +1d") & Domain(
-            field, "<", f"today -{period_days}d +1d"
-        )
-
-    def _get_period_totals(self, report_period_domain, visitor_period_domain):
-        """Calculate aggregated statistics for orders and visitors for a given period.
-
-        :param Domain report_period_domain: Domain used to filter sale orders.
-        :param Domain visitor_period_domain: Domain used to filter website visitors.
-        :return: A dictionary containing total orders, total sales, and total visitors for
-                the given period.
-        :rtype: dict
-        """
-        aggregated_order_data = self.env["sale.report"]._read_group(
-            domain=report_period_domain, aggregates=["price_total:sum", "__count"]
-        )
-        visitor_count = self.env["website.visitor"].sudo().search_count(visitor_period_domain)
-        total_sales, total_orders = aggregated_order_data[0]
-        return {
-            "orders": total_orders,
-            "sales": float_round(total_sales, precision_rounding=0.01),
-            "visitors": visitor_count,
-        }
 
     def _allow_express_checkout(self):
         return True
@@ -1333,16 +1476,19 @@ class SaleOrder(models.Model):
 
         return self._get_cart_qty(product.id), self._get_free_qty(product)
 
-    def _get_cart_qty(self, product_id):
+    def _get_cart_qty(self, product_id, exclude_line=None):
         """Return the quantity of the given product in the current cart, if any.
 
         :param int product_id: `product.product` id
+        :param exclude_line: an order line to exclude from the computation (e.g. the line
+            currently being updated).
         :return: product quantity in the product uom
         :rtype: float
         """
         if not self:
             return 0.0
-        order_lines = self._get_common_product_lines(product_id)
+        exclude_line = exclude_line or self.env["sale.order.line"]
+        order_lines = self._get_common_product_lines(product_id) - exclude_line
         return sum(
             order_lines.mapped(
                 lambda sol: sol.product_uom_id._compute_quantity(
@@ -1352,7 +1498,26 @@ class SaleOrder(models.Model):
         )
 
     def _get_free_qty(self, product):
-        return self.website_id._get_product_available_qty(product)
+        return self.website_id._get_product_available_qty(product, sale_order=self)
+
+    def _get_remaining_minimum_qty(self, product, exclude_line=None, uom=None):
+        """Compute the remaining minimum quantity to order for a product.
+
+        :param product: the product to check.
+        :param exclude_line: an order line to exclude from the current cart quantity (e.g. the
+            line currently being updated).
+        :param uom: the uom in which to express the result
+        :return: the remaining minimum quantity to order for the product, in the given uom
+        """
+        if not product.minimum_quantity:
+            return 0
+
+        remaining_qty = max(
+            product.minimum_quantity - self._get_cart_qty(product.id, exclude_line=exclude_line), 0
+        )
+        if uom and uom != product.uom_id:
+            remaining_qty = product.uom_id._compute_quantity(remaining_qty, uom, round=False)
+        return float_round(remaining_qty, precision_digits=0, rounding_method="UP")
 
     def _all_product_available(self):
         """Whether all the products are available on the current website."""

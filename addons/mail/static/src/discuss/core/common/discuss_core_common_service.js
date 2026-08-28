@@ -43,7 +43,8 @@ export class DiscussCoreCommon {
             const self_member_id = message.channel_id?.self_member_id;
             if (self_member_id) {
                 if (
-                    message.id > self_member_id?.seen_message_id.id &&
+                    self_member_id &&
+                    message.id > (self_member_id.seen_message_id?.id ?? 0) &&
                     notifId > self_member_id.message_unread_counter_bus_id
                 ) {
                     self_member_id.message_unread_counter--;
@@ -90,15 +91,27 @@ export class DiscussCoreCommon {
                 }
                 if (
                     notifId > channel.self_member_id?.message_unread_counter_bus_id &&
-                    !message.isNotification
+                    (!message.isNotification ||
+                        (message.subtype_id === this.store.mt_important_notification &&
+                            message.thread?.channel))
                 ) {
                     channel.self_member_id.message_unread_counter++;
+                }
+                if (channel.shouldTranslateNewMessages) {
+                    message.toggleTranslation();
                 }
             }
         }
         if (
+            message.notificationType === "meeting_to_group_chat" &&
+            this.store.discuss.thread?.channel?.eq(channel)
+        ) {
+            this.store.discuss.sidebarState.activeTab = channel.primaryMessagingMenuTab;
+        }
+        if (
             !channel.loadNewer &&
             !message.isSelfAuthored &&
+            channel.scrollTop === "bottom" &&
             channel.composer.isFocused &&
             this.store.self_user &&
             channel.newestPersistentMessage?.eq(channel.newestMessage) &&

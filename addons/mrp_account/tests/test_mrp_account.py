@@ -11,6 +11,13 @@ from odoo import Command, fields
 
 class TestMrpAccount(TestBomPriceCommon):
 
+    _test_user_groups = (
+        'mrp.group_mrp_user',  # subject: manufacturing orders (create/confirm/produce/unbuild)
+        'account.group_account_invoice',  # subject: stock valuation journal entries asserted by the tests
+    )
+
+    _test_user_name = 'Test User'
+
     def test_00_production_order_with_accounting(self):
         # Inventory Product Table
         quants = self.env['stock.quant'].with_context(inventory_mode=True).create([{
@@ -48,11 +55,17 @@ class TestMrpAccount(TestBomPriceCommon):
 
     def test_stock_user_without_account_permissions_can_create_bom(self):
         mrp_manager = new_test_user(
-            self.env, 'temp_mrp_manager', 'mrp.group_mrp_manager,product.group_product_variant',
+            self.env['res.users'].sudo().env, 'temp_mrp_manager', 'mrp.group_mrp_manager,product.group_product_variant',  # setup master-data: user creation
         )
 
         bom_form = Form(self.env['mrp.bom'].with_user(mrp_manager))
         bom_form.product_id = self.dining_table
+
+    def test_mrp_manager_without_account_permissions_can_duplicate_mo(self):
+        mrp_manager = new_test_user(
+            self.env['res.users'].sudo().env, 'temp_mrp_manager', 'mrp.group_mrp_manager,product.group_product_variant',  # setup master-data: user creation
+        )
+        self.assertTrue(self._create_mo(self.bom_1, 1).with_user(mrp_manager).copy())
 
     def test_two_productions_unbuild_one_sell_other_fifo(self):
         """ Unbuild orders, when supplied with a specific MO record, should restrict their value
@@ -68,7 +81,7 @@ class TestMrpAccount(TestBomPriceCommon):
             [{'remaining_qty': 1.0, 'value': 718.75}],
         )
 
-        self.plywood_sheet.standard_price = 400
+        self.plywood_sheet.sudo().standard_price = 400  # setup master-data
         mo_2 = self._create_mo(self.bom_1, 1)
         mo_2.action_confirm()
         mo_2.action_assign()
@@ -93,8 +106,7 @@ class TestMrpAccount(TestBomPriceCommon):
             [
                 {'remaining_qty': 0.0, 'value': 718.75, 'quantity': 1.0},
                 {'remaining_qty': 1.0, 'value': 918.75, 'quantity': 1.0},
-                # Unbuild move value is derived from MO_2, as precised on the unbuild form
-                {'remaining_qty': 0.0, 'value': 718.75, 'quantity': 1.0},
+                {'remaining_qty': 0.0, 'value': -718.75, 'quantity': 1.0},
             ],
         )
         self._make_out_move(self.dining_table, 1)
@@ -103,9 +115,8 @@ class TestMrpAccount(TestBomPriceCommon):
             [
                 {'remaining_qty': 0.0, 'value': 718.75, 'quantity': 1.0},
                 {'remaining_qty': 0.0, 'value': 918.75, 'quantity': 1.0},
-                {'remaining_qty': 0.0, 'value': 718.75, 'quantity': 1.0},
-                # Out move value is derived from MO_1, the only candidate origin with some `remaining_qty`
-                {'remaining_qty': 0.0, 'value': 918.75, 'quantity': 1.0},
+                {'remaining_qty': 0.0, 'value': -718.75, 'quantity': 1.0},
+                {'remaining_qty': 0.0, 'value': -918.75, 'quantity': 1.0},
             ],
         )
 
@@ -159,7 +170,7 @@ class TestMrpAccount(TestBomPriceCommon):
         self.assertEqual(productB_credit_line.account_id, self.account_production)
 
     def test_mrp_user_without_account_permissions_can_create_bom(self):
-        mrp_user = new_test_user(self.env, 'temp_mrp_user', 'mrp.group_mrp_user')
+        mrp_user = new_test_user(self.env['res.users'].sudo().env, 'temp_mrp_user', 'mrp.group_mrp_user')  # setup master-data: user creation
         mo_1 = self._create_mo(self.bom_1, 1)
         mo_1.with_user(mrp_user).button_mark_done()
 
@@ -169,8 +180,8 @@ class TestMrpAccount(TestBomPriceCommon):
         validate it.
         """
         self.env['stock.quant']._update_available_quantity(self.dining_table, self.stock_location, 1)
-        self.screw.categ_id = self.category_avco_auto
-        self.stock_location.valuation_account_id = self.account_production
+        self.screw.sudo().categ_id = self.category_avco_auto  # setup master-data
+        self.stock_location.sudo().valuation_account_id = self.account_production  # setup master-data
         delivery = self.env['stock.picking'].create({
             'location_id': self.stock_location.id,
             'location_dest_id': self.customer_location.id,
@@ -183,8 +194,8 @@ class TestMrpAccount(TestBomPriceCommon):
             })],
         })
         delivery.action_confirm()
-        self.bom_1.bom_line_ids = self.bom_1.bom_line_ids[1]
-        self.bom_1.type = 'phantom'
+        self.bom_1.sudo().bom_line_ids = self.bom_1.bom_line_ids[1]  # setup master-data
+        self.bom_1.sudo().type = 'phantom'  # setup master-data
         self.dining_table.invalidate_recordset()
         delivery.button_validate()
         self.assertEqual(delivery.move_ids.product_id, self.bom_1.bom_line_ids.product_id)
@@ -205,8 +216,8 @@ class TestMrpAccount(TestBomPriceCommon):
     def test_mo_overview_comp_different_uom(self):
         """ Test that the overview takes into account the uom of the component in the price computation
         """
-        self.screw.uom_id = self.env.ref('uom.product_uom_pack_6')
-        self.bom_1.bom_line_ids.filtered(lambda l: l.product_id == self.screw).uom_id = self.env.ref('uom.product_uom_unit')
+        self.screw.sudo().uom_id = self.env.ref('uom.product_uom_pack_6')  # setup master-data
+        self.bom_1.sudo().bom_line_ids.filtered(lambda l: l.product_id == self.screw).uom_id = self.env.ref('uom.product_uom_unit')  # setup master-data
         mo = self._create_mo(self.bom_1, 1)
         overview_values = self.env['report.mrp.report_mo_overview'].get_report_values(mo.id)
         self.assertEqual(round(overview_values['data']['summary']['mo_cost'], 2), 677.08, "718.75 - 50 + 50/6")
@@ -214,8 +225,69 @@ class TestMrpAccount(TestBomPriceCommon):
         overview_values = self.env['report.mrp.report_mo_overview'].get_report_values(mo.id)
         self.assertEqual(round(overview_values['data']['summary']['mo_cost'], 2), 677.08)
 
+    def test_mo_overview_unit_cost_extra_component_after_unlock(self):
+        """When a component is added to an unlocked done MO, its move must be correctly
+        valued and its unit_cost in the overview must reflect the product's standard_price.
+        """
+        extra_product = self.product
+        mo = self._create_mo(self.bom_1, 1)
+        mo.button_mark_done()
+        self.assertEqual(mo.state, 'done')
+
+        mo.action_toggle_is_locked()
+
+        overview_before = self.env['report.mrp.report_mo_overview'].get_report_values(mo.id)
+        mo_cost_before = overview_before['data']['summary']['mo_cost']
+
+        extra_move = self.env['stock.move'].create({
+            'product_id': extra_product.id,
+            'uom_id': extra_product.uom_id.id,
+            'quantity': 1.0,
+            'location_id': self.stock_location.id,
+            'location_dest_id': self.prod_location.id,
+            'raw_material_production_id': mo.id,
+            'additional': True,
+            'state': 'done',
+        })
+        self.assertEqual(extra_move.value, -extra_product.standard_price, "extra move must be valued at standard_price * qty")
+
+        overview_after = self.env['report.mrp.report_mo_overview'].get_report_values(mo.id)
+        mo_cost_after = overview_after['data']['summary']['mo_cost']
+        self.assertAlmostEqual(mo_cost_after, mo_cost_before + extra_product.standard_price, places=2,
+            msg="mo_cost must increase by the extra component's standard_price")
+        components = overview_after['data']['components']
+        extra_comp = next((c for c in components if c['summary']['product_id'] == extra_product.id), None)
+        self.assertIsNotNone(extra_comp, "Extra component should appear in the overview")
+        self.assertEqual(extra_comp['summary']['unit_cost'], extra_product.standard_price)
+
+    def test_stock_valuation_report_cost_of_production_past_date(self):
+        date_before = fields.Datetime.now() - timedelta(days=1)
+
+        mo = self._create_mo(self.bom_1, 1)
+        mo.button_mark_done()
+
+        report = self.env['stock_account.stock.valuation.report']
+        report_data_before = report._get_report_data(date=date_before)
+
+        cost_before = report_data_before.get('cost_of_production', {}).get('value', 0)
+        self.assertEqual(cost_before, 0)
+
+        report_data_after = report._get_report_data(date=fields.Datetime.now())
+        cost_after = report_data_after.get('cost_of_production', {}).get('value', 0)
+        self.assertNotEqual(cost_after, 0)
+
 
 class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
+
+    _test_user_groups = (
+        'mrp.group_mrp_user',  # subject: manufacturing orders with work orders
+        'mrp.group_mrp_routings',  # subject: work order / routing operations and their labor cost
+        'account.group_account_invoice',  # subject: labor/valuation journal entries asserted by the tests
+        'account.group_account_manager',  # subject: mrp.account.wip.accounting wizard (test_wip_accounting_00)
+        'product.group_product_manager',  # subject: button_bom_cost/action_bom_cost recompute product standard_price
+    )
+
+    _test_user_name = 'Test User'
 
     def test_01_compute_price_operation_cost(self):
         self.assertEqual(self.dining_table.standard_price, 1000, "Initial price of the Product should be 1000")
@@ -232,7 +304,7 @@ class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
         """ Test to ensure that labor costs are posted accurately without rounding errors."""
         # Build
         self.glass.qty_available = 1
-        self.workcenter.costs_hour = 0.01
+        self.workcenter.sudo().costs_hour = 0.01  # setup master-data
         production = self._create_mo(self.bom_1, 1)
         production.qty_producing = 1
         workorder = production.workorder_ids
@@ -476,13 +548,13 @@ class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
         """ Test that operations with 'estimated' cost correctly compute the cost.
         The cost should be equal to workcenter.costs_hour * workorder.duration_expected. """
         mo = self._create_mo(self.bom_1, 1)
-        self.bom_1.operation_ids.cost_mode = 'actual'
+        self.bom_1.operation_ids.sudo().cost_mode = 'actual'  # setup master-data
         mo.workorder_ids.duration = 60
         self.assertEqual(mo.workorder_ids._cal_cost(), 600)
 
         # Cost should stay the same for a done MO if nothing else is changed
         mo.button_mark_done()
-        self.workcenter.costs_hour = 333
+        self.workcenter.sudo().costs_hour = 333  # setup master-data
         self.assertEqual(mo.workorder_ids._cal_cost(), 600)
 
     def test_mo_without_finished_moves(self):
@@ -498,18 +570,18 @@ class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
 
     def test_labor_move_not_duplicated_when_backorder_always(self):
         """Ensure labor accounting entry is not duplicated when create backorder is set to always."""
-        self.env.ref('base.group_user').implied_ids += self.env.ref('mrp.group_mrp_routings')
+        self.env.ref('base.group_user').sudo().implied_ids += self.env.ref('mrp.group_mrp_routings')
 
         picking_type = self.env['stock.picking.type'].search([
             ('code', '=', 'mrp_operation'),
             ('company_id', '=', self.env.company.id),
         ], limit=1)
         self.assertTrue(picking_type, "Manufacturing operation type not found")
-        picking_type.create_backorder = 'always'
+        picking_type.sudo().create_backorder = 'always'  # setup master-data
 
-        self.workcenter.costs_hour = 20
+        self.workcenter.sudo().costs_hour = 20  # setup master-data
 
-        self.env['mrp.routing.workcenter'].create({
+        self.env['mrp.routing.workcenter'].sudo().create({  # setup master-data
             'name': 'work',
             'bom_id': self.bom_1.id,
             'workcenter_id': self.workcenter.id,
@@ -550,8 +622,8 @@ class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
             self.skipTest('Timesheets is not installed')
 
         mrp_user = new_test_user(self.env, 'temp_mrp_user', 'mrp.group_mrp_user, hr_timesheet.group_hr_timesheet_user')
-        analytic_plan = self.env['account.analytic.plan'].create({'name': 'Plan Test'})
-        wc_analytic_account = self.env['account.analytic.account'].create({'name': 'Analytic Account', 'plan_id': analytic_plan.id})
+        analytic_plan = self.env['account.analytic.plan'].sudo().create({'name': 'Plan Test'})
+        wc_analytic_account = self.env['account.analytic.account'].sudo().create({'name': 'Analytic Account', 'plan_id': analytic_plan.id})
         mo_1 = self._create_mo(self.bom_1, 1)
 
         mo_1.workorder_ids[0].workcenter_id.analytic_distribution = {str(wc_analytic_account.id): 100.0}

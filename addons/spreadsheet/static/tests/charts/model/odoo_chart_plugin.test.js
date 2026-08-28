@@ -932,6 +932,23 @@ test("Every Odoo chart type has a default title", async () => {
     }
 });
 
+test("Cursor change when hovering a chart item", async () => {
+    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const sheetId = model.getters.getActiveSheetId();
+    const chartId = model.getters.getChartIds(sheetId)[0];
+    await waitForDataLoaded(model);
+    const runtime = model.getters.getChartRuntime(chartId);
+
+    const mockNativeEvent = { type: "click", target: document.createElement("div") };
+    const event = { type: "click", native: mockNativeEvent };
+
+    runtime.chartJsConfig.options.onHover(event, [{ datasetIndex: 0, index: 0 }]);
+    expect(mockNativeEvent.target.style.cursor).toBe("pointer");
+
+    runtime.chartJsConfig.options.onHover(event, []);
+    expect(mockNativeEvent.target.style.cursor).toBe("");
+});
+
 test("See records when clicking on a bar chart bar", async () => {
     mockService("action", fakeActionService);
     const { model } = await createSpreadsheetWithChart({
@@ -1670,12 +1687,19 @@ test("Long labels are only truncated in the axis callback, not in the data given
     expect(scaleCallback("Guy with a very very very long name")).toBe("Guy with a very very…");
 });
 
-test("can change chart granularity", async () => {
+test("changing chart granularity updates the groupBy and preserves the domain", async () => {
     const { model } = await createSpreadsheetWithChart({
         type: "bar",
         definition: {
             dataSource: {
                 type: "odoo",
+                searchParams: {
+                    comparison: null,
+                    context: {},
+                    domain: [["date", ">=", "2020-01-01"]],
+                    groupBy: [],
+                    orderBy: [],
+                },
                 metaData: {
                     groupBy: ["date:month"],
                     measure: "probability",
@@ -1690,9 +1714,9 @@ test("can change chart granularity", async () => {
         chartId,
         granularity: "year",
     });
-    expect(model.getters.getChartDefinition(chartId).dataSource.metaData.groupBy).toEqual([
-        "date:year",
-    ]);
+    const definition = model.getters.getChartDefinition(chartId);
+    expect(definition.dataSource.metaData.groupBy).toEqual(["date:year"]);
+    expect(definition.dataSource.searchParams.domain).toEqual([["date", ">=", "2020-01-01"]]);
 });
 
 test("changing chart granularity reloads data source once with global filter", async () => {
@@ -2143,5 +2167,67 @@ test("Odoo charts can have a background color", async () => {
         expect(updatedRuntime?.chartJsConfig?.options?.plugins?.background?.color).toEqual(
             "#FF00FF"
         );
+    }
+});
+
+test("chart getData wraps monetary data points with currency format", async () => {
+    const serverData = getBasicServerData();
+    serverData.models.partner.records = [
+        { bar: false, currency_id: 1, pognon: 100 },
+        { bar: true, currency_id: 1, pognon: 200 },
+    ];
+    const { model } = await createSpreadsheetWithChart({
+        type: "bar",
+        serverData,
+        definition: {
+            dataSource: {
+                metaData: { groupBy: ["bar"], measure: "pognon", order: null, resModel: "partner" },
+            },
+        },
+    });
+    const sheetId = model.getters.getActiveSheetId();
+    const chartId = model.getters.getChartIds(sheetId)[0];
+    await waitForDataLoaded(model);
+
+    const { datasets } = model.getters.getChartDataSource(chartId).getData();
+    expect(datasets[0].data).toEqual([
+        { value: 100, format: "[$$]#,##0.00" },
+        { value: 200, format: "[$$]#,##0.00" },
+    ]);
+});
+
+test("chart getHierarchicalData wraps monetary labels with currency format", async () => {
+    const serverData = getBasicServerData();
+    serverData.models.partner.records = [
+        { bar: false, currency_id: 1, pognon: 100 },
+        { bar: true, currency_id: 1, pognon: 200 },
+    ];
+    const { model } = await createSpreadsheetWithChart({
+        type: "treemap",
+        serverData,
+        definition: {
+            dataSource: {
+                metaData: { groupBy: ["bar"], measure: "pognon", order: null, resModel: "partner" },
+            },
+        },
+    });
+    const sheetId = model.getters.getActiveSheetId();
+    const chartId = model.getters.getChartIds(sheetId)[0];
+    await waitForDataLoaded(model);
+
+    const { labels } = model.getters.getChartDataSource(chartId).getHierarchicalData();
+    expect(labels[0].format).toBe("[$$]#,##0.00");
+    expect(labels[1].format).toBe("[$$]#,##0.00");
+});
+
+test("chart getData has undefined format for non-monetary measure", async () => {
+    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const sheetId = model.getters.getActiveSheetId();
+    const chartId = model.getters.getChartIds(sheetId)[0];
+    await waitForDataLoaded(model);
+
+    const { datasets } = model.getters.getChartDataSource(chartId).getData();
+    for (const dataPoint of datasets[0].data) {
+        expect(dataPoint.format).toBe(undefined);
     }
 });

@@ -1,8 +1,7 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
 import { Gif } from "@mail/core/common/gif";
 import { LinkPreviewConfirmDelete } from "@mail/core/common/link_preview_confirm_delete";
 
-import { Component, props, proxy, types } from "@odoo/owl";
+import { Component, proxy, signal, types, useOnChange, useProps } from "@odoo/owl";
 
 import { useService } from "@web/core/utils/hooks";
 
@@ -10,24 +9,25 @@ export class LinkPreview extends Component {
     static components = { Gif };
     static template = "mail.LinkPreview";
 
+    videoRef = signal.ref();
+    imageRef = signal.ref();
+
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props({
-            messageLinkPreview: types.instanceOf(this.store["mail.message.link.preview"].Class),
+        this.props = useProps({
+            messageLinkPreview: types.instanceOf(this.store["mail.message.link.preview"]),
         });
         this.dialogService = useService("dialog");
         this.ui = useService("ui");
         this.state = proxy({ startVideo: false, videoLoaded: false });
-        this.videoRef = useRef("video");
-        this.imageRef = useRef("image");
-        useLayoutEffect(
+        useOnChange(
+            () => [this.videoRef()],
             (el) => {
                 if (el) {
                     el.onload = () => (this.state.videoLoaded = true);
                 }
-            },
-            () => [this.videoRef.el]
+            }
         );
     }
 
@@ -43,7 +43,7 @@ export class LinkPreview extends Component {
     }
 
     onImageLoaded() {
-        const img = this.imageRef?.el;
+        const img = this.imageRef();
         if (!img || !img.naturalWidth || !img.naturalHeight) {
             return;
         }

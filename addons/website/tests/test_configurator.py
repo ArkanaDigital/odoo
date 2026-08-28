@@ -7,8 +7,8 @@ import odoo.tests
 class TestConfiguratorCommon(odoo.tests.HttpCase):
 
     def _theme_upgrade_upstream(self):
-        # patch to prevent module install/upgrade during tests
-        pass
+        # patch to prevent module install/upgrade during tests, but still generate the snippet templates the configurator needs.
+        self._generate_primary_snippet_templates()
 
     def setUp(self):
         super().setUp()
@@ -86,15 +86,60 @@ class TestConfiguratorCommon(odoo.tests.HttpCase):
         iap_patch = patch('odoo.addons.iap.tools.iap_tools.iap_jsonrpc', iap_jsonrpc_mocked_configurator)
         self.startPatcher(iap_patch)
 
-        patcher = patch('odoo.addons.website.models.ir_module_module.IrModuleModule._theme_upgrade_upstream', wraps=self._theme_upgrade_upstream)
+        patcher = patch(
+            'odoo.addons.website.models.ir_module_module.IrModuleModule._theme_upgrade_upstream',
+            new=TestConfiguratorCommon._theme_upgrade_upstream,
+        )
         self.startPatcher(patcher)
 
 
 @odoo.tests.common.tagged('post_install', '-at_install')
 class TestConfigurator(TestConfiguratorCommon):
 
+    def test_ai_recommend_themes(self):
+        def iap_jsonrpc_mocked_olg(*args, **kwargs):
+            return {
+                'status': 'success',
+                'content': '["theme_clean", "theme_cobalt", "theme_unknown"]',
+            }
+
+        with patch('odoo.addons.iap.tools.iap_tools.iap_jsonrpc', iap_jsonrpc_mocked_olg):
+            themes = self.env['website']._ai_recommend_themes(
+                {
+                    'theme_clean': 'Clean theme',
+                    'theme_cobalt': 'Cobalt theme',
+                },
+                'restaurant',
+                'business',
+                'premium',
+                6,
+            )
+
+        self.assertEqual(themes, ['theme_clean', 'theme_cobalt'])
+
+    def test_ai_recommend_themes_wrong_answer(self):
+        def iap_jsonrpc_mocked_olg(*args, **kwargs):
+            return {
+                'status': 'success',
+                'content': '[{"name": "New Arrivals", "description": "Fresh styles"}]',
+            }
+
+        with patch('odoo.addons.iap.tools.iap_tools.iap_jsonrpc', iap_jsonrpc_mocked_olg):
+            themes = self.env['website']._ai_recommend_themes(
+                {
+                    'theme_clean': 'Clean theme',
+                    'theme_cobalt': 'Cobalt theme',
+                },
+                'restaurant',
+                'business',
+                'premium',
+                6,
+            )
+
+        self.assertEqual(themes, [])
+
     def test_configurator_params_step(self):
-        self.start_tour('/website/configurator/3', 'configurator_params_step', login='admin')
+        self.start_tour('/website/configurator/2', 'configurator_params_step', login='admin')
 
     def test_configurator_page_creation(self):
         website = self.env['website'].create({
@@ -116,8 +161,6 @@ class TestConfiguratorTranslation(TestConfiguratorCommon):
             'overwrite': True,
             'lang_ids': [(6, 0, [parseltongue.id])],
         }).lang_install()
-        feature = self.env['website.configurator.feature'].search([('name', '=', 'Pricing Plan')])
-        feature.with_context(lang=parseltongue.code).write({'name': 'Parseltongue_pricing'})
         self.env.ref('base.user_admin').write({'lang': parseltongue.code})
         website_fr = self.env['website'].create({
             'name': "New website",
@@ -125,4 +168,9 @@ class TestConfiguratorTranslation(TestConfiguratorCommon):
         # disable configurator todo to ensure this test goes through
         active_todo = self.env['ir.actions.todo'].search([('state', '=', 'open')], limit=1)
         active_todo.update({'state': 'done'})
-        self.start_tour('/website/force/%s?path=%%2Fwebsite%%2Fconfigurator' % website_fr.id, 'configurator_translation', login='admin')
+        self.start_tour(
+            '/website/force/%s?path=%%2Fwebsite%%2Fconfigurator' % website_fr.id,
+            'configurator_translation',
+            login='admin',
+            timeout=120,
+        )

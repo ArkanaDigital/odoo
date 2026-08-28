@@ -1,6 +1,6 @@
 /** @odoo-module */
 
-import { Component, plugin, props, types as t, xml } from "@odoo/owl";
+import { Component, t, usePlugin, useProps, xml } from "@odoo/owl";
 import { Test } from "../core/test";
 import { HootCopyButton } from "./hoot_copy_button";
 import { HootLink } from "./hoot_link";
@@ -74,14 +74,14 @@ export class HootTestPath extends Component {
     `;
 
     // Props & plugins
-    props = props({
-        "canCopy?": t.boolean(),
-        "full?": t.boolean(),
-        "inert?": t.boolean(),
-        "showStatus?": t.boolean(),
+    props = useProps({
+        canCopy: t.boolean().optional(),
+        full: t.boolean().optional(),
+        inert: t.boolean().optional(),
+        showStatus: t.boolean().optional(),
         test: t.instanceOf(Test),
     });
-    ui = plugin(UiPlugin);
+    ui = usePlugin(UiPlugin);
 
     getStatusInfo() {
         switch (this.props.test.status()) {

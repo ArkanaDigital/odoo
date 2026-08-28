@@ -122,7 +122,6 @@ class SaleOrder(models.Model):
         default_sale_line = next((sale_line for sale_line in self.order_line if sale_line.is_service and sale_line.product_id.service_policy in ['ordered_prepaid', 'delivered_timesheet']), self.env['sale.order.line'])
         context = {
             'search_default_billable_timesheet': True,
-            'default_is_so_line_edited': True,
             'default_so_line': default_sale_line.id,
         }  # erase default filters
 
@@ -155,7 +154,7 @@ class SaleOrder(models.Model):
             if line.has_displayed_warning_upsell and line.product_uom_id and float_compare(line.qty_delivered, line.product_uom_qty, precision_digits=precision) == 0:
                 line.has_displayed_warning_upsell = False
 
-    def _create_invoices(self, grouped=False, final=False, date=None):
-        moves = super()._create_invoices(grouped=grouped, final=final, date=date)
+    def _create_invoices(self, *args, **kwargs):
+        moves = super()._create_invoices(*args, **kwargs)
         self._reset_has_displayed_warning_upsell_order_lines()
         return moves

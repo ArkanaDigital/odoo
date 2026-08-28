@@ -5,7 +5,7 @@ import {
     mountView,
     mountWithCleanup,
 } from "@web/../tests/web_test_helpers";
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import { expect, test } from "@odoo/hoot";
 import { DocumentationLink } from "@web/views/widgets/documentation_link/documentation_link";
 
@@ -27,7 +27,7 @@ test("documentation_link: default label and icon", async () => {
     });
     expect(".o_doc_link").toHaveText("View Documentation");
     expect("a.alert-link").toHaveCount(0);
-    expect(".o_doc_link .fa-external-link").toHaveCount(1);
+    expect(".o_doc_link [data-icon='open_in_new']").toHaveCount(1);
 });
 
 test("documentationLink: add alert-link class", async () => {
@@ -48,7 +48,7 @@ test("DocumentationLink Component: add alert-link class", async () => {
         static components = { DocumentationLink };
         static template = xml`
         <DocumentationLink path="'/this_is_a_test.html'" class="'alert-link'"/>`;
-        static props = ["*"];
+        props = useProps();
     }
     await mountWithCleanup(Parent);
     expect("a.alert-link").toHaveCount(1);
@@ -65,7 +65,7 @@ test("documentation_link: given label", async () => {
         </form>`,
     });
     expect(".o_doc_link").toHaveText("docdoc");
-    expect(".o_doc_link .fa").toHaveCount(0);
+    expect(".o_doc_link .oi").toHaveCount(0);
 });
 
 test("documentation_link: given icon", async () => {
@@ -75,11 +75,11 @@ test("documentation_link: given icon", async () => {
         arch: /* xml */ `
         <form>
             <field name="bar"/>
-            <widget name="documentation_link" path="/this_is_a_test.html" icon="fa-question-circle"/>
+            <widget name="documentation_link" path="/this_is_a_test.html" icon="help"/>
         </form>`,
     });
     expect(".o_doc_link").toHaveText("");
-    expect(".o_doc_link .fa-question-circle").toHaveCount(1);
+    expect(".o_doc_link [data-icon='help']").toHaveCount(1);
 });
 
 test("documentation_link: given label and icon", async () => {
@@ -89,11 +89,11 @@ test("documentation_link: given label and icon", async () => {
         arch: /* xml */ `
         <form>
             <field name="bar"/>
-            <widget name="documentation_link" path="/this_is_a_test.html" label="docdoc" icon="fa-question-circle"/>
+            <widget name="documentation_link" path="/this_is_a_test.html" label="docdoc" icon="help"/>
         </form>`,
     });
     expect(".o_doc_link").toHaveText("docdoc");
-    expect(".o_doc_link .fa-question-circle").toHaveCount(1);
+    expect(".o_doc_link [data-icon='help']").toHaveCount(1);
 });
 
 test("documentation_link: relative path", async () => {

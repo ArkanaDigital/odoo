@@ -1,5 +1,5 @@
-import { onWillRender, useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, effect, proxy } from "@odoo/owl";
+import { useLayoutEffect } from "@web/owl2/utils";
+import { Component, effect, proxy, signal, t, untrack, useProps, useEffect } from "@odoo/owl";
 import { useDateTimePicker } from "@web/core/datetime/datetime_picker_hook";
 import { areDatesEqual, deserializeDate, deserializeDateTime, today } from "@web/core/l10n/dates";
 import { localization } from "@web/core/l10n/localization";
@@ -36,40 +36,33 @@ const { DateTime } = luxon;
  * @typedef {import("@web/core/datetime/datetime_picker").DateTimePickerProps} DateTimePickerProps
  */
 
+export const dateTimeFieldProps = {
+    ...standardFieldProps,
+    endDateField: t.string().optional(),
+    maxDate: t.string().optional(),
+    minDate: t.string().optional(),
+    alwaysRange: t.boolean().optional(),
+    placeholder: t.string().optional(),
+    required: t.boolean().optional(),
+    rounding: t.number().optional(),
+    startDateField: t.string().optional(),
+    numeric: t.boolean().optional(false),
+    warnFuture: t.boolean().optional(),
+    showSeconds: t.boolean().optional(false),
+    showTime: t.boolean().optional(true),
+    minPrecision: t.selection(["days", "months", "years", "decades"]).optional(),
+    maxPrecision: t.selection(["days", "months", "years", "decades"]).optional(),
+};
+
 /** @extends {Component<DateTimeFieldProps>} */
 export class DateTimeField extends Component {
-    static props = {
-        ...standardFieldProps,
-        endDateField: { type: String, optional: true },
-        maxDate: { type: String, optional: true },
-        minDate: { type: String, optional: true },
-        alwaysRange: { type: Boolean, optional: true },
-        placeholder: { type: String, optional: true },
-        required: { type: Boolean, optional: true },
-        rounding: { type: Number, optional: true },
-        startDateField: { type: String, optional: true },
-        numeric: { type: Boolean, optional: true },
-        warnFuture: { type: Boolean, optional: true },
-        showSeconds: { type: Boolean, optional: true },
-        showTime: { type: Boolean, optional: true },
-        minPrecision: {
-            type: String,
-            optional: true,
-            validate: (props) => ["days", "months", "years", "decades"].includes(props),
-        },
-        maxPrecision: {
-            type: String,
-            optional: true,
-            validate: (props) => ["days", "months", "years", "decades"].includes(props),
-        },
-    };
-    static defaultProps = {
-        showSeconds: false,
-        showTime: true,
-        numeric: false,
-    };
+    props = useProps(dateTimeFieldProps);
 
     static template = "web.DateTimeField";
+
+    rootRef = signal.ref();
+    startDateRef = signal.ref();
+    endDateRef = signal.ref();
 
     //-------------------------------------------------------------------------
     // Getters
@@ -102,7 +95,8 @@ export class DateTimeField extends Component {
     setup() {
         const getPickerProps = () => this.getPickerProps();
         const dateTimePicker = useDateTimePicker({
-            target: "root",
+            target: this.rootRef,
+            inputRefs: [this.startDateRef, this.endDateRef],
             showSeconds: this.props.showSeconds,
             get pickerProps() {
                 return getPickerProps();
@@ -155,14 +149,12 @@ export class DateTimeField extends Component {
         this.openPicker = dateTimePicker.open;
         this.isPickerOpen = dateTimePicker.isOpen;
 
-        this.startDate = useRef("start-date");
-        this.endDate = useRef("end-date");
-
         useLayoutEffect(
             () => {
-                [this.startDate, this.endDate].forEach((ref, index) => {
-                    if (ref.el?.getAttribute("data-field") === this.picker.activeInput) {
-                        ref.el.focus();
+                [this.startDateRef, this.endDateRef].forEach((ref, index) => {
+                    const el = ref();
+                    if (el?.getAttribute("data-field") === this.picker.activeInput) {
+                        el.focus();
                         // openPickerOnNextPatch is set in the template on pointerdown on the button
                         if (this.openPickerOnNextPatch) {
                             this.openPicker(index);
@@ -171,16 +163,22 @@ export class DateTimeField extends Component {
                     }
                 });
             },
-            () => [this.startDate.el?.tagName, this.endDate.el?.tagName, this.picker.activeInput]
+            () => [
+                untrack(this.startDateRef)?.tagName,
+                untrack(this.endDateRef)?.tagName,
+                this.picker.activeInput,
+            ]
         );
 
-        useLayoutEffect(() => {
-            return effect(() => {
-                this.state.value = this.getRecordValue();
-            })
-        }, () => []);
+        useLayoutEffect(
+            () =>
+                effect(() => {
+                    this.state.value = this.getRecordValue();
+                }),
+            () => []
+        );
 
-        onWillRender(() => this.triggerIsDirty());
+        useEffect(() => this.triggerIsDirty());
 
         this.futureWarningMsg = _t("This date is in the future");
     }
@@ -397,6 +395,7 @@ export class DateTimeField extends Component {
     }
 
     onInputBlured() {
+        this.triggerIsDirty();
         if (!this.isPickerOpen()) {
             this.picker.activeInput = "";
         }

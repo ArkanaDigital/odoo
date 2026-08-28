@@ -1,9 +1,8 @@
 import { makeContext } from "@web/core/context";
 import { _t } from "@web/core/l10n/translation";
 import { evaluateBooleanExpr, evaluateExpr } from "@web/core/py_js/py";
-import { clamp } from "@web/core/utils/numbers";
 import { visitXML } from "@web/core/utils/xml";
-import { DEFAULT_INTERVAL, toGeneratorId } from "@web/search/utils/dates";
+import { DEFAULT_INTERVAL, RELATIVE_FILTER_OPTIONS } from "@web/search/utils/dates";
 
 const ALL = _t("All");
 const DEFAULT_LIMIT = 200;
@@ -171,6 +170,16 @@ export class SearchArchParser {
                         orm
                             .call(relation, "read", [value, ["display_name"]], { context })
                             .then((results) => {
+                                if (!results.length) {
+                                    console.error(
+                                        _t(
+                                            "The autocomplete value for %(field)s has not been found: the record with id %(id)s doesn't seem to exist",
+                                            { field: preField.fieldName, id: value }
+                                        )
+                                    );
+                                    preField.isDefault = false;
+                                    return;
+                                }
                                 preField.defaultAutocompleteValue.label =
                                     results[0]["display_name"];
                             })
@@ -234,14 +243,9 @@ export class SearchArchParser {
                 preSearchItem.fieldName = fieldName;
                 preSearchItem.fieldType = this.fields[fieldName].type;
                 const optionsParams = {
-                    startYear: Number(node.getAttribute("start_year") || -2),
-                    endYear: Number(node.getAttribute("end_year") || 0),
-                    startMonth: Number(node.getAttribute("start_month") || -2),
-                    endMonth: Number(node.getAttribute("end_month") || 0),
                     customOptions: [],
                 };
-                const defaultOffset = clamp(optionsParams.startMonth, optionsParams.endMonth, 0);
-                preSearchItem.defaultGeneratorIds = [toGeneratorId("month", defaultOffset)];
+                preSearchItem.defaultGeneratorIds = ["month"];
                 if (node.hasAttribute("default_period")) {
                     preSearchItem.defaultGeneratorIds = node
                         .getAttribute("default_period")
@@ -291,6 +295,15 @@ export class SearchArchParser {
                 ) {
                     preSearchItem.defaultGeneratorIds = value.split(",");
                 }
+            }
+        }
+        if (preSearchItem.type === "dateFilter") {
+            const relativeOptionId = preSearchItem.defaultGeneratorIds.find((id) =>
+                Object.hasOwn(RELATIVE_FILTER_OPTIONS, id)
+            );
+            if (relativeOptionId) {
+                preSearchItem.defaultRelativeOptionId = relativeOptionId;
+                preSearchItem.defaultGeneratorIds = [];
             }
         }
         if (node.hasAttribute("string")) {
@@ -385,6 +398,7 @@ export class SearchArchParser {
                 expand: evaluateBooleanExpr(attrs.expand),
                 fieldName: attrs.name,
                 icon: attrs.icon || null,
+                iconClass: attrs.icon_class || null,
                 id: nextSectionId++,
                 limit: evaluateExpr(attrs.limit || String(DEFAULT_LIMIT)),
                 type,
@@ -392,7 +406,8 @@ export class SearchArchParser {
             };
             if (type === "category") {
                 section.activeValueId = this.searchPanelDefaults[attrs.name];
-                section.icon = section.icon || "fa-folder";
+                section.icon = section.icon || "folder";
+                section.iconClass = section.iconClass || "oi-filled";
                 section.hierarchize = evaluateBooleanExpr(attrs.hierarchize || "1");
                 section.depth = attrs.depth ? parseInt(attrs.depth) : 0;
                 section.values.set(false, {
@@ -406,7 +421,8 @@ export class SearchArchParser {
             } else {
                 section.domain = attrs.domain || "[]";
                 section.groupBy = attrs.groupby || null;
-                section.icon = section.icon || "fa-filter";
+                section.icon = section.icon || "filter_alt";
+                section.iconClass = section.iconClass || "oi-filled";
                 hasFilterWithDomain = hasFilterWithDomain || section.domain !== "[]";
             }
             this.sections.push([section.id, section]);

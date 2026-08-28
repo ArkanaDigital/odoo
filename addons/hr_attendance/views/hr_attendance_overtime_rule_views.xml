@@ -40,7 +40,7 @@
                                     hours
                                 </span>
                                 <field name="employer_tolerance" widget="float_time" string="With a tolerance in favor of the employer of"/>
-                                <field name="employee_tolerance" widget="float_time" string="With a tolerance in favor of the employee of"/>
+                                <field name="employee_tolerance" invisible="base_off == 'timing'" widget="float_time" string="With a tolerance in favor of the employee of"/>
                                 <!-- TIMING -->
                                 <field name="timing_type" widget="radio" string="If the employee works" invisible="base_off != 'timing'"/>
                                 <span class="fw-bold" invisible="base_off != 'timing' or timing_type not in ['work_days', 'non_work_days']">Between</span>
@@ -98,9 +98,10 @@
                 <field name="active" invisible="1"/>
                 <header>
                     <button name="action_regenerate_overtimes"
+                        confirm="This will reset all manual edit on overtime period linked to those rules. Do you confirm ?"
                         class="btn"
                         string="Regenerate overtimes"
-                        icon="fa-clock-o"
+                        icon="schedule"
                         type="object"
                         groups="hr_attendance.group_hr_attendance_officer"
                         help="Regenerate overtimes for this ruleset"/>
@@ -110,12 +111,12 @@
                         <label for="name" string="Ruleset Name"/>
                         <h1><field name="name" placeholder="e.g. Legal Rules"/></h1>
                     </div>
-                    <div class="oe_button_box" name="button_box">
+                    <div class="oe_button_box" name="button_box" groups='hr.group_hr_manager'>
                         <button
                             name="action_show_versions"
                             type="object"
                             class="oe_stat_button"
-                            icon="fa-id-card-o"
+                            icon="badge"
                             invisible="not id"
                             >
                             <field name="versions_count" widget="statinfo" string="Employees" invisible="not versions_count"/>
@@ -132,7 +133,8 @@
                             <field name="rate_combination_mode"/>
                         </group>
                         <group>
-                            <field name="country_id" options="{'no_create': True, 'no_open': True}" groups="base.group_multi_company"/>
+                            <field name="country_id" options="{'no_create': True, 'no_open': True}" readonly="company_id" force_save="1"/>
+                            <field name="company_id" options="{'no_create': True, 'no_open': True}" domain="[('id', 'in', allowed_company_ids)]"/>
                         </group>
                     </group>
                     <group colspan="4">
@@ -164,6 +166,7 @@
         <field name="arch" type="xml">
             <list>
                 <field name="name"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
                 <field name="country_id" groups="base.group_multi_company" optional="hide"/>
                 <field name="rate_combination_mode" string="Rate Mode"/>
                 <field name="rules_count"/>

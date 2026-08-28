@@ -1,14 +1,13 @@
-import { useLayoutEffect } from "@web/owl2/utils";
-import { Component, onMounted, onWillUnmount, proxy } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, proxy, t, useEffect, useProps } from "@odoo/owl";
+import { PrintingFailurePopup } from "@pos_self_order/app/components/printing_failure_popup/printing_failure_popup";
 import { useSelfOrder } from "@pos_self_order/app/services/self_order_service";
 import { cookie } from "@web/core/browser/cookie";
-import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
-import { PrintingFailurePopup } from "@pos_self_order/app/components/printing_failure_popup/printing_failure_popup";
+import { useService } from "@web/core/utils/hooks";
 
 export class ConfirmationPage extends Component {
     static template = "pos_self_order.ConfirmationPage";
-    static props = ["orderAccessToken", "screenMode"];
+    props = useProps({ orderAccessToken: t.string(), screenMode: t.string() });
 
     setup() {
         this.selfOrder = useSelfOrder();
@@ -27,25 +26,22 @@ export class ConfirmationPage extends Component {
                 }, 30000);
             }
         });
-        useLayoutEffect(
-            () => {
-                if (
-                    !this.confirmedOrder ||
-                    !this.confirmedOrder.uiState?.receiptReady ||
-                    typeof this.confirmedOrder.id !== "number"
-                ) {
-                    return;
-                }
+        useEffect(() => {
+            if (
+                !this.confirmedOrder ||
+                !this.confirmedOrder.uiState?.receiptReady ||
+                typeof this.confirmedOrder.id !== "number"
+            ) {
+                return;
+            }
 
-                const printReceipts = async () => {
-                    await this.printOrder();
-                    await this.printOrderChanges();
-                };
+            const printReceipts = async () => {
+                await this.printOrder();
+                await this.printOrderChanges();
+            };
 
-                printReceipts();
-            },
-            () => [this.confirmedOrder?.uiState?.receiptReady]
-        );
+            printReceipts();
+        });
         onWillUnmount(() => {
             clearTimeout(this.defaultTimeout);
         });
@@ -113,30 +109,12 @@ export class ConfirmationPage extends Component {
      * the changes before sending them to the printer.
      */
     async printOrderChanges() {
-        const order = this.confirmedOrder;
-        if (!order) {
+        if (this.selfOrder.config.self_ordering_mode === "mobile") {
             return;
         }
 
-        if (this.selfOrder.config.self_ordering_mode === "mobile") {
-            const result = await rpc("/pos-self-order/update-last-changes", {
-                access_token: this.selfOrder.access_token,
-                order_id: order.id,
-                order_access_token: order.access_token,
-            });
-            this.selfOrder.models.connectNewData(result);
-        }
-
-        // Preparation display part ensure changes are up to date.
+        const order = this.confirmedOrder;
         await this.selfOrder.ticketPrinter.printOrderChanges({ order, webFallback: false });
-        const result = await rpc("/pos-self-order/update-last-changes", {
-            access_token: this.selfOrder.access_token,
-            order_id: order.id,
-            order_access_token: order.access_token,
-            update: true,
-        });
-        this.selfOrder.models.connectNewData(result);
-        this.selfOrder.data.debouncedSynchronizeLocalDataInIndexedDB();
     }
 
     async printOrder() {
@@ -152,13 +130,15 @@ export class ConfirmationPage extends Component {
                 if (!this.selfOrder.has_paper) {
                     this.updateHasPaper(true);
                 }
-                order.nb_print = 1;
-                if (order.isSynced && result) {
-                    await rpc("/pos_self_order/kiosk/increment_nb_print/", {
-                        access_token: this.selfOrder.access_token,
-                        order_id: order.id,
-                        order_access_token: order.access_token,
-                    });
+                if (order.state === "paid") {
+                    order.nb_print = 1;
+                    if (order.isSynced && result) {
+                        await rpc("/pos_self_order/kiosk/increment_nb_print/", {
+                            access_token: this.selfOrder.access_token,
+                            order_id: order.id,
+                            order_access_token: order.access_token,
+                        });
+                    }
                 }
             } catch (e) {
                 if (["EPTR_REC_EMPTY", "EPTR_COVER_OPEN"].includes(e.errorCode)) {

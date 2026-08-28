@@ -2,7 +2,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, RedirectWarning, ValidationError
 from odoo.fields import Domain
-from odoo.tools import float_round, formatLang
+from odoo.tools import SQL, float_round, formatLang
 from dateutil.relativedelta import relativedelta
 import logging
 _logger = logging.getLogger(__name__)
@@ -193,7 +193,6 @@ class AccountMove(models.Model):
             if res_code in ['8', '9', '10'] and rec.journal_id.l10n_ar_afip_pos_system not in expo_journals:
                 # if it is a foreign partner and journal is not for expo, we try to change it to an expo journal
                 journal = journal.search(domain + [('l10n_ar_afip_pos_system', 'in', expo_journals)], limit=1)
-                msg = _('You are trying to create an invoice for foreign partner but you don\'t have an exportation journal')
             elif res_code not in ['8', '9', '10'] and rec.journal_id.l10n_ar_afip_pos_system in expo_journals:
                 # if it is NOT a foreign partner and journal is for expo, we try to change it to a local journal
                 journal = journal.search(domain + [('l10n_ar_afip_pos_system', 'not in', expo_journals)], limit=1)
@@ -295,11 +294,10 @@ class AccountMove(models.Model):
         return super()._get_starting_sequence()
 
     def _get_last_sequence_domain(self, relaxed=False):
-        where_string, param = super(AccountMove, self)._get_last_sequence_domain(relaxed)
+        condition = super()._get_last_sequence_domain(relaxed)
         if self.company_id.account_fiscal_country_id.code == "AR" and self.l10n_latam_use_documents:
-            where_string += " AND l10n_latam_document_type_id = %(l10n_latam_document_type_id)s"
-            param['l10n_latam_document_type_id'] = self.l10n_latam_document_type_id.id or 0
-        return where_string, param
+            condition = SQL("%s AND l10n_latam_document_type_id = %s", condition, self.l10n_latam_document_type_id.id or 0)
+        return condition
 
     def _l10n_ar_get_amounts(self, base_lines=None):
         """ Method used to prepare data to present amounts and taxes related amounts when creating an
@@ -502,6 +500,7 @@ class AccountMove(models.Model):
             .filtered(lambda tax_group: (
                 self._l10n_ar_is_tax_group_other_national_ind_tax(tax_group)
                 or self._l10n_ar_is_tax_group_vat(tax_group)
+                or (self._l10n_ar_is_transparency_document() and self._l10n_ar_is_tax_group_iibb_perception(tax_group))
             )).ids
         if tax_group_ids_to_exclude:
             if self._l10n_ar_is_refund_invoice():
@@ -512,7 +511,7 @@ class AccountMove(models.Model):
 
     def _l10n_ar_get_invoice_custom_tax_summary_for_report(self):
         """ Get a new tax details for RG 5614/2024 to show ARCA VAT and Other National Internal Taxes. """
-        if self.l10n_latam_document_type_id.code not in ('6', '7', '8'):
+        if not self._l10n_ar_is_transparency_document():
             return []
 
         base_lines, _tax_lines = self._get_rounded_base_and_tax_lines()
@@ -527,6 +526,8 @@ class AccountMove(models.Model):
                 name = _("Other National Ind. Taxes %s", base_line['currency_id'].symbol)
             elif self._l10n_ar_is_tax_group_vat(tax_group):
                 name = _("VAT Content %s", base_line['currency_id'].symbol)
+            elif self._l10n_ar_is_tax_group_iibb_perception(tax_group):
+                name = tax_data['tax'].invoice_label or tax_data['tax'].name
             else:
                 skip = True
             return {
@@ -554,6 +555,10 @@ class AccountMove(models.Model):
         self.ensure_one()
         return self.l10n_latam_document_type_id.l10n_ar_letter in ['B', 'C', 'X', 'R']
 
+    def _l10n_ar_is_transparency_document(self):
+        self.ensure_one()
+        return self.l10n_latam_document_type_id.code in ('6', '7', '8')
+
     @api.model
     def _l10n_ar_is_tax_group_other_national_ind_tax(self, tax_group):
         return tax_group.l10n_ar_tribute_afip_code in ('01', '04')
@@ -561,3 +566,7 @@ class AccountMove(models.Model):
     @api.model
     def _l10n_ar_is_tax_group_vat(self, tax_group):
         return bool(tax_group.l10n_ar_vat_afip_code)
+
+    @api.model
+    def _l10n_ar_is_tax_group_iibb_perception(self, tax_group):
+        return tax_group.l10n_ar_tribute_afip_code == '07'

@@ -133,6 +133,8 @@ class PaymentTransaction(models.Model):
             "expand[]": "payment_method",
             **stripe_utils.include_shipping_address(self),
         }
+        if payment_method_type == "sepa_direct_debit":
+            payment_intent_payload["statement_descriptor"] = self.reference[:22]
         if self.operation in ["online_token", "offline"]:
             if not self.token_id.stripe_payment_method:  # Pre-SCA token, migrate it.
                 self.token_id._stripe_sca_migrate_customer()
@@ -313,12 +315,12 @@ class PaymentTransaction(models.Model):
             return super()._apply_updates(payment_data)
 
         # Update the payment method.
-        payment_method = payment_data.get("payment_method")
-        if isinstance(payment_method, dict):  # capture/void/refund requests receive a string.
-            payment_method_type = payment_method.get("type")
-            if self.payment_method_id.code == payment_method_type == "card":
+        payment_method_data = payment_data.get("payment_method")
+        if isinstance(payment_method_data, dict):  # capture/void/refund requests receive a string.
+            payment_method_type = payment_method_data.get("type")
+            if payment_method_type == "card":
                 payment_method_type = payment_data["payment_method"]["card"]["brand"]
-            payment_method = self.env["payment.method"]._get_from_code(
+            payment_method = self.provider_id._get_pm_from_code(
                 payment_method_type, mapping=const.PAYMENT_METHODS_MAPPING
             )
             self.payment_method_id = payment_method or self.payment_method_id

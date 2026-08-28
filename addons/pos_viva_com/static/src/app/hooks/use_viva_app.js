@@ -52,7 +52,7 @@ export const useVivaApp = (validateCallback) => {
             line.payment_status = "done";
             line.transaction_id = ref;
             line.card_type = bankId;
-            await validateCallback(true);
+            await validateCallback({ isForceValidate: true });
         } else {
             // Used identifier is clientTransactionId which is sent during payment initiation
             // If status is not success, the error message will be returned via message field
@@ -60,7 +60,10 @@ export const useVivaApp = (validateCallback) => {
             line?.delete();
             dialog.add(AlertDialog, {
                 title: _t("Viva Wallet Payment Error"),
-                body: `Please note that your order has not been finalized, try again or choose another payment method. (${message})`,
+                body: _t(
+                    "Please note that your order has not been finalized, try again or choose another payment method. (%s)",
+                    message
+                ),
             });
         }
 

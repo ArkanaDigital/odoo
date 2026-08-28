@@ -2,11 +2,11 @@
 
 from odoo.addons.mail.tests.common import mail_new_test_user
 from odoo.tests.common import tagged
-from odoo.addons.base.tests.common import HttpCaseWithUserPortal, HttpCaseWithUserDemo
+from odoo.addons.base.tests.common import HttpCaseWithUserPortal
 
 
 @tagged("is_tour")
-class TestMailPublicPage(HttpCaseWithUserPortal, HttpCaseWithUserDemo):
+class TestMailPublicPage(HttpCaseWithUserPortal):
     """Checks that the invite page redirects to the channel and that all
     modules load correctly on the welcome and channel page when authenticated as various users"""
 
@@ -41,7 +41,7 @@ class TestMailPublicPage(HttpCaseWithUserPortal, HttpCaseWithUserDemo):
             partner_ids=[internal_user.partner_id.id],
             subtype_xmlid="mail.mt_comment",
         )
-        self.group = self.env['discuss.channel']._create_group(partners_to=(internal_user + portal_user).partner_id.ids, name="Test group")
+        self.group = self.env['discuss.channel']._create_group(users_to=internal_user + portal_user, name="Test group")
         self.group._add_members(guests=guest)
         self.tour = "discuss_channel_public_tour.js"
 
@@ -62,13 +62,13 @@ class TestMailPublicPage(HttpCaseWithUserPortal, HttpCaseWithUserDemo):
     def _open_group_page_as_user(self, login):
         user = self.env["res.users"].search([("login", "=", login)])
         url = (
-            f"/discuss/channel/{self.channel.id}"
+            f"/discuss/channel/{self.channel.id}?debug=tests"
             if user._is_internal()
             else self.group.invitation_url
         )
         self.start_tour(url, self.tour, login=login)
         # Update the body to a unique value to ensure the second run does not confuse the 2 messages.
-        self.channel._get_last_messages().body = "a-very-unique-body-in-group"
+        self.group._get_last_messages().body = "a-very-unique-body-in-group"
         # Second run of the tour as the first call has side effects, like creating user settings or adding members to
         # the channel, so we need to run it again to test different parts of the code.
         self.start_tour(url, self.tour, login=login)
@@ -94,10 +94,10 @@ class TestMailPublicPage(HttpCaseWithUserPortal, HttpCaseWithUserDemo):
         self.start_tour(self.group.invitation_url, self.tour, cookies={guest._cookie_name: guest._format_auth_cookie()})
 
     def test_discuss_channel_public_page_as_internal(self):
-        self._open_channel_page_as_user('demo')
+        self._open_channel_page_as_user("internal_luigi")
 
     def test_mail_group_public_page_as_internal(self):
-        self._open_group_page_as_user('demo')
+        self._open_group_page_as_user("internal_luigi")
 
     def test_discuss_channel_public_page_as_portal(self):
         self._open_channel_page_as_user('portal')
@@ -134,6 +134,6 @@ class TestMailPublicPage(HttpCaseWithUserPortal, HttpCaseWithUserDemo):
         self.authenticate(bob.login, bob.login)
         channel = self.env["discuss.channel"]._create_channel(name="Channel 1", group_id=None)
         response = self.url_open(channel.invitation_url)
-        group = self.env["discuss.channel"]._create_group(name="Group 1", partners_to=bob.partner_id.ids)
+        group = self.env["discuss.channel"]._create_group(name="Group 1", users_to=bob)
         response = self.url_open(group.invitation_url)
         self.assertIn(f"/odoo/action-mail.action_discuss?active_id={group.id}", response.url)

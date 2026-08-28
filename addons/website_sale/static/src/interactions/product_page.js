@@ -3,10 +3,10 @@ import { registry } from '@web/core/registry';
 import { router } from '@web/core/browser/router';
 import { localization } from '@web/core/l10n/localization';
 import { _t } from '@web/core/l10n/translation';
-import { rpc } from '@web/core/network/rpc';
+import { rpc, RPCError } from '@web/core/network/rpc';
 import { memoize, uniqueId } from '@web/core/utils/functions';
 import { KeepLast } from '@web/core/utils/concurrency';
-import { setElementContent } from '@web/core/utils/html';
+import { setElementContent, createElementWithContent } from '@web/core/utils/html';
 import { insertThousandsSep, formatFloat } from '@web/core/utils/numbers';
 import { renderToElement, renderToFragment } from '@web/core/utils/render';
 import { isEmail } from '@web/core/utils/strings';
@@ -94,6 +94,26 @@ export class ProductPage extends Interaction {
             // Trigger `onChangeAddQuantity`.
             input.dispatchEvent(new Event('change', { bubbles: true }));
         }
+        this._updateMinusButtonTitle(input);
+    }
+
+    /**
+     * Update the minus button's title/aria-label to explain why decreasing the quantity is
+     * blocked, when it is blocked by the minimum quantity required to purchase the product.
+     *
+     * @param {HTMLInputElement} input
+     */
+    _updateMinusButtonTitle(input) {
+        const minusButton = input.closest('.input-group')?.querySelector('button[name="minus_button"]');
+        if (!minusButton) {
+            return;
+        }
+        const min = parseFloat(input.dataset.min || 0);
+        const qty = parseFloat(input.value || 0);
+        const minQtyMessage = minusButton.dataset.minQtyMessage;
+        const title = qty <= min && minQtyMessage ? minQtyMessage : _t("Remove one");
+        minusButton.title = title;
+        minusButton.ariaLabel = title;
     }
 
     /**
@@ -133,14 +153,8 @@ export class ProductPage extends Interaction {
         }
     }
 
-    /**
-     * Uncollapse the reviews.
-     */
     onClickReviewsLink() {
-        const reviewsContent = document.querySelector('#o_product_page_reviews_content');
-        if (reviewsContent) {
-            window.Collapse.getOrCreateInstance(reviewsContent).show();
-        }
+        document.querySelector('#o_product_page_reviews')?.scrollIntoView({ behavior: 'smooth' });
     }
 
     /**
@@ -288,6 +302,21 @@ export class ProductPage extends Interaction {
         });
     }
 
+    /**
+     * Returns product images and sorts them by their visual position in grid
+     * layout so that navigation matches the rendered order.
+     *
+     * @param {HTMLElement} salePage
+     * @returns {HTMLImageElement[]}
+     */
+    _getVisuallyOrderedProductImages(salePage) {
+        const images = [...salePage.querySelectorAll(".product_detail_img")];
+        if (this._getProductImageContainerSelector() === "#o-grid-product") {
+            return images.sort((a, b) => a.offsetTop - b.offsetTop);
+        }
+        return images;
+    }
+
     _getProductImageContainerSelector() {
         const imageLayout = this.el.querySelector('#product_detail_main').dataset.imageLayout;
         return {
@@ -302,7 +331,7 @@ export class ProductPage extends Interaction {
         // Zoom on click
         if (this.el.dataset.ecomZoomClick) {
             // In this case we want all the images not just the ones that are "zoomables"
-            const images = this.el.querySelectorAll('.product_detail_img');
+            const images = this._getVisuallyOrderedProductImages(this.el);
             const { imageRatio, imageRatioMobile } = this.el.dataset;
             for (const [idx, image] of images.entries()) {
                 const handler = () =>
@@ -311,6 +340,7 @@ export class ProductPage extends Interaction {
                         images,
                         imageRatio,
                         imageRatioMobile,
+                        slots: { default: {} }, // required by Dialog
                     });
                 image.addEventListener("click", handler);
                 this.zoomCleanup.push(() => image.removeEventListener("click", handler));
@@ -336,11 +366,13 @@ export class ProductPage extends Interaction {
         // editable (depending on whether the images are updated before or after the editor is
         // ready).
         if (images && !isEditorEnabled && newImages) {
+            this.services["public.interactions"].stopInteractions(images);
             images.insertAdjacentHTML('beforebegin', markup(newImages));
             images.remove();
 
             // Re-query the latest images.
             images = productContainer.querySelector(this._getProductImageContainerSelector());
+            this.services["public.interactions"].startInteractions(images);
             // Update the sharable image (only works for Pinterest).
             const shareImageSrc = images.querySelector('img').src;
             document.querySelector('meta[property="og:image"]')
@@ -354,6 +386,31 @@ export class ProductPage extends Interaction {
     }
 
     /**
+     * Update the documents section of the product page.
+     */
+    _updateDocumentsSection(productContainer, newDocumentsSection) {
+        const documentsSection = productContainer.querySelector('#product_documents');
+
+        if (!documentsSection && !newDocumentsSection) return;
+
+        const newDocumentsSectionEl = newDocumentsSection
+            ? createElementWithContent('div', newDocumentsSection)
+            : null;
+
+        if (documentsSection && newDocumentsSectionEl) {
+            // Swap the old documents section with the new one.
+            documentsSection.replaceWith(...newDocumentsSectionEl.childNodes);
+        } else if (documentsSection) {
+            // Remove the old documents section
+            documentsSection.remove();
+        } else {
+            // Add a new documents section
+            const productDetails = productContainer.querySelector('#product_details article');
+            productDetails?.append(...newDocumentsSectionEl.childNodes);
+        }
+    }
+
+    /**
      * Toggles the disabled class on the parent element and the "add to cart" and "buy now" buttons
      * depending on whether the current combination is possible.
      *
@@ -362,9 +419,29 @@ export class ProductPage extends Interaction {
      */
     _toggleDisable(parent, isCombinationPossible) {
         parent.classList.toggle('css_not_available', !isCombinationPossible);
-        parent.querySelectorAll('button[name="add_to_cart"]').forEach(
+        parent.querySelectorAll('#add_to_cart_wrap button[name="add_to_cart"]').forEach(
             el => el.disabled = !isCombinationPossible
         );
+    }
+
+    /**
+     * Update the minimum quantity of the product based on the selected combination
+     *
+     * @param {Element} parent
+     * @param {Object} combination
+     */
+    _updateMinimumQuantity(parent, combination) {
+        const addQtyInput = parent.querySelector('input[name="add_qty"]');
+        const minimumQty = combination.minimum_qty || 1;
+        addQtyInput.dataset.min = minimumQty;
+        if (addQtyInput.value < minimumQty) {
+            addQtyInput.value = minimumQty;
+        }
+        const minusButton = parent.querySelector('button[name="minus_button"]');
+        if (minusButton) {
+            minusButton.dataset.minQtyMessage = combination.minimum_qty_reached_message || '';
+        }
+        this._updateMinusButtonTitle(addQtyInput);
     }
 
     /**
@@ -377,7 +454,7 @@ export class ProductPage extends Interaction {
         const parent = ev.target.closest('.js_product');
         if (!parent) return Promise.resolve();
         const combination = wSaleUtils.getSelectedAttributeValues(parent);
-        const addToCart = parent.querySelector('button[name="add_to_cart"]');
+        const addToCart = parent.querySelector('#add_to_cart_wrap button[name="add_to_cart"]');
         const productTemplateId = parseInt(addToCart?.dataset?.productTemplateId);
 
         const combinationInfo = await this.waitFor(rpc('/website_sale/get_combination_info', {
@@ -398,6 +475,9 @@ export class ProductPage extends Interaction {
         }
         if (combinationInfo.out_of_stock_message) {
             combinationInfo.out_of_stock_message = markup(combinationInfo.out_of_stock_message);
+        }
+        if (combinationInfo.documents) {
+            combinationInfo.documents = markup(combinationInfo.documents);
         }
         combinationInfo.packaging_selector = markup(combinationInfo.packaging_selector);
 
@@ -619,6 +699,10 @@ export class ProductPage extends Interaction {
             productPrice.classList.add('decimal_precision');
             productPrice.dataset.precision = precision;
         }
+        const variantParent = parent.closest('#product_detail')
+        if (variantParent) {
+            variantParent.dataset.name = combination.display_name;
+        }
         const pricePerUom = parent.querySelector('.o_product_price_unit')
             ?.querySelector('.oe_currency_value');
         if (pricePerUom) {
@@ -641,9 +725,12 @@ export class ProductPage extends Interaction {
         if ('product_tracking_info' in combination) {
             const product = document.querySelector('#product_detail');
             // Trigger an event to track variant changes in Google Analytics.
-            product.dispatchEvent(new CustomEvent(
-                'view_item_event', { 'detail': combination['product_tracking_info'] }
-            ));
+            product.dataset.productTrackingInfo = JSON.stringify(combination["product_tracking_info"]);
+            product.dataset.productGaCurrency = combination["currency_name"];
+            wSaleUtils.dispatchTrackingEvent("view_item_event", {
+                trackingInfo: combination["product_tracking_info"],
+                currency: combination["currency_name"],
+            });
         }
         const addToCart = parent.querySelector('#add_to_cart_wrap');
         const contactUsButton = parent.closest('#product_details')
@@ -699,11 +786,13 @@ export class ProductPage extends Interaction {
             }
         });
 
+        this._updateMinimumQuantity(parent, combination);
         this._toggleDisable(parent, isCombinationPossible && this.el.dataset.hasAvailableUoms);
 
         // Only update the images, tags and packaging selector if the product has changed.
         if (!combination.no_product_change) {
             this._updateProductImages(parent.closest('#product_detail_main'), combination.carousel);
+            this._updateDocumentsSection(parent.closest('#product_detail_main'), combination.documents);
             const productTags = parent.querySelector('.o_product_tags');
             productTags?.insertAdjacentHTML('beforebegin', htmlEscape(combination.product_tags));
             productTags?.remove();
@@ -741,7 +830,6 @@ export class ProductPage extends Interaction {
 
         const has_max_combo_quantity = 'max_combo_quantity' in combination
         if (!combination.is_storable && !has_max_combo_quantity) return;
-        if (!combination.product_id) return; // If the product is dynamic.
 
         const addQtyInput = parent.querySelector('input[name="add_qty"]');
         const qty = parseFloat(addQtyInput?.value) || 1;
@@ -752,7 +840,10 @@ export class ProductPage extends Interaction {
         if (!combination.allow_out_of_stock_order) {
             const unavailableQty = await this.waitFor(this._getUnavailableQty(combination));
             combination.free_qty -= unavailableQty;
-            if (combination.free_qty < 0) {
+            if (
+                combination.free_qty < 0
+                || ('minimum_qty' in combination && combination.free_qty < combination.minimum_qty)
+            ) {
                 combination.free_qty = 0;
             }
             if (addQtyInput) {
@@ -761,7 +852,7 @@ export class ProductPage extends Interaction {
                     addQtyInput.value = addQtyInput.dataset.max;
                 }
             }
-            if (combination.free_qty < 1 && !combination.prevent_sale) {
+            if (combination.free_qty < 1 && this._showOutOfStock(combination)) {
                 ctaWrapper.classList.replace('d-flex', 'd-none');
                 ctaWrapper.classList.add('out_of_stock');
             }
@@ -774,7 +865,7 @@ export class ProductPage extends Interaction {
                     addQtyInput.value = addQtyInput.dataset.max;
                 }
             }
-            if (combination.max_combo_quantity < 1 && !combination.prevent_sale) {
+            if (combination.max_combo_quantity < 1 && this._showOutOfStock(combination)) {
                 ctaWrapper.classList.replace('d-flex', 'd-none');
                 ctaWrapper.classList.add('out_of_stock');
             }
@@ -791,8 +882,8 @@ export class ProductPage extends Interaction {
         }
 
         document.querySelector('.oe_website_sale')
-            .querySelectorAll('.availability_message_' + combination.product_template)
-            .forEach(el => el.remove());
+            .querySelector('#product_stock_availability')
+            ?.remove();
         if (combination.out_of_stock_message) {
             const outOfStockMessage = document.createElement('div');
             setElementContent(outOfStockMessage, combination.out_of_stock_message);
@@ -801,7 +892,9 @@ export class ProductPage extends Interaction {
         this.el.querySelector('div.availability_messages').append(renderToFragment(
             'website_sale.product_availability', combination
         ));
-        if (this.el.querySelector('.o_add_wishlist_dyn')) {
+        if (!this._showOutOfStock(combination)) {
+            this.el.querySelector('#stock_notification_div')?.classList.add('d-none')
+        } else if (this.el.querySelector('.o_add_wishlist_dyn')) {
             const messageEl = this.el.querySelector('div.availability_messages');
             if (messageEl && !this.el.querySelector('#stock_wishlist_message')) {
                 this.services['public.interactions'].stopInteractions(messageEl);
@@ -816,6 +909,16 @@ export class ProductPage extends Interaction {
 
     async _getUnavailableQty(combination) {
         return parseInt(combination.cart_qty);
+    }
+
+    /**
+     * Whether the combination should be displayed as out-of-stock when its free quantity runs out.
+     *
+     * @param {Object} combination
+     * @return {boolean}
+     */
+    _showOutOfStock(combination) {
+        return !combination.prevent_sale;
     }
 
     /**
@@ -902,25 +1005,38 @@ export class ProductPage extends Interaction {
         const email = stockNotificationEl.querySelector('#stock_notification_input').value.trim();
 
         if (!isEmail(email)) {
-            return this._displayEmailIncorrectMessage(stockNotificationEl);
+            return this._displayErrorMessage(_t('Invalid email'), stockNotificationEl);
         }
 
         try {
             await this.waitFor(rpc(
                 '/shop/add/stock_notification', { product_id: productId, email }
             ));
-        } catch {
-            this._displayEmailIncorrectMessage(stockNotificationEl);
-            return;
+        } catch (error) {
+            if (error instanceof RPCError) {
+                this._displayErrorMessage(error.data.message, stockNotificationEl);
+                return;
+            }
+            throw error;
         }
         const message = stockNotificationEl.querySelector('#stock_notification_success_message');
         message.classList.remove('d-none');
         formEl.classList.add('d-none');
     }
 
-    _displayEmailIncorrectMessage(stockNotificationEl) {
+    _displayErrorMessage(message, stockNotificationEl) {
         const incorrectIconEl = stockNotificationEl.querySelector('#stock_notification_input_incorrect');
         incorrectIconEl.classList.remove('d-none');
+
+        const errorMessageEl = stockNotificationEl.querySelector('#stock_notification_error_message');
+        if (errorMessageEl) {
+            errorMessageEl.textContent = message;
+        } else {
+            const span = document.createElement('span');
+            span.id = 'stock_notification_error_message';
+            span.textContent = message;
+            incorrectIconEl.appendChild(span);
+        }
     }
 
     onClickWishlistStockNotificationMessage(ev) {

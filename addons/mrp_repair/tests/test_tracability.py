@@ -7,6 +7,15 @@ from odoo.addons.mrp.tests.common import TestMrpCommon
 @tagged('post_install', '-at_install')
 class TestRepairTraceability(TestMrpCommon):
 
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'stock.group_stock_manager',  # subject: repair orders, lots & traceability
+        'mrp.group_mrp_manager',  # subject: manufacturing/BoM linked to repairs
+        'mrp.group_mrp_routings',  # workorder/workcenter fields set via MO Form (groups="mrp.group_mrp_routings")
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -310,6 +319,9 @@ class TestRepairTraceability(TestMrpCommon):
         ro.action_validate()
         ro.action_repair_start()
         ro.action_repair_end()
+        # Skip consumption warning
+        consumption_warning = self.env['repair.consumption.warning'].create({'repair_id': ro.id})
+        consumption_warning.action_confirm()
 
         sm = self.env['stock.move'].create({
             'product_id': component.id,

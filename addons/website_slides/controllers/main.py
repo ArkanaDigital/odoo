@@ -10,6 +10,7 @@ import werkzeug
 
 from odoo import fields, http, tools, _
 from odoo.addons.base.models.ir_qweb import keep_query
+from odoo.addons.portal.controllers.thread import PortalWebClientController
 from odoo.addons.website.controllers.main import QueryURL
 from odoo.addons.website.models.ir_http import sitemap_qs2dom
 from odoo.addons.website_profile.controllers.main import WebsiteProfile
@@ -135,7 +136,9 @@ class WebsiteSlides(WebsiteProfile):
             'next_slide': next_slide,
             'category_data': category_data,
             # rating and comments
-            'comments': slide.website_message_ids or [],
+            'comments': request.env["mail.message"].search(
+                PortalWebClientController._get_portal_message_fetch_domain(slide)
+            ),
         })
 
         # allow rating and comments
@@ -484,6 +487,7 @@ class WebsiteSlides(WebsiteProfile):
                 page=page,
                 step=page_size,
                 scope=3) if page else False,
+            'structured_data': channels._render_jsonld(),
         })
 
         return render_values
@@ -648,6 +652,7 @@ class WebsiteSlides(WebsiteProfile):
         render_values.update({
             'channel': channel,
             'main_object': channel,
+            'structured_data': channel._render_jsonld(is_detail_page=True),
             'active_tab': kw.get('active_tab', 'home'),
             # search
             'search_category': category,
@@ -870,6 +875,13 @@ class WebsiteSlides(WebsiteProfile):
 
     @http.route(['/slides/channel/join'], type='jsonrpc', auth='public', website=True)
     def slide_channel_join(self, channel_id):
+        """Enroll the current user in a course.
+
+        :param int channel_id: the `slide.channel` to join.
+        :return: True once enrolled, or a dict holding an `error` key - 'public_user' when
+            nobody is logged in, 'join_done' when the enrollment did not go through.
+        :rtype: bool|dict
+        """
         if self.env.website.is_public_user():
             return {
                 'error': 'public_user',
@@ -1015,6 +1027,7 @@ class WebsiteSlides(WebsiteProfile):
         values['channel'] = slide.channel_id
         values = self._prepare_additional_channel_values(values, **kwargs)
         values['signup_allowed'] = request.env['res.users'].sudo()._get_signup_invitation_scope() == 'b2c'
+        values['structured_data'] = slide._render_jsonld(is_detail_page=True)
 
         if kwargs.get('fullscreen') == '1':
             values.update(self._slide_channel_prepare_review_values(slide.channel_id))
@@ -1119,6 +1132,14 @@ class WebsiteSlides(WebsiteProfile):
 
     @http.route('/slides/slide/like', type='jsonrpc', auth="public", website=True)
     def slide_like(self, slide_id, upvote):
+        """Vote on a course content.
+
+        :param int slide_id: the `slide.slide` to vote on.
+        :param bool upvote: True to like it, False to dislike it.
+        :return: the updated vote counts, or a dict holding an `error` key when voting is
+            not allowed (nobody logged in, not a member of the course, votes disabled).
+        :rtype: dict
+        """
         if self.env.website.is_public_user():
             return {'error': 'public_user', 'error_signup_allowed': request.env['res.users'].sudo()._get_signup_invitation_scope() == 'b2c'}
         # check slide access

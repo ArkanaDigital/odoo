@@ -67,31 +67,39 @@
 }
 
 .o_track {
-    .o-mail-Message-body {
-        padding-left: 0px;
+    padding-left: 0px;
 
-        b::before {
-            color: $body-color;
-            content: "\2192";
-            margin: 0 5px;
-        }
-        i {
-          &::before {
-            margin-left: 5px;
-            content: "(";
-          }
+    b::before {
+        color: $body-color;
+        content: "\2192";
+        margin: 0 5px;
+    }
+    i {
+      &::before {
+        margin-left: 5px;
+        content: "(";
+      }
 
-          &::after {
-            content: ")";
-          }
-        }
+      &::after {
+        content: ")";
+      }
+    }
 
-        b {
-            color: $info;
-            font-weight: bold;
-        }
-        i {
-            color: $text-muted;
+    b {
+        color: $info;
+        font-weight: bold;
+    }
+    i {
+        color: $text-muted;
+    }
+
+    // Stable fix: new tracking bodies miss the last `<br>` element
+    // to be able to not add the arrow
+    & > div:last-child:not(:has(br:last-child)) {
+        b::before,
+        i::before,
+        i::after {
+            content: none !important;
         }
     }
 }
@@ -176,7 +184,7 @@
         font-size: 1rem;
     }
 
-    .o-mail-Message.o-isMobileOS & i.oi-ellipsis-v {
+    .o-mail-Message.o-isMobileOS & i[data-icon="more_vert"] {
         opacity: 15%;
     }
 }

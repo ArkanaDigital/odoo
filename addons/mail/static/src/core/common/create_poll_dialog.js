@@ -1,6 +1,6 @@
 import { CreatePollOptionDialog } from "@mail/core/common/create_poll_option_dialog";
 
-import { Component, props, proxy, types } from "@odoo/owl";
+import { Component, proxy, signal, types, useProps } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
 import { EmojiPicker } from "@web/core/emoji_picker/emoji_picker";
@@ -11,14 +11,16 @@ export class CreatePollDialog extends Component {
     static template = "mail.CreatePollDialog";
     static components = { Dialog, EmojiPicker, CreatePollOptionDialog };
 
+    questionRef = signal.ref();
+
     setup() {
         super.setup(...arguments);
         this.store = useService("mail.store");
-        this.props = props({
-            close: types.function([]),
-            thread: types.instanceOf(this.store["mail.thread"].Class),
+        this.props = useProps({
+            close: types.function([types.instanceOf(MouseEvent)]),
+            thread: types.instanceOf(this.store["mail.thread"]),
         });
-        useAutofocus({ refName: "question" });
+        useAutofocus({ ref: this.questionRef });
         this.state = proxy({
             allowMultipleOptions: false,
             duration: "10",
@@ -26,7 +28,6 @@ export class CreatePollDialog extends Component {
             question: "",
             submitted: false,
         });
-        this.orm = useService("orm");
     }
 
     onClickAddOption() {
@@ -44,7 +45,9 @@ export class CreatePollDialog extends Component {
         }
         await rpc("/mail/poll/create", {
             allow_multiple_options: this.state.allowMultipleOptions,
-            option_labels: this.state.options.map(({ label }) => label).filter(Boolean),
+            options: this.state.options
+                .map(({ emoji, label }) => ({ emoji, label: label.trim() }))
+                .filter(({ label }) => label),
             duration: parseInt(this.state.duration),
             question: this.state.question,
             thread_id: this.props.thread.id,

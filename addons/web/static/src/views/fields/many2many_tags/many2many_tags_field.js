@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { hasTouch } from "@web/core/browser/feature_detection";
 import { CheckBox } from "@web/core/checkbox/checkbox";
@@ -20,8 +19,10 @@ import { usePopover } from "@web/core/popover/popover_hook";
 import { useService } from "@web/core/utils/hooks";
 import { useTagNavigation } from "@web/core/record_selectors/tag_navigation_hook";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, signal, t, useProps } from "@odoo/owl";
 import { getFieldDomain } from "@web/model/relational_model/utils";
+
+export const DEFAULT_TAG_LIMIT = 8;
 
 class Many2ManyTagsFieldColorListPopover extends Component {
     static template = "web.Many2ManyTagsFieldColorListPopover";
@@ -29,13 +30,30 @@ class Many2ManyTagsFieldColorListPopover extends Component {
         CheckBox,
         ColorList,
     };
-    static props = {
-        tag: Object,
-        switchTagColor: Function,
-        onTagVisibilityChange: Function,
-        close: Function,
-    };
+    props = useProps({
+        tag: t.object(),
+        switchTagColor: t.function(),
+        onTagVisibilityChange: t.function(),
+        close: t.function(),
+    });
 }
+
+export const many2ManyTagsFieldProps = {
+    ...standardFieldProps,
+    canCreate: t.boolean().optional(true),
+    canQuickCreate: t.boolean().optional(true),
+    canCreateEdit: t.boolean().optional(true),
+    onTagClick: t.selection(["open_form", "edit_color"]).optional(),
+    colorField: t.string().optional(),
+    createExpression: t.string().optional(),
+    domain: t.or([t.array(), t.function()]).optional(),
+    context: t.object().optional({}),
+    tagLimit: t.number().optional(DEFAULT_TAG_LIMIT),
+    placeholder: t.string().optional(),
+    nameCreateField: t.string().optional("name"),
+    searchThreshold: t.number().optional(),
+    string: t.string().optional(),
+};
 
 export class Many2ManyTagsField extends Component {
     static template = "web.Many2ManyTagsField";
@@ -45,34 +63,10 @@ export class Many2ManyTagsField extends Component {
         Many2XAutocomplete,
         Popover: Many2ManyTagsFieldColorListPopover,
     };
-    static props = {
-        ...standardFieldProps,
-        canCreate: { type: Boolean, optional: true },
-        canQuickCreate: { type: Boolean, optional: true },
-        canCreateEdit: { type: Boolean, optional: true },
-        onTagClick: {
-            optional: true,
-            validate: (value) => ["open_form", "edit_color"].includes(value),
-        },
-        colorField: { type: String, optional: true },
-        createExpression: { type: String, optional: true },
-        domain: { type: [Array, Function], optional: true },
-        context: { type: Object, optional: true },
-        tagLimit: { type: Number, optional: true },
-        placeholder: { type: String, optional: true },
-        nameCreateField: { type: String, optional: true },
-        searchThreshold: { type: Number, optional: true },
-        string: { type: String, optional: true },
-    };
+    props = useProps(many2ManyTagsFieldProps);
 
-    static defaultProps = {
-        canCreate: true,
-        canQuickCreate: true,
-        tagLimit: 8,
-        canCreateEdit: true,
-        nameCreateField: "name",
-        context: {},
-    };
+    many2ManyTagsFieldRef = signal.ref();
+    autoCompleteRef = signal.ref();
 
     setup() {
         this.state = proxy({ expanded: false });
@@ -83,11 +77,10 @@ export class Many2ManyTagsField extends Component {
         });
         this.dialog = useService("dialog");
         this.dialogClose = [];
-        useTagNavigation("many2ManyTagsField", {
+        useTagNavigation(this.many2ManyTagsFieldRef, {
             isEnabled: () => !this.props.readonly,
             delete: (index) => this.deleteTagByIndex(index),
         });
-        this.autoCompleteRef = useRef("autoComplete");
         this.mutex = new Mutex();
 
         const { saveRecord, removeRecord } = useX2ManyCrud(
@@ -115,10 +108,7 @@ export class Many2ManyTagsField extends Component {
                 create: false,
                 write: true,
             },
-            onRecordSaved: (record) => {
-                const records = this.props.record.data[this.props.name].records;
-                return records.find((r) => r.resId === record.resId).load();
-            },
+            onRecordSaved: () => this.props.record.load(),
         });
 
         this.update = (recordlist) => {
@@ -176,16 +166,19 @@ export class Many2ManyTagsField extends Component {
         };
     }
 
-    onTagClick(ev, record) {
+    async onTagClick(ev, record) {
         if (!this.props.record.isInEdition) {
             return;
         }
         if (this.props.onTagClick === "open_form") {
-            return this.openMany2xRecord({
-                resId: record.resId,
-                context: this.props.context,
-                title: _t("Edit: %s", record.data.display_name),
-            });
+            const saved = await this.props.record.save();
+            if (saved) {
+                return this.openMany2xRecord({
+                    resId: record.resId,
+                    context: this.props.context,
+                    title: _t("Edit: %s", record.data.display_name),
+                });
+            }
         }
         if (this.props.onTagClick !== "edit_color" || !this.props.colorField) {
             return;
@@ -331,7 +324,7 @@ export const many2ManyTagsField = {
             label: _t("Maximum Visible Tags"),
             name: "tag_limit",
             type: "number",
-            default: Many2ManyTagsField.defaultProps.tagLimit,
+            default: DEFAULT_TAG_LIMIT,
             help: _t(
                 "Maximum number of tags to display before showing a counter. Set to 0 to always show all tags."
             ),
@@ -396,5 +389,5 @@ export const many2ManyTagsField = {
 };
 
 registry.category("fields").add("many2many_tags", many2ManyTagsField);
-registry.category("fields").add("calendar.one2many", many2ManyTagsField);
-registry.category("fields").add("calendar.many2many", many2ManyTagsField);
+registry.category("fields").add("card.one2many", many2ManyTagsField);
+registry.category("fields").add("card.many2many", many2ManyTagsField);

@@ -3,6 +3,7 @@ import { registry } from "@web/core/registry";
 import { NavbarLinkPopover } from "./navbar_link_popover/navbar_link_popover";
 import { MenuDialog, EditMenuDialog } from "@website/components/dialog/edit_menu";
 import { withSequence } from "@html_editor/utils/resource";
+import { deduceURLfromText } from "@html_editor/main/link/utils";
 
 /**
  * @typedef { Object } MenuDataShared
@@ -37,7 +38,7 @@ export class MenuDataPlugin extends Plugin {
                                 const data = {
                                     id: parseInt(menuEl.attributes["data-oe-id"].nodeValue),
                                     name,
-                                    url,
+                                    url: deduceURLfromText(url) || url,
                                 };
                                 const result = await this.services.orm.call(
                                     "website.menu",
@@ -55,7 +56,7 @@ export class MenuDataPlugin extends Plugin {
                 }),
             }),
         ],
-        is_link_editable_predicates: linkElement => {
+        is_link_editable_predicates: (linkElement) => {
             if (this.isMenuLink(linkElement)) {
                 return true;
             }
@@ -64,6 +65,7 @@ export class MenuDataPlugin extends Plugin {
 
     setup() {
         this.websiteService = this.services.website;
+        this.ui = this.services.ui;
     }
 
     openEditMenu(linkEl) {
@@ -80,15 +82,20 @@ export class MenuDataPlugin extends Plugin {
                 {
                     rootID: isNaN(rootID) ? null : rootID,
                     save: async (newPageUrl) => {
-                        // Save the page before reloading the editor.
-                        await this.dependencies.savePlugin.save();
-                        await this.config.reloadEditor();
-                        if (newPageUrl) {
-                            this.websiteService.goToWebsite({
-                                path: newPageUrl,
-                                edition: true,
-                                websiteId: this.websiteService.currentWebsite.id,
-                            });
+                        this.ui.block();
+                        try {
+                            // Save the page before reloading the editor.
+                            await this.dependencies.savePlugin.save();
+                            await this.config.reloadEditor();
+                            if (newPageUrl) {
+                                await this.websiteService.goToWebsite({
+                                    path: newPageUrl,
+                                    edition: true,
+                                    websiteId: this.websiteService.currentWebsite.id,
+                                });
+                            }
+                        } finally {
+                            this.ui.unblock();
                         }
                     },
                 },

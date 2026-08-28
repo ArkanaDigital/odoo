@@ -43,6 +43,8 @@
         t-attf-class="oe_product_cart h-100 d-flex {{ptavs_classes}}"
         t-att-data-publish="product.website_published and 'on' or 'off'"
         t-att-aria-label="product.name"
+        t-att-data-product-tracking-info="json.dumps((product_tracking_infos or {}).get(product.id, {}))"
+        t-att-data-product-ga-currency="website.currency_id.name"
     >
         <t t-if="not product.website_published" t-call="website.unpublished_badge" badge_position="'left'"/>
         <t t-call="website_sale.product_image_and_ribbon" product_image_title="product.name"/>
@@ -108,7 +110,7 @@
     <div class="oe_product_image position-relative flex-grow-0 overflow-hidden">
         <!-- Fetch Images Data -->
         <t
-            t-if="product_variant and product_variant.with_context(bin_size=True).image_128"
+            t-if="product_variant and product_variant.image_128"
             t-set="all_images_list"
             t-value="product_variant._get_images()"
         />
@@ -155,12 +157,7 @@
             <t t-if="show_ribbons">
                 <t t-set="bg_color" t-value="ribbon.bg_color"/>
                 <t t-set="text_color" t-value="ribbon.text_color"/>
-                <span
-                    t-att-data-ribbon-id="ribbon.id"
-                    t-attf-class="o_ribbons o_not_editable #{ribbon._get_css_classes()}"
-                    t-attf-style="#{text_color and ('color: %s;' % text_color)} #{bg_color and 'background-color:' + bg_color}"
-                    t-out="ribbon.name or ''"
-                />
+                <t t-call="website_sale.product_ribbon"/>
             </t>
         </a>
         <div t-if="is_sample" class="o_ribbon_right small text-bg-primary">Sample</div>
@@ -236,7 +233,7 @@
     <t name="buttons_container">
         <div class="o_wsale_product_action_row">
             <t
-                t-if="product._website_show_quick_add()"
+                t-if="(product_variant or product)._website_show_quick_add()"
                 t-call="website_sale.product_tile_element_visibility"
                 visible_element_class.f="o_wsale_products_opt_has_cta"
             >
@@ -250,7 +247,7 @@
                     t-att-data-product-type="product.type"
                     t-att-data-show-quantity="is_view_active('website_sale.product_quantity')"
                 >
-                    <i class="fa fa-fw fa-shopping-cart o_not-animable" role="presentation"/>
+                    <i class="oi oi-fw o_not-animable" data-icon="shopping_cart" role="presentation"/>
                     <span class="o_label small ms-1">Add to Cart</span>
                 </button>
             </t>
@@ -261,7 +258,7 @@
                     t-att-href="website._get_contact_us_url(product.with_context(display_default_code=False).display_name)"
                     class="o_wsale_product_btn_primary btn btn-outline-primary"
                 >
-                    <i class="fa fa-fw fa-envelope o_not-animable" role="presentation"/>
+                    <i class="oi oi-fw oi-filled o_not-animable" data-icon="mail" role="presentation"/>
                     <span class="o_label small ms-1">Contact Us</span>
                 </a>
             </t>
@@ -311,7 +308,7 @@
                     comparison button
                 -->
                 <div class="o_add_compare_placeholder pe-none opacity-0 btn">
-                    <span class="fa fa-exchange fa-fw"/>
+                    <span class="oi oi-fw" data-icon="swap_horiz"/>
                 </div>
             </t>
         </xpath>

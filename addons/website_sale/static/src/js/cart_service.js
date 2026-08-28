@@ -15,6 +15,7 @@ import { redirect } from '@web/core/utils/urls';
 import {
     CartNotificationContainer
 } from '@website_sale/js/cart_notification/cart_notification_container/cart_notification_container';
+import wSaleUtils from "@website_sale/js/website_sale_utils";
 
 const { DateTime } = luxon;
 const AUTOCLOSE_NOTIFICATION_DELAY = 4000;
@@ -203,19 +204,25 @@ export class CartService {
             });
         }
 
-        const shouldShowProductConfigurator = await this.rpc(
-            '/website_sale/should_show_product_configurator',
-            {
-                product_template_id: productTemplateId,
-                is_product_configured: isConfigured,
-            }
-        );
-        if (shouldShowProductConfigurator) {
+        const ptavIds = ptavs.concat(noVariantAttributeValues);
+        const configDataParams = {
+            product_template_id: productTemplateId,
+            quantity: quantity,
+            ptav_ids: ptavIds,
+            product_uom_id: uomId,
+            so_date: serializeDateTime(DateTime.now()),
+            is_product_configured: isConfigured,
+            ...rest
+        };
+
+        const result = await this.rpc('/website_sale/product_configurator/get_values', configDataParams);
+        if (result.products) {
+            const { products, optional_products, currency_id } = result;
             return this._openProductConfigurator(
                 productTemplateId,
-                quantity,
-                uomId,
-                ptavs.concat(noVariantAttributeValues),
+                products,
+                optional_products,
+                currency_id,
                 productCustomAttributeValues,
                 {
                     isBuyNow: isBuyNow,
@@ -334,9 +341,9 @@ export class CartService {
      */
     async _openProductConfigurator(
         productTemplateId,
-        quantity,
-        uomId,
-        combination,
+        products,
+        optionalProducts,
+        currencyId,
         productCustomAttributeValues,
         options,
         additionalData
@@ -344,13 +351,13 @@ export class CartService {
         return await new Promise((resolve) => {
             this.dialog.add(ProductConfiguratorDialog, {
                 productTemplateId: productTemplateId,
-                ptavIds: combination,
+                products: products,
+                optionalProducts: optionalProducts,
+                currencyId: currencyId,
                 customPtavs: productCustomAttributeValues.map(customPtav => ({
                     id: customPtav.custom_product_template_attribute_value_id,
                     value: customPtav.custom_value,
                 })),
-                quantity: quantity,
-                productUOMId: uomId,
                 soDate: serializeDateTime(DateTime.now()),
                 edit: false,
                 isFrontend: true,
@@ -487,6 +494,12 @@ export class CartService {
         if (!data) {
             return 0;
         }
+        if (data.quantity && data.tracking_info?.length) {
+            wSaleUtils.dispatchTrackingEvent("add_to_cart_event", {
+                currency: data.currency,
+                items: data.tracking_info,
+            });
+        }
         if (shouldRedirectToCart) {
             redirect('/shop/cart');
             return data.quantity;
@@ -498,9 +511,6 @@ export class CartService {
         };
         for (const notification of data.notifications) {
             this._showCartNotification(notification);
-        }
-        if (data.quantity) {
-            this._trackProducts(data.tracking_info);
         }
         return data.quantity;
     }
@@ -544,18 +554,6 @@ export class CartService {
         setTimeout( () => this.notifications.delete(notification), AUTOCLOSE_NOTIFICATION_DELAY );
     }
 
-    /**
-     * Track the products added to the cart.
-     *
-     * @param {Object[]} trackingInfo - A list of product tracking information.
-     *
-     * @returns {void}
-     */
-    _trackProducts(trackingInfo) {
-        document.querySelector('.oe_website_sale').dispatchEvent(
-            new CustomEvent('add_to_cart_event', {'detail': trackingInfo})
-        );
-    }
 }
 
 export const cartService = {

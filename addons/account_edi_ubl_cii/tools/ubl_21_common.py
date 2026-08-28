@@ -89,6 +89,7 @@ Address = {
     'cbc:PostalZone': {},
     'cbc:CountrySubentity': {},
     'cbc:CountrySubentityCode': {},
+    'cbc:District': {},
     'cac:AddressLine': {
         'cbc:Line': {},
     },
@@ -170,6 +171,7 @@ CustomerParty = {
 Delivery = {
     'cbc:ID': {},
     'cbc:ActualDeliveryDate': {},
+    'cbc:LatestDeliveryDate': {},
     'cac:DeliveryLocation': {
         'cbc:ID': {},
         'cac:Address': Address,
@@ -189,6 +191,13 @@ FinancialAccount = {
     }
 }
 
+PaymentMandate = {
+    'cbc:ID': {},
+    'cac:PayerFinancialAccount': {
+        'cbc:ID': {},
+    },
+}
+
 PaymentMeans = {
     'cbc:ID': {},
     'cbc:PaymentMeansCode': {},
@@ -197,6 +206,7 @@ PaymentMeans = {
     'cbc:InstructionNote': {},
     'cbc:PaymentID': {},
     'cac:PayeeFinancialAccount': FinancialAccount,
+    'cac:PaymentMandate': PaymentMandate,
 }
 
 PaymentTerms = {

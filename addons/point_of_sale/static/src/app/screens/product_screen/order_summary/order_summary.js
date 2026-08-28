@@ -1,6 +1,5 @@
-import { useLayoutEffect } from "@web/owl2/utils";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
-import { Component, proxy } from "@odoo/owl";
+import { Component, computed, usePlugin } from "@odoo/owl";
 import { Orderline } from "@point_of_sale/app/components/orderline/orderline";
 import { useService } from "@web/core/utils/hooks";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
@@ -10,6 +9,7 @@ import { NumberPopup } from "@point_of_sale/app/components/popups/number_popup/n
 import { parseFloat } from "@web/views/fields/parsers";
 import { OrderDisplay } from "@point_of_sale/app/components/order_display/order_display";
 import { ChoseComboPopup } from "@point_of_sale/app/components/popups/chose_combo_popup/chose_combo_popup";
+import { PosNumberBufferPlugin } from "@point_of_sale/app/plugins/pos_number_buffer_plugin";
 
 export class OrderSummary extends Component {
     static template = "point_of_sale.OrderSummary";
@@ -17,40 +17,26 @@ export class OrderSummary extends Component {
         Orderline,
         OrderDisplay,
     };
-    static props = {};
 
     setup() {
-        super.setup();
-        this.numberBuffer = useService("number_buffer");
+        this.numberBuffer = usePlugin(PosNumberBufferPlugin);
         this.dialog = useService("dialog");
         this.pos = usePos();
-        this.state = proxy({
-            potentialCombos: [],
-        });
 
         this.numberBuffer.use({
             triggerAtInput: (...args) => this.updateSelectedOrderline(...args),
             useWithBarcode: true,
         });
-
-        this.updatePotentialCombos();
-
-        useLayoutEffect(
-            () => {
-                // We update the potential combos when the order changes
-                // or the quantity of the items changes.
-                this.updatePotentialCombos();
-            },
-            () => [this.currentOrder.totalQuantity, this.currentOrder.id]
-        );
     }
 
-    updatePotentialCombos() {
-        this.state.potentialCombos = this.pos.getApplicableProductCombo("limited");
-    }
+    // We update the potential combos when the order changes
+    // or the quantity of the items changes.
+    potentialCombos = computed(() =>
+        this.pos.comboSuggestion.getApplicableProductCombo(this.currentOrder, "limited")
+    );
 
     get currentOrder() {
-        return this.pos.selectedOrder;
+        return this.pos.getOrder();
     }
 
     clickLine(ev, orderline) {
@@ -184,6 +170,18 @@ export class OrderSummary extends Component {
             }
             return;
         }
+
+        if (selectedLine?.isServiceFeeLine() && order.preset_id?.service_fee_type !== "fixed") {
+            this.numberBuffer.reset();
+            if (key === "Backspace") {
+                this.dialog.add(AlertDialog, {
+                    title: _t("Cannot modify a service fee"),
+                    body: _t("Service fees cannot be modified from the order."),
+                });
+            }
+            return;
+        }
+
         if (
             selectedLine &&
             this.pos.numpadMode === "quantity" &&
@@ -264,20 +262,32 @@ export class OrderSummary extends Component {
 
     async setLinePrice(line, price) {
         line.price_type = "manual";
+        const parsedPrice = typeof price === "number" ? price : parseFloat(price);
+
         if (line.product_id.to_weight) {
-            const val = line.price_unit ? parseFloat(price) / line.price_unit : 0;
+            const val = line.getQuantityFromDisplayPrice(parsedPrice);
             line.setQuantity(val, false);
         } else {
+            price = line.getUnitPriceFromDisplayPrice(parsedPrice);
             line.setUnitPrice(price);
         }
     }
 
-    async _showDecreaseQuantityPopup() {
+    /**
+     * @param {Object} [options={}]
+     * @param {(value: string) => string} [options.formatDisplayedValue]
+     * @param {(value: string) => string} [options.parseQuantityValue]
+     */
+    async _showDecreaseQuantityPopup(options = {}) {
         this.numberBuffer.reset();
-        const inputNumber = await makeAwaitable(this.dialog, NumberPopup, {
+        let inputNumber = await makeAwaitable(this.dialog, NumberPopup, {
             title: _t("Set the new quantity"),
+            formatDisplayedValue: options.formatDisplayedValue,
         });
         if (inputNumber) {
+            inputNumber = options.parseQuantityValue
+                ? options.parseQuantityValue(inputNumber)
+                : inputNumber;
             const newQuantity = inputNumber && inputNumber !== "" ? parseFloat(inputNumber) : null;
             return await this.updateQuantityNumber(newQuantity);
         }
@@ -370,71 +380,32 @@ export class OrderSummary extends Component {
         return newLine;
     }
     get isComboApplicable() {
-        return this.state.potentialCombos.length > 0;
-    }
-    getSortedBestPotentialCombos() {
-        const bestCombos = {
-            applicable: [],
-            upsell: [],
-        };
-        this.pos.getApplicableProductCombo("combinations").forEach((applicable) => {
-            applicable.comboPrice = applicable.productTmpl.getPrice(
-                this.currentOrder.pricelist_id,
-                applicable.combinationsQty
-            );
-            applicable.numberOfUpsell = Object.values(applicable.combinations[0]).reduce(
-                (acc, combo) => {
-                    if (combo.upsell) {
-                        return acc + 1;
-                    }
-                    return acc;
-                },
-                0
-            );
-            if (applicable.numberOfUpsell > 0) {
-                bestCombos.upsell.push(applicable);
-            } else {
-                bestCombos.applicable.push(applicable);
-            }
-        });
-        bestCombos.applicable.sort((a, b) => b.comboPrice - a.comboPrice);
-        bestCombos.upsell.sort((a, b) => {
-            if (a.numberOfUpsell === b.numberOfUpsell) {
-                return b.comboPrice - a.comboPrice;
-            }
-            return a.numberOfUpsell - b.numberOfUpsell;
-        });
-        return bestCombos;
+        return this.potentialCombos().length > 0;
     }
     get bestComboName() {
+        const combos = this.potentialCombos();
         let name = `
-            ${this.state.potentialCombos[0].quantity} ${this.state.potentialCombos[0].productTmpl.display_name}`;
-        if (this.state.potentialCombos.length > 1) {
-            name += " + Others";
+            ${combos[0].quantity} ${combos[0].product.display_name}`;
+        if (combos.length > 1) {
+            name = _t("%s + Others", name);
         }
         return name;
     }
     async applyBestCombo(keepOpen = false) {
         let comboToApply = false;
-        const bestPotentialCombos = this.getSortedBestPotentialCombos();
-        if (
-            bestPotentialCombos.upsell.length + bestPotentialCombos.applicable.length >
-            (keepOpen ? 0 : 1)
-        ) {
+        const bestPotentialCombos = this.pos.comboSuggestion.getPotentialCombos(this.currentOrder);
+        if (bestPotentialCombos.length > (keepOpen ? 0 : 1)) {
             comboToApply = await makeAwaitable(this.dialog, ChoseComboPopup, {
                 potentialCombos: bestPotentialCombos,
             });
-        } else if (bestPotentialCombos.applicable.length == 1) {
-            comboToApply = bestPotentialCombos.applicable[0];
-        } else if (bestPotentialCombos.upsell.length == 1) {
-            comboToApply = bestPotentialCombos.upsell[0];
+        } else if (bestPotentialCombos.length === 1) {
+            comboToApply = bestPotentialCombos[0];
         }
         if (comboToApply) {
-            // Apply combo
-            comboToApply = this.pos.getApplicableProductCombo("full", comboToApply.productTmpl);
+            // Apply the exact suggestion selected by the user.
             await this.pos.createComboFromLines(
-                comboToApply[0].productTmpl,
-                comboToApply[0].combinations
+                comboToApply.product.product_tmpl_id,
+                comboToApply.combinations
             );
             // If more combo applicable left, keep popup opened
             await this.applyBestCombo(true);

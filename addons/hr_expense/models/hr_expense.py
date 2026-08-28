@@ -8,8 +8,9 @@ import logging
 import werkzeug
 
 from odoo import api, fields, Command, models, _
-from odoo.exceptions import RedirectWarning, UserError, ValidationError
+from odoo.exceptions import AccessError, RedirectWarning, UserError, ValidationError
 from odoo.tools import clean_context, email_normalize, float_repr, float_round, is_html_empty, format_amount, format_date
+from odoo.fields import Domain
 from datetime import timedelta
 
 
@@ -46,6 +47,7 @@ class HrExpense(models.Model):
     _description = "Expense"
     _order = "date desc, id desc"
     _check_company_auto = True
+    _mail_post_access = 'read'
 
     @api.model
     def _default_employee_id(self):
@@ -64,7 +66,6 @@ class HrExpense(models.Model):
         comodel_name='hr.employee',
         string="Employee",
         compute='_compute_employee_id', precompute=True, store=True, readonly=False,
-        required=True,
         index=True,
         default=_default_employee_id,
         check_company=True,
@@ -221,6 +222,24 @@ class HrExpense(models.Model):
     currency_rate = fields.Float(compute='_compute_currency_rate', digits=(16, 9), readonly=True, tracking=True)
     label_currency_rate = fields.Char(compute='_compute_currency_rate', readonly=True)
 
+    # Limit fields
+    has_expense_job_position_limit = fields.Boolean(
+        compute='_compute_has_expense_job_position_limit',
+    )
+    expense_job_position_limit_amount = fields.Monetary(
+        string="Job Position Limit",
+        currency_field='company_currency_id',
+        compute='_compute_expense_job_position_limit_amount',
+    )
+    expense_job_position_limit_amount_currency = fields.Monetary(
+        string="Job Position Limit in Currency",
+        currency_field='currency_id',
+        compute='_compute_expense_job_position_limit_amount_currency',
+    )
+    is_expense_exceeding_job_position_limit = fields.Boolean(
+        compute='_compute_is_expense_exceeding_job_position_limit',
+    )
+
     # Account fields
     journal_id = fields.Many2one(
         comodel_name='account.journal',
@@ -267,8 +286,8 @@ class HrExpense(models.Model):
     )
     payment_mode = fields.Selection(
         selection=[
-            ('own_account', "Employee"),
-            ('company_account', "None (company)")
+            ('own_account', "Employee (Through a Purchase Receipt)"),
+            ('company_account', "None (Paid by Company)")
         ],
         string="Reimbursement",
         default='own_account',
@@ -299,6 +318,8 @@ class HrExpense(models.Model):
 
     # Security fields
     is_editable = fields.Boolean(string="Is Editable By Current User", compute='_compute_is_editable', readonly=True)
+    can_edit_account = fields.Boolean(compute='_compute_can_edit_account')
+    is_own_expense = fields.Boolean(compute='_compute_is_own_expense')
     can_reset = fields.Boolean(string='Can Reset', compute='_compute_can_reset', readonly=True)
     can_approve = fields.Boolean(string='Can Approve', compute='_compute_can_approve', readonly=True)
 
@@ -310,17 +331,20 @@ class HrExpense(models.Model):
     # --------------------------------------------
 
     @api.constrains('state', 'name', 'product_id', 'total_amount', 'total_amount_currency')
-    def _check_required_fields_if_not_draft(self):
+    def _check_required_fields(self):
         for expense in self.filtered(lambda expense: expense.state != 'draft'):
             errors = []
 
             # Check for required fields 'name' and 'product_id'
-            if not expense.name and not expense.product_id:
+            if not expense.name and not expense.product_id and expense.state != 'refused':
                 errors.append(self.env._("Enter a description and select a product to proceed."))
             elif not expense.name:
                 errors.append(self.env._("Enter a description to proceed."))
-            elif not expense.product_id:
+            elif not expense.product_id and expense.state != 'refused':
                 errors.append(self.env._("Select a product to proceed."))
+            # Check for required field 'employee_id'
+            if not expense.employee_id:
+                errors.append(self.env._("Select an employee to proceed."))
 
             # Check for non-zero amounts
             total_amount_is_zero = expense.company_currency_id.is_zero(expense.total_amount)
@@ -346,6 +370,12 @@ class HrExpense(models.Model):
         for expense in self:
             if expense.product_has_cost and expense.state == 'draft':
                 expense.currency_id = expense.company_currency_id
+
+    @api.depends_context('uid')
+    @api.depends('employee_id.user_id')
+    def _compute_is_own_expense(self):
+        for expense in self:
+            expense.is_own_expense = expense.employee_id.user_id == self.env.user
 
     @api.depends_context('uid')
     @api.depends('employee_id', 'manager_id', 'state')
@@ -387,8 +417,7 @@ class HrExpense(models.Model):
                 continue
 
             employee = expense.employee_id
-            is_own_expense = employee.user_id == self.env.user
-            if is_own_expense and expense.state == 'draft':
+            if expense.is_own_expense and expense.state == 'draft':
                 # Anyone can edit their own draft expense
                 expense.is_editable = True
                 continue
@@ -402,7 +431,7 @@ class HrExpense(models.Model):
                 managers |= self.env.user
             if expense.employee_id.id in expenses_employee_ids_under_user_ones:
                     managers |= self.env.user
-            if not is_own_expense and self.env.user in managers:
+            if not expense.is_own_expense and self.env.user in managers:
                 # If Approver-level or designated manager, can edit other people expense
                 expense.is_editable = True
                 continue
@@ -603,6 +632,70 @@ class HrExpense(models.Model):
                 expense.untaxed_amount = expense.untaxed_amount_currency
             expense.currency_rate = expense.total_amount / expense.total_amount_currency if expense.total_amount_currency else 1.0
             expense.price_unit = expense.total_amount / expense.quantity if expense.quantity else expense.total_amount
+
+    def _get_expense_job_position_limit(self):
+        self.ensure_one()
+        limit_lines = self.product_id.expense_job_position_limit_ids
+        job_limit = limit_lines.filtered(lambda line: self.employee_id.sudo().job_id in line.job_ids)
+        default_limit = limit_lines.filtered(lambda line: not line.job_ids)
+        return job_limit[:1] or default_limit[:1]
+
+    @api.depends(
+        'payment_mode',
+        'employee_id.job_id',
+        'product_id.expense_job_position_limit_ids',
+        'product_id.expense_job_position_limit_ids.job_ids',
+    )
+    def _compute_has_expense_job_position_limit(self):
+        for expense in self:
+            expense.has_expense_job_position_limit = (
+                expense.payment_mode == 'own_account'
+                and bool(expense._get_expense_job_position_limit())
+            )
+
+    @api.depends(
+        'has_expense_job_position_limit',
+        'employee_id.job_id',
+        'product_id.expense_job_position_limit_ids',
+        'product_id.expense_job_position_limit_ids.job_ids',
+        'product_id.expense_job_position_limit_ids.limit_amount',
+    )
+    def _compute_expense_job_position_limit_amount(self):
+        for expense in self:
+            expense.expense_job_position_limit_amount = 0
+            if not expense.has_expense_job_position_limit:
+                continue
+
+            expense.expense_job_position_limit_amount = expense._get_expense_job_position_limit().limit_amount
+
+    @api.depends(
+        'expense_job_position_limit_amount',
+        'currency_rate',
+        'currency_id',
+        'company_currency_id',
+    )
+    def _compute_expense_job_position_limit_amount_currency(self):
+        for expense in self:
+            expense.expense_job_position_limit_amount_currency = (
+                expense.currency_id.round(expense.expense_job_position_limit_amount / expense.currency_rate)
+                if expense.currency_rate
+                else 0
+            )
+
+    @api.depends(
+        'total_amount',
+        'has_expense_job_position_limit',
+        'expense_job_position_limit_amount',
+    )
+    def _compute_is_expense_exceeding_job_position_limit(self):
+        for expense in self:
+            expense.is_expense_exceeding_job_position_limit = (
+                expense.has_expense_job_position_limit
+                and expense.company_currency_id.compare_amounts(
+                    expense.total_amount,
+                    expense.expense_job_position_limit_amount,
+                ) > 0
+            )
 
     @api.depends('product_id', 'company_id')
     def _compute_tax_ids(self):
@@ -864,6 +957,15 @@ class HrExpense(models.Model):
             )
 
     @api.depends_context('uid')
+    @api.depends('state')
+    def _compute_can_edit_account(self):
+        if not self.env.user.has_group('account.group_account_invoice'):
+            self.can_edit_account = False
+        else:
+            for expense in self:
+                expense.can_edit_account = expense.state == 'approved'
+
+    @api.depends_context('uid')
     @api.depends('employee_id')
     def _compute_can_approve(self):
         cannot_reason_per_record_id = self._get_cannot_approve_reason()
@@ -881,20 +983,27 @@ class HrExpense(models.Model):
                 raise UserError(_('You cannot delete a posted or approved expense.'))
 
     def write(self, vals):
-        if any(field in vals for field in {'is_editable', 'can_approve', 'can_refuse'}):
-            raise UserError(_("You cannot edit the security fields of an expense manually"))
 
-        if any(field in vals for field in {'tax_ids', 'analytic_distribution', 'account_id', 'manager_id'}):
-            if any((not expense.is_editable and not self.env.su) for expense in self):
-                raise UserError(_(
+        changed_fields_set = set(vals)
+        if {'is_editable', 'can_approve', 'can_refuse'} & changed_fields_set:
+            raise UserError(self.env._("You cannot edit the security fields of an expense manually"))
+
+        if not self.env.su and (readonly_expenses := self.filtered(lambda e: not e.is_editable)):
+            is_unauthorised_edit = {'tax_ids', 'manager_id'} & changed_fields_set or (
+                    {'analytic_distribution', 'account_id'} & changed_fields_set and
+                    any(not e.can_edit_account for e in readonly_expenses)
+            )
+            if is_unauthorised_edit:
+                raise UserError(self.env._(
                     "Uh-oh! You can’t edit this expense.\n\n"
-                    "Reach out to the administrators, flash your best smile, and see if they'll grant you the magical access you seek."
+                    "Reach out to the administrators, flash your best smile, and see if they'll grant you the magical access you seek.",
                 ))
 
         res = super().write(vals)
 
         if vals.get('state') == 'approved' or vals.get('approval_state') == 'approved':
-            self._check_can_approve()
+            # filter out auto approved expenses
+            self.filtered(lambda expense: expense.manager_id - expense.employee_id.user_id or expense.employee_id.expense_manager_id)._check_can_approve()
         elif vals.get('state') == 'refused' or vals.get('approval_state') == 'refused':
             self._check_can_refuse()
 
@@ -1047,6 +1156,23 @@ class HrExpense(models.Model):
                 'send_string': _("Tip: try sending receipts by email"),
             }
         return ""
+
+    def _track_log_get_default_body(self, track_init_values):
+        if (
+            'state' in track_init_values
+            and track_init_values.get('state') != 'paid'
+            and self.state == 'paid'
+            and self.payment_mode != 'company_account'
+        ):
+            reimbursed_amount = self.total_amount - self.amount_residual
+            return Markup(
+                '<div>%(label)s: <strong>%(amount)s</strong></div>'
+            ) % {
+                'label': self.env._('Amount reimbursed'),
+                'amount': format_amount(self.env, reimbursed_amount, self.company_currency_id),
+            }
+
+        return super()._track_log_get_default_body(track_init_values)
 
     def _track_log_get_default_subtype(self, track_init_values):
         self.ensure_one()
@@ -1243,7 +1369,7 @@ class HrExpense(models.Model):
         expenses_autovalidated = self.filtered(lambda expense: expense._can_be_autovalidated())
         (self - expenses_autovalidated).approval_state = 'submitted'
         if expenses_autovalidated:  # Note, this will and should bypass the duplicate check. May be changed later
-            expenses_autovalidated._do_approve(check=False)
+            expenses_autovalidated._do_approve()
         self.sudo().update_activities_and_mails()
 
     def _can_be_autovalidated(self):
@@ -1254,20 +1380,12 @@ class HrExpense(models.Model):
     def action_approve(self):
         """ Approve an expense, pops a wizard if a duplicated expense is found to confirm they are all valid expenses """
         self._check_can_approve()
-        for expense in self:
-            expense._validate_distribution(
-                account=expense.account_id.id,
-                product=expense.product_id.id,
-                business_domain='expense',
-                company_id=expense.company_id.id,
-            )
-
         duplicates = self.duplicate_expense_ids.filtered(lambda exp: exp.state in {'submitted', 'approved', 'posted', 'paid', 'in_payment'})
         if duplicates:
             action = self.env["ir.actions.act_window"]._for_xml_id('hr_expense.hr_expense_approve_duplicate_action')
             action['context'] = {'default_expense_ids': duplicates.ids}
             return action
-        self._do_approve(False)
+        self._do_approve()
 
     def action_refuse(self):
         """ Refuse an expense with a reason """
@@ -1289,6 +1407,14 @@ class HrExpense(models.Model):
         employee_expenses = self - company_expenses
         if len(employee_expenses.company_id) > 1:
             raise UserError(_("You can't post simultaneously employee-paid expenses belonging to different companies"))
+
+        for expense in self.with_context(validate_analytic=True):
+            expense._validate_distribution(
+                account=expense.account_id.id,
+                product=expense.product_id.id,
+                business_domain='expense',
+                company_id=expense.company_id.id,
+            )
 
         # For company-paid expenses using SEPA Credit Transfer, the vendor must be set
         # because SEPA XML generation requires a creditor name (partner).
@@ -1331,9 +1457,63 @@ class HrExpense(models.Model):
         draft_moves_sudo.unlink()
         self._do_reset_approval()
 
+    def action_cap_reimbursement_to_policy(self):
+        self.ensure_one()
+        self._check_can_approve()
+
+        if self.state != 'submitted' or not self.is_expense_exceeding_job_position_limit:
+            raise UserError(self.env._("Only submitted expenses exceeding a job position limit can be capped."))
+
+        capped_amount_currency = self.expense_job_position_limit_amount_currency
+        exceeded_amount_currency = self.currency_id.round(
+            self.total_amount_currency - capped_amount_currency
+        )
+
+        split_values = self._get_split_values()
+        split_values[0]['total_amount_currency'] = capped_amount_currency
+        split_values[1]['total_amount_currency'] = exceeded_amount_currency
+
+        split_origin = self.split_expense_origin_id or self
+        previous_split_expenses = self.search([
+            ('split_expense_origin_id', '=', split_origin.id),
+        ])
+
+        wizard = self.env['hr.expense.split.wizard'].create([{
+            'expense_id': self.id,
+            'expense_split_line_ids': [Command.create(values) for values in split_values],
+        }])
+        action = wizard.action_split_expense()
+
+        current_split_expenses = self.search([
+            ('split_expense_origin_id', '=', split_origin.id),
+        ])
+        exceeded_expense = current_split_expenses - previous_split_expenses - self
+
+        self._validate_distribution(
+            account=self.account_id.id,
+            product=self.product_id.id,
+            business_domain='expense',
+            company_id=self.company_id.id,
+        )
+        self._do_approve()
+        exceeded_expense._do_refuse(self.env._("Exceeds company limit"))
+
+        return action
+
     def attach_document(self, **kwargs):
         """When an attachment is uploaded as a receipt, set it as the main attachment."""
-        self._message_set_main_attachment_id(self.env["ir.attachment"].browse(kwargs['attachment_ids'][-1:]), force=True)
+        if not self.has_access('write') and self.employee_id.user_id != self.env.user:
+            raise AccessError(self.env._("You don't have the access rights to modify this expense."))
+        attachment_ids = [attachment_id for attachment_id in kwargs.get('attachment_ids', []) if attachment_id]  # Filter out falsy values
+        if not attachment_ids:
+            # If uploading the document fails due to the checks in the create method of ir.attachment, the
+            # attachment_ids will contains [None], so we need to check here to raise the UserError.
+            raise UserError(self.env._("You can't add an attachment to an expense once it has been approved."))
+
+        attachment = self.env['ir.attachment'].browse(attachment_ids[-1:])
+        user_expenses = self.filtered(lambda expense: expense.employee_id.user_id == self.env.user)
+        user_expenses.sudo()._message_set_main_attachment_id(attachment, force=True)
+        (self - user_expenses)._message_set_main_attachment_id(attachment, force=True)
 
     @api.model
     def create_expense_from_attachments(self, attachment_ids=None, view_type='list'):
@@ -1374,7 +1554,7 @@ class HrExpense(models.Model):
         )
 
     @api.model
-    def get_expense_dashboard(self):
+    def get_expense_dashboard(self, domain=None):
         expense_state = {
             'draft': {
                 'description': _("To Submit"),
@@ -1398,12 +1578,15 @@ class HrExpense(models.Model):
         # - To Submit: contains the expenses paid either by the employee or by the company, and that are draft or reported
         # - Waiting approval: contains expenses paid by the employee or paid by the company, and that have been submitted but still need to be approved/refused
         # - To be reimbursed: contains ONLY expenses paid by the employee that are approved, the payment has not yet been made
-        fetched_expenses = self._read_group(
-            [
-                ('employee_id', 'in', self.env.user.employee_ids.ids),
-                '|', ('state', 'in', ('draft', 'submitted')),
-                     '&', ('payment_mode', '!=', 'company_account'), ('state', '=', 'approved')
-            ], ['state'], ['total_amount:sum'])
+        base_domain = [
+            ('employee_id', 'child_of', self.env.user.employee_ids.ids),
+            '|', ('state', 'in', ('draft', 'submitted')),
+            '&', ('payment_mode', '=', 'own_account'), ('state', '=', 'approved')
+        ]
+        if domain:
+            base_domain = Domain.AND([base_domain, domain])
+
+        fetched_expenses = self._read_group(base_domain, ['state'], ['total_amount:sum'])
         for state, total_amount_sum in fetched_expenses:
             expense_state[state]['amount'] += total_amount_sum
         return expense_state
@@ -1442,25 +1625,26 @@ class HrExpense(models.Model):
 
     def action_open_account_move(self):
         self.ensure_one()
-        if self.payment_mode == 'company_account':
-            res_model = 'account.payment'
-            record_id = self.account_move_id.origin_payment_id
-        else:
-            res_model = 'account.move'
-            record_id = self.account_move_id
+        return self._open_linked_record('account.move', self.account_move_id)
 
-        return {
-            'type': 'ir.actions.act_window',
-            'res_model': res_model,
-            'name': record_id.name,
-            'view_mode': 'form',
-            'res_id': record_id.id,
-            'views': [(False, 'form')],
-        }
+    def action_open_account_payment(self):
+        self.ensure_one()
+        return self._open_linked_record('account.payment', self.account_move_id.origin_payment_id)
 
     # ----------------------------------------
     # Business
     # ----------------------------------------
+
+    @api.model
+    def _open_linked_record(self, res_model, record):
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': res_model,
+            'name': record.name,
+            'view_mode': 'form',
+            'res_id': record.id,
+            'views': [(False, 'form')],
+        }
 
     def _check_can_approve(self):
         if not all(self.mapped('can_approve')):
@@ -1539,8 +1723,6 @@ class HrExpense(models.Model):
             raise UserError(self.env._("Please specify if the expenses were paid by the company, reimbursed to the employee directly, or in a payslip."))
 
     def _do_approve(self, check=True):
-        if check:
-            self._check_can_approve()
         expenses_to_approve = self.filtered(lambda s: s.state in {'submitted', 'draft'})
         for expense in expenses_to_approve:
             expense.write({
@@ -1618,6 +1800,10 @@ class HrExpense(models.Model):
         self.ensure_one()
         return self.product_has_cost
 
+    def _prepare_post_wizard_vals(self):
+        # Hook to be overridden.
+        return {}
+
     def _post_wizard(self):
         if 'company_account' in set(self.mapped('payment_mode')):
             raise UserError(_("Only expense paid by the employee can be posted with the wizard"))
@@ -1633,9 +1819,9 @@ class HrExpense(models.Model):
             'view_mode': 'form',
             'views': [(False, "form")],
             'res_model': 'hr.expense.post.wizard',
-            'res_id': self.env['hr.expense.post.wizard'].create({}).id,
+            'res_id': self.env['hr.expense.post.wizard'].create(self._prepare_post_wizard_vals()).id,
             'target': 'new',
-            'context': self.with_context(active_ids=self.ids, validate_analytic=True).env.context,
+            'context': self.with_context(active_ids=self.ids).env.context,
         }
 
     def _create_company_paid_moves(self):

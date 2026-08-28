@@ -37,7 +37,6 @@ class StockPicking(models.Model):
             )
 
             positive_picking._create_move_from_pos_order_lines(positive_lines)
-            self.env.flush_all()
             try:
                 with self.env.cr.savepoint():
                     positive_picking._action_done()
@@ -57,7 +56,6 @@ class StockPicking(models.Model):
                 self._prepare_picking_vals(partner, return_picking_type, location_dest_id, return_location_id)
             )
             negative_picking._create_move_from_pos_order_lines(negative_lines)
-            self.env.flush_all()
             try:
                 with self.env.cr.savepoint():
                     negative_picking._action_done()
@@ -118,6 +116,29 @@ class StockPickingType(models.Model):
     _name = 'stock.picking.type'
     _inherit = ['stock.picking.type', 'pos.load.mixin']
 
+    has_stock_reports_to_print = fields.Boolean(compute='_compute_has_stock_reports_to_print')
+
+    @api.depends(
+        'auto_print_delivery_slip',
+        'auto_print_return_slip',
+        'auto_print_reception_report',
+        'auto_print_reception_report_labels',
+        'auto_print_product_labels',
+        'auto_print_lot_labels',
+        'auto_print_packages',
+    )
+    def _compute_has_stock_reports_to_print(self):
+        for record in self:
+            record.has_stock_reports_to_print = (
+                record.auto_print_delivery_slip
+                or record.auto_print_return_slip
+                or record.auto_print_reception_report
+                or record.auto_print_reception_report_labels
+                or record.auto_print_product_labels
+                or record.auto_print_lot_labels
+                or record.auto_print_packages
+            )
+
     @api.depends('warehouse_id')
     def _compute_hide_reservation_method(self):
         super()._compute_hide_reservation_method()
@@ -135,9 +156,9 @@ class StockPickingType(models.Model):
                 raise ValidationError(_("You cannot archive '%(picking_type)s' as it is used by POS configuration '%(config)s'.", picking_type=picking_type.name, config=pos_config.name))
 
     @api.model
-    def _load_pos_data_domain(self, data, config):
-        return [('id', '=', config.picking_type_id.id)]
+    def _load_pos_data_domain(self, data):
+        return [('id', '=', data['pos.config'].picking_type_id.id)]
 
     @api.model
     def _load_pos_data_fields(self, config):
-        return ['id', 'use_create_lots', 'use_existing_lots']
+        return ["id", "use_create_lots", "use_existing_lots", "has_stock_reports_to_print"]

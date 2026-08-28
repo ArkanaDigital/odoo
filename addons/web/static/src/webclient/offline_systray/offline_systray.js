@@ -1,11 +1,11 @@
-import { Component } from "@odoo/owl";
+import { Component, computed, usePlugin } from "@odoo/owl";
 import { registry } from "@web/core/registry";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { useService } from "@web/core/utils/hooks";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { _t } from "../../core/l10n/translation";
 import { formatDateTime } from "@web/core/l10n/dates";
-import { useLayoutEffect } from "@web/owl2/utils";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 
 const { DateTime } = luxon;
@@ -20,22 +20,18 @@ const STATUS = {
 
 class OfflineSystray extends Component {
     static template = "web.OfflineSystray";
-    static props = {};
     static components = { Dropdown, DropdownItem };
 
     setup() {
-        this.offlineService = useService("offline");
+        this.offlinePlugin = usePlugin(OfflinePlugin);
         this.actionService = useService("action");
         this.dialogService = useService("dialog");
-        useLayoutEffect(this.env.redrawNavbar, () => [
-            this.offlineService.offline,
-            this.offlineService.hasScheduledCalls,
-        ]);
+        this.uiService = useService("ui");
     }
 
-    get groupEntries() {
+    groupEntries = computed(() => {
         const items = [];
-        for (const { key, value } of Object.values(this.offlineService.scheduledORM)) {
+        for (const { key, value } of Object.values(this.offlinePlugin._ormToSync())) {
             const timeStamp = formatDateTime(DateTime.fromMillis(value.extras.timeStamp));
             const item = {
                 id: key,
@@ -81,39 +77,37 @@ class OfflineSystray extends Component {
             items.sort((itemA, itemB) => itemA.timeStamp - itemB.timeStamp);
         });
         return sections;
-    }
+    });
 
     isClickable(value) {
         const resId = value.args[0].length ? value.args[0][0] : false;
         return (
             value.method === "web_save" &&
             value.extras.viewType === "form" &&
-            (!this.offlineService.offline ||
-                this.offlineService.isAvailableOffline(value.extras.actionId, "form", resId))
+            (!this.offlinePlugin.isOffline() ||
+                this.offlinePlugin.isAvailableOffline(value.extras.actionId, "form", resId))
         );
     }
 
-    get inError() {
-        return Object.values(this.offlineService.scheduledORM).find(
-            ({ value }) => value.extras.error
-        );
-    }
+    inError = computed(() =>
+        Object.values(this.offlinePlugin._ormToSync()).find(({ value }) => value.extras.error)
+    );
 
     get labelColor() {
-        if (this.inError) {
-            if (this.env.isSmall) {
+        if (this.inError()) {
+            if (this.uiService.isSmall) {
                 return "text-danger";
             }
             return "text-bg-danger";
         }
-        if (this.offlineService.offline) {
-            if (this.env.isSmall) {
+        if (this.offlinePlugin.isOffline()) {
+            if (this.uiService.isSmall) {
                 return "text-warning";
             }
             return "text-bg-warning";
         }
-        if (this.offlineService.syncingORM) {
-            if (this.env.isSmall) {
+        if (this.offlinePlugin.syncingORM()) {
+            if (this.uiService.isSmall) {
                 return "";
             }
             return "text-bg-secondary";
@@ -122,26 +116,26 @@ class OfflineSystray extends Component {
     }
 
     get labelIcon() {
-        if (this.offlineService.syncingORM) {
+        if (this.offlinePlugin.syncingORM()) {
             return "spinner-border";
         }
-        if (this.inError) {
-            return "fa fa-exclamation-circle";
+        if (this.inError()) {
+            return "error";
         }
-        if (this.offlineService.offline) {
-            return "fa fa-chain-broken";
+        if (this.offlinePlugin.isOffline()) {
+            return "link_off";
         }
         return "spinner-border";
     }
 
     get labelText() {
-        if (this.offlineService.syncingORM) {
+        if (this.offlinePlugin.syncingORM()) {
             return _t("Syncing");
         }
-        if (this.offlineService.offline) {
+        if (this.offlinePlugin.isOffline()) {
             return _t("Working offline");
         }
-        if (this.inError) {
+        if (this.inError()) {
             return _t("Sync issues");
         }
         return _t("Syncing");
@@ -153,21 +147,21 @@ class OfflineSystray extends Component {
             body: _t("Are you sure that you want to discard the changes you made offline?"),
             confirmLabel: _t("Discard"),
             cancelLabel: _t("No, keep it"),
-            confirm: () => this.offlineService.removeScheduledORM(id),
+            confirm: () => this.offlinePlugin.removeScheduledORM(id),
             cancel: () => {},
         });
     }
 
     async openView(id) {
-        const { value } = this.offlineService.scheduledORM[id];
+        const { value } = this.offlinePlugin._ormToSync()[id];
         const resId = value.args[0]?.[0];
         await this.actionService.doAction(value.extras.actionId, {
             viewType: "form",
             props: { offlineId: id, resId },
             clearBreadcrumbs: true,
         });
-        if (!this.offlineService.offline) {
-            this.offlineService.removeScheduledORM(id);
+        if (!this.offlinePlugin.isOffline()) {
+            this.offlinePlugin.removeScheduledORM(id);
         }
     }
 }

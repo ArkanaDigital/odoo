@@ -10,10 +10,11 @@ from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 from markupsafe import Markup
 
-from odoo import _, api, fields, models, tools
+from odoo import api, Command, fields, models, tools
 from odoo.exceptions import AccessError, RedirectWarning, UserError, ValidationError
 from odoo.fields import Domain
-from odoo.tools import SQL, convert, email_normalize, format_date, format_time
+from odoo.models import Query
+from odoo.tools import SQL, convert, format_date, format_time
 from odoo.tools.float_utils import float_is_zero
 from odoo.tools.intervals import Intervals
 from odoo.tools.misc import SENTINEL
@@ -47,6 +48,7 @@ class HrEmployee(models.Model):
     _mailing_enabled = True
     _primary_email = 'work_email'
     _inherits = {'hr.version': 'version_id'}
+    _check_inherits_access = False
 
     # versions
     version_id = fields.Many2one(
@@ -81,6 +83,7 @@ class HrEmployee(models.Model):
         required=True
     )
     versions_count = fields.Integer(string="Employee Records Count", compute='_compute_versions_count', groups="hr.group_hr_user")
+    version_revision = fields.Char(compute="_compute_version_revision", groups="hr.group_hr_user")
 
     contract_template_id = fields.Many2one(
         'hr.version',
@@ -101,7 +104,12 @@ class HrEmployee(models.Model):
     name = fields.Char(string="Employee Name", related='resource_id.name', store=True, readonly=False, tracking=True)
     resource_id = fields.Many2one('resource.resource', required=True)
     # required because the mixin already creates it so it is not related to the version_id
-    resource_calendar_id = fields.Many2one(related='version_id.resource_calendar_id', inherited=True, index=False, store=False, check_company=True)
+    resource_calendar_id = fields.Many2one(
+        related='version_id.resource_calendar_id',
+        inherited=True,
+        index=False,
+        store=False,
+        domain="['|', ('company_id', '=', False), ('company_id.id', 'parent_of', company_id)]")
     user_id = fields.Many2one(
         'res.users', 'User',
         related='resource_id.user_id',
@@ -110,7 +118,9 @@ class HrEmployee(models.Model):
         check_company=True,
         precompute=True,
         index='btree_not_null',
-        ondelete='restrict')
+        ondelete='restrict',
+        copy=False
+    )
     user_partner_id = fields.Many2one(related="user_id.partner_id", related_sudo=False, string="User's partner")
     share = fields.Boolean(related="user_id.share")
     phone = fields.Char(related="user_id.phone")
@@ -155,7 +165,6 @@ class HrEmployee(models.Model):
     # private info
     legal_name = fields.Char(compute='_compute_legal_name', store=True, readonly=False, groups="hr.group_hr_user", help="The employee's official name as per government-issued or legal documents.")
     split_legal_name = fields.Boolean(compute='_compute_split_legal_name', groups="hr.group_hr_user", help="Indicates whether the legal name is split into first and last name fields based on the employee's country.")
-    is_user_active = fields.Boolean(related='user_id.active', string="User's active", groups="hr.group_hr_user")
     private_phone = fields.Char(string="Private Phone", groups="hr.group_hr_user")
     private_phone_sanitized = fields.Char(compute='_compute_restricted_phone_companion_fields', store=False, export_string_translation=False, groups='hr.group_hr_user')
     private_phone_formatted = fields.Char(compute='_compute_restricted_phone_companion_fields', store=False, export_string_translation=False, groups='hr.group_hr_user')
@@ -166,6 +175,7 @@ class HrEmployee(models.Model):
     birthday = fields.Date('Birthday', groups="hr.group_hr_user", tracking=True)
     birthday_public_display = fields.Boolean('Show Birthday To Employees', groups="hr.group_hr_user", default=False)
     birthday_public_display_string = fields.Char("Public Date of Birth", compute="_compute_birthday_public_display_string", default="hidden")
+    age = fields.Integer('Age', groups='hr.group_hr_user', compute='_compute_age')
 
     # For birthday group by month
     birthday_month = fields.Selection(
@@ -236,19 +246,32 @@ class HrEmployee(models.Model):
         ("office", "Office"),
         ("other", "Other")], compute="_compute_work_location_type", tracking=True)
 
-    # All version fields needing a specific group to be accessible should also have `inherited=True` set on its definition to make sure those fields are linked to `_inherits` on `hr.version`
-    first_contract_date = fields.Date(compute='_compute_first_contract_date', groups="hr.group_hr_manager", store=True,
+    # Since groups don't naturally propagate to related fields (see _add_inherited_fields in model_classes.py),
+    # we explicitly redefine some version fields on the employee model to enforce access rights.
+    #
+    # However, redefining them bypasses the standard _inherits mapping.
+    # This causes the ORM to update them via inverse methods after creation, which breaks database constraints.
+    # Adding inherited=True solves this by simulating the standard _inherits behavior.
+    # It ensures these fields are injected directly into the version's create dictionary (vals),
+    # so constraints pass right away without having to hack the employee methods.
+    #
+    # This change did cause a side effect: an AccessError.
+    # When fetching missing default values for the version,
+    # the ORM blindly included these restricted fields without checking user groups.
+    # The extra fix just strips those restricted fields out of the vals before the create method crashes,
+    # keeping everything safe and working.
+    first_contract_date = fields.Date(compute='_compute_first_contract_date', groups="hr.group_hr_user", store=True,
                                     help="The date of the first contract of the employee in the company.")
-    contract_date_start = fields.Date(readonly=False, related="version_id.contract_date_start", inherited=True, groups="hr.group_hr_manager")
-    contract_date_end = fields.Date(readonly=False, related="version_id.contract_date_end", inherited=True, groups="hr.group_hr_manager")
-    fixed_term = fields.Boolean(readonly=False, related="version_id.fixed_term", inherited=True, groups="hr.group_hr_manager")
-    trial_date_end = fields.Date(readonly=False, related="version_id.trial_date_end", inherited=True, groups="hr.group_hr_manager")
-    date_start = fields.Date(related='version_id.date_start', inherited=True, groups="hr.group_hr_manager")
-    date_end = fields.Date(related='version_id.date_end', inherited=True, groups="hr.group_hr_manager")
-    is_current = fields.Boolean(related='version_id.is_current', inherited=True, groups="hr.group_hr_manager")
-    is_past = fields.Boolean(related='version_id.is_past', inherited=True, groups="hr.group_hr_manager")
-    is_future = fields.Boolean(related='version_id.is_future', inherited=True, groups="hr.group_hr_manager")
-    is_in_contract = fields.Boolean(related='version_id.is_in_contract', inherited=True, groups="hr.group_hr_manager")
+    contract_date_start = fields.Date(readonly=False, related="version_id.contract_date_start", inherited=True, groups="hr.group_hr_user")
+    contract_date_end = fields.Date(readonly=False, related="version_id.contract_date_end", inherited=True, groups="hr.group_hr_user")
+    fixed_term = fields.Boolean(readonly=False, related="version_id.fixed_term", inherited=True, groups="hr.group_hr_user")
+    trial_date_end = fields.Date(readonly=False, related="version_id.trial_date_end", inherited=True, groups="hr.group_hr_user")
+    date_start = fields.Date(related='version_id.date_start', inherited=True, groups="hr.group_hr_user")
+    date_end = fields.Date(related='version_id.date_end', inherited=True, groups="hr.group_hr_user")
+    is_current = fields.Boolean(related='version_id.is_current', inherited=True, groups="hr.group_hr_user")
+    is_past = fields.Boolean(related='version_id.is_past', inherited=True, groups="hr.group_hr_user")
+    is_future = fields.Boolean(related='version_id.is_future', inherited=True, groups="hr.group_hr_user")
+    is_in_contract = fields.Boolean(related='version_id.is_in_contract', inherited=True, groups="hr.group_hr_user")
     structure_type_id = fields.Many2one(readonly=False, related='version_id.structure_type_id', inherited=True, groups="hr.group_hr_manager")
     employee_type_id = fields.Many2one(readonly=False, related='version_id.employee_type_id', inherited=True, groups="hr.group_hr_manager")
     hourly_cost = fields.Monetary('Hourly Cost', groups="hr.group_hr_user", tracking=True)
@@ -260,7 +283,7 @@ class HrEmployee(models.Model):
     # Direct subordinates
     parent_id = fields.Many2one('hr.employee', 'Manager', tracking=True, index=True,
                                 domain="['|', ('company_id', '=', False), ('company_id', 'in', allowed_company_ids)]")
-    child_ids = fields.One2many('hr.employee', 'parent_id', string='Direct subordinates')
+    child_ids = fields.One2many('hr.employee', 'parent_id', string='Direct subordinates', domain=[('active', '=', True)])
     child_count = fields.Integer('Direct Subordinates Count', compute='_compute_child_count',
         recursive=True, compute_sudo=True)
 
@@ -355,6 +378,11 @@ class HrEmployee(models.Model):
         help='This is the exceptional, non-weekly, location set for today.', groups="hr.group_hr_user")
     today_location_name = fields.Char()
 
+    # Display-only mirror of the linked user's invitation/activation status.
+    # Read-only: the status is driven by user actions (see action_* below), not
+    # by writing the computed res.users.state directly.
+    user_state = fields.Selection(related='user_id.state', string="User Status", groups="hr.group_hr_user")
+
     _barcode_uniq = models.Constraint(
         'unique (barcode)',
         'The Badge ID must be unique, this one is already assigned to another employee.',
@@ -401,7 +429,7 @@ class HrEmployee(models.Model):
             else:
                 employee.has_multiple_bank_accounts = False
 
-    @api.depends('bank_account_ids')
+    @api.depends('bank_account_ids.active')
     def _sync_salary_distribution(self):
         for employee in self:
             current_salary_distribution = employee.salary_distribution or {}
@@ -485,7 +513,7 @@ class HrEmployee(models.Model):
         return super()._has_field_access(field, operation) and (
             self.env.su
             or self.env.user.has_group("hr.group_hr_user")
-            or field.name not in ('activity_calendar_event_id', 'rating_ids', 'website_message_ids', 'message_has_sms_error')
+            or field.name not in ('activity_calendar_event_id', 'rating_ids', 'message_has_sms_error')
         )
 
     def check_no_existing_contract(self, date):
@@ -562,6 +590,11 @@ class HrEmployee(models.Model):
         for employee in self:
             employee.birthday_month = str(employee.birthday.month) if employee.birthday else '0'
 
+    @api.depends('birthday')
+    def _compute_age(self):
+        for employee in self:
+            employee.age = employee._get_age()
+
     @api.model
     def _get_certificate_selection(self):
         return [
@@ -577,47 +610,55 @@ class HrEmployee(models.Model):
         for employee in self:
             employee.first_contract_date = employee._get_first_contract_date()
 
-    def _get_first_versions(self):
+    def _get_first_versions(self, date_limit=date.max):
         self.ensure_one()
-        versions = self.version_ids
-        if self.env.context.get('before_date'):
-            versions = versions.filtered(lambda c: c.date_start <= self.env.context['before_date'])
-        return versions
+        return self.version_ids.filtered(lambda c: c.date_start <= date_limit)
 
-    def _get_first_versions_filtered(self, no_gap=True):
+    def _get_last_consecutive_versions(self, date_limit=date.max):
+        """
+        Returns the latest range of consecutive versions of self that is before
+        the passed `date_limit` date.
+        e.g. (with `date_limit` >= 20/11/2025):
+            If self has
+            - 3 consecutive versions from 01/01/2025 to 31/07/2025
+            - 2 consecutive versions from 01/08/2025 to 20/11/2025
+            Then this function returns the two last versions
+        """
         self.ensure_one()
         if not self.env.su and not self.env.user.has_group("hr.group_hr_user"):
-            raise AccessError(_("Only HR users can access first version date on an employee."))
+            raise AccessError(self.env._("Only HR users can access first version date on an employee."))
 
-        def remove_gap(versions):
-            # We do not consider a gap of more than 4 days to be a same occupation
-            # versions are considered to be ordered correctly
-            if not versions:
-                return self.env['hr.version']
-            if len(versions) == 1:
-                return versions
-            current_version = versions[0]
-            older_versions = versions[1:]
-            current_date = current_version.date_start
-            for i, other_version in enumerate(older_versions):
-                # Consider current_version.date_end being false as an error and cut the loop
-                gap = (current_date - (other_version.date_end or date(2100, 1, 1))).days
-                current_date = other_version.date_start
-                if gap >= 4:
-                    return older_versions[0:i] + current_version
-            return older_versions + current_version
+        def has_work_hours_between_versions(version_from, version_to):
+            # we consider two versions to be consecutive if no work hours are
+            # in the period between the two versions
+            tz = ZoneInfo(version_from._get_tz())
+            date_from = datetime.combine(version_from.date_end, time.max, tz) if version_from.date_end else date.max
+            date_to = datetime.combine(version_to.date_start, time.min, tz)
+            calendar_id = version_from.resource_calendar_id
+            if not calendar_id:
+                return False
+            elif version_from.date_end and version_from.date_end + relativedelta(days=1) == version_to.date_start:
+                # fast path: back-to-back versions cannot have work hours between them.
+                # We can bypass the expensive calendar lookup
+                return False
+            return bool(calendar_id.get_work_hours_count(date_from, date_to, compute_leaves=False))
 
-        versions = self._get_first_versions().sorted('date_start', reverse=True)
-        if no_gap:
-            versions = remove_gap(versions)
-        return versions
+        versions = self._get_first_versions(date_limit).sorted('date_start')
+        # index of the earliest consecutive version
+        first_version_index = len(versions) - 1
 
-    def _get_first_version_date(self, no_gap=True):
-        versions = self._get_first_versions_filtered(no_gap=no_gap)
+        while first_version_index > 0:
+            if has_work_hours_between_versions(versions[first_version_index - 1], versions[first_version_index]):
+                break  # version_before is not consecutive with first_version
+            first_version_index -= 1
+        return versions[first_version_index:]
+
+    def _get_first_version_date(self, date_limit=date.max):
+        versions = self._get_last_consecutive_versions(date_limit)
         return min(versions.mapped('date_start')) if versions else False
 
-    def _get_first_contract_date(self, no_gap=True):
-        versions = self._get_first_versions_filtered(no_gap=no_gap).filtered(lambda x: x.contract_date_start)
+    def _get_first_contract_date(self, date_limit=date.max):
+        versions = self._get_last_consecutive_versions(date_limit).filtered(lambda x: x.contract_date_start)
         return min(versions.mapped('contract_date_start')) if versions else False
 
     @api.depends('name')
@@ -712,12 +753,16 @@ class HrEmployee(models.Model):
             current_location = employee.exceptional_location_id or employee[dayfield]
             employee.work_location_type = current_location.location_type
 
-    @api.depends('version_ids.date_version', 'version_ids.active', 'active')
+    @api.depends('version_ids.date_version', 'version_ids.active')
     def _compute_current_version_id(self):
         today = fields.Date.context_today(self)
         for employee in self:
             version = self.env['hr.version'].search(
-                [('employee_id', 'in', employee.ids), ('date_version', '<=', today)],
+                [
+                    ('employee_id', 'in', employee.ids),
+                    ('date_version', '<=', today),
+                    ('active', '=', True),
+                ],
                 order='date_version desc',
                 limit=1,
             )
@@ -737,7 +782,7 @@ class HrEmployee(models.Model):
         if operator in ('any', 'any!'):
             return Domain('current_version_id', operator, value)
         domain = Domain('id', operator, value)
-        return Domain('id', 'in', self.env['hr.version']._search(domain).select('employee_id'))
+        return Domain('id', 'in', self.env['hr.version']._search(domain).select(SQL('employee_id')))
 
     def _compute_sql_version_id(self, table):
         # HACK required to make inherits work on a computed field
@@ -770,7 +815,10 @@ class HrEmployee(models.Model):
 
         version_to_copy = self._get_version(date)
         if not version_to_copy:
-            version_to_copy = self.env['hr.version'].search([('employee_id', '=', self.id)], limit=1)
+            version_to_copy = self.env['hr.version'].search([
+                ('employee_id', '=', self.id),
+                ('active', '=', True),
+            ], limit=1)
         if version_to_copy.date_version == date:
             return version_to_copy
 
@@ -787,6 +835,7 @@ class HrEmployee(models.Model):
         if contract_date_start == date_from and contract_date_end != date_to:
             versions_sudo_to_sync = self.env['hr.version'].with_context(sync_contract_dates=True).sudo().search([
                 ('employee_id', '=', employee_id),
+                ('active', '=', True),
                 ('contract_date_start', '=', date_from),
             ])
             if versions_sudo_to_sync:
@@ -971,6 +1020,11 @@ class HrEmployee(models.Model):
         for employee in self:
             employee.versions_count = version_count_per_employee.get(employee, 0)
 
+    @api.depends('version_ids.write_date')
+    def _compute_version_revision(self):
+        for employee in self:
+            employee.version_revision = ",".join(f"{v.id},{v.write_date!s}" for v in employee.version_ids)
+
     def _search_newly_hired(self, operator, value):
         if operator not in ('in', 'not in'):
             return NotImplemented
@@ -982,7 +1036,7 @@ class HrEmployee(models.Model):
 
     def _create_work_contacts(self):
         if any(employee.work_contact_id for employee in self):
-            raise UserError(_('Some employee already have a work contact'))
+            raise UserError(self.env._('Some employee already has a work contact'))
         work_contacts = self.env['res.partner'].create([{
             'email': employee.work_email,
             'phone': employee.work_phone,
@@ -1019,7 +1073,7 @@ class HrEmployee(models.Model):
             else:
                 if len(employee.work_contact_id.employee_ids) <= 1:
                     employee.work_contact_id.sudo().write({
-                        'email': employee.work_email,
+                        'email': employee.work_email or employee.private_email,
                         'phone': employee.work_phone,
                     })
         if employees_without_work_contact:
@@ -1193,7 +1247,7 @@ class HrEmployee(models.Model):
     def action_related_contacts(self):
         related_partners = self._get_related_partners()
         action = {
-            'name': _("Related Contacts"),
+            'name': self.env._("Related Contacts"),
             'type': 'ir.actions.act_window',
             'res_model': 'res.partner',
             'view_mode': 'form',
@@ -1206,133 +1260,63 @@ class HrEmployee(models.Model):
             action['res_id'] = related_partners.id
         return action
 
-    def action_create_user(self):
+    def action_send_invitation(self):
+        """Create a user and send a password-reset (invitation) e-mail to the linked user."""
         self.ensure_one()
-        if self.user_id:
-            raise ValidationError(_("This employee already has an user."))
-        return {
-            'name': _('Create User'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'res.users',
-            'view_mode': 'form',
-            'view_id': self.env.ref('hr.view_users_simple_form').id,
-            'target': 'new',
-            'context': {
-                **self.env.context,
-                'default_create_employee_id': self.id,
-                'default_name': self.name,
-                'default_phone': self.work_phone,
-                'default_mobile': self.mobile_phone,
-                'default_login': self.work_email,
-                'default_partner_id': self.work_contact_id.id,
-            },
-        }
-
-    def action_create_users_confirmation(self):
-        raise RedirectWarning(
-                message=_("You're about to invite new users. %s users will be created with the default user template's rights. "
-                "Adding new users may increase your subscription cost. Do you wish to continue?", len(self.ids)),
-                action=self.env.ref('hr.action_hr_employee_create_users').id,
-                button_text=_('Confirm'),
-                additional_context={
-                    'selected_ids': self.ids,
-                },
-            )
-
-    def action_create_users(self):
-        def _get_user_creation_notification_action(message, message_type, next_action):
+        if not self.user_id:
+            self.user_id = self._get_or_create_light_user(invite=True)
+            # as the action_reset_password is done inside get_or_create, return nofication here.
+            # reload also needed here for form action button (not only via user_status JS widget)
             return {
-                    'type': 'ir.actions.client',
-                    'tag': 'display_notification',
-                    'params': {
-                        'title': self.env._("User Creation Notification"),
-                        'type': message_type,
-                        'message': message,
-                        'next': next_action
-                    }
-                }
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Notification',
+                    'message': self.env._('A signup link was sent by email'),
+                    'sticky': False,
+                    'next': {'type': 'ir.actions.client', 'tag': 'soft_reload'}
+                },
+            }
+        # called when resending invitation to existing user
+        return self.user_id.with_context({'create_user': 1}).action_reset_password()
 
-        employee_emails = [
-            normalized_email
-            for employee in self
-            for normalized_email in tools.mail.email_normalize_all(employee.work_email)
-        ]
-        conflicting_users = self.env['res.users']
-        if employee_emails:
-            conflicting_users = self.env['res.users'].search([
-                '|', ('email_normalized', 'in', employee_emails),
-                ('login', 'in', employee_emails),
-            ])
-        emp_by_email = self.grouped(lambda employee: email_normalize(employee.work_email))
-        duplicate_emails = [email for email, employees in emp_by_email.items() if email and len(employees) > 1]
-        old_users = []
-        new_users = []
-        users_without_emails = []
-        users_with_invalid_emails = []
-        users_with_existing_email = []
-        employees_with_duplicate_email = []
-        for employee in self:
-            normalized_email = email_normalize(employee.work_email)
-            if employee.user_id:
-                old_users.append(employee.name)
-                continue
-            if not employee.work_email:
-                users_without_emails.append(employee.name)
-                continue
-            if not normalized_email:
-                users_with_invalid_emails.append(employee.name)
-                continue
-            if normalized_email in conflicting_users.mapped('email_normalized'):
-                users_with_existing_email.append(employee.name)
-                continue
-            if normalized_email in duplicate_emails:
-                employees_with_duplicate_email.append(employee.name)
-                continue
-            new_users.append({
-                'create_employee_id': employee.id,
-                'name': employee.name,
-                'phone': employee.work_phone,
-                'login': normalized_email,
-                'partner_id': employee.work_contact_id.id,
-            })
+    def action_reset_password(self):
+        """Send a password-reset e-mail to the linked user."""
+        self.ensure_one()
+        if not self.user_id:
+            raise UserError(self.env._("This employee has no user."))
+        return self.user_id.action_reset_password()
 
-        next_action = {'type': 'ir.actions.act_window_close'}
-        if new_users:
-            self.env['res.users'].create(new_users)
-            message = _('Users %s creation successful', ', '.join([user['name'] for user in new_users]))
-            next_action = _get_user_creation_notification_action(message, 'success', {
-                "type": "ir.actions.client",
-                "tag": "soft_reload",
-                "params": {"next": next_action},
-            })
+    def action_copy_invitation_link(self):
+        self.ensure_one()
+        if not self.user_id:
+            raise UserError(self.env._("This employee has no user."))
+        self.user_id.check_access('write')
+        partner = self.user_id.partner_id
+        partner.sudo().signup_prepare()
+        return partner.sudo()._get_signup_url_for_action().get(partner.id)
 
-        if old_users:
-            message = _('User already exists for Those Employees %s', ', '.join(old_users))
-            next_action = _get_user_creation_notification_action(message, 'warning', next_action)
-
-        if users_without_emails:
-            message = _("You need to set the work email address for %s", ', '.join(users_without_emails))
-            next_action = _get_user_creation_notification_action(message, 'danger', next_action)
-
-        if users_with_invalid_emails:
-            message = _("You need to set a valid work email address for %s", ', '.join(users_with_invalid_emails))
-            next_action = _get_user_creation_notification_action(message, 'danger', next_action)
-
-        if users_with_existing_email:
-            message = _('User already exists with the same email for Employees %s', ', '.join(users_with_existing_email))
-            next_action = _get_user_creation_notification_action(message, 'warning', next_action)
-
-        if employees_with_duplicate_email:
-            message = _('The following employees have the same work email address: %s', ', '.join(employees_with_duplicate_email))
-            next_action = _get_user_creation_notification_action(message, 'warning', next_action)
-
-        return next_action
+    def action_toggle_user_active(self):
+        """Activate / deactivate the linked user from the employee form."""
+        self.ensure_one()
+        if not self.user_id:
+            raise UserError(self.env._("This employee has no user."))
+        self.user_id.active = not self.user_id.active
+        if not self.user_id.active and self.is_in_contract:
+            return self.action_new_departure()
 
     def _compute_display_name(self):
         if self.browse().has_access('read'):
             return super()._compute_display_name()
         for employee_private, employee_public in zip(self, self.env['hr.employee.public'].browse(self.ids)):
             employee_private.display_name = employee_public.display_name
+
+    @api.model
+    def _search_display_name(self, operator, value):
+        domain = super()._search_display_name(operator, value)
+        if self.env.context.get('import_file'):
+            domain &= Domain('company_id', 'in', self.env.companies.ids)
+        return domain
 
     @api.model
     def search_fetch(self, domain, field_names=None, offset=0, limit=None, order=None):
@@ -1399,17 +1383,14 @@ class HrEmployee(models.Model):
         if operation == 'read' and self.env.context.get('_allow_read_hr_employee') is _ALLOW_READ_HR_EMPLOYEE:
             return Domain.TRUE
 
-        if self._name not in self.env['ir.model.access']._get_allowed_models(operation):
-            return Domain.FALSE
-
-        return self.env['ir.rule']._compute_domain(self._name, operation, include_inherits=False)
+        return super()._access_domain(operation)
 
     def _check_private_fields(self, field_names):
         """ Check whether ``field_names`` contain private fields. """
         public_fields = self.env['hr.employee.public']._fields
         private_fields = [fname for fname in field_names if fname not in public_fields]
         if private_fields:
-            raise AccessError(_('The fields “%s”, which you are trying to read, are not available for employee public profiles.', ','.join(private_fields)))
+            raise AccessError(self.env._('The fields “%s”, which you are trying to read, are not available for employee public profiles.', ','.join(private_fields)))
 
     def _copy_cache_from(self, public, field_names):
         # HACK: retrieve publicly available values from hr.employee.public and
@@ -1425,7 +1406,7 @@ class HrEmployee(models.Model):
                 if value is SENTINEL:
                     continue
                 if field.translate:
-                    value = dict(value) if value else None
+                    value = None if value is None else value.copy()
                 field._update_cache(record, value)
 
     @api.model
@@ -1520,12 +1501,12 @@ class HrEmployee(models.Model):
         # returning public employee data would cause a traceback when building
         # the private employee xml view
         raise RedirectWarning(
-            message=_(
+            message=self.env._(
             """You are not allowed to access "Employee" (hr.employee) records.
     We can redirect you to the public employee list."""
             ),
             action=self.env.ref('hr.hr_employee_public_action').id,
-            button_text=_("Employees profile"),
+            button_text=self.env._("Employees profile"),
         )
 
     @api.model
@@ -1541,11 +1522,24 @@ class HrEmployee(models.Model):
         if self.browse().has_access('read') or bypass_access:
             return super()._search(domain, offset, limit, order, bypass_access=bypass_access, **kwargs)
         domain = Domain(domain)
+
         # HACK Some fields are inherited from the `current_version_id` and may have been already
         # optimized, showing current_version_id in the domain, but public employee does not have
         # that field and may have fields directly on the model, just change the condition to `id` in
         # that case.
-        domain = domain.map_conditions(lambda cond: Domain('id', cond.operator, cond.value) if cond.field_expr == 'current_version_id' else cond)
+        def adapt_condition(cond):
+            if cond.field_expr != 'current_version_id':
+                return cond
+            if cond.operator in ('any', 'not any'):
+                raise AccessError(self.env._('You do not have access to this document.'))
+            if cond.operator in ('any!', 'not any!'):
+                if isinstance(cond.value, Query):
+                    query = cond.value.subselect(cond.value.table.employee_id)
+                else:
+                    query = self.env['hr.version'].sudo()._search(Domain('id', 'any!', cond.value), active_test=False)
+                return Domain('id', cond.operator, query)
+            return Domain('id', cond.operator, cond.value)
+        domain = domain.map_conditions(adapt_condition)
         try:
             ids = self.env['hr.employee.public']._search(domain, offset, limit, order, **kwargs)
         except (ValueError, KeyError) as e:
@@ -1553,18 +1547,19 @@ class HrEmployee(models.Model):
         # the result is expected from this table, so we should link tables
         return super(HrEmployee, self.sudo())._search([('id', 'in', ids)], order=order)
 
-    def _load_demo_data(self):
-        dep_rd = self.env.ref('hr.dep_rd', raise_if_not_found=False)
-        action_reload = {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
-        }
-        if dep_rd:
-            return action_reload
+    @api.model
+    def is_onboarding(self, company_ids):
+        main_company = self.env.ref("base.main_company").id
+        return (
+            main_company in company_ids
+            and not self.env['hr.employee'].search_count([('company_id', 'in', company_ids)], limit=1)
+        )
+
+    @api.model
+    def load_demo_data(self):
+        if not self.has_access('create'):
+            raise UserError(self.env._("You do not have the rights to load the Employees sample data."))
         convert.convert_file(env=self.sudo().env, module='hr', filename='data/scenarios/hr_scenario.xml', idref=None, mode='init')
-        if 'resume_line_ids' in self:
-            convert.convert_file(env=self.env, module='hr_skills', filename='data/scenarios/hr_skills_scenario.xml', idref=None, mode='init')
-        return action_reload
 
     def get_formview_id(self, access_uid=None):
         """ Override this method in order to redirect many2one towards the right model depending on access_uid """
@@ -1593,14 +1588,14 @@ class HrEmployee(models.Model):
     def _verify_pin(self):
         for employee in self:
             if employee.pin and not employee.pin.isdigit():
-                raise ValidationError(_("The PIN must be a sequence of digits."))
+                raise ValidationError(self.env._("The PIN must be a sequence of digits."))
 
     @api.constrains('barcode')
     def _verify_barcode(self):
         for employee in self:
             if employee.barcode:
                 if not (re.match(r'^[A-Za-z0-9]+$', employee.barcode) and len(employee.barcode) <= 18):
-                    raise ValidationError(_("The Badge ID must be alphanumeric without any accents and no longer than 18 characters."))
+                    raise ValidationError(self.env._("The Badge ID must be alphanumeric without any accents and no longer than 18 characters."))
 
     @api.onchange('user_id')
     def _onchange_user(self):
@@ -1635,9 +1630,71 @@ class HrEmployee(models.Model):
             vals['tz'] = user.tz
         return vals
 
+    def _get_or_create_light_user(self, invite=False):
+        """Resolve or create the light user for an employee.
+
+        Called while building an employee's create values so the employee is
+        born already linked to its user (keeping the active/user_id constraint
+        satisfied without a mid-create flush). Reuses, in order, the resource's
+        user, the work contact's user, or an existing user matching the work
+        email; otherwise creates a light (less-billable) user.
+        """
+        self.ensure_one()
+        ResUsers = self.env['res.users'].sudo()
+        if self.resource_id.user_id:
+            if invite:
+                self.resource_id.user_id.with_context({'create_user': 1}).action_reset_password()
+            return self.resource_id.user_id
+        company_id = self.company_id.id or self.env.company.id
+        # 1. reuse the work contact's user, or an existing user matching the work
+        #    email (by login or email address) to avoid creating a duplicate user
+        user = self.work_contact_id.user_ids[:1]
+        emails = tools.mail.email_normalize_all(self.work_contact_id.email or self.work_email or self.resource_id.email)
+        login = emails[0] if emails else False
+        if not login:
+            raise ValidationError(self.env._('Cannot create light user for an employee without login (email address or related contact).'))
+        if user:
+            if invite:
+                user.with_context({'create_user': 1}).action_reset_password()
+            return user
+        # Try to search for an existing user.
+        if not user and login:
+            user = ResUsers.with_context(active_test=False).search(
+                ['|', ('login', '=', login), ('email_normalized', '=', login)], limit=1, order='active')
+            if user:
+                # If archived user or employee of the same company linked to that user...
+                if not user.active:
+                    raise UserError(self.env._('An inactive user already exist with the following login: %(login)s. '
+                                               'User Name: %(user_name)s.', login=login, user_name=user.name))
+                existing_employee = user.employee_ids.filtered(lambda e: e.company_id.id == company_id)
+                if existing_employee:
+                    raise UserError(self.env._('A user with the same login (%(login)s) already has an employee in this company. '
+                                               'User Name: %(user_name)s / Employee Name: %(employee)s',
+                                               login=login, user_name=user.name, employee=existing_employee.name))
+                elif user.share:
+                    raise UserError(self.env._('A portal user already exist with the following login: %(login)s. '
+                                               'User Name: %(user_name)s. You should set another email address on the employee.',
+                                               login=login, user_name=user.name))
+
+                if invite:
+                    raise UserError(self.env._('A user already exist with the following login: %(login)s. '
+                                               'User Name: %(user_name)s. Please link the user instead before sending invitation.', login=login, user_name=user.name))
+                return user
+        groups = ResUsers._default_groups(group='user')
+        return ResUsers.create({
+            'name': self.name,
+            'login': login,
+            'email': login,
+            'phone': self.work_phone or self.mobile_phone or self.work_contact_id.phone,
+            'partner_id': self.work_contact_id.id or False,
+            'company_id': company_id,
+            'company_ids': [Command.set([company_id])],
+            'group_ids': [Command.set(groups.ids)],
+        })
+
     def _prepare_resource_values(self, vals, tz):
         resource_vals = super()._prepare_resource_values(vals, tz)
-        vals.pop('name')  # Already considered by super call but no popped
+        vals.pop('name', False)  # Already considered by super call but no popped
         # We need to pop it to avoid useless resource update (& write) call
         # on every newly created resource (with the correct name already)
         user_id = vals.pop('user_id', None)
@@ -1760,10 +1817,17 @@ class HrEmployee(models.Model):
         hr_root_menu = self.env.ref('hr.menu_hr_root')
         for employee in employees:
             # Launch onboarding plans
-            url = '/odoo/%s/action-hr.plan_wizard_action?active_model=hr.employee&menu_id=%s' % (employee.id, hr_root_menu.id)
-            onboarding_notes_bodies[employee.id] = Markup(_(
-                '<b>Congratulations!</b> May I recommend you to setup an <a href="%s">onboarding plan?</a>',
-            )) % url
+            link = Markup('<a href="/odoo/%(employee_id)s/action-hr.plan_wizard_action?active_model=hr.employee&menu_id=%(menu_id)s">%(text)s</a>') % {
+                'employee_id': employee.id,
+                'menu_id': hr_root_menu.id,
+                'text': self.env._('onboarding plan'),
+            }
+            message = Markup('<b>%(title)s</b> %(text)s %(onboarding_plan_link)s?') % {
+                'title': self.env._('Congratulations!'),
+                'text': self.env._('May I recommend you to setup an'),
+                'onboarding_plan_link': link,
+            }
+            onboarding_notes_bodies[employee.id] = message
         employees._message_log_batch(onboarding_notes_bodies)
         employees.invalidate_recordset()
         return employees
@@ -1787,7 +1851,7 @@ class HrEmployee(models.Model):
                 users_to_update.write({'tz': vals['tz']})
         if vals.get('departure_description'):
             for employee in self:
-                employee.message_post(body=_(
+                employee.message_post(body=self.env._(
                     'Additional Information: \n %(description)s',
                     description=vals.get('departure_description')))
         # Only one write call for all the fields from hr.version
@@ -1804,21 +1868,30 @@ class HrEmployee(models.Model):
                             bank_account.allow_out_payment = False
                         if vals['work_contact_id']:
                             bank_account.partner_id = vals['work_contact_id']
+        if 'current_version_id' in vals:
+            new_version = self.env['hr.version'].browse(vals.get('current_version_id'))
+            self.resource_id.calendar_id = new_version.resource_calendar_id
         if version_vals:
             version_vals['last_modified_date'] = fields.Datetime.now()
             version_vals['last_modified_uid'] = self.env.uid
             self.version_id.write(version_vals)
 
             for employee in self:
-                version_sudo = employee.version_id.sudo()
-                start = format_date_abbr(self.env, version_sudo.date_start) if version_sudo.date_start else False
-                end = format_date_abbr(self.env, version_sudo.date_end) if version_sudo.date_end else False
-                if start and end:
-                    msg = self.env._("Modified from %(start)s to %(end)s") % {'start': start, 'end': end}
-                elif start:
-                    msg = self.env._("Modified from %s") % (start)
+                multi_update_version_ids = self.env.context.get('multi_update_version_ids')
+                if multi_update_version_ids:
+                    first_version_sudo = employee.version_ids.filtered(lambda v: v.id == multi_update_version_ids[0]).sudo()
+                    last_version_sudo = employee.version_ids.filtered(lambda v: v.id == multi_update_version_ids[-1]).sudo()
                 else:
-                    msg = self.env._("Modified")
+                    first_version_sudo = employee.version_id.sudo()
+                    last_version_sudo = first_version_sudo
+                start = format_date_abbr(self.env, first_version_sudo.date_start) if first_version_sudo.date_start else False
+                end = format_date_abbr(self.env, last_version_sudo.date_end) if last_version_sudo.date_end else False
+                if start and end:
+                    msg = self.env._("As of %(start)s to %(end)s") % {'start': start, 'end': end}
+                elif start:
+                    msg = self.env._("As of %s") % (start)
+                else:
+                    msg = self.env._("As of")
                 employee._track_set_log_message(Markup("<b>%s</b>") % msg)
         if vals.get('department_id') or vals.get('user_id'):
             department_id = vals['department_id'] if vals.get('department_id') else self[:1].department_id.id
@@ -1875,8 +1948,8 @@ class HrEmployee(models.Model):
     def _onchange_company_id(self):
         if self._origin:
             return {'warning': {
-                'title': _("Warning"),
-                'message': _("To avoid multi company issues (losing the access to your previous contracts, leaves, ...), you should create another employee in the new company instead.")
+                'title': self.env._("Warning"),
+                'message': self.env._("To avoid multi company issues (losing the access to your previous contracts, leaves, ...), you should create another employee in the new company instead.")
             }}
         return None
 
@@ -2030,13 +2103,15 @@ class HrEmployee(models.Model):
         Returns the versions of all employees between date_from and date_to
         that have at least 1 day in contract during that period
         """
-        all_employees = self.search(['|', ('active', '=', True), ('active', '=', False)])
-        return all_employees._get_versions_with_contract_overlap_with_period(date_from, date_to)
+        return self.search([])._get_versions_with_contract_overlap_with_period(date_from, date_to)
 
     def _get_unusual_days(self, date_from, date_to=None):
         date_from_date = datetime.strptime(date_from, '%Y-%m-%d %H:%M:%S').date()
         date_to_date = datetime.strptime(date_to, '%Y-%m-%d %H:%M:%S').date() if date_to else None
-        employee_versions = self.env['hr.version'].sudo().search([('employee_id', '=', self.id)]).filtered(
+        employee_versions = self.env['hr.version'].sudo().search([
+            ('employee_id', '=', self.id),
+            ('active', '=', True),
+        ]).filtered(
             lambda v: v._is_overlapping_period(date_from_date, date_to_date))
         if not employee_versions:
             # Checking the calendar directly allows to not grey out the leaves taken
@@ -2044,7 +2119,7 @@ class HrEmployee(models.Model):
             return (self.resource_calendar_id or self.env.company.resource_calendar_id)._get_unusual_days(
                 datetime.combine(fields.Date.from_string(date_from), time.min, tzinfo=UTC),
                 datetime.combine(fields.Date.from_string(date_to), time.max, tzinfo=UTC),
-                self.company_id,
+                self.company_id or self.env.company,
             )
         unusual_days = {}
         for version in employee_versions:
@@ -2125,7 +2200,7 @@ class HrEmployee(models.Model):
     @api.model
     def get_import_templates(self):
         return [{
-            'label': _('Template for Employees'),
+            'label': self.env._('Template for Employees'),
             'template': '/hr/static/xls/hr_employee.xls'
         }]
 
@@ -2195,12 +2270,23 @@ class HrEmployee(models.Model):
         res.attr("resource_id", "_store_avatar_card_fields")
         res.one("user_id", "_store_avatar_card_fields")
         res.one("work_location_id", ["location_type", "name"])
-        res.extend(["company_id", "hr_icon_display", "job_title", "name", "show_hr_icon_display"])
+        res.extend([
+            "active",
+            "company_id",
+            "hr_icon_display",
+            "job_title",
+            "name",
+            "show_hr_icon_display",
+        ])
         res.extend(["work_email", "work_phone"])
 
     def _store_im_status_fields(self, res: Store.FieldList):
         res.one("user_id", "_store_im_status_fields")
-        res.attr("work_location_type")
+        res.extend([
+            "active",
+            "company_id",
+            "work_location_type",
+        ])
 
     @api.depends('bank_account_ids')
     def _compute_primary_bank_account_id(self):
@@ -2355,3 +2441,18 @@ class HrEmployee(models.Model):
                     "end": stop,
                 })
         return working_periods
+
+    def get_multi_version_changes(self, version_changes):
+        version_changes_to_display = {}
+        for field_name in version_changes:
+            new_value = version_changes[field_name]
+            field = self.env['ir.model.fields'].search([('model', '=', 'hr.version'), ('name', '=', field_name)])
+            if field['relation']:
+                new_value = self.env[field['relation']].search([('id', 'in', new_value)])
+            tracking_values = self._create_mail_tracking_values(
+                self[field_name], new_value,
+                field_name, self._track_get_fields_info([field_name])[field_name],
+            )
+            display_field_name = '(' + tracking_values['field_label'] + ')'
+            version_changes_to_display[display_field_name] = (tracking_values['old_value'], tracking_values['new_value'])
+        return version_changes_to_display

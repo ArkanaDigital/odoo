@@ -2,7 +2,7 @@ import { _t } from "@web/core/l10n/translation";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
 import { debounce } from "@web/core/utils/timing";
 
-import { Component, onMounted, proxy, signal } from "@odoo/owl";
+import { Component, onMounted, useProps, proxy, signal, t } from "@odoo/owl";
 import { Switch } from "@html_editor/components/switch/switch";
 import { closestElement } from "@html_editor/utils/dom_traversal";
 
@@ -63,23 +63,15 @@ export class VideoSelector extends Component {
         VideoIframe,
         VideoOption,
     };
-    static props = {
-        selectMedia: Function,
-        errorMessages: Function,
-        vimeoPreviewIds: { type: Array, optional: true },
-        isForBgVideo: { type: Boolean, optional: true },
-        media: {
-            validate: (p) => p.nodeType === Node.ELEMENT_NODE,
-            optional: true,
-        },
-        "*": true,
-    };
-    static defaultProps = {
-        vimeoPreviewIds: [],
-        isForBgVideo: false,
-    };
+    props = useProps({
+        selectMedia: t.function(),
+        errorMessages: t.function(),
+        vimeoPreviewIds: t.array().optional([]),
+        isForBgVideo: t.boolean().optional(false),
+        media: t.customValidator(t.any(), (p) => p.nodeType === Node.ELEMENT_NODE).optional(),
+    });
 
-    urlInputRef = signal(null);
+    urlInputRef = signal.ref();
 
     setup() {
         this.http = useService("http");
@@ -148,7 +140,7 @@ export class VideoSelector extends Component {
             await this.prepareVimeoPreviews();
         });
 
-        useAutofocus();
+        useAutofocus({ ref: this.urlInputRef });
 
         // Avoid refreshing the video data after each updateOption call,
         // since multiple options can be updated at once when parsing the url, for example.
@@ -295,6 +287,11 @@ export class VideoSelector extends Component {
         const forcedOptions = {};
         const platformClass = PLATFORMS[this.state.platform];
         if (this.props.isForBgVideo) {
+            forcedOptions.hideControls = true;
+            forcedOptions.hideFullscreen = true;
+            if (platformClass.optionsConfig.loop) {
+                forcedOptions.loop = true;
+            }
             if (platformClass.optionsConfig.autoplay) {
                 forcedOptions.autoplay = true;
             }
@@ -351,7 +348,7 @@ export class VideoSelector extends Component {
      * @param   {Object} selectedVideos.options
      * @returns {Element[]}
      */
-    static createElements(selectedVideos) {
+    static createElements(selectedVideos, { document = window.document } = {}) {
         return selectedVideos.map((videoData) => {
             const div = document.createElement("div");
             div.dataset.baseUrl = videoData.baseUrl;

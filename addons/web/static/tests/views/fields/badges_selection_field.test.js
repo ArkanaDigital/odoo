@@ -1,5 +1,5 @@
 import { expect, test } from "@odoo/hoot";
-import { animationFrame } from "@odoo/hoot-dom";
+import { animationFrame, press } from "@odoo/hoot-dom";
 import {
     clickSave,
     contains,
@@ -28,7 +28,7 @@ class Partner extends models.Model {
         default: 20,
     });
     _records = [
-        { id: 1 },
+        { id: 1, allowed_colors: false },
         { id: 2, allowed_colors: "['red']", product_id: 37, product_color_id: 6 },
         { id: 3, color: false },
     ];
@@ -40,7 +40,7 @@ class Product extends models.Model {
     color = fields.Integer("color");
     icon = fields.Char("icon");
     _records = [
-        { id: 37, display_name: "xphone", name: "xphone", color: 6, icon: "fa-mobile" },
+        { id: 37, display_name: "xphone", name: "xphone", color: 6, icon: "smartphone" },
         { id: 41, display_name: "xpad", name: "xpad", color: 7, icon: false },
     ];
 }
@@ -142,15 +142,15 @@ test("BadgesSelectionField: selection type with icon_mapping and default_icon", 
         arch: `
             <form>
                 <field name="color" widget="badges_selection" options="{
-                    'icon_mapping': {'black': 'fa-moon-o'},
-                    'default_icon': 'fa-gratipay'
+                    'icon_mapping': {'black': 'dark_mode'},
+                    'default_icon': 'oi_gratipay'
                 }"/>
             </form>`,
     });
     // 'black' should use the mapping
-    expect("span.o_selection_badge:contains(Black) span.fa-moon-o").toHaveCount(1);
+    expect("span.o_selection_badge:contains(Black) span[data-icon='dark_mode']").toHaveCount(1);
     // 'red' should use the default icon
-    expect("span.o_selection_badge:contains(Red) span.fa-gratipay").toHaveCount(1);
+    expect("span.o_selection_badge:contains(Red) span[data-icon='oi_gratipay']").toHaveCount(1);
 });
 
 test("BadgesSelectionField: switching to SelectMenu when badge_limit is exceeded", async () => {
@@ -192,6 +192,23 @@ test("BadgesSelectionField: verify options are filtered via the allowed_selectio
     expect("span.o_selection_badge").toHaveCount(1);
 });
 
+test("BadgesSelectionField: verify handle falsy allowed selectionfield", async () => {
+    await mountView({
+        resModel: "res.partner",
+        resId: 1,
+        type: "form",
+        arch: `
+            <form>
+                <field name="allowed_colors" invisible="1"/>
+                <field name="color" widget="badges_selection"
+                    options="{'allowed_selection_field': 'allowed_colors'}"
+                />
+            </form>`,
+    });
+    // Verify that the total number of badges is 0
+    expect("span.o_selection_badge").toHaveCount(0);
+});
+
 test("BadgesSelectionField: placeholder attribute is used when provided", async () => {
     await mountView({
         type: "form",
@@ -225,4 +242,52 @@ test("BadgesSelectionField: placeholder falls back to field label when not provi
     // With 2 options and badge_limit 1: 1 visible badge + "+1" overflow dropdown toggle
     expect("span.o_selection_badge").toHaveCount(2);
     expect(".o_selection_badge.o-dropdown-caret").toHaveText("+1");
+});
+
+test("BaseBadgesSelectionField: keyboard navigation (Tab / Arrows / Backspace / Delete)", async () => {
+    await mountView({
+        resModel: "res.partner",
+        type: "form",
+        arch: `
+            <form>
+                <button type="button" class="btn1">Btn</button>
+                <field name="color" widget="badges_selection"/>
+                <button type="button" class="btn2">Btn</button>
+            </form>
+        `,
+    });
+
+    await contains(".btn1").focus();
+    await press("Tab");
+    expect(".o_selection_badge.o-navigable:first").toBeFocused();
+
+    await press("Enter");
+    expect(".o_selection_badge.o-navigable:contains('Red')").toHaveClass("active");
+
+    await press("ArrowRight");
+    expect(".o_selection_badge.o-navigable:last").toBeFocused();
+
+    await press("Space");
+    await animationFrame();
+    expect(".o_selection_badge.o-navigable:contains('Black')").toHaveClass("active");
+
+    await press("ArrowLeft");
+    expect(".o_selection_badge.o-navigable:first").toBeFocused();
+
+    await press("Backspace");
+    await animationFrame();
+    expect(".o_selection_badge.o-navigable.active").toHaveCount(0);
+
+    await press("Enter");
+    await animationFrame();
+    expect(".o_selection_badge.o-navigable:contains('Red')").toHaveClass("active");
+
+    await press("Delete");
+    await animationFrame();
+    expect(".o_selection_badge.o-navigable.active").toHaveCount(0);
+
+    await press("Enter");
+    await animationFrame();
+    await press("Tab");
+    expect(".btn2").toBeFocused();
 });

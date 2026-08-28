@@ -5,18 +5,20 @@ import ast
 import datetime
 import json
 import logging
+import psycopg2
 import re
 import smtplib
-from collections import defaultdict
-from datetime import timedelta
 
-import psycopg2
+from collections import defaultdict
+from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
+from lxml import html
 
 from odoo import _, api, fields, models, modules, SUPERUSER_ID, tools
 from odoo.addons.base.models.ir_mail_server import MailDeliveryException
 from odoo.addons.mail.tools.attachment import extract_attachment_ids_from_html
 from odoo.exceptions import UserError, ValidationError
+from odoo.fields import Domain
 from odoo.modules.registry import Registry
 
 _logger = logging.getLogger(__name__)
@@ -29,14 +31,14 @@ class MailMail(models.Model):
     _name = 'mail.mail'
     _description = 'Outgoing Mail'
     _inherits = {'mail.message': 'mail_message_id'}
+    _check_inherits_access = False
     _order = 'id desc'
     _rec_name = 'subject'
 
     def _access_domain(self, operation):
-        domain = super()._access_domain(operation)
-        if domain.is_false():
-            return domain
-        return self.env['ir.rule']._compute_domain(self._name, operation, include_inherits=False)
+        if not self.env['mail.message'].has_access(operation):
+            return Domain.FALSE
+        return super()._access_domain(operation)
 
     @api.model
     def default_get(self, fields):
@@ -71,6 +73,8 @@ class MailMail(models.Model):
     email_cc = fields.Char('Cc', help='Carbon copy message recipients')
     recipient_ids = fields.Many2many('res.partner', string='To (Partners)',
         context={'active_test': False})
+    recipient_cc_ids = fields.Many2many('res.partner', relation='mail_mail_res_partner_cc_rel',
+                                        string='Cc (Partners)', context={'active_test': False})
     # process
     state = fields.Selection([
         ('outgoing', 'Outgoing'),
@@ -184,6 +188,23 @@ class MailMail(models.Model):
             self.env['mail.message'].browse(mail_msg_cascade_ids).unlink()
         return res
 
+    @api.autovacuum
+    def _gc_canceled_mail_mail(self):
+        """Garbage collects old canceled mail.mail records as we consider
+        nobody is going to look at them anymore, becoming noise."""
+        # The 10000 limit is arbitrary, chosen a big limit so that the cleaning can be shorter and not too big so that we don't block the server
+        months_limit = self.env['ir.config_parameter'].sudo().get_int("mass_mailing.cancelled_mails_months_limit", 6)
+        if months_limit <= 0:
+            return
+        history_deadline = datetime.datetime.utcnow() - relativedelta(months=months_limit)  # 6 months history will be kept
+        canceled_mails = self.with_context(active_test=False).search([('state', '=', 'cancel'), ('write_date', '<=', history_deadline)], order="id asc", limit=10000)
+        # about linked mail_message: 'is_notification' is in charge of choosing to
+        # delete the mail.message or not, see MailMail.unlink()
+        canceled_mails.with_context(prefetch_fields=False).unlink()
+
+    # USER ACTIONS
+    # ------------------------------------------------------------
+
     def action_retry(self):
         self.filtered(lambda mail: mail.state == 'exception').mark_outgoing()
 
@@ -227,7 +248,14 @@ class MailMail(models.Model):
         if 'filters' in self.env.context:
             domain.extend(self.env.context['filters'])
         batch_size = self.env['ir.config_parameter'].sudo().get_int('mail.mail.queue.batch.size') or batch_size
-        send_ids = self.search(domain, limit=batch_size if not email_ids else batch_size * 10).ids
+        send_limit = batch_size if not email_ids else batch_size * 10
+        send_ids = self.search(domain, limit=send_limit).ids
+        _logger.info(
+            "Processing email queue with send limit of '%s'%s",
+            send_limit,
+            " (with forced 'email_ids')" if email_ids else "",
+        )
+
         if not email_ids:
             ids_done = set()
             total = len(send_ids) if len(send_ids) < batch_size else self.search_count(domain)
@@ -236,7 +264,7 @@ class MailMail(models.Model):
                 """ Track mail ids that have been sent, and notify cron progress accordingly. """
                 processed = set(ids) - ids_done
                 ids_done.update(processed)
-                if self.env.get('ir_cron'):
+                if self.env.context.get('cron_id'):
                     # commit progress only when running from a cron job
                     self.env['ir.cron']._commit_progress(len(processed), remaining=total - len(ids_done))
         else:
@@ -368,7 +396,25 @@ class MailMail(models.Model):
         self.ensure_one()
         if tools.is_html_empty(self.body_html):
             return ''
-        return self.env['mail.render.mixin']._replace_local_links(self.body_html)
+        body = self._transform_mention_links_for_email(self.body_html)
+        return self.env['mail.render.mixin']._replace_local_links(body)
+
+    def _transform_mention_links_for_email(self, html_body):
+        if not html_body or (
+            "o_mail_redirect" not in html_body and "o-discuss-mention" not in html_body
+        ):
+            return html_body
+        root = html.fromstring(html_body)
+        mentions = root.xpath("//a[hasclass('o_mail_redirect') or hasclass('o-discuss-mention')]")
+        if not mentions:
+            return html_body
+
+        for mention in mentions:
+            mention.attrib.pop("href", None)
+            mention.attrib.pop("target", None)
+            mention.set("style", "color:#0d6efd; font-weight:bold;")
+
+        return html.tostring(root, encoding="unicode", method="html")
 
     def _personalize_outgoing_body(self, body, partner=False, doc_to_followers=None):
         """ Return a modified body based on the recipient (partner).
@@ -424,7 +470,7 @@ class MailMail(models.Model):
                 )
         headers.setdefault('Return-Path', self.record_alias_domain_id.bounce_email or self.env.company.bounce_email)
 
-        # prepare recipients: use email_to if defined then check recipient_ids
+        # prepare recipients: use email_to if defined then check recipient_ids/recipient_cc_ids
         # that receive a specific email, notably due to link shortening / redirect
         # that is recipients-dependent. Keep original email/partner as this is
         # used in post-processing to know failures, like missing recipients
@@ -456,16 +502,17 @@ class MailMail(models.Model):
                     'partner_id': False,
                 })
         # specific behavior to customize the send email for notified partners
-        for partner in self.recipient_ids:
+        for partner in self.recipient_ids | self.recipient_cc_ids:
+            is_cc = partner not in self.recipient_ids
             # check partner email content
             email_to_normalized = tools.mail.email_normalize_all(partner.email)
-            email_to = [
+            partner_email = [
                 tools.formataddr((partner.name or "", email or "False"))
                 for email in email_to_normalized or [partner.email]
             ]
             email_list.append({
-                'email_cc': [],
-                'email_to': email_to,
+                'email_cc': partner_email if is_cc else [],
+                'email_to': partner_email if not is_cc else [],
                 # list of normalized emails to help extract_rfc2822
                 'email_to_normalized': email_to_normalized,
                 # keep raw initial value for incoming pre processing of outgoing emails
@@ -598,7 +645,7 @@ class MailMail(models.Model):
         server_limit_minute = (
             mail_server.owner_limit_time
             if mail_server.owner_limit_time
-            else current_minute - timedelta(minutes=1)
+            else current_minute - relativedelta(minutes=1)
         )
 
         if server_limit_minute < current_minute:
@@ -627,48 +674,53 @@ class MailMail(models.Model):
             ('notification_status', 'not in', ('sent', 'canceled'))
         ])
         for mail in self.sorted(lambda k: (k.create_date, k.id)):
+            all_recipients = mail.recipient_ids | mail.recipient_cc_ids
             if mail_server.owner_limit_count >= MAX_SEND:
                 to_delay |= mail
-            elif mail_server.owner_limit_count + (len(mail.recipient_ids) or 1) > MAX_SEND:
+            elif mail_server.owner_limit_count + (len(all_recipients) or 1) > MAX_SEND:
                 # Because we split for each recipient, if we want to
                 # respect the limit we have to create new mails
                 # (the first one keep the email_to and the email_cc
                 # so it might send 2 emails instead of 1,
                 # see `_prepare_outgoing_list`)
                 to_keep = MAX_SEND - mail_server.owner_limit_count
-                recipient_ids = mail.recipient_ids
+                current_recipients = all_recipients[:to_keep]
+                delayed_recipients = all_recipients[to_keep:]
                 new_mail = mail.with_user(mail.create_uid).sudo().copy({
                     'headers': mail.headers,
                     'mail_message_id': mail.mail_message_id.id,
-                    'recipient_ids': recipient_ids[:to_keep].ids,
+                    'recipient_ids': current_recipients.filtered(lambda r: r in mail.recipient_ids),
+                    'recipient_cc_ids': current_recipients.filtered(lambda r: r not in mail.recipient_ids),
                 })
                 mail.write({
-                    'recipient_ids': recipient_ids[to_keep:],
+                    'recipient_ids': delayed_recipients.filtered(lambda r: r in mail.recipient_ids),
+                    'recipient_cc_ids': delayed_recipients.filtered(lambda r: r not in mail.recipient_ids),
                     'email_cc': False,
                     'email_to': False,
                 })
                 mail_server.owner_limit_count += to_keep or 1
-                notifs.filtered(lambda n: n.mail_mail_id == mail and n.res_partner_id in recipient_ids[:to_keep]).mail_mail_id = new_mail
+                notifs.filtered(lambda n: n.mail_mail_id == mail and n.res_partner_id in current_recipients).mail_mail_id = new_mail
                 to_send |= new_mail
                 to_delay |= mail
             else:
                 to_send |= mail
-                mail_server.owner_limit_count += len(mail.recipient_ids) or 1
+                mail_server.owner_limit_count += len(all_recipients) or 1
 
         # Delay if necessary
         if to_delay:
             owner_limit_count = mail_server.owner_limit_count
             for mail in to_delay:
+                all_recipients = mail.recipient_ids | mail.recipient_cc_ids
                 if owner_limit_count < MAX_SEND:
-                    owner_limit_count += len(mail.recipient_ids) or 1
+                    owner_limit_count += len(all_recipients) or 1
                 else:
-                    owner_limit_count = len(mail.recipient_ids) or 1
-                    server_limit_minute += timedelta(minutes=1)
+                    owner_limit_count = len(all_recipients) or 1
+                    server_limit_minute += relativedelta(minutes=1)
 
                 mail.scheduled_date = server_limit_minute
 
             self.env.ref('mail.ir_cron_mail_scheduler_action')._trigger(
-                min(to_delay.mapped('scheduled_date')) + timedelta(seconds=59))
+                min(to_delay.mapped('scheduled_date')) + relativedelta(seconds=59))
 
         _logger.info(
             "Mail: personal server %s: %s emails about to be sent / %s emails delayed",
@@ -789,12 +841,16 @@ class MailMail(models.Model):
             failure_reason = None
             failure_type = None
             mail = None
+            # separate variable for logging in case of postgres failure
+            message_id = None
             try:
                 mail = self.browse(mail_id)
                 if mail.state != 'outgoing':
                     continue
-                no_recipients = (not (mail.email_to or '').strip() and not mail.recipient_ids and not (mail.email_cc or '').strip())
+                no_recipients = (not (mail.email_to or '').strip() and not mail.recipient_ids
+                                 and not (mail.email_cc or '').strip() and not mail.recipient_cc_ids)
 
+                message_id = mail.message_id
                 # Writing on the mail object may fail (e.g. lock on user) which
                 # would trigger a rollback *after* actually sending the email.
                 # To avoid sending twice the same email, provoke the failure earlier
@@ -892,6 +948,7 @@ class MailMail(models.Model):
                         else:
                             raise
                 if res:  # mail has been sent at least once, no major exception occurred
+                    message_id = res
                     mail.write({'state': 'sent', 'message_id': res, 'failure_type': False, 'failure_reason': False})
                     if not modules.module.current_test:
                         _logger.info(
@@ -922,7 +979,7 @@ class MailMail(models.Model):
                 # instead of marking the mail as failed
                 _logger.exception(
                     'MemoryError while processing mail with ID %r and Msg-Id %r. Consider raising the --limit-memory-hard startup option',
-                    mail.id, mail.message_id)
+                    mail.id, message_id)
                 # mail status will stay on ongoing since transaction will be rollback
                 raise
             except (psycopg2.Error, smtplib.SMTPServerDisconnected):
@@ -930,7 +987,7 @@ class MailMail(models.Model):
                 # or SMTP session are unusable, causing further errors when trying to save the state.
                 _logger.exception(
                     'Exception while processing mail with ID %r and Msg-Id %r.',
-                    mail.id, mail.message_id)
+                    mail.id, message_id)
                 raise
             except Exception as e:
                 if isinstance(e, AssertionError):
@@ -984,9 +1041,9 @@ class MailMail(models.Model):
             post_send_callback(self.ids)
         return True
 
-# ============================================================
-# Mail -> Notification Helpers
-# ============================================================
+    # ============================================================
+    # Mail -> Notification Helpers
+    # ============================================================
 
     def _get_notification_values(self):
         """Get list of base notification values to create a notification for existing emails.

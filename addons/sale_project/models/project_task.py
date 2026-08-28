@@ -4,7 +4,7 @@ from odoo import api, fields, models, _
 from odoo.addons.resource.models.utils import extract_comodel_domain
 from odoo.exceptions import ValidationError, AccessError
 from odoo.fields import Domain
-from odoo.tools import SQL
+from odoo.tools import SQL, OrderedSet
 from odoo.tools.misc import unquote
 
 
@@ -40,10 +40,11 @@ class ProjectTask(models.Model):
 
     # Project sharing  fields
     display_sale_order_button = fields.Boolean(string='Display Sales Order', compute='_compute_display_sale_order_button')
+    sale_warning_text = fields.Text('Task Warning', compute='_compute_sale_warning_text', help='Warning for the partner as set by the user.')
 
     @property
     def TASK_PORTAL_READABLE_FIELDS(self):
-        return super().TASK_PORTAL_READABLE_FIELDS | {'allow_billable', 'sale_order_id', 'sale_line_id', 'display_sale_order_button'}
+        return super().TASK_PORTAL_READABLE_FIELDS | {'allow_billable', 'sale_order_id', 'sale_line_id', 'display_sale_order_button', 'sale_order_state'}
 
     @api.model
     def default_get(self, fields):
@@ -102,13 +103,30 @@ class ProjectTask(models.Model):
         (self - billable_task).partner_id = False
         super(ProjectTask, billable_task)._compute_partner_id()
 
+    @api.depends('partner_id.name', 'partner_id.sale_warn_msg')
+    def _compute_sale_warning_text(self):
+        if not self.env.user.has_group("sale.group_warning_sale"):
+            self.sale_warning_text = ""
+            return
+        for task in self:
+            warnings = OrderedSet()
+            if partner_msg := task.partner_id.sale_warn_msg:
+                warnings.add(
+                    (task.partner_id.name or task.partner_id.display_name) + " - " + partner_msg
+                )
+            if partner_parent_msg := task.partner_id.parent_id.sale_warn_msg:
+                parent = task.partner_id.parent_id
+                warnings.add((parent.name or parent.display_name) + " - " + partner_parent_msg)
+            task.sale_warning_text = "\n".join(warnings)
+
     def _inverse_partner_id(self):
         for task in self:
             # check that sale_line_id/sale_order_id and customer are consistent
+            task_sale_order_sudo = task.sale_order_id.sudo()
             consistent_partners = (
-                task.sale_order_id.partner_id
-                | task.sale_order_id.partner_invoice_id
-                | task.sale_order_id.partner_shipping_id
+                task_sale_order_sudo.partner_id
+                | task_sale_order_sudo.partner_invoice_id
+                | task_sale_order_sudo.partner_shipping_id
             ).commercial_partner_id
             if task.sale_order_id and task.partner_id.commercial_partner_id not in consistent_partners:
                 task.sale_order_id = task.sale_line_id = False

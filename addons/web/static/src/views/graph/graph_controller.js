@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import { Layout } from "@web/search/layout";
 import { useModelWithSampleData } from "@web/model/model";
 import { standardViewProps } from "@web/views/standard_view_props";
@@ -9,18 +8,19 @@ import { CogMenu } from "@web/search/cog_menu/cog_menu";
 import { Widget } from "@web/views/widgets/widget";
 import { ActionHelper } from "@web/views/action_helper";
 
-import { Component } from "@odoo/owl";
+import { Component, signal, t, useProps } from "@odoo/owl";
 
 export class GraphController extends Component {
     static template = "web.GraphView";
     static components = { Layout, SearchBar, CogMenu, Widget, ActionHelper };
-    static props = {
+    props = useProps({
         ...standardViewProps,
-        Model: Function,
-        modelParams: Object,
-        Renderer: Function,
-        buttonTemplate: String,
-    };
+        Model: t.function(),
+        modelParams: t.object(),
+        Renderer: t.function(),
+        buttonTemplate: t.string(),
+    });
+    rootRef = signal.ref();
 
     setup() {
         this.model = useModelWithSampleData(
@@ -30,7 +30,7 @@ export class GraphController extends Component {
         );
 
         useSetupAction({
-            rootRef: useRef("root"),
+            rootRef: this.rootRef,
             getLocalState: () => ({ metaData: this.model.metaData }),
             getContext: () => this.getContext(),
         });

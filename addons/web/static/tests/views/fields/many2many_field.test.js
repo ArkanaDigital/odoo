@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@odoo/hoot";
 import { press, queryAllTexts, queryFirst } from "@odoo/hoot-dom";
-import { Deferred, animationFrame, runAllTimers } from "@odoo/hoot-mock";
+import { animationFrame, runAllTimers } from "@odoo/hoot-mock";
 
 import {
     Command,
@@ -25,8 +25,9 @@ import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_d
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { X2ManyField, x2ManyField } from "@web/views/fields/x2many/x2many_field";
-import { Many2XAutocomplete } from "@web/views/fields/relational_utils";
+import { Many2XAutocomplete, many2XAutocompleteProps } from "@web/views/fields/relational_utils";
 import { cookie } from "@web/core/browser/cookie";
+import { t } from "@odoo/owl";
 import { ListRenderer } from "@web/views/list/list_renderer";
 
 describe.current.tags("desktop");
@@ -254,7 +255,8 @@ test("many2many kanban: edition", async () => {
                                 <div>
                                     <a
                                         type="delete"
-                                        class="fa fa-times float-end delete_icon"
+                                        class="oi float-end delete_icon"
+                                        data-icon="close"
                                     />
                                     <field name="name"/>
                                 </div>
@@ -420,7 +422,7 @@ test("many2many kanban: create action disabled", async () => {
                         <templates>
                             <t t-name="card">
                                 <div>
-                                    <a type="delete" class="fa fa-times float-end delete_icon"/>
+                                    <a type="delete" class="oi float-end delete_icon" data-icon="close"/>
                                     <field name="name"/>
                                 </div>
                             </t>
@@ -668,7 +670,6 @@ test("add record in a many2many non editable list with context", async () => {
         expect(args.kwargs.context).toEqual({
             abc: 2,
             allowed_company_ids: [1],
-            bin_size: true,
             lang: "en",
             tz: "taht",
             uid: 7,
@@ -726,25 +727,25 @@ test("many2many list (editable): edition", async () => {
     });
 
     expect(".o_list_renderer td.o_list_number").toHaveCount(2);
-    expect(".o_list_renderer tbody td:eq(0)").toHaveText("gold", {
+    expect(".o_list_renderer tbody td:eq(1)").toHaveText("gold", {
         message: "name of first subrecord should be the one in DB",
     });
     expect(".o_list_record_remove").toHaveCount(2);
-    expect("td.o_list_record_remove button").toHaveClass("fa fa-times");
+    expect("td.o_list_record_remove button").toHaveAttribute("data-icon", "close");
     expect(".o_field_x2many_list_row_add").toHaveCount(1);
 
     // edit existing subrecord
-    await contains(".o_list_renderer tbody td:eq(0)").click();
+    await contains(".o_list_renderer tbody td:eq(1)").click();
     expect(".modal").toHaveCount(0);
-    expect(".o_list_renderer tbody tr:eq(0)").toHaveClass("o_selected_row");
+    expect(".o_list_renderer tbody tr:eq(1)").toHaveClass("o_selected_row");
     await contains(".o_selected_row div[name=name] input").edit("new name", { confirm: false });
     expect(".o_list_renderer .o_data_row:eq(0)").toHaveClass("o_selected_row");
     expect(".o_list_renderer div[name=name] input").toBeFocused({
         message: "edited field should still have the focus",
     });
     await contains(".o_form_view").click();
-    expect(".o_list_renderer tbody tr:eq(0)").not.toHaveClass("o_selected_row");
-    expect(".o_list_renderer tbody td:eq(0)").toHaveText("new name", {
+    expect(".o_list_renderer tbody tr:eq(1)").not.toHaveClass("o_selected_row");
+    expect(".o_list_renderer tbody td:eq(1)").toHaveText("new name", {
         message: "value of subrecord should have been updated",
     });
     expect.verifySteps(["get_views", "web_read"]);
@@ -1434,12 +1435,12 @@ test("many2many concurrency edition", async () => {
         search: '<search><field name="name" string="Name"/></search>',
     };
 
-    const def = new Deferred();
+    const def = Promise.withResolvers();
     let firstOnChange = false;
     onRpc("onchange", async () => {
         if (!firstOnChange) {
             firstOnChange = true;
-            await def;
+            await def.promise;
         }
     });
 
@@ -1792,8 +1793,8 @@ test("select create with _view_ref as text", async () => {
     PartnerType._views = {
         [["list", "my.little.string"]]: `<list><field name="name"/></list>`,
     };
-    patchWithCleanup(Many2XAutocomplete.defaultProps, {
-        searchLimit: 1,
+    patchWithCleanup(many2XAutocompleteProps, {
+        searchLimit: t.number().optional(1),
     });
     let checkGetViews = false;
     onRpc("get_views", (args) => {

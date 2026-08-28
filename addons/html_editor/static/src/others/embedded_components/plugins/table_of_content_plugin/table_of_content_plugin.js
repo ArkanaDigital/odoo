@@ -27,7 +27,8 @@ export class TableOfContentPlugin extends Plugin {
                 id: "insertTableOfContent",
                 title: _t("Table of Contents"),
                 description: _t("Highlight the structure (headings)"),
-                icon: "fa-bookmark",
+                icon: "bookmark",
+                iconClass: "oi-filled",
                 run: this.insertTableOfContent.bind(this),
                 isAvailable: isHtmlContentSupported,
             },
@@ -74,7 +75,7 @@ export class TableOfContentPlugin extends Plugin {
     };
 
     setup() {
-        this.manager = new TableOfContentManager({ el: this.editable });
+        this.manager = new TableOfContentManager(() => this.editable);
         this.alive = true;
         this.manager.batchedUpdateStructure();
     }
@@ -92,6 +93,7 @@ export class TableOfContentPlugin extends Plugin {
         for (const el of root.querySelectorAll(".o_embedded_toc_header_highlight")) {
             el.classList.remove("o_embedded_toc_header_highlight");
         }
+        return root;
     }
 
     destroy() {

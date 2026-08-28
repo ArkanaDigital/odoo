@@ -6,6 +6,7 @@ import {
     click,
     manuallyDispatchProgrammaticEvent,
     press,
+    queryOne,
     tick,
     waitFor,
 } from "@odoo/hoot-dom";
@@ -42,6 +43,9 @@ export async function insertText(editor, text) {
         // the editor to detect them since they would not trigger the default
         // browser behavior otherwise.
         const range = editor.document.getSelection().getRangeAt(0);
+        if (!range.collapsed) {
+            range.deleteContents();
+        }
         let offset = range.startOffset;
         let node = range.startContainer;
 
@@ -259,11 +263,11 @@ export function setFontSize(size) {
     return (editor) => execCommand(editor, "formatFontSize", { size });
 }
 export function setFontSizeClassName(className) {
-    return (editor) => execCommand(editor, "formatFontSizeClassName", { className });
+    return (editor) => execCommand(editor, "formatFontSize", { className });
 }
 export function setFontFamily(fontFamily) {
     return (editor) => {
-        editor.shared.format.formatSelection("fontFamily", {
+        editor.shared.format.requestFormat("fontFamily", {
             applyStyle: fontFamily !== false,
             formatProps: {
                 name: fontFamily + "_name",
@@ -335,7 +339,10 @@ export async function keydownShiftTab(editor) {
 /** @param {Editor} editor */
 export function resetSize(editor) {
     const selection = editor.shared.selection.getEditableSelection();
-    editor.shared.table.resetTableSize(findInSelection(selection, "table"));
+    editor.shared.resize.resetSize(findInSelection(selection, "table"), {
+        proxyElementSelector: "colgroup",
+        heightElementsSelector: "tr",
+    });
 }
 /** @param {Editor} editor */
 export function alignStart(editor) {
@@ -444,3 +451,14 @@ export async function tripleClick(node) {
     }
     await tick();
 }
+
+export function getElementTouchPosition(selector) {
+    const el = queryOne(selector);
+    const rect = el.getBoundingClientRect();
+    return new Touch({
+        identifier: Date.now(),
+        target: el,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+    });
+};

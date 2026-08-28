@@ -1,6 +1,6 @@
 <templates id="template">
     <div t-name="mass_mailing.ThemeSelector" class="o_mail_theme_selector">
-        <div t-custom-ref="themeSelectorWrapper" class="o_mailing_template_preview_wrapper d-inline-block w-100">
+        <div t-ref="this.themeSelectorWrapperRef" class="o_mailing_template_preview_wrapper d-inline-block w-100">
             <div class="o_mail_templates_grid w-100">
                 <div t-foreach="this.simpleThemes.values()" t-as="theme" t-key="theme_index" role="menuitem" class="cursor-pointer dropdown-item px-4"
                     t-on-click="() => this.onSelectTheme(theme)" t-att-data-name="theme.name">
@@ -21,12 +21,12 @@
                             </div>
                         </t>
                     <div class="d-flex flex-row align-items-center mb-2 w-100">
-                        <i class="fa fa-star me-2"/>
+                        <i class="oi oi-filled me-2" data-icon="star"/>
                         <h5 class="text-truncate mb-0" t-out="template.subject"/>
                         <div class="lh-1 ms-auto o_mail_template_remove_favorite" 
                             aria-label="Remove from Templates" aria-role="button"
                             t-on-click="(ev) => this.onRemoveFavorite(ev, template_index)" title="Remove from Templates">
-                            <i class="fa fa-trash ps-2 me-1" t-att-data-id="template.id"/>
+                            <i class="oi oi-filled ps-2 me-1" data-icon="delete" t-att-data-id="template.id"/>
                         </div> 
                     </div>
                 </div>

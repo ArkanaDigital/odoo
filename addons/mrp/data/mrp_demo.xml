@@ -6,7 +6,7 @@
             <field eval="[(3, ref('group_mrp_manager')), (4, ref('group_mrp_user'))]" name="group_ids"/>
         </record>
 
-        <record id="base.default_user_group" model="res.groups">
+        <record id="base.default_user_regular_group" model="res.groups">
             <field name="implied_ids" eval="[(4, ref('mrp.group_mrp_manager'))]"/>
         </record>
 
@@ -34,9 +34,6 @@
 
         <!-- Resource: mrp.bom -->
 
-        <record id="product.product_product_3_product_template" model="product.template">
-            <field name="route_ids" eval="[(6, 0, [ref('stock.route_warehouse0_mto'), ref('mrp.route_warehouse0_manufacture')])]"/>
-        </record>
         <record id="mrp_bom_manufacture" model="mrp.bom">
             <field name="product_tmpl_id" ref="product.product_product_3_product_template"/>
             <field name="uom_id" ref="uom.product_uom_unit"/>
@@ -98,7 +95,7 @@
             <field name="barcode">10133785575283</field>
         </record>
         <record id="stock_warehouse_orderpoint_table" model="stock.warehouse.orderpoint">
-            <field name="product_max_qty">0.0</field>
+            <field name="product_max_qty">5.0</field>
             <field name="product_min_qty">0.0</field>
             <field name="uom_id" ref="uom.product_uom_unit"/>
             <field name="company_id" ref="base.main_company"/>
@@ -119,7 +116,6 @@
             <field name="default_code">FURN_8522</field>
             <field name="tracking">serial</field>
             <field name="image_1920" type="bytes" file="mrp/static/img/table_top.png"/>
-            <field name="route_ids" eval="[Command.link(ref('mrp.route_warehouse0_manufacture'))]"/>
             <field name="barcode">10133785575282</field>
         </record>
         <record id="product_product_computer_desk_leg" model="product.product">
@@ -224,7 +220,6 @@
             <field name="uom_id" ref="uom.product_uom_unit"/>
             <field name="default_code">FURN_7023</field>
             <field name="image_1920" type="bytes" file="mrp/static/img/product_product_wood_panel.png"/>
-            <field name="route_ids" eval="[Command.link(ref('mrp.route_warehouse0_manufacture'))]"/>
         </record>
         <record id="product_product_plastic_laminate" model="product.product">
             <field name="name">Plastic Laminate</field>
@@ -238,14 +233,11 @@
             <field name="image_1920" type="bytes" file="mrp/static/img/product_product_plastic_laminate.png"/>
         </record>
 
-        <record id="product_product_computer_desk_product_template" model="product.template">
-            <field name="route_ids" eval="[(6, 0, [ref('stock.route_warehouse0_mto'), ref('mrp.route_warehouse0_manufacture')])]"/>
-        </record>
-
         <record id="mrp_bom_desk" model="mrp.bom">
             <field name="product_tmpl_id" ref="product_product_computer_desk_product_template"/>
             <field name="uom_id" ref="uom.product_uom_unit"/>
             <field name="sequence">3</field>
+            <field name="produce_delay">3</field>
             <field name="days_to_prepare_mo">3</field>
         </record>
         <record id="mrp_routing_workcenter_5" model="mrp.routing.workcenter">
@@ -408,7 +400,7 @@
         </record>
 
          <record id="product_product_table_kit_product_template" model="product.template">
-            <field name="route_ids" eval="[(6, 0, [ref('mrp.route_warehouse0_manufacture')])]"/>
+            <field name="route_ids" eval="[(6, 0, [])]"/>
         </record>
 
         <record id="mrp_bom_kit" model="mrp.bom">

@@ -9,6 +9,7 @@ from odoo import api, fields, models, tools
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
 from odoo.tools import SQL, clean_context
+from odoo.tools.misc import unquote
 from odoo.tools.translate import _
 
 
@@ -46,6 +47,7 @@ class HrApplicant(models.Model):
             Domain("user_id", "!=", False)
             & Domain("user_id.share", "=", False)
             & Domain("user_id.group_ids", "in", recruiter_groups)
+            & Domain("company_id", "=?", unquote("company_id"))
         )
 
     sequence = fields.Integer(string='Sequence', index=True, default=10)
@@ -97,7 +99,7 @@ class HrApplicant(models.Model):
     categ_ids = fields.Many2many('hr.applicant.category', string="Tags", tracking=True)
     currency_id = fields.Many2one('res.currency', string='Currency', related='company_id.currency_id')
     company_id = fields.Many2one('res.company', "Company", compute='_compute_company', store=True, index=True, readonly=False, tracking=True)
-    recruiter_id = fields.Many2one('hr.employee', "Recruiter", compute='_compute_recruiter', domain=_recruiter_domain, check_company=True,
+    recruiter_id = fields.Many2one('hr.employee', "Recruiter", compute='_compute_recruiter', domain=lambda self: str(self._recruiter_domain()),
         tracking=True, store=True, index=True, readonly=False)
     date_closed = fields.Datetime("Hire Date", compute='_compute_date_closed', store=True, readonly=False, tracking=True, copy=False)
     date_open = fields.Datetime("Assigned", readonly=True)
@@ -256,6 +258,7 @@ class HrApplicant(models.Model):
                         email_normalized: {'lang': self.env.lang}
                     },
                 )
+                applicant._track_record(applicant.partner_id, ['name', 'email', 'phone'], body="Contact has been updated")
             if applicant.partner_name and applicant.partner_name != applicant.partner_id.name:
                 applicant.partner_id.name = applicant.partner_name
             if email_normalized and email_normalized != applicant.partner_id.email:
@@ -520,7 +523,7 @@ class HrApplicant(models.Model):
         domains = []
         # Map statuses to domain filters
         if 'refused' in value:
-            domains.append([('active', '=', True), ('refuse_reason_id', '!=', None)])
+            domains.append([('active', '=', False), ('refuse_reason_id', '!=', None)])
         if 'hired' in value:
             domains.append([('active', '=', True), ('date_closed', '!=', False)])
         if 'archived' in value or False in value:
@@ -716,6 +719,11 @@ class HrApplicant(models.Model):
                         model_description="Applicant",
                     )
         return res
+
+    def copy(self, default=None):
+        if self.filtered("is_pool_applicant"):
+            raise UserError(self.env._("You cannot duplicate the talent(s)."))
+        return super().copy(default=default)
 
     @api.model
     def get_empty_list_help(self, help_message):
@@ -1026,7 +1034,6 @@ class HrApplicant(models.Model):
             'job_id': self.job_id.id,
             'job_title': self.job_id.name,
             'department_id': self.department_id.id,
-            'work_email': self.department_id.company_id.email or self.email_from, # To have a valid email address by default
             'work_phone': self.department_id.company_id.phone,
         })
         return action
@@ -1051,7 +1058,6 @@ class HrApplicant(models.Model):
             'lang': address_sudo.lang,
             'department_id': self.department_id.id,
             'address_id': self.company_id.partner_id.id,
-            'work_email': self.department_id.company_id.email or self.email_from,  # To have a valid email address by default
             'work_phone': self.department_id.company_id.phone,
             'applicant_ids': self.ids,
             'phone': self.partner_phone
@@ -1062,6 +1068,20 @@ class HrApplicant(models.Model):
             raise UserError(_('You are not allowed to perform this action.'))
 
     def archive_applicant(self):
+        if len(self) == 1:
+            return {
+                'type': 'ir.actions.act_window',
+                'name': _('Refuse Reason'),
+                'res_model': 'applicant.refuse.single',
+                'view_mode': 'form',
+                'target': 'new',
+                'context': {
+                    'default_applicant_ids': self.ids,
+                    'active_test': False,
+                    'hide_mail_template_management_options': True,
+                },
+                'views': [[False, 'form']],
+            }
         return {
             'type': 'ir.actions.act_window',
             'name': _('Refuse Reason'),
@@ -1099,18 +1119,6 @@ class HrApplicant(models.Model):
         res = super(HrApplicant, self.with_context(just_unarchived=True)).action_unarchive()
         self.reset_applicant()
         return res
-
-    def action_send_email(self):
-        return {
-            'name': _('Send Email'),
-            'type': 'ir.actions.act_window',
-            'target': 'new',
-            'view_mode': 'form',
-            'res_model': 'applicant.send.mail',
-            'context': {
-                'default_applicant_ids': self.ids,
-            }
-        }
 
     def _get_duration_from_tracking(self, trackings):
         json = super()._get_duration_from_tracking(trackings)

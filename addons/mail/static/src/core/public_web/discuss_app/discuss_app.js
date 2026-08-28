@@ -1,34 +1,47 @@
-import { useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
-import { DiscussSidebar } from "@mail/core/public_web/discuss_app/sidebar/sidebar";
+import { EffectPlugin } from "@web/core/effects/effect_plugin";
 import { useMessageScrolling } from "@mail/utils/common/hooks";
+import { useSubEnv } from "@web/owl2/utils";
 
-import { Component, useListener, onMounted, onWillUnmount } from "@odoo/owl";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import {
+    Component,
+    computed,
+    onMounted,
+    onWillUnmount,
+    signal,
+    t,
+    useListener,
+    useOnChange,
+    usePlugin,
+    useProps,
+} from "@odoo/owl";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 
-import { useService } from "@web/core/utils/hooks";
 import { DiscussContent } from "@mail/core/public_web/discuss_content";
-import { MessagingMenu } from "@mail/core/public_web/messaging_menu";
+import { MessagingMenu } from "@mail/core/public_web/messaging_menu/messaging_menu";
+import { ResizablePanel } from "@web/core/resizable_panel/resizable_panel";
+import { useService } from "@web/core/utils/hooks";
 
 export class Discuss extends Component {
     static components = {
         DiscussContent,
-        DiscussSidebar,
         MessagingMenu,
+        ResizablePanel,
     };
-    static props = {
-        hasSidebar: { type: Boolean, optional: true },
-        thread: { optional: true },
-    };
-    static defaultProps = { hasSidebar: true };
     static template = "mail.Discuss";
+
+    root = signal.ref();
 
     setup() {
         super.setup();
         this.store = useService("mail.store");
+        this.props = useProps({
+            hasSidebar: t.boolean().optional(true),
+            thread: t.instanceOf(this.store["mail.thread"]).optional(),
+        });
+        this.menuState = computed(() => this.store.discuss.sidebarState);
         this.messageHighlight = useMessageScrolling({ thread: () => this.thread });
-        this.root = useRef("root");
         this.orm = useService("orm");
-        this.effect = useService("effect");
+        this.effect = usePlugin(EffectPlugin);
         this.ui = useService("ui");
         useSubEnv({
             inDiscussApp: true,
@@ -52,7 +65,8 @@ export class Discuss extends Component {
             { capture: true }
         );
         if (this.store.inPublicPage) {
-            useLayoutEffect(
+            useOnChange(
+                () => [this.thread, this.ui.isSmall],
                 (thread, isSmall) => {
                     if (!thread) {
                         return;
@@ -64,8 +78,7 @@ export class Discuss extends Component {
                     } else {
                         this.chatWindow?.close();
                     }
-                },
-                () => [this.thread, this.ui.isSmall]
+                }
             );
         }
         onMounted(() => {

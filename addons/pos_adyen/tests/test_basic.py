@@ -11,12 +11,15 @@ from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCom
 
 @tagged('post_install', '-at_install')
 class TestAdyenPoS(TestPointOfSaleHttpCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
         self.main_pos_config.write({
             "payment_method_ids": [
                 Command.create({
                     "name": "Adyen",
+                    'type': 'bank',
                     "adyen_api_key": "my_adyen_api_key",
                     "adyen_terminal_identifier": "my_adyen_terminal",
                     "adyen_test_mode": False,

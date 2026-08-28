@@ -1,11 +1,14 @@
 from odoo import Command, fields
 
 from odoo.addons.purchase.tests.test_purchase_invoice import TestPurchaseToInvoiceCommon
+from odoo.fields import Domain
 from odoo.tests import tagged
 
 
 @tagged('-at_install', 'post_install')
 class TestPurchaseDownpayment(TestPurchaseToInvoiceCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     def test_downpayment_basic(self):
         custom_expense_account = self.company_data['default_account_expense'].copy()
@@ -58,7 +61,7 @@ class TestPurchaseDownpayment(TestPurchaseToInvoiceCommon):
             'invoice_lines': dp_bill.invoice_line_ids.ids + final_bill.invoice_line_ids[-1:].ids,
         }])
         self.env.flush_all()
-        self.assertFalse(self.env['purchase.bill.line.match'].search([('partner_id', '=', self.partner_a.id)]))
+        self.assertFalse(self.env['purchase.bill.line.match'].search(Domain.AND([self.get_unmatched_domain(), Domain('partner_id', '=', self.partner_a.id)])))
 
     def test_product_supplierinfo_downpayment(self):
         """Check that the creation of a downpayment does not affect already existing lines"""

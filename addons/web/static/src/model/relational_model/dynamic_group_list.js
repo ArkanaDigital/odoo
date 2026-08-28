@@ -105,6 +105,9 @@ export class DynamicGroupList extends DynamicList {
      */
     async moveRecord(dataRecordId, dataGroupId, refId, targetGroupId) {
         const targetGroup = this.groups.find((g) => g.id === targetGroupId);
+        if (!targetGroup) {
+            return;
+        }
         if (dataGroupId === targetGroupId) {
             // move a record inside the same group
             await targetGroup.list._resequence(
@@ -190,9 +193,6 @@ export class DynamicGroupList extends DynamicList {
     async sortBy(fieldName) {
         if (!this.groups.length) {
             return;
-        }
-        if (fieldName === "__count") {
-            return super.sortBy(fieldName);
         }
         if (this.groups.every((group) => group.isFolded)) {
             // all groups are folded

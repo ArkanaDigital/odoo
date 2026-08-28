@@ -1,11 +1,16 @@
+import logging
+import time
 from pprint import pformat
 
 from odoo import Command, models
 from odoo.exceptions import AccessError, LockError
 from odoo.tests.common import TransactionCase, tagged
 from odoo.tools import SQL, lazy, mute_logger, unique
+from odoo.tools.version_tag_reset import assign_version_tag
 
 from .common import TestOrmPartnerCommon
+
+_logger = logging.getLogger(__name__)
 
 
 @tagged('at_install', '-post_install')  # LEGACY at_install
@@ -15,8 +20,8 @@ class TestORM(TransactionCase):
     @mute_logger('odoo.models')
     def test_access_deleted_records(self):
         """ Verify that accessing deleted records works as expected """
-        c1 = self.env['res.partner.category'].create({'name': 'W'})
-        c2 = self.env['res.partner.category'].create({'name': 'Y'})
+        c1 = self.env['test_orm.partner.category'].create({'name': 'W'})
+        c2 = self.env['test_orm.partner.category'].create({'name': 'Y'})
         c1.unlink()
 
         # read() is expected to skip deleted records because our API is not
@@ -39,7 +44,7 @@ class TestORM(TransactionCase):
     @mute_logger('odoo.models')
     def test_access_partial_deletion(self):
         """ Check accessing a record from a recordset where another record has been deleted. """
-        Model = self.env['res.country']
+        Model = self.env['test_orm.country']
         display_name_field = Model._fields['display_name']
         self.assertTrue(display_name_field.compute and not display_name_field.store, "test assumption not satisfied")
 
@@ -55,26 +60,26 @@ class TestORM(TransactionCase):
             record.display_name
             record.unlink()
 
-    @mute_logger('odoo.models', 'odoo.addons.base.models.ir_rule')
+    @mute_logger('odoo.models', 'odoo.addons.base.models.ir_access')
     def test_access_filtered_records(self):
         """ Verify that accessing filtered records works as expected for non-admin user """
-        p1 = self.env['res.partner'].create({'name': 'W'})
-        p2 = self.env['res.partner'].create({'name': 'Y'})
+        p1 = self.env['test_orm.partner'].create({'name': 'W'})
+        p2 = self.env['test_orm.partner'].create({'name': 'Y'})
         user = self.env['res.users'].create({
             'name': 'test user',
             'login': 'test2',
             'group_ids': [Command.set([self.ref('base.group_user')])],
         })
 
-        partner_model = self.env['ir.model'].search([('model','=','res.partner')])
-        self.env['ir.rule'].create({
+        self.env['ir.access'].create({
             'name': 'Y is invisible',
-            'domain_force': [('id', '!=', p1.id)],
-            'model_id': partner_model.id,
+            'model_id': self.env['ir.model']._get_id('test_orm.partner'),
+            'operation': 'crud',
+            'domain': [('id', '!=', p1.id)],
         })
 
         # search as unprivileged user
-        partners = self.env['res.partner'].with_user(user).search([])
+        partners = self.env['test_orm.partner'].with_user(user).search([])
         self.assertNotIn(p1, partners, "W should not be visible...")
         self.assertIn(p2, partners, "... but Y should be visible")
 
@@ -98,13 +103,13 @@ class TestORM(TransactionCase):
             (p1 + p2).with_user(user).unlink()
 
     def test_read(self):
-        partner = self.env['res.partner'].create({'name': 'MyPartner1'})
+        partner = self.env['test_orm.partner'].create({'name': 'MyPartner1'})
         result = partner.read()
         self.assertIsInstance(result, list)
 
     @mute_logger('odoo.models')
     def test_search_read(self):
-        partner = self.env['res.partner']
+        partner = self.env['test_orm.partner']
 
         # simple search_read
         partner.create({'name': 'MyPartner1'})
@@ -140,7 +145,8 @@ class TestORM(TransactionCase):
 
     @mute_logger('odoo.sql_db')
     def test_exists(self):
-        partner = self.env['res.partner']
+        partner = self.env['test_orm.partner']
+        partner.create({'name': 'MyPartner1'})
 
         # check that records obtained from search exist
         recs = partner.search([])
@@ -157,7 +163,7 @@ class TestORM(TransactionCase):
         self.assertFalse(recs.exists())
 
     def test_lock_for_update(self):
-        partner = self.env['res.partner']
+        partner = self.env['test_orm.partner']
         p1, p2 = partner.search([], limit=2)
 
         # lock p1
@@ -192,7 +198,7 @@ class TestORM(TransactionCase):
             inexisting.lock_for_update()
 
     def test_try_lock_for_update(self):
-        partner = self.env['res.partner']
+        partner = self.env['test_orm.partner']
         p1, p2, *_other = recs = partner.search([], limit=4)
 
         # lock p1
@@ -210,7 +216,7 @@ class TestORM(TransactionCase):
         self.assertEqual(recs[::-1].try_lock_for_update(limit=1), recs[-1])
 
     def test_write_duplicate(self):
-        p1 = self.env['res.partner'].create({'name': 'W'})
+        p1 = self.env['test_orm.partner'].create({'name': 'W'})
         (p1 + p1).write({'name': 'X'})
 
     def test_m2m_store_trigger(self):
@@ -249,7 +255,7 @@ class TestORM(TransactionCase):
             ],
             'code': 'ZX',
         }]
-        foo, bar = self.env['res.country'].create(vals_list)
+        foo, bar = self.env['test_orm.country'].create(vals_list)
         self.assertEqual(foo.name, 'Foo')
         self.assertCountEqual(foo.mapped('state_ids.code'), ['NF', 'SF', 'WF', 'EF'])
         self.assertEqual(bar.name, 'Bar')
@@ -258,6 +264,8 @@ class TestORM(TransactionCase):
 
 @tagged('at_install', '-post_install')
 class TestRecordset(TestOrmPartnerCommon, TransactionCase):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -447,10 +455,6 @@ class TestRecordset(TestOrmPartnerCommon, TransactionCase):
             query = models.Query(model)
             sql_id = query.table.id
             sql_field = query.table[field.name]
-            if field.type == 'binary' and (
-                    model.env.context.get('bin_size') or model.env.context.get('bin_size_' + field.name)
-            ):
-                sql_field = SQL('pg_size_pretty(length(%s)::bigint)', sql_field)
             query.add_where(SQL("%s IN %s", sql_id, tuple(ids)))
             env.cr.execute(query.select(sql_id, sql_field))
 
@@ -803,3 +807,52 @@ class TestRecordset(TestOrmPartnerCommon, TransactionCase):
 
         with self.assertQueries([]):
             _ = partners_grouped['@host.com'].name
+
+
+@tagged('-at_install', 'post_install')
+class TestClassVersionTagExhaustion(TransactionCase):
+    def _benchmark(self, label, func, n=500_000):
+        func()
+        t0 = time.perf_counter()
+        for _ in range(n):
+            func()
+        elapsed = time.perf_counter() - t0
+        stats_logger = logging.getLogger('odoo.tests.stats')
+        stats_logger.info("Tested performance for label %s in %.3fs", label, elapsed)
+
+    def test_bench_access_model_attributes(self):
+        with self.profile():
+            user = self.env.user
+            self._benchmark('user.env', lambda: user.id)
+            self._benchmark('user.id', lambda: user.id)
+            self._benchmark('user.__class__', lambda: user.__class__)
+            self._benchmark('user.browse(user.id)', lambda: user.browse(user.id))
+
+    def test_check_version_tags(self):
+        """
+        Avoid performance regression in 3.13. see version_tag_reset.py for more info
+        """
+        exhausted_classes_count = 0
+
+        def _check_tag(obj):
+            assert isinstance(obj, type)
+            return assign_version_tag(obj)
+
+        # Registry is not the initial cause of the problem but lets check it just in case
+        if not _check_tag(type(self.env.registry)):
+            _logger.error("Registry class has exhausted its version tag budget")
+            exhausted_classes_count += 1
+
+        for model in self.env.registry.values():
+            for c in model.__mro__:
+                if not _check_tag(c):
+                    _logger.error("Model %s (%s.%s) ...", model._name, c.__module__, c.__qualname__)
+                    exhausted_classes_count += 1
+            # Fields are not the initial cause of the problem but lets check them just in case
+            for field in model._fields.values():
+                for c in field.__class__.__mro__:
+                    if not _check_tag(c):
+                        _logger.error("Field %s.%s has exhausted its version tag budget", c.__module__, c.__qualname__)
+                        exhausted_classes_count += 1
+        if exhausted_classes_count:
+            raise AssertionError(f"{exhausted_classes_count} classes have exhausted their version tag budget")

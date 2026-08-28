@@ -6,7 +6,7 @@
         <div class="pe-4 pb-4">
             <input t-on-input="this.onSearchInput" class="w-100" placeholder="Search for models..."/>
         </div>
-        <div class="o-doc-sidebar-content h-100 flex-fill d-flex flex-nowrap flex-column gap-1" t-custom-ref="containerRef">
+        <div class="o-doc-sidebar-content h-100 flex-fill d-flex flex-nowrap flex-column gap-1" t-ref="this.containerRef">
             <t t-foreach="this.filteredAddons" t-as="addon" t-key="addon.name">
                 <div
                     class="position-sticky o-doc-sidebar-header top-0 d-flex flex-nowrap w-100 cursor-pointer text-capitalize user-select-none"
@@ -14,7 +14,7 @@
                     role="button"
                 >
                     <div class="icon-btn ps-2 pt-2" role="button" t-att-class="{ o_collapsed: this.isCollapsed(addon.name)}">
-                        <i class="fa fa-angle-right" aria-hidden="true"></i>
+                        <i class="oi" data-icon="keyboard_arrow_right" aria-hidden="true"></i>
                     </div>
                     <h4 class="ms-2" t-out="addon.name"></h4>
                 </div>

@@ -1,8 +1,7 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onMounted, proxy } from "@odoo/owl";
+import { Component, onMounted, onPatched, proxy, signal, t, useProps } from "@odoo/owl";
 import { useTransition } from "@web/core/transition";
 import { uniqueId } from "@web/core/utils/functions";
-import { useService } from "@web/core/utils/hooks";
+import { useLayoutEffect } from "@web/owl2/utils";
 import {
     basicContainerBuilderComponentProps,
     useApplyVisibility,
@@ -14,39 +13,40 @@ import { BuilderComponent } from "./builder_component";
 export class BuilderRow extends Component {
     static template = "html_builder.BuilderRow";
     static components = { BuilderComponent };
-    static props = {
+
+    props = useProps({
         ...basicContainerBuilderComponentProps,
-        label: { type: String, optional: true },
-        tooltip: { type: String, optional: true },
-        slots: { type: Object, optional: true },
-        level: { type: Number, optional: true },
-        expand: { type: Boolean, optional: true },
-        initialExpandAnim: { type: Boolean, optional: true },
-        extraLabelClass: { type: String, optional: true },
-        observeCollapseContent: { type: Boolean, optional: true },
-        disabled: { type: Boolean, optional: true },
-        fullRowToggler: { type: Boolean, optional: true },
-    };
-    static defaultProps = { expand: false, observeCollapseContent: false, fullRowToggler: false };
+        label: t.string().optional(),
+        tooltip: t.string().optional(),
+        slots: t.object().optional(),
+        level: t.number().optional(),
+        expand: t.boolean().optional(false),
+        initialExpandAnim: t.boolean().optional(),
+        extraLabelClass: t.string().optional(),
+        observeCollapseContent: t.boolean().optional(false),
+        disabled: t.boolean().optional(),
+        fullRowToggler: t.boolean().optional(false),
+    });
+
+    rootRef = signal.ref();
+    contentRef = signal.ref();
+    collapseRef = signal.ref();
+    collapseContentRef = signal.ref();
 
     setup() {
-        useBuilderComponent();
-        useVisibilityObserver("content", useApplyVisibility("root"));
+        useBuilderComponent(this.props);
+        useVisibilityObserver(this.contentRef, useApplyVisibility(this.rootRef));
 
         this.state = proxy({
             expanded: this.props.expand,
         });
-        this.tooltipText = undefined;
 
         if (this.props.slots.collapse) {
-            useVisibilityObserver("collapse-content", useApplyVisibility("collapse"));
+            useVisibilityObserver(this.collapseContentRef, useApplyVisibility(this.collapseRef));
 
             this.collapseContentId = uniqueId("builder_collapse_content_");
         }
 
-        this.labelRef = useRef("label");
-        this.rootRef = useRef("root");
-        this.collapseContentRef = useRef("collapse-content");
         let isMounted = false;
 
         onMounted(() => {
@@ -67,7 +67,7 @@ export class BuilderRow extends Component {
             (stage) => {
                 const isFirstMount = !isMounted;
                 isMounted = true;
-                const contentEl = this.collapseContentRef.el;
+                const contentEl = this.collapseContentRef();
                 if (!contentEl) {
                     return;
                 }
@@ -99,9 +99,9 @@ export class BuilderRow extends Component {
             },
             () => [this.transition.stage]
         );
-        this.tooltip = useService("tooltip");
 
-        useLayoutEffect(() => refreshSublevelLines(this.rootRef.el));
+        onMounted(() => refreshSublevelLines(this.rootRef()));
+        onPatched(() => refreshSublevelLines(this.rootRef()));
     }
 
     getLevelClass() {
@@ -126,33 +126,6 @@ export class BuilderRow extends Component {
     get collapseContentClass() {
         const isNotVisible = this.props.observeCollapseContent && !this.transition.shouldMount;
         return `${this.transition.className} ${isNotVisible ? "d-none" : ""}`;
-    }
-
-    openTooltip() {
-        const labelEl = this.labelRef.el;
-        if (this.tooltipText === undefined) {
-            const isLabelTooLong = labelEl.offsetWidth < labelEl.scrollWidth;
-            if (isLabelTooLong) {
-                this.tooltipText = this.props.tooltip
-                    ? `${this.props.label}\u00A0: ${this.props.tooltip}`
-                    : this.props.label;
-            } else if (this.props.tooltip) {
-                this.tooltipText = this.props.tooltip;
-            } else {
-                this.tooltipText = "";
-            }
-        }
-        if (this.tooltipText) {
-            this.removeTooltip = this.tooltip.add(labelEl, {
-                tooltip: this.tooltipText,
-            });
-        }
-    }
-
-    closeTooltip() {
-        if (this.removeTooltip) {
-            this.removeTooltip();
-        }
     }
 }
 

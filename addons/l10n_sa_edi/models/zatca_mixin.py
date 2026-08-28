@@ -6,6 +6,7 @@ class ZatcaMixin(models.AbstractModel):
 
     _inherit = "zatca.mixin"
 
+    l10n_sa_edi_supply_end_date = fields.Date(string="Supply End Date", copy=False, help="Date when the supply of goods or services is completed, mainly used for continuous supplies.")
     l10n_sa_uuid = fields.Char(string='Document UUID (SA)', copy=False, help="Universally unique identifier of the Invoice")
     l10n_sa_invoice_signature = fields.Char("Unsigned XML Signature", copy=False)
     l10n_sa_edi_document_id = fields.Many2one(comodel_name="l10n_sa_edi.document", copy=False)
@@ -19,6 +20,12 @@ class ZatcaMixin(models.AbstractModel):
         for record in self:
             record.l10n_sa_is_test = all(record.l10n_sa_edi_log_ids.mapped('is_test'))
 
+    @api.depends('l10n_sa_edi_state')
+    def _compute_qr_code_str(self):
+        rejected = self.filtered(lambda r: r.l10n_sa_edi_state == 'rejected')
+        rejected.l10n_sa_qr_code_str = False
+        super(ZatcaMixin, self - rejected)._compute_qr_code_str()
+
     def _l10n_sa_get_alerts(self):
         return {}
 
@@ -27,13 +34,13 @@ class ZatcaMixin(models.AbstractModel):
 
     def _l10n_sa_get_adjustment_reason(self):
         self.ensure_one()
-        readable_zatca_reason = dict(self._fields['l10n_sa_reason'].selection).get(self.l10n_sa_reason)
+        readable_zatca_reason = dict(self._fields['l10n_sa_reason']._description_selection(self.env)).get(self.l10n_sa_reason)
         return readable_zatca_reason if self.l10n_sa_show_reason else self.ref
 
     def _l10n_sa_build_qr(self):
         self.ensure_one()
         if self._l10n_sa_is_phase_2_applicable():
-            return self.l10n_sa_edi_document_id._l10n_sa_get_phase_2_qr(self._l10n_sa_is_simplified())
+            return self.l10n_sa_edi_document_id._l10n_sa_get_phase_2_qr(self.l10n_sa_invoice_type == 'simplified')
         return super()._l10n_sa_build_qr()
 
     def _l10n_sa_get_payment_means_code(self):

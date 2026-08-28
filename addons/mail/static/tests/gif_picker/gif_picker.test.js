@@ -3,20 +3,21 @@ import {
     click,
     contains,
     defineMailModels,
-    focus,
     insertText,
     openDiscuss,
     openFormView,
+    openMessagingMenu,
     patchUiSize,
     scroll,
     start,
     startServer,
+    MENU_ACTIVE_IDS,
 } from "@mail/../tests/mail_test_helpers";
 import { describe, expect, test } from "@odoo/hoot";
 import { getService, onRpc, patchWithCleanup, preloadBundle } from "@web/../tests/web_test_helpers";
 
 import { GifPicker } from "@mail/discuss/gif_picker/common/gif_picker";
-import { animationFrame, queryFirst } from "@odoo/hoot-dom";
+import { animationFrame } from "@odoo/hoot-dom";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -112,7 +113,7 @@ test("Composer GIF button should open the GIF picker (chat window)", async () =>
     const pyEnv = await startServer();
     pyEnv["discuss.channel"].create({ name: "General" });
     await start();
-    await click(".o_menu_systray i[aria-label='Messages']");
+    await openMessagingMenu(MENU_ACTIVE_IDS.CHANNEL);
     await click(".o-mail-NotificationItem:contains('General')");
     await click(".o-mail-ChatWindow .o-mail-Composer [title='More Actions']");
     await click(".o-dropdown-item:contains('Send GIF')");
@@ -154,7 +155,7 @@ test("Searching for a GIF", async () => {
     await start();
     await openDiscuss(channelId);
     await click("button[title='Send GIF']");
-    await insertText("input[placeholder='Search for a GIF']", "search");
+    await insertText("input[placeholder='Search Klipy']", "search");
     await contains("i[aria-label='back']");
     await contains(".o-discuss-Gif", { count: 2 });
 });
@@ -169,7 +170,7 @@ test("Open a GIF category trigger the search for the category", async () => {
     await click("button[title='Send GIF']");
     await click("img[data-src='https://media.tenor.com/6uIlQAHIkNoAAAAM/cry.gif']");
     await contains(".o-discuss-Gif", { count: 2 });
-    await contains("input[placeholder='Search for a GIF']", { value: "cry" });
+    await contains("input[placeholder='Search Klipy']", { value: "cry" });
 });
 
 test("Can have GIF categories with same name", async () => {
@@ -223,8 +224,8 @@ test("Add GIF to favorite", async () => {
     await openDiscuss(channelId);
     await click("button[title='Send GIF']");
     await click("img[data-src='https://media.tenor.com/6uIlQAHIkNoAAAAM/cry.gif']");
-    await click(":nth-child(1 of div) > .o-discuss-Gif .fa-star-o");
-    await contains(".o-discuss-Gif .fa-star");
+    await click(":nth-child(1 of div) > .o-discuss-Gif [data-icon='star']");
+    await contains(".o-discuss-Gif [data-icon='star'].oi-filled");
     await click("i[aria-label='back']");
     await click(".o-discuss-GifPicker div[aria-label='list-item']:text('Favorites')");
     await contains(".o-discuss-Gif");
@@ -260,7 +261,7 @@ test("Searching for a GIF with a failling RPC should display an error", async ()
     await start();
     await openDiscuss(channelId);
     await click("button[title='Send GIF']");
-    await insertText("input[placeholder='Search for a GIF']", "search");
+    await insertText("input[placeholder='Search Klipy']", "search");
     await contains(".o-discuss-GifPicker-error");
 });
 
@@ -301,10 +302,10 @@ test("Pause GIF when thread is not focused", async () => {
     await click("button[title='Send GIF']");
     await click("img[data-src='https://media.tenor.com/6uIlQAHIkNoAAAAM/cry.gif']");
     await click("img[data-src='https://media.tenor.com/np49Y1vrJO8AAAAM/crying-cry.gif']:eq(0)");
-    await contains(".o-mail-LinkPreviewImage");
-    queryFirst(".o-mail-Thread").blur();
+    await contains(".o-mail-LinkPreviewImage img:not([data-paused])");
+    await click("button[title='Send GIF']");
     await contains(".o-mail-LinkPreviewImage img[data-paused]");
-    await focus(".o-mail-Thread");
+    await click(".o-mail-Composer-input");
     await contains(".o-mail-LinkPreviewImage img:not([data-paused])");
 });
 

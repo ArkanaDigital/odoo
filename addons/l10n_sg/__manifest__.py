@@ -5,7 +5,7 @@
     'icon': '/account/static/description/l10n.png',
     'countries': ['sg'],
     'author': 'Tech Receptives',
-    'version': '2.2',
+    'version': '2.3',
     'category': 'Accounting/Localizations/Account Charts',
     'description': """
 Singapore accounting chart and localization.
@@ -24,13 +24,14 @@ This module add, for accounting:
     ],
     'auto_install': ['account'],
     'data': [
+        'data/account.account.tag.csv',
         'data/l10n_sg_chart_data.xml',
         'data/account_tax_report_data.xml',
         'views/account_invoice_view.xml',
-        'views/res_company_views.xml',
         'views/report_invoice.xml',
         'views/report_templates.xml',
         'views/res_bank_views.xml',
+        'views/res_config_settings_views.xml',
     ],
     'demo': [
         'demo/demo_company.xml',

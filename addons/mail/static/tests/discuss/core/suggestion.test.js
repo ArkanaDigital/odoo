@@ -1,5 +1,3 @@
-import { insertText as htmlInsertText } from "@html_editor/../tests/_helpers/user_actions";
-
 import {
     click,
     contains,
@@ -9,7 +7,8 @@ import {
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { beforeEach, describe, test } from "@odoo/hoot";
+import { htmlInsertText } from "@mail/../tests/mail_test_helpers_html";
+import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { mockDate } from "@odoo/hoot-mock";
 import { Command, getService, patchWithCleanup, serverState } from "@web/../tests/web_test_helpers";
 
@@ -195,16 +194,21 @@ test("Sort partner suggestions by recent chats", async () => {
             channel_type: "chat",
         },
     ]);
+
     await start();
+    getService("bus_service").subscribe("discuss.channel/new_message", () =>
+        // Message notification holds the last_interest_dt update. We must wait for it to
+        // ensure the suggestion service sort is deterministic.
+        expect.step("new_message")
+    );
     await openDiscuss();
-    await click(".o-mail-DiscussSidebarChannel-itemName:text('User 2')");
+    await click(".o-mail-NotificationItem:has(:text('User 2'))");
     await insertText(".o-mail-Composer-input", "This is a test");
     await press("Enter");
     await contains(".o-mail-Message-content:text('This is a test')");
-    await click(".o-mail-DiscussSidebarChannel-itemName:text('General')");
-    await contains(
-        ".o-mail-DiscussSidebarCategory-chat + .o-mail-DiscussSidebarCategory-channels .o-mail-DiscussSidebarChannel:eq(0):has(:text('User 2'))"
-    );
+    await expect.waitForSteps(["new_message"]);
+    await click(".o-mail-MessagingMenu-tab[data-id='channel']");
+    await click(".o-mail-NotificationItem:has(:text('General'))");
     await insertText(".o-mail-Composer-input[placeholder='Message #General…']", "@");
     await insertText(".o-mail-Composer-input", "User");
     await contains(".o-mail-Composer-suggestion strong", { count: 3 });

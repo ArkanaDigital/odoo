@@ -1,7 +1,7 @@
 import { expect, test } from "@odoo/hoot";
 import { press, queryAllTexts } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import {
     contains,
     defineActions,
@@ -9,11 +9,13 @@ import {
     getService,
     mountWithCleanup,
     mockOffline,
-    mockService,
+    patchWithCleanup,
     useTestClientAction,
+    serverState,
 } from "@web/../tests/web_test_helpers";
 
 import { Dialog } from "@web/core/dialog/dialog";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { WebClient } from "@web/webclient/webclient";
 
 defineMenus([
@@ -36,6 +38,14 @@ defineMenus([
                 name: "Report",
                 appID: 2,
                 actionID: 1004,
+                children: [
+                    {
+                        id: 5,
+                        name: "Customers",
+                        appID: 2,
+                        actionID: 1005,
+                    },
+                ],
             },
         ],
     },
@@ -45,6 +55,7 @@ defineActions([
     { ...testAction, id: 1001, params: { description: "Id 1" } },
     { ...testAction, id: 1003, params: { description: "Info" } },
     { ...testAction, id: 1004, params: { description: "Report" } },
+    { ...testAction, id: 1005, params: { description: "Customers" } },
 ]);
 
 test.tags("desktop");
@@ -65,7 +76,7 @@ test("displays only apps if the search value is '/'", async () => {
 test.tags("desktop");
 test(`[Offline] disable unavailable menus when offline`, async () => {
     const setOffline = mockOffline();
-    mockService("offline", {
+    patchWithCleanup(OfflinePlugin.prototype, {
         isAvailableOffline(actionId) {
             return actionId === 1001;
         },
@@ -94,8 +105,31 @@ test("displays apps and menu items if the search value is not only '/'", async (
     await contains(".o_command_palette_search input").edit("/sal", { confirm: false });
     await animationFrame();
     expect(".o_command_palette").toHaveCount(1);
-    expect(".o_command").toHaveCount(3);
-    expect(queryAllTexts(".o_command_name")).toEqual(["Sales", "Sales / Info", "Sales / Report"]);
+    expect(".o_command").toHaveCount(4);
+    expect(queryAllTexts(".o_command_name")).toEqual([
+        "Sales",
+        "Sales / Info",
+        "Sales / Report",
+        "Sales / Report / Customers",
+    ]);
+});
+
+test.tags("desktop");
+test("matches menu breadcrumbs in both directions", async () => {
+    await mountWithCleanup(WebClient);
+
+    await press(["control", "k"]);
+    await animationFrame();
+
+    // Top down search
+    await contains(".o_command_palette_search input").edit("/salrepcust", { confirm: false });
+    await animationFrame();
+    expect(queryAllTexts(".o_command_name")).toEqual(["Sales / Report / Customers"]);
+
+    // Bottom up search
+    await contains(".o_command_palette_search input").edit("/custrepsal", { confirm: false });
+    await animationFrame();
+    expect(queryAllTexts(".o_command_name")).toEqual(["Sales / Report / Customers"]);
 });
 
 test.tags("desktop");
@@ -142,7 +176,7 @@ test("open a menu item when a dialog is displayed", async () => {
     class CustomDialog extends Component {
         static template = xml`<Dialog contentClass="'test'">content</Dialog>`;
         static components = { Dialog };
-        static props = ["*"];
+        props = useProps();
     }
 
     await mountWithCleanup(WebClient);
@@ -163,4 +197,16 @@ test("open a menu item when a dialog is displayed", async () => {
     await contains("#o_command_2").click();
     await animationFrame();
     expect(".o_menu_brand").toHaveText("Sales");
+});
+
+test.tags("desktop");
+test("app href in command palette includes debug param when in debug mode", async () => {
+    serverState.debug = "assets";
+    await mountWithCleanup(WebClient);
+    await press(["control", "k"]);
+    await animationFrame();
+    await contains(".o_command_palette_search input").edit("/", { confirm: false });
+    await animationFrame();
+    // "Contact" is the first result, actionID 1001
+    expect(".o_command:first-child a").toHaveAttribute("href", "/odoo/action-1001?debug=assets");
 });

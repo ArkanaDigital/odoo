@@ -28,8 +28,8 @@ export function messageActionOpenFullComposer(title, context, component) {
 }
 
 registerMessageAction("reply-all", {
-    condition: ({ message, thread }) => message.canReplyAll(thread),
-    icon: "fa fa-reply",
+    condition: ({ message, owner }) => !owner.env.inMessagingMenu && message.canReplyAll,
+    icon: "reply",
     name: _t("Reply All"),
     onSelected: async ({ message, owner, thread }) => {
         const recipients = await rpc("/mail/thread/recipients", {
@@ -37,7 +37,6 @@ registerMessageAction("reply-all", {
             thread_id: thread.id,
             message_id: message.id,
         });
-        const recipientIds = recipients.map((r) => r.id);
         // usually reply_to is what you want people to see as being "from"
         // showing this avoids "leaking" the actual user when reply_to is an alias
         const emailFrom = message.reply_to || message.email_from || message.author_id?.email;
@@ -59,15 +58,20 @@ registerMessageAction("reply-all", {
             default_composition_mode: "comment",
             default_composition_comment_option: "reply_all",
             default_email_add_signature: false,
-            default_partner_ids: recipientIds,
+            default_partner_ids: recipients
+                .filter((r) => r.recipient_type !== "cc")
+                .map((r) => r.id),
+            default_partner_cc_ids: recipients
+                .filter((r) => r.recipient_type === "cc")
+                .map((r) => r.id),
         };
         messageActionOpenFullComposer(_t("Reply All"), context, owner);
     },
     sequence: ({ message }) => (message.isSelfAuthored ? 55 : 20),
 });
 registerMessageAction("forward", {
-    condition: ({ message, thread }) => message.canForward(thread),
-    icon: "fa fa-share",
+    condition: ({ message, owner }) => !owner.env.inMessagingMenu && message.canForward,
+    icon: "share",
     name: _t("Forward"),
     onSelected: async ({ message, owner, store, thread }) => {
         // usually reply_to is what you want people to see as being "from"

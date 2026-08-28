@@ -1,5 +1,5 @@
 import { useForwardRefsToParent } from "@mail/utils/common/hooks";
-import { Component, htmlEscape, props, signal, types } from "@odoo/owl";
+import { Component, htmlEscape, signal, t, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 
@@ -12,10 +12,10 @@ export class NotificationMessage extends Component {
         useForwardRefsToParent("messageRefs", (props) => props.message.id, this.rootRef);
         this.htmlEscape = htmlEscape;
         this.store = useService("mail.store");
-        this.props = props({
-            message: types.instanceOf(this.store["mail.message"].Class),
-            "messageRefs?": types.object(),
-            thread: types.instanceOf(this.store["mail.thread"].Class),
+        this.props = useProps({
+            message: t.instanceOf(this.store["mail.message"]),
+            messageRefs: t.instanceOf(Map).optional(),
+            thread: t.instanceOf(this.store["mail.thread"]),
         });
     }
 
@@ -58,5 +58,14 @@ export class NotificationMessage extends Component {
         return _t("Call lasted %(duration)s.", {
             duration: duration.shiftTo(...units).toHuman({ unitDisplay: "short" }),
         });
+    }
+
+    get showInlineBody() {
+        return [
+            "channel_rename",
+            "meeting_to_group_chat",
+            "thread_deletion",
+            "thread_creation",
+        ].includes(this.message.notificationType);
     }
 }

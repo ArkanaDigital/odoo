@@ -1,5 +1,5 @@
 import { useLayoutEffect } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, useProps } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { standardWidgetProps } from "@web/views/widgets/standard_widget_props";
 import { _t } from "@web/core/l10n/translation";
@@ -13,9 +13,7 @@ import { initLNA } from "@point_of_sale/app/utils/init_lna";
 
 export class GloryAdminButtons extends Component {
     static template = `pos_glory_cash.GloryAdminButtons`;
-    static props = {
-        ...standardWidgetProps,
-    };
+    props = useProps(standardWidgetProps);
 
     setup() {
         super.setup();
@@ -79,9 +77,12 @@ export class GloryAdminButtons extends Component {
     openAdminPage() {
         const gloryIp = this.props.record.data.glory_websocket_address;
         if (!gloryIp) {
-            this.notification.add("Please configure the IP address before opening the admin page", {
-                type: "warning",
-            });
+            this.notification.add(
+                _t("Please configure the IP address before opening the admin page"),
+                {
+                    type: "warning",
+                }
+            );
             return;
         }
         const protocol = this.props.record.data.glory_use_lna ? "http:" : window.location.protocol;

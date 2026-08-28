@@ -12,6 +12,8 @@ from unittest.mock import patch
 @tagged('post_install', '-at_install')
 class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -895,10 +897,12 @@ class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
             (False, 'partial', 'partial'),
             (False, 'in_payment', 'in_payment'),
             (False, 'paid', 'paid'),
+            (False, 'blocked', 'blocked'),
             (True, 'partial', 'partial'),
             (True, 'in_payment', 'in_payment'),
             (True, 'paid', 'paid'),
             (True, 'reversed', 'reversed'),
+            (True, 'blocked', 'blocked'),
         ]:
             invoice = create_invoice(post=post, kwargs={'payment_state': payment_state})
             self.assertEqual(invoice.status_in_payment, expected)

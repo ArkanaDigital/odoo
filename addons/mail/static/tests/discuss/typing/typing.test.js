@@ -1,5 +1,3 @@
-import { insertText as htmlInsertText } from "@html_editor/../tests/_helpers/user_actions";
-
 import {
     click,
     contains,
@@ -7,9 +5,11 @@ import {
     insertText,
     onRpcBefore,
     openDiscuss,
+    openMessagingMenu,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
+import { htmlInsertText } from "@mail/../tests/mail_test_helpers_html";
 import { animationFrame, describe, expect, test } from "@odoo/hoot";
 import { advanceTime, mockDate } from "@odoo/hoot-mock";
 import {
@@ -669,7 +669,7 @@ test("[text composer] chat: correspondent is typing", async () => {
     });
     await start();
     await openDiscuss();
-    await contains(".o-mail-DiscussSidebarChannel .o-mail-ThreadIcon.fa-circle.text-success");
+    await contains(".o-mail-MessagingMenuItem .o-mail-ThreadIcon[data-icon='circle'].text-success");
     // simulate receive typing notification from demo "is typing"
     withUser(userId, () =>
         rpc("/discuss/channel/notify_typing", {
@@ -685,7 +685,7 @@ test("[text composer] chat: correspondent is typing", async () => {
             is_typing: false,
         })
     );
-    await contains(".o-mail-DiscussSidebarChannel .o-mail-ThreadIcon.fa-circle.text-success");
+    await contains(".o-mail-MessagingMenuItem .o-mail-ThreadIcon[data-icon='circle'].text-success");
 });
 
 test("Do not show typing indicator when channel is muted", async () => {
@@ -745,10 +745,10 @@ test("Do not show typing indicator when channel is muted", async () => {
         })
     );
     await contains(
-        ".o-mail-DiscussSidebarChannel-itemMain[title='Demo'] .o-discuss-Typing-icon[title='Demo is typing...']"
+        ".o-mail-MessagingMenuItem:has(:text('Demo')) .o-discuss-Typing-icon[title='Demo is typing...']"
     );
     await contains(
-        ".o-mail-DiscussSidebarChannel-itemMain[title='Demo2'] .o-discuss-Typing-icon[title='Demo is typing...']",
+        ".o-mail-MessagingMenuItem:has(:text('Demo2')) .o-discuss-Typing-icon[title='Demo is typing...']",
         { count: 0 }
     );
 });
@@ -769,7 +769,7 @@ test("chat: correspondent is typing", async () => {
     const composerService = getService("mail.composer");
     composerService.setHtmlComposer();
     await openDiscuss();
-    await contains(".o-mail-DiscussSidebarChannel .o-mail-ThreadIcon.fa-circle.text-success");
+    await contains(".o-mail-MessagingMenuItem .o-mail-ThreadIcon[data-icon='circle'].text-success");
     withUser(userId, () =>
         rpc("/discuss/channel/notify_typing", {
             channel_id: channelId,
@@ -783,7 +783,7 @@ test("chat: correspondent is typing", async () => {
             is_typing: false,
         })
     );
-    await contains(".o-mail-DiscussSidebarChannel .o-mail-ThreadIcon.fa-circle.text-success");
+    await contains(".o-mail-MessagingMenuItem .o-mail-ThreadIcon[data-icon='circle'].text-success");
 });
 
 test("[text composer] chat: correspondent is typing in chat window", async () => {
@@ -798,7 +798,7 @@ test("[text composer] chat: correspondent is typing in chat window", async () =>
         channel_type: "chat",
     });
     await start();
-    await click(".o_menu_systray i[aria-label='Messages']");
+    await openMessagingMenu();
     await click(".o-mail-NotificationItem");
     await contains("[title='Demo is typing...']", { count: 0 });
     // simulate receive typing notification from demo "is typing"
@@ -834,7 +834,7 @@ test("chat: correspondent is typing in chat window", async () => {
     await start();
     const composerService = getService("mail.composer");
     composerService.setHtmlComposer();
-    await click(".o_menu_systray i[aria-label='Messages']");
+    await openMessagingMenu();
     await click(".o-mail-NotificationItem");
     await contains("[title='Demo is typing...']", { count: 0 });
     withUser(userId, () =>
@@ -996,7 +996,8 @@ test("[text composer] switching to another channel triggers notify_typing to sto
     await openDiscuss(chatId);
     await insertText(".o-mail-Composer-input", "a");
     await expect.waitForSteps(["notify_typing:true"]);
-    await click(".o-mail-DiscussSidebarChannel-itemName:text('general')");
+    await click(".o-mail-MessagingMenu-tab[data-id='channel']");
+    await click(".o-mail-NotificationItem:has(:text('general'))");
     await advanceTime(SHORT_TYPING / 2);
     await expect.waitForSteps(["notify_typing:false"]);
 });
@@ -1028,7 +1029,8 @@ test("switching to another channel triggers notify_typing to stop", async () => 
     };
     await htmlInsertText(editor, "a");
     await expect.waitForSteps(["notify_typing:true"]);
-    await click(".o-mail-DiscussSidebarChannel-itemName:text('general')");
+    await click(".o-mail-MessagingMenu-tab[data-id='channel']");
+    await click(".o-mail-NotificationItem:has(:text('general'))");
     await advanceTime(SHORT_TYPING / 2);
     await expect.waitForSteps(["notify_typing:false"]);
 });

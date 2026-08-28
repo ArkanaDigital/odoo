@@ -9,20 +9,24 @@ import {
 } from "@mail/discuss/call/common/call_actions";
 import { CallPreview } from "@mail/discuss/call/common/call_preview";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, computed, proxy, signal, types, useProps } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 
 export class CallInvitation extends Component {
-    static props = ["channel"];
     static template = "discuss.CallInvitation";
     static components = { ActionList, CallPreview };
+
+    root = signal.ref();
 
     setup() {
         super.setup();
         this.rtc = useService("discuss.rtc");
         this.store = useService("mail.store");
+        this.props = useProps({
+            channel: types.instanceOf(this.store["discuss.channel"]),
+        });
         this.ui = useService("ui");
         this.state = proxy({
             activateCamera: 0,
@@ -35,17 +39,20 @@ export class CallInvitation extends Component {
     }
 
     async joinCall() {
-        this.props.channel.open({ focus: true });
-        await this.rtc.toggleCall(this.props.channel, {
+        const hasJoinedCall = await this.rtc.requestToggleCall(this.props.channel, {
             audio: this.state.hasMicrophone,
             camera: this.state.hasCamera,
         });
+        if (!hasJoinedCall) {
+            return;
+        }
+        this.props.channel.open({ focus: true });
         if (this.props.channel.default_display_mode === "video_full_screen") {
             await this.rtc.enterFullscreen();
         }
     }
 
-    get acceptOrRejectActions() {
+    acceptOrRejectActions = computed(() => {
         const joinUpdated = {
             ...joinAction,
             btnClass: joinAction.btnClass + " o-me-0_5",
@@ -83,39 +90,36 @@ export class CallInvitation extends Component {
                 channel: this.props.channel,
             }),
         ];
-    }
+    });
 
-    get otherActions() {
-        return [
-            new Action({
-                id: "toggle-camera-preview",
-                definition: {
-                    name: () =>
-                        this.state.showCameraPreview
-                            ? _t("Hide camera preview")
-                            : _t("Show camera preview"),
-                    icon: () =>
-                        this.state.showCameraPreview ? "fa fa-chevron-up" : "fa fa-chevron-down",
-                    onSelected: () => {
-                        this.state.showCameraPreview = !this.state.showCameraPreview;
-                        if (this.state.showCameraPreview) {
-                            if (this.rtc.cameraPermission !== "denied") {
-                                this.state.activateCamera++;
-                            }
-                            if (this.state.hasMicrophone) {
-                                this.state.activateMicrophone++;
-                            }
-                            this.props.channel.self_member_id?.cancelInvitationTimeout();
-                        } else {
-                            this.props.channel.self_member_id?.startInvitationTimeout();
+    otherActions = computed(() => [
+        new Action({
+            id: "toggle-camera-preview",
+            definition: {
+                name: () =>
+                    this.state.showCameraPreview
+                        ? _t("Hide camera preview")
+                        : _t("Show camera preview"),
+                icon: () => (this.state.showCameraPreview ? "expand_less" : "expand_more"),
+                onSelected: () => {
+                    this.state.showCameraPreview = !this.state.showCameraPreview;
+                    if (this.state.showCameraPreview) {
+                        if (this.rtc.cameraPermission !== "denied") {
+                            this.state.activateCamera++;
                         }
-                    },
-                    tags: () => [ACTION_TAGS.CALL_LAYOUT],
+                        if (this.state.hasMicrophone) {
+                            this.state.activateMicrophone++;
+                        }
+                        this.props.channel.self_member_id?.cancelInvitationTimeout();
+                    } else {
+                        this.props.channel.self_member_id?.startInvitationTimeout();
+                    }
                 },
-                store: this.store,
-            }),
-        ];
-    }
+                tags: () => [ACTION_TAGS.CALL_LAYOUT],
+            },
+            store: this.store,
+        }),
+    ]);
 
     get avatarTitle() {
         const channelName = this.props.channel.displayName;

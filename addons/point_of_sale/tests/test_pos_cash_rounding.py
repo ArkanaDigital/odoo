@@ -6,6 +6,8 @@ from odoo.tests import tagged
 @tagged('post_install', '-at_install')
 class TestPosCashRounding(TestPointOfSaleHttpCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -181,5 +183,5 @@ class TestPosCashRounding(TestPointOfSaleHttpCommon):
         self.start_tour(
             "/pos/ui?config_id=%d" % self.main_pos_config.id,
             "test_archived_product_removed_and_order_is_refunded",
-            login="pos_admin"
+            login="pos_admin",
         )

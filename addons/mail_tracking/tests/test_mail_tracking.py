@@ -16,13 +16,11 @@ class TestMailTracking(MailCommon):
             'model': 'x_test_model1',
             'is_mail_thread': True,
         })
-        cls.env['ir.model.access'].create({
-            'group_id': cls.env.ref('base.group_user').id,
+        cls.env['ir.access'].create({
             'name': 'Employee Access',
             'model_id': cls.x_test_model.id,
-            'perm_create': True,
-            'perm_read': True,
-            'perm_write': True,
+            'group_id': cls.env.ref('base.group_user').id,
+            'operation': 'cru',
         })
         cls.env['ir.model.fields'].create([
             {
@@ -93,6 +91,7 @@ class TestMailTracking(MailCommon):
             },
         ])
         cls.user_admin.tz = 'Asia/Kolkata'
+        cls.user_employee.tz = 'Asia/Kolkata'
 
     @users('employee')
     def test_mail_tracking_values_creation(self):

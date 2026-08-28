@@ -7,12 +7,13 @@ import {
     start,
     startServer,
     triggerHotkey,
+    MENU_ACTIVE_IDS,
 } from "@mail/../tests/mail_test_helpers";
 import { describe, expect, setInputFiles, test } from "@odoo/hoot";
-import { press, rightClick } from "@odoo/hoot-dom";
+import { press } from "@odoo/hoot-dom";
 import { mockDate } from "@odoo/hoot-mock";
 
-import { getService, mockService, serverState } from "@web/../tests/web_test_helpers";
+import { Command, getService, mockService, serverState } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -21,7 +22,7 @@ test("Messages are received cross-tab", async () => {
     const pyEnv = await startServer();
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
     const env1 = await start({ asTab: true });
-    const env2 = await start({ asTab: true });
+    const env2 = await start({ asTab: true, waitUntilSubscribe: false });
     await openDiscuss(channelId, { target: env1 });
     await openDiscuss(channelId, { target: env2 });
     await contains(`${env1.selector} .o-mail-Thread:contains('Welcome to #General!')`); // wait for loaded and focus in input
@@ -40,7 +41,7 @@ test("Thread rename", async () => {
         name: "General",
     });
     const env1 = await start({ asTab: true });
-    const env2 = await start({ asTab: true });
+    const env2 = await start({ asTab: true, waitUntilSubscribe: false });
     await openDiscuss(channelId, { target: env1 });
     await openDiscuss(channelId, { target: env2 });
     await insertText(`${env1.selector} .o-mail-DiscussContent-threadName:enabled`, "Sales", {
@@ -48,7 +49,7 @@ test("Thread rename", async () => {
     });
     triggerHotkey("Enter");
     await contains(`${env2.selector} .o-mail-DiscussContent-threadName[title='Sales']`);
-    await contains(`${env2.selector} .o-mail-DiscussSidebarChannel:text('Sales')`);
+    await contains(`${env2.selector} .o-mail-NotificationItem:has(:text('Sales'))`);
 });
 
 test.tags("focus required");
@@ -59,7 +60,7 @@ test("Thread description update", async () => {
         name: "General",
     });
     const env1 = await start({ asTab: true });
-    const env2 = await start({ asTab: true });
+    const env2 = await start({ asTab: true, waitUntilSubscribe: false });
     await openDiscuss(channelId, { target: env1 });
     await openDiscuss(channelId, { target: env2 });
     await insertText(
@@ -96,12 +97,12 @@ test.skip("Channel subscription is renewed when channel is added from invite", a
         },
     });
     await openDiscuss();
-    await contains(".o-mail-DiscussSidebarChannel");
+    await contains(".o-mail-MessagingMenuItem");
     getService("mail.store").fetchStoreData("/discuss/channel/add_members", {
         channel_id: channelId,
         user_ids: [serverState.userId],
     });
-    await contains(".o-mail-DiscussSidebarChannel", { count: 2 });
+    await contains(".o-mail-MessagingMenuItem", { count: 2 });
     await expect.waitForSteps(["update-channels"]); // FIXME: sometimes 1 or 2 update-channels
 });
 
@@ -115,7 +116,7 @@ test("Adding attachments", async () => {
         message_type: "comment",
     });
     const env1 = await start({ asTab: true });
-    const env2 = await start({ asTab: true });
+    const env2 = await start({ asTab: true, waitUntilSubscribe: false });
     await openDiscuss(channelId, { target: env1 });
     await openDiscuss(channelId, { target: env2 });
     const file = new File(["file content"], "test.txt", { type: "text/plain" });
@@ -128,7 +129,7 @@ test("Adding attachments", async () => {
     await click(`${env1.selector} .o-mail-Message .o-mail-Composer .o_input_file`);
     await setInputFiles([file]);
     await contains(
-        `${env1.selector} .o-mail-AttachmentContainer:not(.o-isUploading):contains(test.txt) .fa-check`
+        `${env1.selector} .o-mail-AttachmentContainer:not(.o-isUploading):contains(test.txt)`
     );
     await click(`${env1.selector} .o-mail-Message .o-mail-Composer button[data-type='save']`);
 
@@ -152,7 +153,7 @@ test("Remove attachment from message", async () => {
         res_id: channelId,
     });
     const env1 = await start({ asTab: true });
-    const env2 = await start({ asTab: true });
+    const env2 = await start({ asTab: true, waitUntilSubscribe: false });
     await openDiscuss(channelId, { target: env1 });
     await openDiscuss(channelId, { target: env2 });
     await contains(`${env1.selector} .o-mail-AttachmentCard:has(:text('test.txt'))`);
@@ -179,17 +180,44 @@ test("Message (hard) delete notification", async () => {
         res_partner_id: serverState.partnerId,
     });
     await start();
-    await openDiscuss("mail.box_inbox");
-    await contains(".o-mail-Message");
-    await rightClick(".o-mail-Message");
+    await openDiscuss(MENU_ACTIVE_IDS.NOTIFICATION);
+    await click(".o-mail-MessagingMenuItem [title='Message Actions']");
     await click(".o-dropdown-item:contains('Bookmark')");
-    await contains("button:has(:text('Inbox'))", { contains: [".badge:text('1')"] });
+    await contains("button:has(:text('Notifications'))", { contains: [".badge:text('1')"] });
     await contains("button:has(:text('Bookmarks'))", { contains: [".badge:text('1')"] });
     const [partner] = pyEnv["res.partner"].read(serverState.partnerId);
     pyEnv["bus.bus"]._sendone(partner, "mail.message/delete", {
         message_ids: [messageId],
     });
     await contains(".o-mail-Message", { count: 0 });
-    await contains("button:has(:text('Inbox'))", { contains: [".badge", { count: 0 }] });
+    await contains("button:has(:text('Notifications'))", { contains: [".badge", { count: 0 }] });
     await contains("button:has(:text('Bookmarks'))", { count: 0 });
+});
+
+test("Mark conversation as read when sole unread message has been deleted", async () => {
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({
+        name: "General",
+        channel_member_ids: [
+            Command.create({
+                message_unread_counter: 1,
+                new_message_separator: 0,
+                partner_id: serverState.partnerId,
+                seen_message_id: false,
+            }),
+        ],
+    });
+    const messageId = pyEnv["mail.message"].create({
+        body: "Unread message",
+        message_type: "comment",
+        model: "discuss.channel",
+        partner_ids: [serverState.partnerId],
+        res_id: channelId,
+    });
+    await start();
+    // Do not open the conversation so that seen_message_id stays unset.
+    await openDiscuss(MENU_ACTIVE_IDS.CHANNEL);
+    await contains(".o-mail-NotificationItem-badge");
+    pyEnv["mail.message"].unlink(messageId);
+    await contains(".o-mail-NotificationItem-badge", { count: 0 });
 });

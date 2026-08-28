@@ -27,13 +27,34 @@ NO_FLAG_COUNTRIES = [
     "SJ", #Svalbard + Jan Mayen : separate jurisdictions : no dedicated flag
 ]
 
+EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES = {
+    # EU Member States
+    'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE',
+    'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+
+    # EFTA Countries in the EEA
+    'IS', 'LI', 'NO',
+}
+
+# France and its overseas territories (DOM-TOM/DROM-COM)
+FR_AND_OVERSEAS_TERRITORIES = [
+    'FR', 'BL', 'GF', 'GP', 'MF', 'MQ', 'NC', 'PF', 'PM', 'RE', 'TF', 'WF', 'YT',
+]
+
+SEPA_COUNTRIES = [
+    'AD', 'AT', 'AX', 'BE', 'BG', 'BL', 'CH', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR',
+    'UK', 'GF', 'GG', 'GI', 'GP', 'GR', 'HR', 'HU', 'IE', 'IM', 'IS', 'IT', 'JE', 'LI', 'LT',
+    'LU', 'LV', 'MC', 'MF', 'MQ', 'MT', 'NL', 'NO', 'PL', 'PM', 'PT', 'RE', 'RO', 'SE', 'SI',
+    'SK', 'SM', 'VA', 'YT',
+]
+
 
 class ResCountry(models.CachedModel):
     _name = 'res.country'
     _description = 'Country'
     _explanation = "Represents a nation or territory. Used for addressing, tax rules (fiscal positions), and localization settings."
     _order = 'name, id'
-    _rec_names_search = ['name', 'code']
+    _rec_names_search = ('name', 'code')
     _cached_data_fields = ('code', 'currency_id', 'phone_code')
 
     name = fields.Char(
@@ -195,7 +216,7 @@ class ResCountryState(models.Model):
     _description = "Country state"
     _explanation = "Represents a sub-division of a country, such as a state, province, or region."
     _order = 'code, id'
-    _rec_names_search = ['name', 'code']
+    _rec_names_search = ('name', 'code')
 
     country_id = fields.Many2one('res.country', string='Country', required=True, index=True)
     name = fields.Char(string='State Name', required=True,

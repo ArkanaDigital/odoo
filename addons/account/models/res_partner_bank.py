@@ -4,7 +4,7 @@ from odoo import _, api, fields, models, SUPERUSER_ID, tools
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import SQL
 from odoo.tools.image import image_data_uri
-from odoo.addons.account.tools import format_account_number, validate_iban, validate_clabe
+from odoo.tools.bank_account_number import format_account_number, validate_iban, validate_clabe
 
 
 class ResPartnerBank(models.Model):
@@ -225,6 +225,11 @@ class ResPartnerBank(models.Model):
         if vals:
             return self._get_qr_code_base64(**vals)
         return None
+
+    def build_qr_code_value(self, amount, free_communication, structured_communication, currency, debtor_partner, qr_method=None, silent_errors=True):
+        vals = self._build_qr_code_vals(amount, free_communication, structured_communication, currency, debtor_partner, qr_method, silent_errors)
+        params = vals and self._get_qr_code_generation_params(**vals)
+        return params.get('value') if params else None
 
     def _get_qr_vals(self, qr_method, amount, currency, debtor_partner, free_communication, structured_communication):
         return None

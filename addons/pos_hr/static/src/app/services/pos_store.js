@@ -95,6 +95,14 @@ patch(PosStore.prototype, {
      * If pos_hr is activated, return {name: string, id: int, barcode: string, pin: string, user_id: int}
      * @returns {null|*}
      */
+    getSyncAllOrdersContext(orders, options = {}) {
+        const context = super.getSyncAllOrdersContext(orders, options);
+        const cashier = this.getCashier();
+        if (cashier?.id) {
+            context.current_cashier_id = cashier.id;
+        }
+        return context;
+    },
     getCashier() {
         if (this.config.module_pos_hr) {
             return this.cashier;
@@ -139,18 +147,17 @@ patch(PosStore.prototype, {
         }
         return super.shouldShowOpeningControl(...arguments);
     },
-    async allowProductCreation() {
-        if (this.config.module_pos_hr) {
-            return this.employeeIsAdmin && (await super.allowProductCreation());
-        }
-        return await super.allowProductCreation();
+    get hasProductCreationAccess() {
+        return this.config.module_pos_hr
+            ? this.employeeIsAdmin && super.hasProductCreationAccess
+            : super.hasProductCreationAccess;
     },
     canEditPayment(order) {
         return super.canEditPayment(order) && (!this.config.module_pos_hr || this.employeeIsAdmin);
     },
     async handleUrlParams() {
         if (this.config.module_pos_hr && !this.cashier) {
-            if (this.router.state.current !== "LoginScreen") {
+            if (this.router.currentScreen() !== "LoginScreen") {
                 this.router.navigate("LoginScreen", {});
             }
             return;

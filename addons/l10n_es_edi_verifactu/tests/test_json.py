@@ -11,6 +11,8 @@ from .common import TestL10nEsEdiVerifactuCommon
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestL10nEsEdiVerifactuJson(TestL10nEsEdiVerifactuCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -384,6 +386,7 @@ class TestL10nEsEdiVerifactuJson(TestL10nEsEdiVerifactuCommon):
         dummy_start_document = self.env['l10n_es_edi_verifactu.document'].sudo().create([{
             'company_id': self.company.id,
             'document_type': 'submission',
+            'obligado_partner_id': self.company.partner_id.id,
         }])
         dummy_start_document.sudo().json_attachment_id = self.env['ir.attachment'].sudo().create({
             'raw': json.dumps(dummy_start_document_dict, indent=4).encode(),

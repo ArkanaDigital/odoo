@@ -121,6 +121,14 @@ class AccountAnalyticLine(models.Model):
             return self.env._("You cannot remove timsheets that are already invoiced.")
         return super()._get_invoiced_line_delete_error()
 
+    def write(self, vals):
+        project = self.env['project.project'].sudo().browse(vals.get('project_id'))
+
+        if project and not project.allow_billable:
+            vals['is_so_line_edited'] = False
+
+        return super().write(vals)
+
     def _timesheet_determine_sale_line(self):
         """ Deduce the SO line associated to the timesheet line:
             1/ timesheet on task rate: the so line will be the one from the task
@@ -154,9 +162,18 @@ class AccountAnalyticLine(models.Model):
         """ Only the timesheets with a product invoiced on delivered quantity are concerned.
             since in ordered quantity, the timesheet quantity is not invoiced,
             thus there is no meaning of showing invoice with ordered quantity.
+            The timesheet linked to a draft Sol are also excluded.
         """
         domain = super()._timesheet_get_portal_domain()
-        return Domain.AND([domain, [('billable_type', 'in', ['04_billable_time', '09_non_billable', '02_billable_fixed', '08_billable_manual', '06_billable_milestones'])]])
+        return Domain.AND([
+            domain,
+            [
+                ('billable_type', 'in', ['04_billable_time', '09_non_billable', '02_billable_fixed', '08_billable_manual', '06_billable_milestones']),
+                '|',
+                    ('so_line', '=', False),
+                    ('sale_order_state', '=', 'sale'),
+            ]
+        ])
 
     @api.model
     def _timesheet_get_sale_domain(self, order_lines_ids, invoice_ids):

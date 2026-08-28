@@ -51,12 +51,19 @@ class PublicPageController(http.Controller):
         return self._response_discuss_channel_invitation(store, channel, guest_email)
 
     @mail_route("/discuss/channel/<int:channel_id>", methods=["GET"], type="http", auth="public")
-    def discuss_channel(self, channel_id, *, highlight_message_id=None, fullscreen=None):
+    def discuss_channel(self, channel_id, *, debug=None, highlight_message_id=None, fullscreen=None):
         # highlight_message_id and fullscreen are used JS side by parsing the query string
         channel = request.env["discuss.channel"].search([("id", "=", channel_id)])
         if not channel:
             raise NotFound()
         return self._response_discuss_public_template(Store(), channel)
+
+    @mail_route("/discuss", methods=["GET"], type="http", auth="public")
+    def discuss_public(self, *, debug=None, active_id=None):
+        _, guest = self.env["res.users"]._get_current_persona()
+        if self.env.user._is_public() and not guest:
+            raise NotFound()
+        return self._response_discuss_public_template(Store())
 
     def _response_discuss_channel_from_token(self, create_token, channel_name=None, default_display_mode=False):
         # sudo: ir.config_parameter - reading hard-coded key and using it in a simple condition
@@ -91,6 +98,21 @@ class PublicPageController(http.Controller):
         if group_public_id and group_public_id not in request.env.user.all_group_ids:
             raise request.not_found()
         guest_already_known = channel.env["mail.guest"]._get_guest_from_context()
+        if guest_email and not guest_already_known:
+            # sudo: discuss.channel.member - searching pending members with sudo to get access rights as guest won't have access to.
+            pending_member_sudo = request.env["discuss.channel.member"].sudo().search_fetch(
+                [
+                    ("channel_id", "=", channel.id),
+                    ("invitation_sent_dt", "!=", False),
+                    ("guest_id.email", "=", guest_email),
+                ],
+                limit=1,
+            )
+            if pending_member_sudo:
+                pending_guest_sudo = pending_member_sudo.guest_id
+                pending_guest_sudo._set_auth_cookie()
+                guest_from_context = pending_guest_sudo.sudo(False)
+                channel = channel.with_context(guest=guest_from_context)
         with replace_exceptions(UserError, by=NotFound()):
             # sudo: mail.guest - creating a guest and its member inside a channel of which they have the token
             __, guest = channel.sudo()._find_or_create_persona_for_channel(
@@ -108,20 +130,21 @@ class PublicPageController(http.Controller):
             return request.redirect(f"/odoo/action-mail.action_discuss?active_id={channel.id}")
         return self._response_discuss_public_template(store, channel)
 
-    def _response_discuss_public_template(self, store: Store, channel):
+    def _response_discuss_public_template(self, store: Store, channel=None):
         store.add_global_values(
             companyName=request.env.company.name,
             inPublicPage=True,
         )
-        store.add(channel, "_store_channel_fields")
-        store.add_model_values(
-            "DiscussApp",
-            lambda res: res.one("thread", [], as_thread=True, value=channel),
-        )
+        if channel:
+            store.add(channel, "_store_channel_fields")
+            store.add_model_values(
+                "DiscussApp",
+                lambda res: res.one("thread", [], as_thread=True, value=channel),
+            )
         return request.render(
             "mail.discuss_public_channel_template",
             {
-                "session_info": channel.env["ir.http"].session_info(),
+                "session_info": request.env["ir.http"].session_info(),
                 "store_data": store.as_dict(),
             },
         )

@@ -4,9 +4,34 @@ from collections import defaultdict
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+TRANSACTION_TYPES = ('party', 'nominal', 'export', 'summary', 'self_bill')
+
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
+
+    l10n_sa_edi_transaction_type_ids = fields.Many2many(
+        comodel_name="l10n_sa_edi.transaction.type",
+        string="Transaction type",
+        compute="_compute_l10n_sa_edi_transaction_type_ids",
+        store=True,
+        readonly=False,
+    )
+    l10n_sa_is_csid_ready = fields.Boolean(compute='_compute_l10n_sa_is_csid_ready')
+    l10n_sa_compliance_checks_passed = fields.Boolean(related='journal_id.l10n_sa_compliance_checks_passed')
+
+    @api.depends('commercial_partner_id.country_id')
+    def _compute_l10n_sa_edi_transaction_type_ids(self):
+        for move in self:
+            if move.commercial_partner_id.country_id.code != 'SA' and move.l10n_sa_invoice_type == 'tax':
+                move.l10n_sa_edi_transaction_type_ids = self.env.ref('l10n_sa_edi.transaction_type_export', raise_if_not_found=False)
+            else:
+                move.l10n_sa_edi_transaction_type_ids = None
+
+    @api.depends('journal_id.l10n_sa_production_csid_json')
+    def _compute_l10n_sa_is_csid_ready(self):
+        for move in self:
+            move.l10n_sa_is_csid_ready = bool(move.journal_id.sudo().l10n_sa_production_csid_json)
 
     def _l10n_sa_is_phase_2_applicable(self, check_document=True):
         return self._l10n_sa_is_phase_1_applicable() and self.is_sale_document() and self.state == 'posted' and \
@@ -31,10 +56,23 @@ class AccountMove(models.Model):
             'l10n_sa_edi_invalid_date_moves': self.env._("Please set the Invoice Date to be either less than or equal to today as per the Asia/Riyadh time zone, since ZATCA does not allow future-dated invoicing."),
             'l10n_sa_edi_empty_reason_moves': self.env._("Please make sure the 'ZATCA Reason' for the issuance of the Credit/Debit Note is specified."),
             'l10n_sa_edi_invalid_ref_moves': self.env._("Please make sure the 'Customer Reference' contains the sequential number of the original invoice(s) that the Credit/Debit Note is related to."),
+            'l10n_sa_edi_empty_supply_end_date': self.env._("To issue the selected Invoice and Transaction Type, please fill in the 'Supply End Date' by going to Other Info > Supply End Date."),
+            'l10n_sa_edi_invalid_supply_end_date': self.env._("Supply Date cannot be greater than the Supply End Date. Please adapt it."),
         }
         invalid_scheme_partners = self.env['res.partner']
         empty_vat_partners = self.env['res.partner']
 
+        if invalid_companies := self.filtered(
+            lambda move: move.country_code == 'SA' and move.state == 'posted' and move.is_sale_document()
+        ).company_id.filtered(
+            lambda company: not company._l10n_sa_check_organization_unit()
+        ):
+            res['l10n_sa_edi_company_vat_invalid'] = {
+                'message': self.env._("The company VAT identification must contain 15 digits, with the first and last digits being '3' as per the BR-KSA-39 and BR-KSA-40 of ZATCA KSA business rule."),
+                'level': 'danger',
+                'action_text': self.env._("View Companies"),
+                'action': invalid_companies._get_records_action(),
+            }
         edi_moves = self.filtered(lambda move: move._l10n_sa_is_phase_2_applicable())
         for move in edi_moves:
             if move.commercial_partner_id == move.company_id.partner_id.commercial_partner_id:
@@ -52,9 +90,15 @@ class AccountMove(models.Model):
             if move.l10n_sa_show_reason and not move._l10n_sa_check_billing_reference():
                 invalid_moves_dict['l10n_sa_edi_invalid_ref_moves'] += move
 
+            if move.l10n_sa_invoice_type == 'simplified' and 'summary' in move.l10n_sa_edi_transaction_type_ids.mapped('code') and not move.l10n_sa_edi_supply_end_date:
+                invalid_moves_dict['l10n_sa_edi_empty_supply_end_date'] += move
+
+            if move.l10n_sa_edi_supply_end_date and move.l10n_sa_edi_supply_end_date < move.delivery_date:
+                invalid_moves_dict['l10n_sa_edi_invalid_supply_end_date'] += move
+
             if (
                 any(
-                    tax.l10n_sa_exemption_reason_code in ('VATEX-SA-HEA', 'VATEX-SA-EDU')
+                    tax.ubl_cii_tax_exemption_reason_code in ('VATEX-SA-HEA', 'VATEX-SA-EDU')
                     for tax in move.invoice_line_ids.filtered(
                         lambda line: line.display_type == 'product',
                     ).tax_ids
@@ -85,14 +129,6 @@ class AccountMove(models.Model):
                 'action': invalid_journals._get_records_action(),
             }
 
-        if invalid_companies := edi_moves.company_id.filtered(lambda company: not company._l10n_sa_check_organization_unit()):
-            res['l10n_sa_edi_company_vat_invalid'] = {
-                'message': self.env._("The company VAT identification must contain 15 digits, with the first and last digits being '3' as per the BR-KSA-39 and BR-KSA-40 of ZATCA KSA business rule."),
-                'level': 'danger',
-                'action_text': self.env._("View Companies"),
-                'action': invalid_companies._get_records_action(),
-            }
-
         if invalid_companies := edi_moves.journal_id.company_id.sudo().filtered(lambda company: not company.l10n_sa_private_key_id):
             res['l10n_sa_edi_company_key_invalid'] = {
                 'message': self.env._("No Private Key was generated for these companies. A Private Key is mandatory in order to generate Certificate Signing Requests (CSR)."),
@@ -103,10 +139,7 @@ class AccountMove(models.Model):
 
         if invalid_scheme_partners:
             res['l10n_sa_edi_invalid_scheme_customers'] = {
-                'message': self.env._("""
-                    Please set the Identification Scheme as National ID and Identification Number as the respective
-                    number on the Customer, as the Tax Exemption Reason is set either as VATEX-SA-HEA or VATEX-SA-EDU
-                """),
+                'message': self.env._("Please set the Identification Scheme as National ID and Identification Number as the respective number on the Customer, as the Tax Exemption Reason is set either as VATEX-SA-HEA or VATEX-SA-EDU"),
                 'level': 'danger',
                 'action_text': self.env._("View Partners"),
                 'action': invalid_scheme_partners._get_records_action(),
@@ -177,8 +210,6 @@ class AccountMove(models.Model):
         self.l10n_sa_uuid = uuid.uuid4()
         # We generate the XML content
         xml_content = self._l10n_sa_generate_zatca_template()
-        if isinstance(xml_content, dict):
-            raise ValidationError(xml_content.get('error'))
         # Once the required values are generated, we hash the invoice, then use it to generate a Signature
         invoice_hash_hex = self.env['account.edi.xml.ubl_21.zatca']._l10n_sa_generate_invoice_xml_hash(xml_content).decode()
         self.l10n_sa_invoice_signature = self.env['l10n_sa_edi.document']._l10n_sa_get_digital_signature(self.journal_id.company_id,
@@ -234,6 +265,27 @@ class AccountMove(models.Model):
         self.ensure_one()
         return self.journal_id
 
+    def _get_l10n_sa_edi_invoice_type_code(self):
+        """
+        Generates 7-character ZATCA transaction code (NNPNESB).
+
+        Structure Breakdown:
+        - NN (Pos 1-2): Invoice type ('01' = Tax, '02' = Simplified)
+        - P  (Pos 3)  : Third Party
+        - N  (Pos 4)  : Nominal
+        - E  (Pos 5)  : Export
+        - S  (Pos 6)  : Summary
+        - B  (Pos 7)  : Self-billed
+        """
+        self.ensure_one()
+
+        code = '01' if self.l10n_sa_invoice_type == 'tax' else '02'
+        active_transaction_types = self.l10n_sa_edi_transaction_type_ids.mapped('code')
+        # as of now Third party and Self-billed are not implemented
+        for transaction_type in TRANSACTION_TYPES:
+            code += '1' if transaction_type in active_transaction_types else '0'
+        return code
+
     def action_open_chain_head(self):
         """
         Action to show the chain head of the invoice
@@ -246,10 +298,7 @@ class AccountMove(models.Model):
         self.ensure_one()
         xml_content, errors = self.env['account.edi.xml.ubl_21.zatca']._export_invoice(self)
         if errors:
-            return {
-                'error': self.env._("Could not generate Invoice UBL content: %s", ", \n".join(errors)),
-                'blocking_level': 'error',
-            }
+            raise ValidationError(self.env._("Could not generate Invoice UBL content: %s", ", \n".join(errors)))
 
         return self.env['l10n_sa_edi.document']._l10n_sa_postprocess_zatca_template(xml_content)
 

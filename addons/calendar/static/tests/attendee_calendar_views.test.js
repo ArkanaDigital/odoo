@@ -33,16 +33,16 @@ const arch = /*xml*/ `
         all_day="allday"
         mode="month"
     >
-        <field name="partner_ids" options="{'block': True, 'icon': 'fa fa-users'}"
+        <field name="partner_ids" options="{'block': True, 'icon': 'group', 'icon_class': 'oi-filled'}"/>
             filters="1" widget="many2manyattendeeexpandable" write_model="calendar.filters"
             write_field="partner_id" filter_field="partner_checked" avatar_field="avatar_128"/>
-        <field name="partner_id" string="Organizer" options="{'icon': 'fa fa-user-o'}"/>
+        <field name="partner_id" string="Organizer" options="{'icon': 'person'}"/>
         <field name="user_id"/>
         <field name="start"/>
         <field name="stop"/>
         <field name="allday"/>
         <field name="res_model_name" invisible="not res_model_name"
-            options="{'icon': 'fa fa-link', 'shouldOpenRecord': true}"/>
+            options="{'icon': 'link'}" widget="calendar_open_event"/>
     </calendar>
 `;
 
@@ -155,9 +155,13 @@ beforeEach(async () => {
 test("Linked record rendering", async () => {
     const pyEnv = MockServer.current.env;
     onRpc("res.users", "has_group", () => true);
-    onRpc("res.users", "check_synchronization_status", () => ({}));
     onRpc("res.partner", "get_attendee_detail", () => []);
-    onRpc("/calendar/check_credentials", () => ({}));
+    onRpc("res.users", "get_calendar_model_data", () => ({
+        credential_status: {},
+        sync_status: {},
+        sync_email: false,
+        default_duration: 1,
+    }));
     const { id: modelId, display_name } = pyEnv["ir.model"].search_read(
         [["model", "=", "res.partner"]],
         ["display_name"]
@@ -176,15 +180,19 @@ test("Linked record rendering", async () => {
 
     await changeScale("week");
     await clickEvent(eventId);
-    expect(".fa-link").toHaveCount(1, { message: "A link icon should be present" });
-    expect("li a[href='#']").toHaveText(display_name);
+    expect("[data-icon='link']").toHaveCount(1, { message: "A link icon should be present" });
+    expect(".o_field_widget[name=res_model_name] a[href='#']").toHaveText(display_name);
 });
 
 test("Default duration rendering", async () => {
     onRpc("res.users", "has_group", () => true);
-    onRpc("res.users", "check_synchronization_status", () => ({}));
+    onRpc("res.users", "get_calendar_model_data", () => ({
+        credential_status: {},
+        sync_status: {},
+        sync_email: false,
+        default_duration: 3.25,
+    }));
     onRpc("res.partner", "get_attendee_detail", () => []);
-    onRpc("/calendar/check_credentials", () => ({}));
     await mountView({ type: "calendar", resModel: "calendar.event", arch });
     expandCalendarView();
     await changeScale("week");
@@ -208,8 +216,12 @@ test("Activity events rendering and popover", async () => {
         expect.step("action_reschedule_tomorrow");
     });
     onRpc("res.partner", "get_attendee_detail", () => []);
-    onRpc("/calendar/check_credentials", () => ({}));
-    onRpc("res.users", "check_synchronization_status", () => ({}));
+    onRpc("res.users", "get_calendar_model_data", () => ({
+        credential_status: {},
+        sync_status: {},
+        sync_email: false,
+        default_duration: 1,
+    }));
     onRpc("set_res_users_settings", (args) => {
         if ("calendar_show_activities" in args.kwargs.new_settings) {
             if (args.kwargs.new_settings.calendar_show_activities) {

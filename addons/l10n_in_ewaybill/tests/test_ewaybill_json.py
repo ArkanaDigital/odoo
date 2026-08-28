@@ -10,6 +10,8 @@ from odoo.tests import tagged
 @tagged("post_install_l10n", "post_install", "-at_install")
 class TestEwaybillJson(L10nInTestInvoicingCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -271,7 +273,7 @@ class TestEwaybillJson(L10nInTestInvoicingCommon):
             "toAddr2": "",
             "toPlace": "Peebles",
             "toPincode": 999999,
-            "actToStateCode": 99,
+            "actToStateCode": 97,
             "toStateCode": 99,
             "itemList": [{
                 "productName": "product_a",
@@ -331,7 +333,7 @@ class TestEwaybillJson(L10nInTestInvoicingCommon):
             "fromPincode": 365220,
             "fromStateCode": 24,
             "actFromStateCode": 24,
-            "toGstin": "36AAAAA1234AAZA",
+            "toGstin": "URP",
             "toTrdName": "SEZ Partner",
             "toAddr1": "Block no. 402",
             "toAddr2": "",
@@ -457,3 +459,35 @@ class TestEwaybillJson(L10nInTestInvoicingCommon):
         })
         expected_msg = _('- Transporter %s does not have a valid GST Number', self.partner_b.name)
         self.assertEqual(ewaybill_invoice_2._check_transporter(), [expected_msg])
+
+    def test_ewaybill_cancel(self):
+        ewaybill_invoice = self.env['l10n.in.ewaybill'].create({
+            "name": "123456789012",
+            "account_move_id": self.invoice.id,
+            "cancel_reason": "1",
+        })
+        expected = {
+            "ewbNo": 123456789012,
+            "cancelRsnCode": 1,
+        }
+
+        with self.subTest(scenario="without remarks"):
+            cancel_json_value = ewaybill_invoice._get_cancellation_request_vals()
+            self.assertDictEqual(
+                cancel_json_value,
+                expected,
+                "Indian EDI cancellation JSON values do not match the expected values",
+            )
+
+        ewaybill_invoice.write({
+            "cancel_remarks": "Test Cancel Remarks",
+        })
+        expected['cancelRmrk'] = "Test Cancel Remarks"
+
+        with self.subTest(scenario="with remarks"):
+            cancel_json_value = ewaybill_invoice._get_cancellation_request_vals()
+            self.assertDictEqual(
+                cancel_json_value,
+                expected,
+                "Indian EDI cancellation JSON values with remarks do not match the expected values",
+            )

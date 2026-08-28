@@ -1,12 +1,13 @@
 import { useService } from "@web/core/utils/hooks";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { MoneyDetailsPopup } from "@point_of_sale/app/components/popups/money_details_popup/money_details_popup";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, onMounted, useProps, t } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { parseFloat } from "@web/views/fields/parsers";
 import { Dialog } from "@web/core/dialog/dialog";
 import { RPCError } from "@web/core/network/rpc";
 import { CashInput } from "@point_of_sale/app/components/inputs/input/cash_input/cash_input";
+import { useTrackedAsync } from "@point_of_sale/app/hooks/hooks";
 
 class CustomDialog extends Dialog {
     onEscape() {}
@@ -15,9 +16,9 @@ class CustomDialog extends Dialog {
 export class OpeningControlPopup extends Component {
     static template = "point_of_sale.OpeningControlPopup";
     static components = { Dialog: CustomDialog, CashInput };
-    static props = {
-        close: Function,
-    };
+    props = useProps({
+        close: t.function(),
+    });
 
     setup() {
         this.moneyDetails = null;
@@ -26,15 +27,27 @@ export class OpeningControlPopup extends Component {
         this.state = proxy({
             notes: "",
             openingCash: this.env.utils.formatCurrency(
-                this.pos.session.cash_register_balance_start || 0,
+                this.pos.config._last_opening_balance || 0,
                 false
             ),
+            ordersByPreset: [],
         });
         this.ui = useService("ui");
+        this.getOrderCountByPreset = useTrackedAsync(
+            async () =>
+                (this.state.ordersByPreset = await this.pos.data.call(
+                    "pos.session",
+                    "get_order_count_by_preset",
+                    [this.pos.session.id]
+                ))
+        );
+
+        onMounted(() => {
+            this.getOrderCountByPreset.call();
+        });
     }
     get orderCount() {
-        return this.pos.models["pos.order"].filter((o) => o.lines.length > 0 && o.state === "draft")
-            .length;
+        return this.state.ordersByPreset.reduce((total, preset) => total + preset.count, 0);
     }
     async confirm() {
         try {
@@ -87,6 +100,6 @@ export class OpeningControlPopup extends Component {
         this.state.openingCash = this.env.utils.parseAndFormatCurrency(this.state.openingCash);
     }
     get cashMethodCount() {
-        return this.pos.config.payment_method_ids.filter((pm) => pm.is_cash_count).length;
+        return this.pos.config.payment_method_ids.filter((pm) => pm.type === "cash").length;
     }
 }

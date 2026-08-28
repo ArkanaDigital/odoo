@@ -8,30 +8,44 @@ from odoo.addons.website_sale.controllers.main import WebsiteSale
 
 class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController, WebsiteSale):
     @route(
-        route="/website_sale/should_show_product_configurator",
+        route="/website_sale/product_configurator/get_values",
         type="jsonrpc",
         auth="public",
         website=True,
         readonly=True,
     )
-    def website_sale_should_show_product_configurator(
-        self, product_template_id, is_product_configured
+    def website_sale_product_configurator_get_values(self, *args, **kwargs):
+        product_template_id = kwargs.get("product_template_id")
+        product_template = self._get_product_template(product_template_id)
+        if product_template._is_donation():
+            return {}
+        self._populate_currency_and_pricelist(kwargs)
+        return super().sale_product_configurator_get_values(*args, **kwargs)
+
+    def should_show_product_configurator(
+        self, single_product_variant_dict, product_template, is_product_configured=False, **kwargs
     ):
         """Return whether the product configurator dialog should be shown.
 
-        :param int product_template_id: The product being checked, as a `product.template` id.
+        :param dict single_product_variant_dict: Information about the single product variant.
+        :param product.template product_template: The product.template record being checked.
         :param bool is_product_configured: Whether the product is already configured.
         :rtype: bool
         :return: Whether the product configurator dialog should be shown.
         """
-        product_template = self.env["product.template"].browse(product_template_id)
-        single_product_variant = product_template.get_single_product_variant()
+        if not request.is_frontend:
+            return super().should_show_product_configurator(
+                single_product_variant_dict,
+                product_template,
+                is_product_configured=is_product_configured,
+                **kwargs,
+            )
         has_optional_products = bool(
             product_template.optional_product_ids.filtered(self._should_show_product)
         )
         return (
             has_optional_products
-            or not (single_product_variant.get("product_id") or is_product_configured)
+            or not (single_product_variant_dict.get("product_id") or is_product_configured)
             or (len(product_template._get_available_uoms()) > 1 and not is_product_configured)
         )
 
@@ -49,17 +63,6 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
             ]):
                 return self.env["product.template"].sudo().browse(product_template_id)
         return super()._get_product_template(product_template_id)
-
-    @route(
-        route="/website_sale/product_configurator/get_values",
-        type="jsonrpc",
-        auth="public",
-        website=True,
-        readonly=True,
-    )
-    def website_sale_product_configurator_get_values(self, *args, **kwargs):
-        self._populate_currency_and_pricelist(kwargs)
-        return super().sale_product_configurator_get_values(*args, **kwargs)
 
     @route(
         route="/website_sale/product_configurator/create_product",
@@ -145,7 +148,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
             strikethrough_price = (
                 self._get_strikethrough_price(
                     product_or_template.with_context(
-                        **product_or_template._get_product_price_context(combination)
+                        uom=uom, **product_or_template._get_product_price_context(combination)
                     ),
                     currency,
                     date,
@@ -180,7 +183,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
         :return: The extra price for the product template attribute value.
         """
         price_extra = super()._get_ptav_price_extra(ptav, currency, date, product_or_template)
-        website = request.env["website"].get_current_website(fallback=False)
+        website = request.env.website
         if website:
             return product_or_template._apply_taxes_to_price(price_extra, currency, website=website)
         return price_extra
@@ -198,6 +201,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
         :rtype: float|None
         :return: The strikethrough price of the product, if there is one.
         """
+        uom = product_or_template.env.context.get("uom")
         pricelist_rule = self.env["product.pricelist.item"].browse(pricelist_rule_id)
 
         # First, try to use the base price as the strikethrough price.
@@ -207,7 +211,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
                 pricelist_rule._compute_price_before_discount(
                     product=product_or_template,
                     quantity=1.0,
-                    uom=product_or_template._get_main_uom(),
+                    uom=uom or product_or_template._get_main_uom(),
                     date=date,
                     currency=currency,
                 ),
@@ -233,6 +237,10 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
                 date=date,
                 round=False,
             )
+            if uom and uom != product_or_template.uom_id:
+                compare_list_price = product_or_template.uom_id._compute_price(
+                    compare_list_price, uom
+                )
             # Only show `compare_list_price` if it's greater than the actual price.
             if currency.compare_amounts(compare_list_price, price) == 1:
                 return compare_list_price
@@ -249,7 +257,7 @@ class WebsiteSaleProductConfiguratorController(SaleProductConfiguratorController
         if request.is_frontend:
             return (
                 should_show_product
-                and product_template._is_add_to_cart_possible()
+                and product_template._has_ecommerce_sellable_variants()
                 and product_template.filtered_domain(self.env.website.website_domain())
             )
         return should_show_product

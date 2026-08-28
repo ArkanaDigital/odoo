@@ -1,8 +1,7 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, signal } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { usePopover } from "@web/core/popover/popover_hook";
-import { SelectionField } from "@web/views/fields/selection/selection_field";
+import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { Many2One, computeM2OProps } from "@web/views/fields/many2one/many2one";
 import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
@@ -69,12 +68,13 @@ class TemplateSelectionPopover extends Component {
     }
 }
 
-export class ContractTemplateField extends SelectionField {
+export class ContractTemplateField extends Component {
     static template = "hr.ContractTemplateField";
+    static props = standardFieldProps;
+
+    templateButtonRef = signal.ref();
 
     setup() {
-        super.setup();
-        this.templateButtonRef = useRef("templateButton");
         this.templatePopover = usePopover(TemplateSelectionPopover, {
             closeOnClickAway: true,
             position: "bottom",
@@ -82,7 +82,7 @@ export class ContractTemplateField extends SelectionField {
     }
 
     async onSelectTemplate() {
-        this.templatePopover.open(this.templateButtonRef.el, {
+        this.templatePopover.open(this.templateButtonRef(), {
             fieldProps: this.props,
             record: this.props.record,
             onSelect: (template) => this.loadTemplate(template),

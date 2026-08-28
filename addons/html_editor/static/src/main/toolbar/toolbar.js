@@ -1,5 +1,5 @@
-import { useRef, validate } from "@web/owl2/utils";
-import { Component, proxy } from "@odoo/owl";
+import { validate } from "@web/owl2/utils";
+import { Component, proxy, signal } from "@odoo/owl";
 import { omit, pick } from "@web/core/utils/objects";
 import { trapFocus } from "@html_editor/utils/dom_traversal";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
@@ -41,6 +41,7 @@ export class Toolbar extends Component {
                                                 ...base,
                                                 run: Function,
                                                 icon: { type: String, optional: true },
+                                                iconClass: { type: String, optional: true },
                                                 text: { type: String, optional: true },
                                                 isActive: Boolean,
                                             });
@@ -56,9 +57,10 @@ export class Toolbar extends Component {
         },
     };
 
+    toolbarEl = signal.ref();
+
     setup() {
         this.state = proxy(this.props.state);
-        this.toolbarEl = useRef("toolbarEl");
 
         useHotkey("alt+f", () => this.focusFirstToolbarButton(), {
             bypassEditableProtection: true,
@@ -67,7 +69,7 @@ export class Toolbar extends Component {
                     ".o-we-toolbar[data-namespace], [data-prevent-closing-overlay]"
                 )
                     ? null
-                    : this.toolbarEl.el,
+                    : this.toolbarEl(),
             isAvailable: () =>
                 !document.activeElement.closest(
                     ".o-we-toolbar[data-namespace], [data-prevent-closing-overlay]"
@@ -76,7 +78,7 @@ export class Toolbar extends Component {
     }
 
     focusFirstToolbarButton() {
-        this.toolbarEl.el?.querySelector("button:not([disabled])").focus();
+        this.toolbarEl()?.querySelector("button:not([disabled])").focus();
     }
 
     onKeyDown(ev) {
@@ -88,7 +90,7 @@ export class Toolbar extends Component {
         if (["Tab", "ArrowLeft", "ArrowRight"].includes(ev.key)) {
             ev.preventDefault();
             ev.stopPropagation();
-            const toolbarButtons = this.toolbarEl.el.querySelectorAll("button");
+            const toolbarButtons = this.toolbarEl().querySelectorAll("button");
             const isBackward = ev.key === "ArrowLeft" || (ev.key === "Tab" && ev.shiftKey);
             trapFocus(toolbarButtons, isBackward);
         } else if (ev.key === "Escape") {
@@ -125,7 +127,7 @@ export const toolbarButtonProps = {
 export function composeToolbarButton(userCommand, toolbarItem) {
     const description = toolbarItem.description || userCommand.description;
     return {
-        ...pick(userCommand, "icon"),
+        ...pick(userCommand, "icon", "iconClass"),
         ...omit(toolbarItem, "commandId", "commandParams"),
         run: () => userCommand.run(toolbarItem.commandParams),
         isAvailable: (selection) =>

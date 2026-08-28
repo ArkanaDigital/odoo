@@ -11,6 +11,14 @@ from odoo.tests import Form
 
 
 class TestOee(TestMrpCommon):
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'mrp.group_mrp_manager',
+        'stock.group_stock_user',
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     def create_productivity_line(self, loss_reason, date_start=False, date_end=False):
         return self.env['mrp.workcenter.productivity'].create({
             'workcenter_id': self.workcenter_1.id,

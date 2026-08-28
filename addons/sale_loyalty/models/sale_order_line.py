@@ -107,6 +107,14 @@ class SaleOrderLine(models.Model):
                 if line.points_cost != previous_cost or line.coupon_id != previous_coupon:
                     previous_coupon.points += previous_cost
                     line.coupon_id.points -= line.points_cost
+                    # Same coupon: apply the delta in a single call to avoid a redundant search.
+                    if line.coupon_id == previous_coupon:
+                        line.order_id._update_loyalty_history(line.coupon_id, line.points_cost - previous_cost)
+                    else:
+                        if previous_coupon:
+                            line.order_id._update_loyalty_history(previous_coupon, -previous_cost)
+                        if line.coupon_id:
+                            line.order_id._update_loyalty_history(line.coupon_id, line.points_cost)
         return res
 
     def unlink(self):
@@ -163,6 +171,3 @@ class SaleOrderLine(models.Model):
 
     def _can_be_edited_on_portal(self):
         return super()._can_be_edited_on_portal() and not self.is_reward_line
-
-    def _is_product_line(self):
-        return not self._is_discount_line() and super()._is_product_line()

@@ -15,6 +15,7 @@ class SaleOrderTemplate(models.Model):
         help="If unchecked, it will allow you to hide the Order template without removing it.",
     )
     company_id = fields.Many2one(comodel_name="res.company", default=lambda self: self.env.company)
+    currency_id = fields.Many2one(string="Currency", comodel_name="res.currency")
 
     name = fields.Char(string="Template", required=True)
     note = fields.Html(string="Terms and conditions", translate=True)
@@ -44,15 +45,8 @@ class SaleOrderTemplate(models.Model):
         readonly=False,
         help="Request a online signature to the customer in order to confirm orders automatically.",
     )
-    require_payment = fields.Boolean(
-        string="Online Payment",
-        compute="_compute_require_payment",
-        store=True,
-        readonly=False,
-        help="Request an online payment to the customer in order to confirm orders automatically.",
-    )
     prepayment_percent = fields.Float(
-        string="Prepayment percentage",
+        string="Prepayment",
         compute="_compute_prepayment_percent",
         store=True,
         readonly=False,
@@ -83,6 +77,7 @@ class SaleOrderTemplate(models.Model):
         compute="_compute_user_has_access",
         search="_search_user_has_access",
     )
+    has_productless_lines = fields.Boolean(compute="_compute_has_productless_lines")
 
     # === COMPUTE METHODS ===#
 
@@ -94,16 +89,14 @@ class SaleOrderTemplate(models.Model):
             ).portal_confirmation_sign
 
     @api.depends("company_id")
-    def _compute_require_payment(self):
-        for order in self:
-            order.require_payment = (order.company_id or order.env.company).portal_confirmation_pay
-
-    @api.depends("company_id", "require_payment")
     def _compute_prepayment_percent(self):
         for template in self:
-            template.prepayment_percent = (
-                template.company_id or template.env.company
-            ).prepayment_percent
+            if (template.company_id or template.env.company).portal_confirmation_pay:
+                template.prepayment_percent = (
+                    template.company_id or template.env.company
+                ).prepayment_percent
+            else:
+                template.prepayment_percent = 0.0
 
     @api.depends_context("uid")
     @api.depends("team_ids", "share_template", "team_ids.member_ids", "team_ids.user_id")
@@ -136,13 +129,13 @@ class SaleOrderTemplate(models.Model):
             )
         ) | Domain("create_uid", x2many_operator, self.env.user.ids)
 
-    # === ONCHANGE METHODS ===#
-
-    @api.onchange("prepayment_percent")
-    def _onchange_prepayment_percent(self):
+    @api.depends("sale_order_template_line_ids")
+    def _compute_has_productless_lines(self):
         for template in self:
-            if not template.prepayment_percent:
-                template.require_payment = False
+            template.has_productless_lines = any(
+                not (line.product_id or line.display_type)
+                for line in self.sale_order_template_line_ids
+            )
 
     # === CONSTRAINT METHODS ===#
 
@@ -197,7 +190,7 @@ class SaleOrderTemplate(models.Model):
     @api.constrains("prepayment_percent")
     def _check_prepayment_percent(self):
         for template in self:
-            if template.require_payment and not (0 < template.prepayment_percent <= 1.0):
+            if not (0 <= template.prepayment_percent <= 1.0):
                 raise ValidationError(
                     self.env._("Prepayment percentage must be a valid percentage.")
                 )
@@ -218,11 +211,11 @@ class SaleOrderTemplate(models.Model):
     def _update_product_translations(self):
         languages = self.env["res.lang"].search([("active", "=", True)])
         for lang in languages:
-            for line in self.sale_order_template_line_ids:
-                if line.name == line.product_id.get_product_multiline_description_sale():
-                    line.with_context(lang=lang.code).name = line.product_id.with_context(
+            for line in self.sale_order_template_line_ids.filtered("product_id"):
+                if line.name == line._get_default_description():
+                    line.with_context(lang=lang.code).name = line.with_context(
                         lang=lang.code
-                    ).get_product_multiline_description_sale()
+                    )._get_default_description()
 
     @api.model
     def _demo_configure_template(self):
@@ -310,7 +303,9 @@ class SaleOrderTemplate(models.Model):
         )
         return self.search_read(domain, fields=["id", "name", "create_uid"], load="")
 
-    def prepare_section_template_order_lines(self, order_changes, fields_spec):
+    def prepare_section_template_order_lines(
+        self, order_changes, fiscal_position_id, company_id, currency_id, fields_spec
+    ):
         """Prepare `sale.order.line` value dicts from a section template.
 
         Builds order line values from the given section template, applies
@@ -318,15 +313,23 @@ class SaleOrderTemplate(models.Model):
         returns the resulting values ready for insertion.
 
         :param dict order_changes: Order values to consider for onchange
+        :param int fiscal_position_id: fiscal position of the order
+        :param int company_id: company of the order
+        :param int currency_id: currency of the order
         :param dict fields_spec: Fields specification for onchange
         :return: Prepared sale order line values
         :rtype: list[dict]
         """
         self.ensure_one()
         result = []
+        fiscal_position = self.env["account.fiscal.position"].browse(fiscal_position_id)
+        currency = self.env["res.currency"].browse(currency_id)
 
-        for line in self.sale_order_template_line_ids:
-            onchange_values = {**line._prepare_order_line_values(), **order_changes}
+        for line in self.with_company(company_id).sale_order_template_line_ids:
+            onchange_values = {
+                **line._prepare_order_line_values(fiscal_position, currency),
+                **order_changes,
+            }
             onchange_result = self.env["sale.order.line"].onchange(onchange_values, [], fields_spec)
             result.append(onchange_result.get("value", {}))
 

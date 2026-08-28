@@ -1,11 +1,11 @@
 /** @odoo-module **/
 
 import { afterEach, beforeEach, describe, expect, test } from "@odoo/hoot";
-import { advanceTime, animationFrame, queryFirst } from "@odoo/hoot-dom";
+import { animationFrame, queryFirst, waitUntil } from "@odoo/hoot-dom";
 import { Component, xml } from "@odoo/owl";
 import {
     getService,
-    makeMockEnv,
+    makeTestApp,
     mountWithCleanup,
     patchWithCleanup,
 } from "@web/../tests/web_test_helpers";
@@ -20,16 +20,11 @@ describe.current.tags("desktop");
 const tourRegistry = registry.category("web_tour.tours");
 let macro;
 async function waitForMacro() {
-    for (let i = 0; i < 50; i++) {
-        await animationFrame();
-        await advanceTime(265);
-        if (macro.isComplete) {
-            return;
-        }
-    }
-    if (!macro.isComplete) {
-        throw new Error(`Macro is not complete`);
-    }
+    await waitUntil(() => macro.isComplete, {
+        timeout: 5_000,
+        message: "waitForMacro: macro did not complete in time",
+    });
+    await animationFrame();
 }
 
 beforeEach(() => {
@@ -78,74 +73,67 @@ test("Step Tour validity", async () => {
     tourRegistry.add("tour1", {
         steps: () => steps,
     });
-    const expectedKeys = [
-        "trigger",
-        "id?",
-        "isActive?",
-        "run?",
-        "content?",
-        "expectUnloadPage?",
-        "timeout?",
-        "tooltipPosition?",
-    ];
-    await makeMockEnv({});
-    const waited_error1 = `Error in schema for TourStep\n${JSON.stringify(
-        [
-            {
-                received: steps[0],
-                path: "",
-                message: "object value has unknown keys",
-                unknownKeys: ["Belgium", "wins", "EURO2024"],
-                expectedKeys,
-            },
-        ],
-        null,
-        2
-    )}`;
-    const waited_error2 = `Error in schema for TourStep\n${JSON.stringify(
-        [
-            {
-                received: steps[1],
-                path: "",
-                message: "object value has unknown keys",
-                unknownKeys: ["my_title", "doku"],
-                expectedKeys,
-            },
-        ],
-        null,
-        2
-    )}`;
-    const waited_error3 = `Error in schema for TourStep\n${JSON.stringify(
-        [
-            {
-                received: steps[2].run,
-                path: "run",
-                message: "value does not match union type",
-                subIssues: [
-                    {
-                        received: "[Known object]",
-                        path: "run",
-                        message: "value is not a string",
-                    },
-                    {
-                        received: "[Known object]",
-                        path: "run",
-                        message: "value is not a function",
-                    },
-                    {
-                        received: "[Known object]",
-                        path: "run",
-                        message: "value is not a boolean",
-                    },
-                ],
-            },
-        ],
-        null,
-        2
-    )}`;
+    await makeTestApp();
     await getService("tour_service").startTour("tour1");
     await animationFrame();
-    expect.verifySteps([waited_error1, waited_error2, waited_error3]);
+    expect.verifySteps([
+        `Error in schema for TourStep
+[
+  {
+    "received": {
+      "Belgium": true,
+      "wins": "of course",
+      "EURO2024": true,
+      "trigger": "button.foo"
+    },
+    "path": "",
+    "message": "object value has unknown keys",
+    "unknownKeys": [
+      "Belgium",
+      "wins",
+      "EURO2024"
+    ]
+  }
+]`,
+        `Error in schema for TourStep
+[
+  {
+    "received": {
+      "my_title": "EURO2024",
+      "trigger": "button.bar",
+      "doku": "Lukaku 10"
+    },
+    "path": "",
+    "message": "object value has unknown keys",
+    "unknownKeys": [
+      "my_title",
+      "doku"
+    ]
+  }
+]`,
+        `Error in schema for TourStep
+[
+  {
+    "received": [
+      "Enjoy euro 2024"
+    ],
+    "path": "run",
+    "message": "value does not match union type",
+    "subIssues": [
+      {
+        "received": "[Known object]",
+        "path": "run",
+        "message": "value is not a string"
+      },
+      {
+        "received": "[Known object]",
+        "path": "run",
+        "message": "value is not a function"
+      }
+    ]
+  }
+]`,
+    ]);
 });
 
 test("a tour with invalid step trigger", async () => {
@@ -227,6 +215,34 @@ test("a failing tour logs the step that failed in run", async () => {
         ].join("\n"),
     ];
     expect.verifySteps(expectedError);
+});
+
+test("empty run function is rejected", async () => {
+    patchWithCleanup(console, {
+        error: (msg) => expect.step(msg),
+    });
+    tourRegistry.add("tour_reject_empty_run", {
+        steps: () => [
+            { trigger: "button", run: () => {} },
+            { trigger: "button", run: function () {} },
+            { trigger: "button", run() {} },
+        ],
+    });
+    const expectedError = `Error in schema for TourStep\n${JSON.stringify(
+        [
+            {
+                received: "run",
+                path: "run",
+                message: "run must be a string or a non-empty function",
+            },
+        ],
+        null,
+        2
+    )}`;
+    await makeTestApp();
+    await getService("tour_service").startTour("tour_reject_empty_run");
+    await animationFrame();
+    expect.verifySteps([expectedError, expectedError, expectedError]);
 });
 
 test("a failing tour with disabled element", async () => {
@@ -422,7 +438,6 @@ test("automatic tour with invisible element", async () => {
         warn: (s) => {},
         error: (s) => expect.step(`error: ${s}`),
     });
-    await makeMockEnv();
 
     class Root extends Component {
         static components = {};
@@ -474,7 +489,6 @@ test("automatic tour with invisible element but use :not(:visible))", async () =
         warn: (s) => {},
         error: (s) => expect.step(`error: ${s}`),
     });
-    await makeMockEnv();
 
     class Root extends Component {
         static components = {};
@@ -678,4 +692,38 @@ test("a tour where hoot trigger failed", async () => {
 ERROR during find trigger:
 Failed to execute 'querySelectorAll' on 'Element': '.button1:brol(:machin)' is not a valid selector.`,
     ]);
+});
+
+test("Tour redirect to given url", async () => {
+    class Root extends Component {
+        static components = {};
+        static template = xml/*html*/ `
+            <t>
+                <button class="button0">Button 0</button>
+                <button class="button1">Button 1</button>
+                <button class="button2">Button 2</button>
+            </t>
+        `;
+        static props = ["*"];
+    }
+
+    await mountWithCleanup(Root);
+    tourRegistry.add("tour_redirect", {
+        steps: () => [
+            {
+                content: "content",
+                trigger: ".button0",
+                run: "click",
+            },
+            {
+                content: "content",
+                trigger: ".button1",
+                run: "click",
+            },
+        ],
+    });
+    expect(browser.location.pathname).toBe("/");
+    await odoo.startTour("tour_redirect", { mode: "auto", url: "/odoo" });
+    await waitForMacro();
+    expect(browser.location.pathname).toBe("/odoo");
 });

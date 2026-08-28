@@ -1,22 +1,22 @@
 import { Avatar } from "@mail/views/web/fields/avatar/avatar";
 
-import { Component, onWillStart } from "@odoo/owl";
+import { Component, onWillStart, t, useProps } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { user } from "@web/core/user";
 import { computeM2OProps, Many2One } from "@web/views/fields/many2one/many2one";
 import {
     buildM2OFieldDescription,
     extractM2OFieldProps,
-    Many2OneField,
+    many2OneFieldProps,
 } from "@web/views/fields/many2one/many2one_field";
 
 export class Many2OneAvatarEmployeeField extends Component {
     static template = "hr.Many2OneAvatarEmployeeField";
     static components = { Avatar, Many2One };
-    static props = {
-        ...Many2OneField.props,
-        relation: { type: String, optional: true },
-    };
+    props = useProps({
+        ...many2OneFieldProps,
+        relation: t.string().optional(),
+    });
 
     setup() {
         onWillStart(async () => {
@@ -44,11 +44,7 @@ export class Many2OneAvatarEmployeeField extends Component {
 registry.category("fields").add("many2one_avatar_employee", {
     ...buildM2OFieldDescription(Many2OneAvatarEmployeeField),
     relatedFields: [{ name: "write_date", type: "datetime" }],
-    additionalClasses: [
-        "o_field_many2one_avatar",
-        "o_field_many2one_avatar_kanban",
-        "o_field_many2one_avatar_user",
-    ],
+    additionalClasses: ["o_field_many2one_avatar", "o_field_many2one_avatar_user"],
     extractProps(staticInfo, dynamicInfo) {
         return {
             ...extractM2OFieldProps(staticInfo, dynamicInfo),

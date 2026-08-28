@@ -1,4 +1,4 @@
-import { useChildSubEnv } from "@web/owl2/utils";
+import { useSubEnv } from "@web/owl2/utils";
 import { registerThreadAction } from "@mail/core/common/thread_actions";
 import { SubChannelList } from "@mail/discuss/core/public_web/sub_channel_list";
 import { attClassObjectToString } from "@mail/utils/common/format";
@@ -19,20 +19,21 @@ registerThreadAction("show-threads", {
             "o-mail-SubChannelList-panel": true,
             [store.discussDropdownMenuClass(owner)]: !owner.env.inMeetingView,
         }),
+    btnAttrs: { "data-available-offline": true },
     condition: ({ channel, owner }) =>
         (channel?.hasSubChannelFeature || channel?.parent_channel_id?.hasSubChannelFeature) &&
         !owner.isDiscussSidebarChannelActions,
-    icon: "fa fa-fw fa-comments-o",
+    icon: "forum",
     name: _t("Threads"),
     setup({ owner, store }) {
-        if (owner.env.inDiscussApp && !store.env.isSmall) {
+        if (owner.env.inDiscussApp && !store.env.services.ui.isSmall) {
             this.popover = usePopover(SubChannelList, {
                 onClose: () => this.actionPanelClose(),
                 fixedPosition: true,
                 popoverClass: this.actionPanelOuterClass,
             });
         }
-        useChildSubEnv({ subChannelMenu: { open: () => this.actionPanelOpen() } });
+        useSubEnv({ subChannelMenu: { open: () => this.actionPanelOpen() } });
     },
     sequence: ({ owner }) => (owner.props.chatWindow ? 40 : 5),
     sequenceGroup: 10,

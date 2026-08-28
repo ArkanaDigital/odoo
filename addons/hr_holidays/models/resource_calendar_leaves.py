@@ -1,10 +1,14 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from datetime import UTC, datetime
+import csv
+from datetime import UTC, datetime, time
+from zoneinfo import ZoneInfo
 
-from odoo import api, fields, models
+from odoo import api, fields, models, modules
 from odoo.exceptions import ValidationError
 from odoo.fields import Domain
+from odoo.tools import config, file_open, file_path
+from odoo.tools.date_utils import convert_timezone
 
 
 class ResourceCalendarLeaves(models.Model):
@@ -95,21 +99,6 @@ class ResourceCalendarLeaves(models.Model):
                 leave._notify_change(message)
         leaves_to_recreate.sudo()._create_resource_leave()
 
-    def _convert_timezone(self, utc_naive_datetime, tz_from, tz_to):
-        """
-            Convert a naive date to another timezone that initial timezone
-            used to generate the date.
-            :param utc_naive_datetime: utc date without tzinfo
-            :type utc_naive_datetime: datetime
-            :param tz_from: timezone used to obtained `utc_naive_datetime`
-            :param tz_to: timezone in which we want the date
-            :return: datetime converted into tz_to without tzinfo
-            :rtype: datetime
-        """
-        naive_datetime_from = utc_naive_datetime.astimezone(tz_from).replace(tzinfo=None)
-        aware_datetime_to = naive_datetime_from.replace(tzinfo=tz_to)
-        return aware_datetime_to.astimezone(UTC).replace(tzinfo=None)
-
     def _ensure_datetime(self, datetime_representation, date_format=None):
         """
             Be sure to get a datetime object if we have the necessary information.
@@ -147,4 +136,106 @@ class ResourceCalendarLeaves(models.Model):
     @api.depends('calendar_id')
     def _compute_company_id(self):
         for leave in self:
-            leave.company_id = leave.holiday_id.employee_id.company_id or leave.calendar_id.company_id or self.env.company
+            leave.company_id = leave.holiday_id.employee_id.company_id or leave.calendar_id.company_id or leave.company_id or self.env.company
+
+    def load_public_holidays(self):
+        return {
+            'type': 'ir.actions.act_window',
+            'name': self.env._('Load Public Holidays'),
+            'res_model': 'load.public.holiday.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+        }
+
+    def _prepare_public_holidays_data(self, start_date, end_date):
+        companies = self.env.companies
+        prepared_public_holidays = {}
+        companies_without_country = self.env['res.company']
+        companies_without_public_holidays = self.env['res.company']
+        companies_with_all_existing_holidays = self.env['res.company']
+        existing_holidays_dict = dict(self.env["resource.calendar.leaves"]._read_group(
+            domain=[
+                ('company_id', 'in', companies.ids),
+                ('date_from', '<=', end_date),
+                ('date_to', '>=', start_date),
+                ('resource_id', '=', False),
+            ],
+            groupby=['company_id'],
+            aggregates=['id:recordset'],
+        ))
+
+        for company in companies:
+            if not company.country_code:
+                companies_without_country |= company
+                continue
+
+            if not self.sudo().env['hr.work.entry.type'].search([('code', '=', 'LEAVE500'), ('country_code', '!=', company.country_code)], limit=1):
+                continue
+            try:
+                csv_file_path = file_path(f"hr_holidays/data/public_holidays/public_holidays_{company.country_code.lower()}.csv")
+            except FileNotFoundError:
+                companies_without_public_holidays |= company
+                continue
+
+            company_tz = ZoneInfo(company.tz or self.env.user.tz or 'UTC')
+            public_holidays_values_dict = {}
+            has_holidays_for_year = False
+            with file_open(csv_file_path) as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if not row.get("date") or not row.get("holiday"):
+                        continue
+                    holiday_date = datetime.strptime(row["date"], "%Y-%m-%d").date()
+                    if holiday_date > end_date:
+                        break
+                    if holiday_date < start_date:
+                        continue
+
+                    has_holidays_for_year = True
+                    holiday_start_utc = convert_timezone(datetime.combine(holiday_date, time.min), UTC, company_tz)
+                    holiday_end_utc = convert_timezone(datetime.combine(holiday_date, time.max), UTC, company_tz)
+                    overlapping = any(
+                        holiday.date_from <= holiday_end_utc and holiday.date_to >= holiday_start_utc
+                        for holiday in existing_holidays_dict.get(company, [])
+                    )
+                    if overlapping:
+                        continue
+
+                    holiday_name = row["holiday"].strip()
+                    if holiday_date in public_holidays_values_dict:
+                        public_holidays_values_dict[holiday_date]['name'] += f" / {holiday_name}"
+                    else:
+                        public_holidays_values_dict[holiday_date] = {
+                            'name': holiday_name,
+                            'date_from': holiday_date,
+                            'date_to': holiday_date,
+                            'company_id': company.id,
+                        }
+
+            if public_holidays_values_dict:
+                prepared_public_holidays[company.id] = list(public_holidays_values_dict.values())
+            elif not has_holidays_for_year:
+                companies_without_public_holidays += company
+            else:
+                companies_with_all_existing_holidays += company
+
+        return {
+            'prepared_public_holidays': prepared_public_holidays,
+            'companies_without_country': companies_without_country,
+            'companies_without_public_holidays': companies_without_public_holidays,
+            'companies_with_all_existing_holidays': companies_with_all_existing_holidays,
+        }
+
+    def _cron_generate_public_holidays(self):
+        if config['test_enable'] or modules.module.current_test:
+            return
+        start_date = fields.Date.today()
+        end_date = fields.Date.add(fields.Date.today(), years=1)
+        prepared_public_holidays = self._prepare_public_holidays_data(start_date, end_date)['prepared_public_holidays']
+        if prepared_public_holidays:
+            create_values = [
+                public_holiday_value
+                for company_data in prepared_public_holidays.values()
+                for public_holiday_value in company_data
+            ]
+            self.env['resource.calendar.leaves'].sudo().create(create_values)

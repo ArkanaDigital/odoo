@@ -17,7 +17,6 @@ class PurchaseOrder(models.Model):
     def _default_picking_type(self):
         return self._get_picking_type(self.env.context.get('company_id') or self.env.company.id)
 
-    incoterm_location = fields.Char(string='Incoterm Location')
     incoming_picking_count = fields.Integer("Incoming Shipment count", compute='_compute_incoming_picking_count')
     picking_ids = fields.Many2many('stock.picking', compute='_compute_picking_ids', string='Receptions', copy=False, store=True)
     dest_address_id = fields.Many2one('res.partner', compute='_compute_dest_address_id', store=True, readonly=False)
@@ -151,6 +150,7 @@ class PurchaseOrder(models.Model):
             'vendor_suggest_based_on': self.partner_id.suggest_based_on,
             'vendor_suggest_percent': self.partner_id.suggest_percent,
             'product_catalog_order_state': self.state,
+            'display_stock': True,
         }
 
     def action_purchase_order_suggest(self):
@@ -171,6 +171,10 @@ class PurchaseOrder(models.Model):
         })
 
         po_lines_commands = []
+        subtotal_delta = 0.0
+        lines_by_product = self._get_product_catalog_record_lines(
+            products.ids, child_field='order_line', section_id=ctx.get('section_id')
+        )
         for product in products:
             suggest_line = self.env['purchase.order.line']._prepare_purchase_order_line(
                 product,
@@ -180,12 +184,11 @@ class PurchaseOrder(models.Model):
                 self.partner_id,
                 self
             )
-            existing_lines = self.order_line.filtered(lambda pol: pol.product_id == product)
-            if section_id := ctx.get("section_id"):
-                existing_lines = existing_lines.filtered(lambda pol: pol.get_parent_section_line().id == section_id)
-                suggest_line["sequence"] = self._get_new_line_sequence("order_line", section_id)
-            else:
-                existing_lines = existing_lines.filtered(lambda pol: not pol.parent_id)  # lines with no sections
+            existing_lines = lines_by_product.get(product, self.env['purchase.order.line'])
+
+            old_subtotal = sum(existing_lines.mapped('price_subtotal'))
+            new_subtotal = suggest_line['price_unit'] * suggest_line['product_qty'] if product.suggested_qty > 0 else 0.0
+
             if existing_lines:
                 # Collapse into 1 or 0 po line, discarding previous data in favor of suggested qtys
                 to_unlink = existing_lines if product.suggested_qty == 0 else existing_lines[:-1]
@@ -193,11 +196,15 @@ class PurchaseOrder(models.Model):
                 if product.suggested_qty > 0:
                     po_lines_commands.append(Command.update(existing_lines[-1].id, suggest_line))
             elif product.suggested_qty > 0:
+                suggest_line['sequence'] = self._prepare_lines_insertion(
+                    'order_line', into_section_id=ctx.get('section_id')
+                )
                 po_lines_commands.append(Command.create(suggest_line))
 
+            subtotal_delta += new_subtotal - old_subtotal
+
         self.order_line = po_lines_commands
-        # Return the change in number of po_lines for the given section
-        return sum({"CREATE": 1, "UNLINK": -1}.get(line[0].name, 0) for line in po_lines_commands)
+        return subtotal_delta
 
     def button_approve(self, force=False):
         self.order_line._set_date_promised()
@@ -290,7 +297,7 @@ class PurchaseOrder(models.Model):
     def _get_domain_is_late(self, operator, value):
         domain = super()._get_domain_is_late(operator, value)
         if operator == "=" and value or operator == "!=" and not value:
-            domain &= Domain.OR([Domain('picking_ids', '=', False), Domain('picking_ids.state', '!=', 'done')])
+            domain &= Domain.OR([Domain('picking_ids', '=', False), Domain('picking_ids.state', 'not in', ['done', 'cancel'])])
         return domain
 
     def _get_action_view_picking(self, pickings):
@@ -309,11 +316,6 @@ class PurchaseOrder(models.Model):
             result['views'] = form_view + [(state, view) for state, view in result.get('views', []) if view != 'form']
             result['res_id'] = pickings.id
         return result
-
-    def _prepare_invoice(self):
-        invoice_vals = super()._prepare_invoice()
-        invoice_vals['invoice_incoterm_id'] = self.incoterm_id.id
-        return invoice_vals
 
     # --------------------------------------------------
     # Business methods
@@ -362,7 +364,7 @@ class PurchaseOrder(models.Model):
             return self.picking_type_id.default_location_dest_id
         wh_stock_loc = self.picking_type_id.warehouse_id.lot_stock_id
         default_dest_loc = self.picking_type_id.default_location_dest_id
-        if default_dest_loc and default_dest_loc._child_of(wh_stock_loc):
+        if default_dest_loc and (not wh_stock_loc or default_dest_loc._child_of(wh_stock_loc)):
             return default_dest_loc
         return wh_stock_loc
 
@@ -386,7 +388,7 @@ class PurchaseOrder(models.Model):
             if any(product.type == 'consu' for product in order.order_line.product_id):
                 order = order.with_company(order.company_id)
                 moves = order.order_line._create_stock_moves()
-                moves = moves.filtered(lambda x: x.state not in ('done', 'cancel')).with_context({'move_picking_partner_id': self.partner_id}).sudo()._action_confirm()
+                moves = moves.filtered(lambda x: x.state not in ('done', 'cancel')).with_context(move_picking_partner_id=self.partner_id).sudo()._action_confirm()
                 seq = 0
                 for move in sorted(moves, key=lambda move: move.date):
                     seq += 5
@@ -434,24 +436,20 @@ class PurchaseOrder(models.Model):
         validated receipts."""
         return super()._get_orders_to_remind().filtered(lambda p: not p.effective_date)
 
-    def _is_display_stock_in_catalog(self):
-        return True
-
-    def _get_product_catalog_order_line_info(self, product_ids, child_field=False, **kwargs):
+    def _get_product_catalog_order_line_info(self, *args, **kwargs) -> dict:
         """ Add suggest_ctx to env in order to trigger product.product suggest compute fields"""
         if kwargs.get('suggest_based_on'):
             suggest_keys = ('suggest_days', 'suggest_based_on', 'suggest_percent', 'warehouse_id')
             suggest_ctx = {k: v for k, v in kwargs.items() if k in suggest_keys}
             return super(PurchaseOrder, self.with_context(suggest_ctx))._get_product_catalog_order_line_info(
-                product_ids, child_field=child_field, **kwargs
+                *args, **kwargs
             )
-        return super()._get_product_catalog_order_line_info(product_ids, child_field=child_field, **kwargs)
+        return super()._get_product_catalog_order_line_info(*args, **kwargs)
 
-    def _get_product_catalog_seller_data(self, product, **kwargs):
-        """ Fetch the product's data used by the purchase's catalog."""
-        res = super()._get_product_catalog_seller_data(product, **kwargs)
-        res["suggested_qty"] = product.suggested_qty
-        return res
+    def _get_product_catalog_product_data(self, product, **kwargs) -> dict:
+        product_data = super()._get_product_catalog_product_data(product, **kwargs)
+        product_data["suggested_qty"] = product.suggested_qty
+        return product_data
 
     def _add_reference(self, references):
         """ link the given references to the list of references. """

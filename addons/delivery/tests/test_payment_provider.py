@@ -7,22 +7,24 @@ from odoo.addons.delivery.tests.cash_on_delivery_common import CashOnDeliveryCom
 
 @tagged("post_install", "-at_install")
 class TestCODPaymentProvider(CashOnDeliveryCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_cod_provider_available_when_dm_cod_enabled(self):
         order = self.sale_order
         self.free_delivery.allow_cash_on_delivery = True
         order.carrier_id = self.free_delivery
-        compatible_providers = (
+        available_providers = (
             self
             .env["payment.provider"]
             .sudo()
-            ._get_compatible_providers(
+            ._find_available_providers(
                 self.company.id, self.partner.id, self.amount, sale_order_id=order.id
             )
         )
         self.assertTrue(
             any(
                 p.code == "custom" and p.custom_mode == "cash_on_delivery"
-                for p in compatible_providers
+                for p in available_providers
             )
         )
 
@@ -30,17 +32,17 @@ class TestCODPaymentProvider(CashOnDeliveryCommon):
         order = self.sale_order
         self.free_delivery.allow_cash_on_delivery = False
         order.carrier_id = self.free_delivery
-        compatible_providers = (
+        available_providers = (
             self
             .env["payment.provider"]
             .sudo()
-            ._get_compatible_providers(
+            ._find_available_providers(
                 self.company.id, self.partner.id, self.amount, sale_order_id=order.id
             )
         )
         self.assertFalse(
             any(
                 p.code == "custom" and p.custom_mode == "cash_on_delivery"
-                for p in compatible_providers
+                for p in available_providers
             )
         )

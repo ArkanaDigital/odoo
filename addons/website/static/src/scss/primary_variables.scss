@@ -21,8 +21,8 @@ $o-base-color-palette: map-merge($o-base-color-palette, (
     'footer-custom': null,
     'copyright': null,
     'copyright-custom': null,
-    'portal-card': null,
-    "portal-card-custom":null,
+    'portal-card': 2,
+    'portal-card-custom': null,
     'portal-gradient': null,
     'portal-card-border-color': null,
     'breadcrumb': 1, // o_cc1
@@ -44,6 +44,30 @@ $o-user-gray-color-palette: () !default;
 $o-user-theme-color-palette: () !default;
 
 $o-theme-figcaption-opacity: 0.6;
+
+@function o-make-dark-palette($primary, $secondary: null) {
+    $palette: o-make-palette($primary, $secondary);
+    $dark-background: map-get($palette, 'o-color-5');
+    @return map-merge($palette, (
+        'o-color-3': adjust-color($dark-background, $lightness: 5%),
+        'o-color-4': $dark-background,
+        'o-color-5': #FFFFFF,
+        'body': 'o-color-4',
+    ));
+}
+
+$o-dark-color-palette-names: (
+    'default-dark-1',
+    'default-dark-2',
+    'default-dark-3',
+    'default-dark-4',
+    'default-dark-5',
+    'default-dark-6',
+    'default-dark-7',
+    'default-dark-8',
+    'default-dark-9',
+    'default-dark-10',
+);
 
 $o-color-palettes: map-merge($o-color-palettes,
     (
@@ -105,6 +129,16 @@ $o-color-palettes: map-merge($o-color-palettes,
         'default-26': o-make-palette(#ed6f63, #2d2926),
         'default-27': o-make-palette(#949398, #f4df4e),
         'default-28': o-make-palette(#00203f, #adefd1),
+        'default-dark-1': o-make-dark-palette(#4DB6AC, #D4A75D),
+        'default-dark-2': o-make-dark-palette(#A78BFA, #E68CB5),
+        'default-dark-3': o-make-dark-palette(#D97706, #6BAED6),
+        'default-dark-4': o-make-dark-palette(#46B97A, #B0C96A),
+        'default-dark-5': o-make-dark-palette(#DD5A73, #E0A458),
+        'default-dark-6': o-make-dark-palette(#F04E98, #F6A6C1),
+        'default-dark-7': o-make-dark-palette(#9C9288, #D6CEC5),
+        'default-dark-8': o-make-dark-palette(#B8FF3D, #22D3EE),
+        'default-dark-9': o-make-dark-palette(#008C95, #67E8F9),
+        'default-dark-10': o-make-dark-palette(#2563EB, #F4C95D),
 
         'generic-1': (
             'o-color-1': #984c46,
@@ -2065,6 +2099,7 @@ $o-selected-color-palettes-names: (
     'default-3',
     'default-light-9',
     'default-2',
+    // Kept for existing websites; no longer offered in the configurator.
     'default-light-13',
     'default-27',
     'default-light-12',
@@ -2074,6 +2109,16 @@ $o-selected-color-palettes-names: (
     // System default
     'base-1',
     'base-2',
+    'default-dark-1',
+    'default-dark-2',
+    'default-dark-3',
+    'default-dark-4',
+    'default-dark-5',
+    'default-dark-6',
+    'default-dark-7',
+    'default-dark-8',
+    'default-dark-9',
+    'default-dark-10',
 );
 
 //------------------------------------------------------------------------------
@@ -2185,6 +2230,7 @@ $o-base-website-values-palette: (
     'header-template': 'default', // 'default' / 'hamburger' / 'vertical' / 'sidebar'
     'header-font-size': null, // Default to BS (normal font-size)
     'header-text-color': null, // TODO: should have been put in the color map
+    'header-bg-blur': 0,
     'header-links-style': 'default', // 'default' / 'fill' / 'outline' / 'pills' / 'block' / 'border-bottom' / 'underline' / 'bold'
     'logo-height': null, // Default to navbar height (see portal)
     'hamburger-position': 'left', // 'left' / 'center' / 'right'
@@ -2199,6 +2245,7 @@ $o-base-website-values-palette: (
     'portal-card-border-width': null,  // Portal width
     'portal-card-border-radius': null,  // Portal Radius
     'portal-card-border-style': solid,  // portal style
+    'portal-card-gap': 0.5rem,
 
     'footer-template': 'default',
     'footer-effect': null, // null / 'slideout_slide_hover' / 'slideout_shadow'

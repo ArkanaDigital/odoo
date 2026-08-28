@@ -1,6 +1,6 @@
 import { CALL_GRID_LAYOUT } from "@mail/discuss/call/common/call_layout";
 
-import { Component, props, types as t } from "@odoo/owl";
+import { Component, t, useEffect, useProps } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
 import { _t } from "@web/core/l10n/translation";
@@ -28,11 +28,16 @@ export class ChangeLayoutDialog extends Component {
         super.setup();
         this.CALL_GRID_LAYOUT = CALL_GRID_LAYOUT;
         this.store = useService("mail.store");
-        this.props = props({
-            channel: t.instanceOf(this.store["discuss.channel"].Class),
-            "close?": t.function([]),
+        this.props = useProps({
+            channel: t.instanceOf(this.store["discuss.channel"]),
+            close: t.function([]).optional(),
         });
         this.rtc = useService("discuss.rtc");
+        useEffect(() => {
+            if (!this.props.channel.isSelfInCall) {
+                this.props.close?.();
+            }
+        });
     }
 
     /** @returns {LayoutOption[]} selectable layout options, in display order. */

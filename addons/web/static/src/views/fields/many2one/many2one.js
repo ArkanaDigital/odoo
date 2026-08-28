@@ -1,5 +1,4 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, toRaw, proxy } from "@odoo/owl";
+import { Component, useProps, toRaw, proxy, signal, t } from "@odoo/owl";
 import * as BarcodeScanner from "@web/core/barcode/barcode_dialog";
 import { isBarcodeScannerSupported } from "@web/core/barcode/barcode_video_scanner";
 import { isMobileOS } from "@web/core/browser/feature_detection";
@@ -59,9 +58,12 @@ export function computeM2OProps(fieldProps) {
         readonly: fieldProps.readonly,
         relation: fieldProps.record.fields[fieldProps.name].relation,
         searchThreshold: fieldProps.searchThreshold,
+        preventMemoization: fieldProps.preventMemoization,
         string: fieldProps.string || fieldProps.record.fields[fieldProps.name].string || "",
         update: (value, options = {}) =>
             fieldProps.record.update({ [fieldProps.name]: value }, options),
+        willOpenRecordInDialog: () => fieldProps.record.save(),
+        onRecordSaved: () => fieldProps.record.load(),
         value: toRaw(fieldProps.record.data[fieldProps.name]),
     };
 }
@@ -70,61 +72,49 @@ export function computeM2OProps(fieldProps) {
 // Components
 ///////////////////////////////////////////////////////////////////////////////
 
+export const many2OneProps = {
+    canCreate: t.boolean().optional(true),
+    canCreateEdit: t.boolean().optional(true),
+    canOpen: t.boolean().optional(true),
+    canQuickCreate: t.boolean().optional(true),
+    canScanBarcode: t.boolean().optional(false),
+    canWrite: t.boolean().optional(true),
+    context: t.object().optional({}),
+    createAction: t.function().optional(),
+    cssClass: t.string().optional(),
+    domain: t.any().optional([]),
+    id: t.string().optional(),
+    linkCssClass: t.string().optional(""),
+    nameCreateField: t.string().optional("name"),
+    openActionContext: t.function().optional(() => () => ({})),
+    openRecordAction: t.function().optional(),
+    otherSources: t.array().optional([]),
+    placeholder: t.string().optional(""),
+    readonly: t.boolean().optional(false),
+    relation: t.string(),
+    searchMoreLabel: t.string().optional(),
+    searchThreshold: t.number().optional(),
+    preventMemoization: t.boolean().optional(),
+    slots: t.object().optional(),
+    specification: t.object().optional(),
+    string: t.string().optional(""),
+    update: t.function(),
+    willOpenRecordInDialog: t.function().optional(() => () => true),
+    onRecordSaved: t.function().optional(() => {}),
+    value: t.or([t.array(), t.object(), t.literal(false)]).optional(),
+};
+
 export class Many2One extends Component {
     static template = "web.Many2One";
     static components = { Many2XAutocomplete };
-    static props = {
-        canCreate: { type: Boolean, optional: true },
-        canCreateEdit: { type: Boolean, optional: true },
-        canOpen: { type: Boolean, optional: true },
-        canQuickCreate: { type: Boolean, optional: true },
-        canScanBarcode: { type: Boolean, optional: true },
-        canWrite: { type: Boolean, optional: true },
-        context: { type: Object, optional: true },
-        createAction: { type: Function, optional: true },
-        cssClass: { type: String, optional: true },
-        domain: { type: Function, optional: true },
-        id: { type: String, optional: true },
-        linkCssClass: { type: String, optional: true },
-        nameCreateField: { type: String, optional: true },
-        openActionContext: { type: Function, optional: true },
-        openRecordAction: { type: Function, optional: true },
-        otherSources: { type: Array, optional: true },
-        placeholder: { type: String, optional: true },
-        readonly: { type: Boolean, optional: true },
-        relation: { type: String },
-        searchMoreLabel: { type: String, optional: true },
-        searchThreshold: { type: Number, optional: true },
-        slots: { type: Object, optional: true },
-        specification: { type: Object, optional: true },
-        string: { type: String, optional: true },
-        update: { type: Function },
-        value: { type: [Array, Object, { value: false }], optional: true },
-    };
-    static defaultProps = {
-        canCreate: true,
-        canCreateEdit: true,
-        canOpen: true,
-        canQuickCreate: true,
-        canScanBarcode: false,
-        canWrite: true,
-        context: {},
-        domain: [],
-        linkCssClass: "",
-        nameCreateField: "name",
-        openActionContext: () => ({}),
-        otherSources: [],
-        placeholder: "",
-        readonly: false,
-        string: "",
-    };
+    props = useProps(many2OneProps);
+    rootRef = signal.ref();
 
     setup() {
-        this.rootRef = useRef("root");
-
         this.action = useService("action");
         this.notification = useService("notification");
         this.orm = useService("orm");
+        this.uiService = useService("ui");
 
         this.state = proxy({ isFloating: false });
 
@@ -136,15 +126,7 @@ export class Many2One extends Component {
                 onClose: () => {
                     this.input.focus();
                 },
-                onRecordSaved: async () => {
-                    const resId = this.props.value?.id;
-                    const fieldNames = ["display_name"];
-                    // use unity read + relatedFields from Field Component
-                    const records = await this.orm.read(this.props.relation, [resId], fieldNames, {
-                        context: this.props.context,
-                    });
-                    await this.update(records[0] ? extractData(records[0]) : false);
-                },
+                onRecordSaved: this.props.onRecordSaved,
                 onRecordDiscarded: () => {},
                 resModel: this.props.relation,
             }),
@@ -175,6 +157,7 @@ export class Many2One extends Component {
             resModel: this.props.relation,
             searchMoreLabel: this.props.searchMoreLabel,
             searchThreshold: this.props.searchThreshold,
+            preventMemoization: this.props.preventMemoization,
             setInputFloats: (isFloating) => {
                 this.state.isFloating = isFloating;
             },
@@ -220,7 +203,7 @@ export class Many2One extends Component {
     }
 
     get input() {
-        return this.rootRef.el?.querySelector("input");
+        return this.rootRef()?.querySelector("input");
     }
 
     get linkHref() {
@@ -234,7 +217,9 @@ export class Many2One extends Component {
     }
 
     onExtraLinesClick() {
-        this.rootRef.el?.querySelector(this.props.readonly ? ".o_form_uri" : "input").click();
+        this.rootRef()
+            ?.querySelector(this.props.readonly ? ".o_form_uri" : "input")
+            .click();
     }
 
     async openBarcodeScanner() {
@@ -280,10 +265,13 @@ export class Many2One extends Component {
     }
 
     async openRecordInDialog() {
-        return this.recordDialog.open({
-            resId: this.props.value?.id,
-            context: this.props.context,
-        });
+        const canProceed = await this.props.willOpenRecordInDialog();
+        if (canProceed) {
+            return this.recordDialog.open({
+                resId: this.props.value?.id,
+                context: this.props.context,
+            });
+        }
     }
 
     async processScannedBarcode(barcode) {
@@ -302,7 +290,7 @@ export class Many2One extends Component {
             const input = this.input;
             input.value = barcode;
             input.dispatchEvent(new Event("input"));
-            if (this.env.isSmall) {
+            if (this.uiService.isSmall) {
                 input.dispatchEvent(new Event("barcode-search"));
             }
         }
@@ -319,10 +307,10 @@ export class Many2One extends Component {
 }
 
 class KanbanMany2OneAssignPopover extends Many2One {
-    static props = {
-        ...super.props,
-        close: Function,
-    };
+    props = useProps({
+        ...many2OneProps,
+        close: t.function(),
+    });
 
     get many2XAutocompleteProps() {
         return {
@@ -334,7 +322,7 @@ class KanbanMany2OneAssignPopover extends Many2One {
 
 export class KanbanMany2One extends Component {
     static template = "web.KanbanMany2One";
-    static props = { ...Many2One.props };
+    props = useProps(many2OneProps);
 
     setup() {
         this.assignPopover = usePopover(KanbanMany2OneAssignPopover, {

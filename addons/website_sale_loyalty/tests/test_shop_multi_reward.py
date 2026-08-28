@@ -9,6 +9,14 @@ from odoo.addons.website_sale_loyalty.controllers.main import WebsiteSale
 
 @tagged("post_install", "-at_install")
 class TestClaimReward(WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -147,4 +155,33 @@ class TestClaimReward(WebsiteSaleCommon):
                 self.product1,
                 cart.order_line.product_id,
                 "Chosen reward product should be added to order",
+            )
+
+    def test_apply_multiple_different_rewards_from_same_coupon(self):
+        """Test applying both a discount reward and a free product reward from the
+        same coupon program when the coupon has sufficient points.
+        """
+        self.coupon.points = 2
+        self.cart._update_programs_and_rewards()
+        discount_reward = self.coupon_program.reward_ids.filtered("discount")
+        multiproduct_reward = self.coupon_program.reward_ids.filtered("reward_product_tag_id")
+
+        with self.mock_request(user=self.user_portal, sale_order_id=self.cart.id):
+            self.WebsiteSaleController.pricelist(promo=self.coupon.code)
+            self.assertFalse(self.cart.order_line.reward_id)
+
+            self.WebsiteSaleController.claim_reward(discount_reward.id, code=self.coupon.code)
+            self.assertIn(
+                discount_reward,
+                self.cart.order_line.reward_id,
+                "Discount reward should be added to order",
+            )
+
+            self.WebsiteSaleController.claim_reward(
+                multiproduct_reward.id, code=self.coupon.code, product_id=str(self.product1.id)
+            )
+            self.assertIn(
+                multiproduct_reward,
+                self.cart.order_line.reward_id,
+                "Product reward should also be added to order",
             )

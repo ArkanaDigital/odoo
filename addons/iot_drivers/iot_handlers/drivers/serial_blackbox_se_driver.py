@@ -1,9 +1,11 @@
-# Part of Odoo. See LICENSE file for full copyright and licensing details.
-
 import logging
 import serial
 
-from odoo.addons.iot_drivers.iot_handlers.drivers.serial_driver_base import SerialDriver, SerialProtocol, serial_connection
+from odoo.addons.iot_drivers.iot_handlers.drivers.serial_driver_base import (
+    SerialDriver,
+    SerialProtocol,
+    serial_connection,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -89,9 +91,8 @@ class SwedishBlackBoxDriver(SerialDriver):
         :return: whether the device is supported by the driver
         :rtype: bool
         """
-
+        protocol = cls._protocol
         try:
-            protocol = cls._protocol
             packet = cls._wrap_message("SIQ")
             with serial_connection(device["identifier"], protocol) as connection:
                 response = cls._send_to_blackbox(packet, connection, 2)
@@ -103,22 +104,22 @@ class SwedishBlackBoxDriver(SerialDriver):
                     device["protocol_version"] = identity["protocol_version"]
                     if response[4] != "0":
                         _logger.warning(
-                            ("Received error: %s - Severity: %s"),
+                            "Received error: %s - Severity: %s",
                             MainStatus.get(response[4]),
-                            SeverityError.get(response[5][1:2])
+                            SeverityError.get(response[5][1:2]),
                         )
                         _logger.warning("Sent request: %s", packet)
                     return True
         except serial.serialutil.SerialTimeoutException:
             pass
-        except Exception:
-            _logger.exception(
-                "Error while probing %s with protocol %s", device, protocol.name
+        except Exception:  # noqa: BLE001
+            _logger.warning(
+                "Error while probing %s with protocol %s", device, protocol.name,
             )
 
     @classmethod
     def _get_identity(cls, connection):
-        """ "Get Identity of Swedish Black box
+        """Get Identity of Swedish Black box
         :return: dictionary containing unit_id, protocol_version, firmware_version
         :rtype: dict
         """
@@ -130,15 +131,14 @@ class SwedishBlackBoxDriver(SerialDriver):
                     "protocol_version": int(response[5]),
                     "firmware_version": response[6],
                 }
-            else:
-                _logger.error("Sent IQ request error")
-                return False
+            _logger.error("Sent IQ request error")
+            return False
         except Exception:  # noqa: BLE001
             _logger.error("Did not receive a response")
 
     @staticmethod
     def _lrc(msg):
-        """ "Compute a message's longitudinal redundancy check value.
+        """Compute a message's longitudinal redundancy check value.
         :param msg: the message the LRC is computed for
         :type msg: byte
         :return: the message LRC
@@ -168,8 +168,7 @@ class SwedishBlackBoxDriver(SerialDriver):
     def _register_receipt(self, data):
         if self.protocol_version >= 2:
             return self._register_receipt_v2(data)
-        else:
-            return self._register_receipt_v1(data)
+        return self._register_receipt_v1(data)
 
     def _register_receipt_v2(self, data):
         """The register receipt message registers a receipt (CCSP v2 only).
@@ -189,7 +188,7 @@ class SwedishBlackBoxDriver(SerialDriver):
 
     def _register_receipt_v1(self, data):
         """CCSP v1 requires three commands to register a receipt:
-           ST (start receipt), RH (receipt header), SQ (signature request)"""
+        ST (start receipt), RH (receipt header), SQ (signature request)"""
 
         response = self._request_action("ST", self._connection)
         error = self._check_error("ST", response)
@@ -217,34 +216,33 @@ class SwedishBlackBoxDriver(SerialDriver):
         return cls._send_to_blackbox(packet, connection)
 
     @classmethod
-    def _send_to_blackbox(cls, packet, connection, retry=1):
+    def _send_to_blackbox(
+        cls, packet: bytearray, connection: serial.Serial, retry: int = 1
+    ) -> list[str]:
         """Sends a message to and wait for a response from the blackbox.
+
         :param packet: the message to be sent to the blackbox
-        :type packet: bytearray
-        :param response_size: number of bytes of the expected response
-        :type response_size: int
         :param connection: serial connection to the blackbox
-        :type connection: serial.Serial
-        :return: the response to the sent message
-        :rtype: bytearray
+        :return: response from the FDM
         """
         connection.reset_input_buffer()
         connection.reset_output_buffer()
 
-        ACK = ""
+        ack = ""
         retries = 0
-        while ACK != "ACK" and retries < retry:
+        response = []
+        while ack != "ACK" and retries < retry:
             connection.write(packet)
             response = connection.readline().decode(errors="ignore").split("#")
 
             try:
                 if response[3] != "NAK":
-                    ACK = "ACK"
+                    ack = "ACK"
                 else:
                     _logger.error("Received error: %s", ErrorCode.get(response[4]))
                     _logger.error("Sent request: %s received NACK.", packet)
-            except Exception:  # noqa: BLE001
-                _logger.error("sent request: %s without receiving response.", packet)
+            except IndexError:
+                _logger.warning("sent request: %s without receiving response.", packet)
 
             retries += 1
 

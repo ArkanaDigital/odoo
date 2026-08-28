@@ -9,7 +9,7 @@ from odoo.fields import Command
 from odoo.tests import tagged
 
 from odoo.addons.website_sale.controllers.main import WebsiteSale
-from odoo.addons.website_sale.tests.common import WebsiteSaleCommon
+from odoo.addons.website_sale.tests.common import MockRequest, WebsiteSaleCommon
 
 
 @tagged("post_install", "-at_install")
@@ -19,6 +19,8 @@ class TestCheckoutAddress(WebsiteSaleCommon):
     * address update (/shop/address)
     * address choice (/shop/checkout).
     """
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -80,17 +82,21 @@ class TestCheckoutAddress(WebsiteSaleCommon):
         Have 1 website 1 which company is B.
         Have admin on company A.
         """
-        self.company_a, self.company_b, self.company_c = self.env["res.company"].create([
+        self.company_a, self.company_b, self.company_c = self.env["res.company"].sudo().create([
             {"name": "Company A"},
             {"name": "Company B"},
             {"name": "Company C"},
         ])
-        self.website.company_id = self.company_b
-        self.env.user.company_id = self.company_a
+        self.env.user.sudo().company_ids |= self.company_a | self.company_b
+        # sudo: assigning the website's company recomputes res.company.website_id
+        # (res_company._compute_website_id writes res.company), which the restricted
+        # test_user cannot modify — this is master-data setup.
+        self.website.sudo().company_id = self.company_b
+        self.env.user.sudo().company_id = self.company_a
 
         self.demo_user = self.user_internal
-        self.demo_user.company_ids += self.company_b
-        self.demo_user.company_id = self.company_b
+        self.demo_user.sudo().company_ids += self.company_b
+        self.demo_user.sudo().company_id = self.company_b
         self.demo_partner = self.demo_user.partner_id
 
         self.portal_user = self.user_portal
@@ -227,7 +233,7 @@ class TestCheckoutAddress(WebsiteSaleCommon):
     def test_04_pl_reset_on_login(self):
         """Check that after login, the SO pricelist is correctly recomputed."""
         self.pricelist = self._enable_pricelists()
-        test_user = self.env["res.users"].create({
+        test_user = self.env["res.users"].sudo().create({
             "name": "Toto",
             "login": "long_enough_password",
             "password": "long_enough_password",
@@ -246,13 +252,12 @@ class TestCheckoutAddress(WebsiteSaleCommon):
         with self.mock_request(
             sale_order_id=so.id, website_sale_current_pl=so.pricelist_id.id
         ) as request:
-            website = request.env["website"].get_current_website()
             self.assertEqual(request.pricelist, self.pricelist)
             order = request.cart
             self.assertEqual(order, so)
             self.assertEqual(order.pricelist_id, self.pricelist)
 
-            order_b = website.with_user(test_user)._get_and_cache_current_cart()
+            order_b = request.env.website.with_user(test_user)._get_and_cache_current_cart()
             self.assertEqual(order, order_b)
             self.assertEqual(order_b.pricelist_id, pl_with_code)
 
@@ -316,12 +321,63 @@ class TestCheckoutAddress(WebsiteSaleCommon):
                 " their name.",
             )
 
+    def test_resync_partner_preserves_selected_addresses(self):
+        """Re-syncing the cart customer must not discard the delivery/invoice addresses the
+        customer already selected, when those addresses still belong to the customer's company.
+        """
+        company = self.env["res.partner"].create({
+            "name": "B2B Company",
+            "is_company": True,
+            "type": "contact",
+        })
+        delivery_1, delivery_2 = self.env["res.partner"].create([
+            {"name": "Branch 1", "parent_id": company.id, "type": "delivery"},
+            {"name": "Branch 2", "parent_id": company.id, "type": "delivery"},
+        ])
+        invoice = self.env["res.partner"].create({
+            "name": "Accounting",
+            "parent_id": company.id,
+            "type": "invoice",
+        })
+        user = self.env["res.users"].create({
+            "name": "B2B Company",
+            "login": "b2b_company",
+            "password": "b2b_company_pwd",
+            "partner_id": company.id,
+            "group_ids": [Command.link(self.env.ref("base.group_portal").id)],
+        })
+
+        # The customer selected a branch and a billing contact that differ from the defaults
+        # computed from the company.
+        default_delivery = company.address_get(["delivery"])["delivery"]
+        selected_delivery = (delivery_1 | delivery_2).filtered(lambda p: p.id != default_delivery)
+        so = self._create_so(partner_id=company.id)
+        so.partner_shipping_id = selected_delivery
+        so.partner_invoice_id = invoice
+
+        # No cart session key set => the cart is retrieved through the abandoned-cart branch,
+        # which re-runs the customer sync on the order.
+        with self.mock_request(user=user) as request:
+            cart = request.env.website._get_and_cache_current_cart()
+
+            self.assertEqual(cart, so)
+            self.assertEqual(
+                cart.partner_shipping_id,
+                selected_delivery,
+                "The delivery address selected by the customer must be preserved.",
+            )
+            self.assertEqual(
+                cart.partner_invoice_id,
+                invoice,
+                "The invoice address selected by the customer must be preserved.",
+            )
+
     def test_07_change_fiscal_position(self):
         """
         Check that the sale order is updated when you change fiscal position.
         Change fiscal position by modifying address during checkout process.
         """
-        self.env.company.country_id = self.country_us
+        self.env.company.sudo().country_id = self.country_us
         be_address_POST, nl_address_POST = [
             {
                 "name": "Test name",
@@ -349,7 +405,8 @@ class TestCheckoutAddress(WebsiteSaleCommon):
             },
         ]
 
-        fpos_be, fpos_nl = self.env["account.fiscal.position"].create([
+        # sudo: fiscal positions are account master-data set up as fixtures here.
+        fpos_be, fpos_nl = self.env["account.fiscal.position"].sudo().create([
             {
                 "sequence": 1,
                 "name": "BE",
@@ -363,7 +420,8 @@ class TestCheckoutAddress(WebsiteSaleCommon):
                 "country_id": self.env.ref("base.nl").id,
             },
         ])
-        tax_10_incl, tax_20_excl, tax_15_incl = self.env["account.tax"].create([
+        # sudo: taxes are account master-data set up as fixtures here.
+        tax_10_incl, tax_20_excl, tax_15_incl = self.env["account.tax"].sudo().create([
             {"name": "Tax 10% incl", "amount": 10, "price_include_override": "tax_included"},
             {
                 "name": "Tax 20% excl",
@@ -467,13 +525,18 @@ class TestCheckoutAddress(WebsiteSaleCommon):
 
     def test_09_shop_update_address(self):
         self.env["ir.config_parameter"].sudo().set_int("auth_password_policy.minlength", 4)
-        user = self.env["res.users"].create({"name": "test", "login": "test", "password": "test"})
+        user = self.env["res.users"].sudo().create({"name": "test", "login": "test", "password": "test"})
         user_partner = user.partner_id
-        partner_company = self.env["res.partner"].create({
+        partner_company = self.env["res.partner"].sudo().create({
             "name": "My company",
-            "child_ids": [Command.link(user_partner.id)],
             "vat": "BE0477472701",
         })
+        # sudo: re-parenting user_partner triggers res.partner.write ->
+        # internal_users.check_access('write') (base/models/res_partner.py) because
+        # user_partner is linked to an internal user; this is fixture setup. Done as an
+        # explicit write since .sudo() on the create above does not propagate to the
+        # o2m child_ids link's inverse write.
+        user_partner.sudo().parent_id = partner_company
         colleague = self.env["res.partner"].create({
             "parent_id": partner_company.id,
             "name": "whatever",
@@ -611,13 +674,14 @@ class TestCheckoutAddress(WebsiteSaleCommon):
             ],
         })
         partner_1, _partner_2, _partner_3 = partner_company.child_ids
-        self.assertTrue(partner_company.can_edit_vat())
+        self.assertTrue(partner_company._is_main_contact())
         self.assertTrue(partner_company._can_edit_country())
-        self.assertTrue(all(not p.can_edit_vat() for p in partner_company.child_ids))
+        self.assertTrue(all(not p._is_main_contact() for p in partner_company.child_ids))
         self.assertTrue(all(p._can_edit_country() for p in partner_company.child_ids))
 
         dumb_product = self.env["product.product"].create({"name": "test"})
-        invoice = self.env["account.move"].create({
+        # SETUP: a posted invoice is needed to lock partner VAT/country editability.
+        invoice = self.env["account.move"].sudo().create({
             "move_type": "out_invoice",
             "partner_id": partner_company.id,
             "invoice_line_ids": [Command.create({"product_id": dumb_product.id})],
@@ -625,10 +689,10 @@ class TestCheckoutAddress(WebsiteSaleCommon):
         invoice.action_post()
 
         self.assertEqual(invoice.state, "posted")
-        self.assertFalse(partner_company.can_edit_vat())
+        self.assertTrue(partner_company._has_confirmed_documents())
         self.assertFalse(partner_company._can_edit_country())
         self.assertTrue(all(p._can_edit_country() for p in partner_company.child_ids))
-        invoice = self.env["account.move"].create({
+        invoice = self.env["account.move"].sudo().create({
             "move_type": "out_invoice",
             "partner_id": partner_1.id,
             "invoice_line_ids": [Command.create({"product_id": dumb_product.id})],
@@ -664,13 +728,13 @@ class TestCheckoutAddress(WebsiteSaleCommon):
             )
 
     def test_12_recompute_taxes_on_address_change(self):
-        self.env.company.country_id = self.env.ref("base.us")
-        fpos_be = self.env["account.fiscal.position"].create({
+        self.env.company.sudo().country_id = self.env.ref("base.us")
+        fpos_be = self.env["account.fiscal.position"].sudo().create({
             "name": "Fiscal Position BE",
             "auto_apply": True,
             "country_id": self.country_id,
         })
-        tax_15_incl, tax_0 = self.env["account.tax"].create([
+        tax_15_incl, tax_0 = self.env["account.tax"].sudo().create([
             {
                 "name": "15% excl",
                 "amount": 15,
@@ -679,7 +743,7 @@ class TestCheckoutAddress(WebsiteSaleCommon):
             },
             {"name": "0%", "amount": 0, "fiscal_position_ids": fpos_be.ids},
         ])
-        tax_0.original_tax_ids = tax_15_incl
+        tax_0.sudo().original_tax_ids = tax_15_incl
         self.product.taxes_id = [Command.set(tax_15_incl.ids)]
         self.partner.country_id = self.country_id
 
@@ -733,7 +797,7 @@ class TestCheckoutAddress(WebsiteSaleCommon):
     def test_imported_user_with_trailing_name_can_checkout(self):
         """Ensure that an imported user with trailing spaces in their name can complete checkout
         without error."""
-        imported_user = self.env["res.users"].create({
+        imported_user = self.env["res.users"].sudo().create({
             "name": "Imported User ",  # trailing space
             "login": "imported_user",
             "email": "imported@example.com",
@@ -760,3 +824,39 @@ class TestCheckoutAddress(WebsiteSaleCommon):
             self.assertIsNotNone(
                 json.loads(res).get("redirectUrl"), "We should get a 'redirectUrl' in the response"
             )
+
+    def test_website_order_fiscal_position_is_based_on_shipping_address(self):
+        self.env["account.fiscal.position"].create({
+            "name": "Fiscal Position FR",
+            "auto_apply": True,
+            "country_id": self.env.ref("base.fr").id,
+        })
+        de_fp = self.env["account.fiscal.position"].create({
+            "name": "Fiscal Position DE",
+            "auto_apply": True,
+            "country_id": self.env.ref("base.de").id,
+        })
+        partner_portal = self.user_portal.partner_id
+        partner_portal.country_id = self.env.ref("base.fr")
+        shipping_partner = self.env["res.partner"].create({
+            "name": "Portal Delivery Address",
+            "type": "delivery",
+            "parent_id": partner_portal.id,
+            "country_id": self.env.ref("base.de").id,
+        })
+        self.env["sale.order"].create({
+            "partner_id": partner_portal.id,
+            "partner_invoice_id": partner_portal.id,
+            "partner_shipping_id": shipping_partner.id,
+            "website_id": self.website.id,
+        }).action_confirm()
+
+        website = self.website.with_user(self.user_portal)
+        with MockRequest(self.env(user=self.user_portal), website=website):
+            so = website._create_cart()
+
+        self.assertEqual(
+            so.fiscal_position_id.country_id,
+            de_fp.country_id,
+            "The fiscal position should be based on the shipping address",
+        )

@@ -15,6 +15,7 @@ class PosSelfKiosk(http.Controller):
                     'access_token': config_access_token,
                     'session_info': {
                         **request.env["ir.http"].get_frontend_session_info(),
+                        'bus_info': request.env["ir.http"]._get_bus_session_info(),
                         'currencies': request.env["res.currency"].get_all_currencies(),
                         'data': {
                             'config_id': pos_config.id,
@@ -22,26 +23,18 @@ class PosSelfKiosk(http.Controller):
                         },
                         "base_url": request.env['pos.session'].get_base_url(),
                         "db": request.env.cr.dbname,
-                    }
-                }
+                    },
+                    'pos_config_id': pos_config.id,
+                    'pos_session_id': pos_config.current_session_id.id if pos_config.has_active_session else 0,  # Use 0 when there's no active session; False becomes empty when rendered via t-out
+                },
             )
 
     @http.route("/pos-self/data/<config_id>", type='jsonrpc', auth='public', website=True)
     def get_self_ordering_data(self, config_id=None, access_token=None, table_identifier=None):
         pos_config, _, config_access_token = self._verify_entry_access(config_id, access_token, table_identifier)
         data = pos_config.load_self_data()
-        data['pos.config'][0]['access_token'] = config_access_token
+        data['pos.config']['records'][0]['access_token'] = config_access_token
         return data
-
-    @http.route("/pos-self/receipt-template/<config_id>", type='jsonrpc', auth='public')
-    def get_self_ordering_receipt_template(self, config_id=None, access_token=None, table_identifier=None):
-        pos_config, _, _ = self._verify_entry_access(config_id, access_token, table_identifier)
-        return pos_config.env['pos.order'].get_receipt_template_for_pos_frontend()
-
-    @http.route("/pos-self/relations/<config_id>", type='jsonrpc', auth='public')
-    def get_self_ordering_relations(self, config_id=None, access_token=None, table_identifier=None):
-        pos_config, _, _ = self._verify_entry_access(config_id, access_token, table_identifier)
-        return pos_config.load_data_params()
 
     def _verify_entry_access(self, config_id=None, access_token=None, table_identifier=None):
         table_sudo = False
@@ -68,7 +61,7 @@ class PosSelfKiosk(http.Controller):
         if not pos_config:
             raise werkzeug.exceptions.NotFound()
 
-        if pos_config and pos_config.has_active_session and pos_config.self_ordering_mode == 'mobile':
+        if pos_config and pos_config.self_ordering_mode == 'mobile':
             table_sudo = table_identifier and (
                 request.env["restaurant.table"]
                 .sudo()

@@ -4,11 +4,12 @@ import { Chatter } from "@mail/chatter/web_portal_project/chatter";
 import { onMounted, onWillUnmount, signal, types } from "@odoo/owl";
 
 import { browser } from "@web/core/browser/browser";
-import { SIZES } from "@web/core/ui/ui_service";
+import { SIZES } from "@web/core/ui/ui_utils";
 import { useService } from "@web/core/utils/hooks";
 import { patch } from "@web/core/utils/patch";
 import { useDebounced } from "@web/core/utils/timing";
 import { FormRenderer } from "@web/views/form/form_renderer";
+import { render } from "@web/owl2/utils";
 
 patch(FormRenderer.prototype, {
     setup() {
@@ -20,13 +21,13 @@ patch(FormRenderer.prototype, {
         if (this.env.services["mail.store"]) {
             this.mailStore = useService("mail.store");
             this.thread = signal(null, {
-                type: types.instanceOf(this.mailStore["mail.thread"].Class),
+                type: types.instanceOf(this.mailStore["mail.thread"]),
             });
         }
         this.uiService = useService("ui");
         this.mailPopoutService = useService("mail.popout");
 
-        this.onResize = useDebounced(this.render, 200);
+        this.onResize = useDebounced(() => render(this), 200);
         onMounted(() => browser.addEventListener("resize", this.onResize));
         onWillUnmount(() => browser.removeEventListener("resize", this.onResize));
     },

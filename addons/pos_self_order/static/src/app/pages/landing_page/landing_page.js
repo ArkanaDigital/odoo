@@ -1,4 +1,4 @@
-import { Component, onWillStart } from "@odoo/owl";
+import { Component, onWillStart, signal } from "@odoo/owl";
 import { useSelfOrder } from "@pos_self_order/app/services/self_order_service";
 import { useService } from "@web/core/utils/hooks";
 import { LanguagePopup } from "@pos_self_order/app/components/language_popup/language_popup";
@@ -6,7 +6,8 @@ import { useCarousel } from "@pos_self_order/app/utils/carousel_hook";
 
 export class LandingPage extends Component {
     static template = "pos_self_order.LandingPage";
-    static props = {};
+
+    carouselRef = signal.ref();
 
     setup() {
         this.selfOrder = useSelfOrder();
@@ -26,7 +27,7 @@ export class LandingPage extends Component {
         });
 
         if (this.selfOrder.config._self_ordering_image_home_ids.length > 1) {
-            useCarousel("carousel", 5);
+            useCarousel(this.carouselRef, 5);
         }
     }
 
@@ -66,7 +67,11 @@ export class LandingPage extends Component {
     }
 
     clickMyOrder() {
-        this.router.navigate(this.draftOrder.length > 0 ? "cart" : "orderHistory");
+        if (this.draftOrder.length > 0) {
+            this.router.navigate("cart", {}, { fromLanding: true });
+        } else {
+            this.router.navigate("orderHistory");
+        }
     }
 
     clickCustomLink(link) {
@@ -88,11 +93,18 @@ export class LandingPage extends Component {
         ) {
             return;
         }
-        if (this.selfOrder.hasPresets() && !this.selfOrder.currentOrder.preset_id) {
-            this.router.navigate("location");
-        } else {
-            this.router.navigate("product_list");
+
+        if (this.selfOrder.config.use_presets && !this.selfOrder.currentOrder.preset_id) {
+            const availablePresets = this.selfOrder.availablePresets;
+            if (availablePresets.length === 1) {
+                this.selfOrder.currentOrder.setPreset(availablePresets[0]);
+            } else {
+                this.router.navigate("location");
+                return;
+            }
         }
+
+        this.router.navigate("product_list");
     }
 
     openLanguages() {

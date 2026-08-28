@@ -23,7 +23,24 @@ def get_last_stable_odoo_version():
     To be changed whenever a new stable Odoo version is released and
     we are sure that this version is compatible with all db versions.
     """
-    return "saas-19.2"
+    return "saas-19.4"
+
+
+def get_update_day(serial_number):
+    """This method provides the day of the week to run Odoo upgrade on.
+    The day is based on the rpi serial number and allows to roll out updates
+    progressively, while leaving a possibility to fix issues before the next update
+    for part of our iot boxes.
+    """
+    update_days = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+    ]
+    sn_sum = sum(serial_number.encode("utf-8"))
+    return update_days[sn_sum % 5]
 
 
 @toggleable
@@ -99,17 +116,23 @@ def update_requirements():
 def update_packages():
     """Update apt packages on the IoT Box, installing the ones listed in
     the packages.txt file.
-    Requires ``writable`` context manager.
     """
     packages_file = path_file('odoo', 'setup', 'iot_box_builder', 'configuration', 'packages.txt')
     if not packages_file.exists():
         _logger.info("No packages file found, not updating.")
         return
 
+    chroot_prep_cmds = (
+        "( mountpoint -q /proc || mount -t proc proc /proc ) && "
+        "( mountpoint -q /sys || mount -t sysfs sys /sys ) && "
+        "sed -i 's/^MODULES=.*/MODULES=most/' /etc/initramfs-tools/initramfs.conf && "
+    )
+
     # update and install packages in the foreground
     commands = (
         "export DEBIAN_FRONTEND=noninteractive && "
-        "mount -t proc proc /proc && "
+        + chroot_prep_cmds +
+        "dpkg --configure -a && "
         "apt-get update && "
         f"xargs apt-get -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' install < {packages_file}"
     )
@@ -121,5 +144,9 @@ def update_packages():
         return
 
     # upgrade and remove packages in the background
-    background_cmd = 'chroot /root_bypass_ramdisks /bin/bash -c "apt-get upgrade -y && apt-get -y autoremove"'
+    background_cmd = (
+        'chroot /root_bypass_ramdisks /bin/bash -c "'
+        + chroot_prep_cmds +
+        'apt-get upgrade -y && apt-get -y autoremove"'
+    )
     subprocess.Popen(["sudo", "bash", "-c", background_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

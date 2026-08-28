@@ -1,17 +1,22 @@
 import { _t } from "@web/core/l10n/translation";
-import { buildM2OFieldDescription, extractM2OFieldProps, m2oSupportedOptions } from "@web/views/fields/many2one/many2one_field";
+import {
+    buildM2OFieldDescription,
+    extractM2OFieldProps,
+    m2oSupportedOptions,
+    many2OneFieldProps,
+} from "@web/views/fields/many2one/many2one_field";
 import { registry } from "@web/core/registry";
 import { ProductNameAndDescriptionField } from "@product/product_name_and_description/product_name_and_description";
+import { t, useProps } from "@odoo/owl";
+
+export const productLabelSectionAndNoteFieldProps = {
+    ...many2OneFieldProps,
+    show_label_warning: t.boolean().optional(false),
+};
 
 export class ProductLabelSectionAndNoteField extends ProductNameAndDescriptionField {
     static template = "account.ProductLabelSectionAndNoteField";
-    static props = {
-        ...super.props,
-        show_label_warning: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        show_label_warning: false,
-    };
+    props = useProps(productLabelSectionAndNoteFieldProps);
 
     static descriptionColumn = "name";
 

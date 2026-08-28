@@ -9,18 +9,22 @@ const messagePatch = {
         super.setup(...arguments);
         this.chatbotStep = fields.One("ChatbotStep", { inverse: "message" });
     },
-    canReplyTo(thread) {
-        if (thread?.channel?.channel_type === "livechat") {
-            return !this.isEmpty && !thread.composerDisabled && !thread.channel.composerHidden;
+    get canReplyTo() {
+        if (this.thread?.channel?.channel_type === "livechat") {
+            return (
+                !this.isEmpty &&
+                !this.thread.composerDisabled &&
+                !this.thread.channel.composerHidden
+            );
         }
-        return super.canReplyTo(thread);
+        return super.canReplyTo;
     },
     get isTranslatable() {
         return (
             super.isTranslatable ||
             (this.store.hasMessageTranslationFeature &&
                 this.channel_id?.channel_type === "livechat" &&
-                this.store.self_user?.share === false)
+                (this.store.self_user?.share === false || !this.isSelfAuthored))
         );
     },
 };

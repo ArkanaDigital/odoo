@@ -15,7 +15,7 @@ class MailingList(models.Model):
     _description = 'Mailing List'
     _mailing_enabled = True
     _order = 'create_date DESC'
-    # As this model has their own data merge, avoid to enable the generic data_merge on that model.
+    # As this model has their own data merge, avoid to enable the generic data_cleaning on that model.
     _disable_data_merge = True
 
     name = fields.Char(string='Mailing List', required=True)
@@ -354,13 +354,13 @@ class MailingList(models.Model):
         """
         email_normalized = tools.email_normalize(email)
         if not self or not email_normalized:
-            return
+            return self.env['mailing.contact']
 
         contacts = self.env['mailing.contact'].with_context(active_test=False).search(
             [('email_normalized', '=', email_normalized)]
         )
         if not contacts:
-            return
+            return self.env['mailing.contact']
 
         # switch opted-in subscriptions
         if opt_out:
@@ -412,6 +412,7 @@ class MailingList(models.Model):
                 body=body,
                 subtype_id=self.env['ir.model.data']._xmlid_to_res_id('mail.mt_note'),
             )
+        return contacts
 
     # ------------------------------------------------------
     # MAILING
@@ -452,17 +453,19 @@ class MailingList(models.Model):
 
         res = []
         if self.ids:
-            self.env.cr.execute(f'''
-                SELECT
-                    {','.join(self._get_contact_statistics_fields().values())}
+            res = self.env.execute_query_dict(SQL(
+                """
+                SELECT %s
                 FROM
                     mailing_subscription r
-                    {self._get_contact_statistics_joins()}
+                    %s
                 WHERE list_id IN %s
-                GROUP BY
-                    list_id;
-            ''', (tuple(self.ids), ))
-            res = self.env.cr.dictfetchall()
+                GROUP BY list_id
+                """,
+                SQL(',').join(SQL("%s AS %s", e, SQL.identifier(k)) for k, e in self._get_contact_statistics_fields().items()),
+                self._get_contact_statistics_joins(),
+                tuple(self.ids),
+            ))
 
         contact_counts = {}
         for res_item in res:
@@ -472,10 +475,7 @@ class MailingList(models.Model):
         for mass_mailing in self:
             # adds default 0 values for ids that don't have statistics
             if mass_mailing.id not in contact_counts:
-                contact_counts[mass_mailing.id] = {
-                    field: 0
-                    for field in mass_mailing._get_contact_statistics_fields()
-                }
+                contact_counts[mass_mailing.id] = dict.fromkeys(mass_mailing._get_contact_statistics_fields(), 0)
 
         return contact_counts
 
@@ -490,24 +490,24 @@ class MailingList(models.Model):
         - contact_count_blacklisted:  all blacklisted contacts """
 
         return {
-            'mailing_list_id': 'list_id AS mailing_list_id',
-            'contact_count': 'COUNT(*) AS contact_count',
-            'contact_count_email': '''
+            'mailing_list_id': SQL('list_id'),
+            'contact_count': SQL('COUNT(*)'),
+            'contact_count_email': SQL('''
                 SUM(CASE WHEN
                         (c.email_normalized IS NOT NULL
                         AND COALESCE(r.opt_out,FALSE) = FALSE
                         AND bl.id IS NULL)
-                        THEN 1 ELSE 0 END) AS contact_count_email''',
-            'contact_count_opt_out': '''
+                        THEN 1 ELSE 0 END)'''),
+            'contact_count_opt_out': SQL('''
                 SUM(CASE WHEN COALESCE(r.opt_out,FALSE) = TRUE
-                    THEN 1 ELSE 0 END) AS contact_count_opt_out''',
-            'contact_count_blacklisted': '''
+                    THEN 1 ELSE 0 END)'''),
+            'contact_count_blacklisted': SQL('''
                 SUM(CASE WHEN bl.id IS NOT NULL
-                THEN 1 ELSE 0 END) AS contact_count_blacklisted'''
+                THEN 1 ELSE 0 END)'''),
         }
 
     def _get_contact_statistics_joins(self):
         """ Extracted to be easily overridable by sub-modules (such as mass_mailing_sms). """
-        return """
+        return SQL("""
             LEFT JOIN mailing_contact c ON (r.contact_id=c.id)
-            LEFT JOIN mail_blacklist bl on c.email_normalized = bl.email and bl.active"""
+            LEFT JOIN mail_blacklist bl on c.email_normalized = bl.email and bl.active""")

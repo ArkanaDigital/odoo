@@ -1,4 +1,4 @@
-import { Component, props, proxy, types } from "@odoo/owl";
+import { Component, proxy, t, useProps } from "@odoo/owl";
 
 import { useService } from "@web/core/utils/hooks";
 import { registry } from "@web/core/registry";
@@ -10,17 +10,44 @@ export class MailFullscreen extends Component {
 
     setup() {
         super.setup();
-        this.props = props({
-            component: types.component(),
-            "props?": types.object(),
+        this.props = useProps({
+            component: t.component(),
+            props: t.record().optional(),
         });
         this.fullscreen = useService("mail.fullscreen");
     }
 }
 
 export const fullscreenService = {
-    start(env) {
-        const state = proxy({ enter, exit, id: undefined, closeOverlay: undefined });
+    dependencies: ["overlay"],
+    start(env, { overlay }) {
+        const state = proxy({
+            enter,
+            exit,
+            id: undefined,
+            closeOverlay: undefined,
+            isBrowserFullscreen: false,
+            onExitBrowserFullscreen: undefined,
+        });
+        /**
+         * Leave the browser's native fullscreen mode, if currently active.
+         *
+         * @returns {Promise<void>}
+         */
+        async function leaveBrowserFullscreen() {
+            const fullscreenElement =
+                document.webkitFullscreenElement || document.fullscreenElement;
+            if (!fullscreenElement) {
+                return;
+            }
+            if (document.exitFullscreen) {
+                await document.exitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                await document.mozCancelFullScreen();
+            } else if (document.webkitCancelFullScreen) {
+                await document.webkitCancelFullScreen();
+            }
+        }
         async function exit(id = state.id) {
             if (!id || id !== state.id) {
                 return;
@@ -28,41 +55,40 @@ export const fullscreenService = {
             state.closeOverlay?.();
             state.id = undefined;
             state.closeOverlay = undefined;
-            const fullscreenElement =
-                document.webkitFullscreenElement || document.fullscreenElement;
-            if (fullscreenElement) {
-                if (document.exitFullscreen) {
-                    await document.exitFullscreen();
-                } else if (document.mozCancelFullScreen) {
-                    await document.mozCancelFullScreen();
-                } else if (document.webkitCancelFullScreen) {
-                    await document.webkitCancelFullScreen();
-                }
-            }
+            state.onExitBrowserFullscreen = undefined;
+            await leaveBrowserFullscreen();
         }
         /**
          * @param component
          * @param {object} [options]
          * @param [options.props]
          * @param {any} [options.id]
-         * @param {boolean} [options.keepBrowserHeader] - Optional flag to specify whether to keep
-         * the browser's header (address bar, tabs, etc.) visible.
+         * @param {boolean} [options.browserFullscreen] - Optional flag to request the browser's
+         * native fullscreen mode, hiding its header (address bar, tabs, etc.). When falsy, the
+         * overlay is shown while keeping the browser header visible.
+         * @param {() => void} [options.onExitBrowserFullscreen] - Optional callback invoked instead of
+         * `exit()` when the browser's native fullscreen mode is left (e.g. with ESC) while this
+         * overlay is active, letting the owner decide whether to close or keep the overlay.
          * @param {string} [options.rootId] - Optional root id to pass to the overlay.
          * @returns {Promise<void>}
          */
         async function enter(
             component,
-            { keepBrowserHeader = false, props, rootId, id = DEFAULT_ID } = {}
+            {
+                browserFullscreen = false,
+                onExitBrowserFullscreen,
+                props,
+                rootId,
+                id = DEFAULT_ID,
+            } = {}
         ) {
             state.closeOverlay?.();
             state.id = id;
-            state.closeOverlay = env.services.overlay.add(
-                MailFullscreen,
-                { component, props },
-                { rootId }
-            );
+            state.onExitBrowserFullscreen = onExitBrowserFullscreen;
+            state.closeOverlay = overlay.add(MailFullscreen, { component, props }, { rootId });
             const el = document.body;
-            if (keepBrowserHeader) {
+            if (!browserFullscreen) {
+                await leaveBrowserFullscreen();
                 return;
             }
             try {
@@ -78,12 +104,13 @@ export const fullscreenService = {
             }
         }
         window.addEventListener("fullscreenchange", () => {
-            const isFullscreen = Boolean(
+            state.isBrowserFullscreen = Boolean(
                 document.webkitFullscreenElement || document.fullscreenElement
             );
-            if (!isFullscreen) {
-                state.exit();
+            if (state.isBrowserFullscreen) {
+                return;
             }
+            state.onExitBrowserFullscreen?.();
         });
         return state;
     },

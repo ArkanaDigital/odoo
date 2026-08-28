@@ -7,7 +7,7 @@ from odoo.tests import tagged, freeze_time
 
 
 from odoo.addons.l10n_ch.models.res_bank import UNICODE_ALLOWED
-from odoo.tools.misc import mod10r
+from odoo.tools.business_data import mod10r
 
 CH_IBAN = 'CH15 3881 5158 3845 3843 7'
 QR_IBAN = 'CH21 3080 8001 2345 6782 7'
@@ -15,6 +15,8 @@ QR_IBAN = 'CH21 3080 8001 2345 6782 7'
 
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestSwissQR(AccountTestInvoicingCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     @AccountTestInvoicingCommon.setup_country('ch')
@@ -173,6 +175,11 @@ class TestSwissQR(AccountTestInvoicingCommon):
             'name': 'Test',
             'code': 'custom',
         })
+        payment_method = self.env["payment.method"].create({
+            "name": "Payment method",
+            "code": "unknown",
+            "provider_id": provider.id,
+        })
         invoice_journal = self.env['account.journal'].search(
             [('type', '=', 'sale'), ('company_id', '=', self.env.company.id)], limit=1)
         invoice_journal.write({'invoice_reference_model': 'ch'})
@@ -185,7 +192,7 @@ class TestSwissQR(AccountTestInvoicingCommon):
         })
         payment_transaction = self.env['payment.transaction'].create({
             'provider_id': provider.id,
-            'payment_method_id': self.env.ref('payment.payment_method_unknown').id,
+            'payment_method_id': payment_method.id,
             'sale_order_ids': [order.id],
             'partner_id': self.env['res.partner'].search([("name", '=', 'Partner')])[0].id,
             'amount': 100,

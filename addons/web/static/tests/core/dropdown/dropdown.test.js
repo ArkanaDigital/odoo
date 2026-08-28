@@ -1,4 +1,3 @@
-import { useRef } from "@web/owl2/utils";
 import { expect, getFixture, queryRect, test } from "@odoo/hoot";
 import {
     click,
@@ -12,26 +11,29 @@ import {
     queryOne,
     resize,
 } from "@odoo/hoot-dom";
-import { Deferred, animationFrame, runAllTimers, tick } from "@odoo/hoot-mock";
-import { Component, onMounted, onPatched, xml, proxy } from "@odoo/owl";
+import { animationFrame, runAllTimers, tick } from "@odoo/hoot-mock";
+import { Component, onMounted, onPatched, proxy, signal, t, useProps, xml } from "@odoo/owl";
 
 import { getPickerCell } from "@web/../tests/core/datetime/datetime_test_helpers";
 import {
+    assignTestEnv,
     contains,
     defineParams,
-    getMockEnv,
-    makeMockEnv,
+    isSmall,
+    makeTestApp,
     mockService,
     mountWithCleanup,
     patchWithCleanup,
+    registerTemplate,
 } from "@web/../tests/web_test_helpers";
 import { DateTimeInput } from "@web/core/datetime/datetime_input";
 import { Dialog } from "@web/core/dialog/dialog";
+import { DropdownPopover } from "@web/core/dropdown/_behaviours/dropdown_popover";
 import { CheckboxItem } from "@web/core/dropdown/checkbox_item";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
-import { useActiveElement } from "@web/core/ui/ui_service";
-import { DropdownPopover } from "@web/core/dropdown/_behaviours/dropdown_popover";
+import { useActiveElement } from "@web/core/ui/ui_plugin";
+import { useService } from "@web/core/utils/hooks";
 
 const DROPDOWN_TOGGLE = ".o-dropdown.dropdown-toggle";
 const DROPDOWN_MENU = ".o-dropdown--menu.dropdown-menu";
@@ -39,7 +41,6 @@ const DROPDOWN_ITEM = ".o-dropdown-item.dropdown-item:not(.o-dropdown)";
 
 class SimpleDropdown extends Component {
     static components = { Dropdown, DropdownItem };
-    static props = [];
     static template = xml`
         <div class="outside">outside</div>
         <Dropdown t-props="this.dropdownProps">
@@ -55,7 +56,6 @@ class SimpleDropdown extends Component {
 
 class MultiLevelDropdown extends Component {
     static components = { Dropdown, DropdownItem };
-    static props = [];
     static template = xml`
         <div class="outside">outside</div>
         <Dropdown t-props="this.dropdownProps">
@@ -81,7 +81,6 @@ class MultiLevelDropdown extends Component {
 
 class NoBottomSheetDropdown extends Component {
     static components = { Dropdown, DropdownItem };
-    static props = [];
     static template = xml`
         <Dropdown t-props="this.dropdownProps" bottomSheet="false">
             <button>Dropdown</button>
@@ -116,13 +115,13 @@ test("can be rendered", async () => {
 });
 
 test("can be toggled", async () => {
-    const beforeOpenProm = new Deferred();
+    const beforeOpenProm = Promise.withResolvers();
     class Parent extends SimpleDropdown {
         setup() {
             this.dropdownProps = {
                 beforeOpen: () => {
                     expect.step("beforeOpen");
-                    return beforeOpenProm;
+                    return beforeOpenProm.promise;
                 },
             };
         }
@@ -142,7 +141,7 @@ test("can be toggled", async () => {
     expect(DROPDOWN_MENU).toHaveAttribute("role", "menu");
     expect(DROPDOWN_TOGGLE).toHaveAttribute("aria-expanded", "true");
 
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_handle_bar");
     } else {
         await click(DROPDOWN_TOGGLE);
@@ -172,7 +171,7 @@ test("close on outside click", async () => {
     await animationFrame();
     expect(DROPDOWN_MENU).toHaveCount(1);
 
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_backdrop");
     } else {
         await click("div.outside");
@@ -184,10 +183,9 @@ test("close on outside click", async () => {
 test("close on click outside an active element", async () => {
     class ActiveElementDropdown extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
             <div class="outside">outside</div>
-            <div t-custom-ref="active">
+            <div t-ref="this.activeRef">
                 <Dropdown>
                     <button>Dropdown</button>
                     <t t-set-slot="content">
@@ -197,8 +195,10 @@ test("close on click outside an active element", async () => {
             </div>
         `;
 
+        activeRef = signal.ref();
+
         setup() {
-            useActiveElement("active");
+            useActiveElement(this.activeRef);
         }
     }
 
@@ -208,7 +208,7 @@ test("close on click outside an active element", async () => {
     await animationFrame();
     expect(DROPDOWN_MENU).toHaveCount(1);
 
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_backdrop");
     } else {
         await click(".outside");
@@ -220,10 +220,9 @@ test("close on click outside an active element", async () => {
 test("close on click outside when the opening active element was removed", async () => {
     class ActiveElementDropdown extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
             <div class="outside">outside</div>
-            <div t-if="this.state.showActive" t-custom-ref="active">
+            <div t-if="this.state.showActive" t-ref="this.activeRef">
                 <button class="active-button">Active</button>
             </div>
             <Dropdown>
@@ -234,9 +233,11 @@ test("close on click outside when the opening active element was removed", async
             </Dropdown>
         `;
 
+        activeRef = signal.ref();
+
         setup() {
             this.state = proxy({ showActive: true });
-            useActiveElement("active");
+            useActiveElement(this.activeRef);
         }
     }
 
@@ -252,7 +253,7 @@ test("close on click outside when the opening active element was removed", async
     expect(activeEl.isConnected).toBe(false);
     expect(DROPDOWN_MENU).toHaveCount(1);
 
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_backdrop");
     } else {
         await click(".outside");
@@ -265,26 +266,23 @@ test("close on outside click in shadow dom", async () => {
     const shadowRootId = "o-shadow-root-id";
     class DropdownInShadowDom extends Component {
         static components = { SimpleDropdown };
-        static props = [];
         static template = xml`<div><SimpleDropdown/></div>`;
     }
 
     class ShadowDom extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
-        static template = xml`<div class="shadow-root" t-custom-ref="shadow-root-ref" id="${shadowRootId}" />`;
+        static template = xml`<div class="shadow-root" t-ref="this.shadowRootRef" id="${shadowRootId}" />`;
+        shadowRootRef = signal.ref();
         setup() {
-            const shadowRootRef = useRef("shadow-root-ref");
             onMounted(() => {
-                const shadowBody = shadowRootRef.el.attachShadow({ mode: "open" });
+                const shadowBody = this.shadowRootRef().attachShadow({ mode: "open" });
                 mountWithCleanup(DropdownInShadowDom, { env: this.env, target: shadowBody });
             });
         }
     }
 
+    assignTestEnv({ rootId: shadowRootId });
     await mountWithCleanup(ShadowDom, {
-        componentEnv: { rootId: shadowRootId },
-        containerEnv: { rootId: shadowRootId },
         noMainContainer: true,
     });
 
@@ -293,7 +291,7 @@ test("close on outside click in shadow dom", async () => {
     await animationFrame();
     expect(queryAll(DROPDOWN_MENU, { root: shadowBody })).toHaveCount(1);
 
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_backdrop", { root: shadowBody });
     } else {
         await click(".outside", { root: shadowBody });
@@ -338,7 +336,6 @@ test("hold position on hover", async () => {
             </Dropdown>
         `;
         static components = { Dropdown };
-        static props = [];
     }
 
     await mountWithCleanup(Parent);
@@ -377,7 +374,6 @@ test("unlock position after close", async () => {
                 </div>
             `;
         static components = { Dropdown };
-        static props = [];
     }
     await mountWithCleanup(Parent);
     await click(DROPDOWN_TOGGLE);
@@ -407,7 +403,6 @@ test("dropdowns keynav", async () => {
 
     class Parent extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button data-hotkey="m">Toggle</button>
@@ -498,7 +493,6 @@ test.tags("desktop");
 test("dropdowns keynav is not impacted by bootstrap", async () => {
     class Parent extends Component {
         static components = { Dropdown };
-        static props = [];
         static template = xml`
                 <Dropdown state="this.dropdown">
                     <button>Open</button>
@@ -591,7 +585,6 @@ test("navigationProps changes navigation behaviour", async () => {
 test("'o-dropdown-caret' class adds a caret", async () => {
     class Parent extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button class="first o-dropdown-caret">First</button>
@@ -638,7 +631,6 @@ test("direction class set to default when closed", async () => {
 
     class Parent extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
             <Dropdown>
                 <!-- style dropdown to be at the bottom to force popover to position on top -->
@@ -672,7 +664,6 @@ test.tags("desktop");
 test("tooltip on toggler", async () => {
     class Parent extends Component {
         static components = { Dropdown };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button data-tooltip="My tooltip">Dropdown toggler</button>
@@ -694,7 +685,6 @@ test("tooltip on toggler", async () => {
 test("date picker inside does not close when a click occurs in date picker", async () => {
     class Parent extends Component {
         static components = { DateTimeInput, Dropdown };
-        static props = [];
         static template = xml`
                     <Dropdown>
                         <button>Dropdown toggler</button>
@@ -730,14 +720,14 @@ test("date picker inside does not close when a click occurs in date picker", asy
 });
 
 test("onOpened callback props called after the menu has been mounted", async () => {
-    const beforeOpenProm = new Deferred();
+    const beforeOpenProm = Promise.withResolvers();
 
     class Parent extends SimpleDropdown {
         setup() {
             this.dropdownProps = {
                 beforeOpen: () => {
                     expect.step("beforeOpened");
-                    return beforeOpenProm;
+                    return beforeOpenProm.promise;
                 },
                 onOpened: () => {
                     expect.step("onOpened");
@@ -760,7 +750,6 @@ test("onOpened callback props called after the menu has been mounted", async () 
 test("dropdown button can be disabled", async () => {
     class Parent extends Component {
         static components = { Dropdown };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button disabled="">Open</button>
@@ -790,7 +779,6 @@ test("Dropdown with CheckboxItem: toggle value", async () => {
                     </t>
                 </Dropdown>`;
         static components = { Dropdown, CheckboxItem };
-        static props = [];
         setup() {
             this.state = proxy({ checked: false });
         }
@@ -812,13 +800,13 @@ test("Dropdown with CheckboxItem: toggle value", async () => {
 });
 
 test("don't close parent dropdown when clicking in a child active element", async () => {
-    const env = await makeMockEnv();
-
     // This test checks that if a dropdown element opens a dialog with a dropdown inside,
     // opening this dropdown will not close the first dropdown.
     class CustomDialog extends Component {
         static components = { Dialog, Dropdown, DropdownItem };
-        static props = { close: true };
+        props = useProps({
+            close: t.any(),
+        });
         static template = xml`
                 <Dialog title="'Welcome'">
                     <Dropdown>
@@ -834,7 +822,6 @@ test("don't close parent dropdown when clicking in a child active element", asyn
 
     class Parent extends Component {
         static components = { Dropdown };
-        static props = [];
         static template = xml`
                 <div>
                     <Dropdown>
@@ -847,12 +834,16 @@ test("don't close parent dropdown when clicking in a child active element", asyn
                 </div>
             `;
 
+        setup() {
+            this.dialog = useService("dialog");
+        }
+
         clicked() {
-            env.services.dialog.add(CustomDialog);
+            this.dialog.add(CustomDialog);
         }
     }
 
-    await mountWithCleanup(Parent, { env });
+    await mountWithCleanup(Parent);
 
     await click("button.parent-toggle");
     await animationFrame();
@@ -865,7 +856,7 @@ test("don't close parent dropdown when clicking in a child active element", asyn
     await animationFrame();
 
     expect(DROPDOWN_MENU).toHaveCount(2);
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_backdrop");
     } else {
         await click(".outside-dialog");
@@ -875,8 +866,8 @@ test("don't close parent dropdown when clicking in a child active element", asyn
     expect(".modal-dialog").toHaveCount(1);
     expect(DROPDOWN_MENU).toHaveCount(1);
 
-    if (getMockEnv().isSmall) {
-        await click(".modal-dialog .oi-arrow-left");
+    if (isSmall()) {
+        await click(".modal-dialog [data-icon='west']");
     } else {
         await click(".modal-dialog .btn-close");
     }
@@ -893,7 +884,6 @@ test("t-if t-else as toggler", async () => {
 
     class Parent extends Component {
         static components = { Dropdown };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button t-if="this.state.foo === 'bar'">Coucou</button>
@@ -931,11 +921,11 @@ test("t-if t-else as toggler", async () => {
 });
 
 test("Dropdown in dialog in dropdown, first dropdown should stay open when clicking inside the second one", async () => {
-    const env = await makeMockEnv();
-
     class DialogDropdown extends Component {
         static components = { Dialog, Dropdown };
-        static props = { close: true };
+        props = useProps({
+            close: t.any(),
+        });
         static template = xml`
                 <Dialog>
                     <button class="inside-dialog">Inside Dialog</button>
@@ -951,7 +941,6 @@ test("Dropdown in dialog in dropdown, first dropdown should stay open when click
 
     class Parent extends Component {
         static components = { Dropdown };
-        static props = {};
         static template = xml`
                 <Dropdown>
                     <button class="root-dropdown">Coucou</button>
@@ -961,12 +950,16 @@ test("Dropdown in dialog in dropdown, first dropdown should stay open when click
                 </Dropdown>
             `;
 
+        setup() {
+            this.dialog = useService("dialog");
+        }
+
         onClick() {
-            env.services.dialog.add(DialogDropdown);
+            this.dialog.add(DialogDropdown);
         }
     }
 
-    await mountWithCleanup(Parent, { env });
+    await mountWithCleanup(Parent);
     expect(DROPDOWN_MENU).toHaveCount(0);
 
     // Open dialog
@@ -987,7 +980,7 @@ test("Dropdown in dialog in dropdown, first dropdown should stay open when click
     expect(DROPDOWN_MENU).toHaveCount(2);
 
     // Click outside dropdown inside dialog => only first dropdown should be open
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_backdrop");
     } else {
         await click(".inside-dialog");
@@ -1042,7 +1035,7 @@ test("multi-level dropdown: close on outside click", async () => {
     await animationFrame();
 
     expect(DROPDOWN_MENU).toHaveCount(3);
-    if (getMockEnv().isSmall) {
+    if (isSmall()) {
         await click(".o_bottom_sheet_backdrop");
         await animationFrame();
         await click(".o_bottom_sheet_backdrop");
@@ -1074,7 +1067,6 @@ test("multi-level dropdown: close on item selection", async () => {
 test("multi-level dropdown: parent closing modes on item selection", async () => {
     class Parent extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
                 <div class="outside">outside</div>
                 <Dropdown>
@@ -1135,7 +1127,6 @@ test("multi-level dropdown: parent closing modes on item selection", async () =>
 test("multi-level dropdown: recursive template can be rendered", async () => {
     class Parent extends Component {
         static template = xml`<t t-call="recursive.Template" name="this.name" items="this.items"/>`;
-        static props = [];
         static components = { Dropdown, DropdownItem };
         setup() {
             this.dropdown = startOpenState();
@@ -1170,25 +1161,24 @@ test("multi-level dropdown: recursive template can be rendered", async () => {
         }
     }
 
-    await mountWithCleanup(Parent, {
-        templates: {
-            ["recursive.Template"]: /* xml */ `
-                <Dropdown state="this.dropdown">
-                    <button><t t-out="name" /></button>
-                    <t t-set-slot="content">
-                        <t t-foreach="items" t-as="item" t-key="item_index">
+    registerTemplate(
+        "recursive.Template",
+        /* xml */ `
+        <Dropdown state="this.dropdown">
+            <button><t t-out="name" /></button>
+            <t t-set-slot="content">
+                <t t-foreach="items" t-as="item" t-key="item_index">
 
-                            <t t-if="!item.children.length">
-                                <DropdownItem><t t-out="item.name"/></DropdownItem>
-                            </t>
-
-                            <t t-else="" t-call="recursive.Template" name="item.name" items="item.children"/>
-                        </t>
+                    <t t-if="!item.children.length">
+                        <DropdownItem><t t-out="item.name"/></DropdownItem>
                     </t>
-                </Dropdown>
-            `,
-        },
-    });
+
+                    <t t-else="" t-call="recursive.Template" name="item.name" items="item.children"/>
+                </t>
+            </t>
+        </Dropdown>`
+    );
+    await mountWithCleanup(Parent);
 
     // Each sub-dropdown needs a tick to open
     await animationFrame();
@@ -1221,7 +1211,6 @@ test("multi-level dropdown: keynav", async () => {
             expect.step(value);
         }
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button class="first" data-hotkey="1">First</button>
@@ -1344,7 +1333,6 @@ test("multi-level dropdown: keynav when rtl direction", async () => {
     expect.assertions(10);
     class Parent extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button class="first" data-hotkey="1">First</button>
@@ -1430,7 +1418,6 @@ test("multi-level dropdown: submenu keeps position when patched", async () => {
     let parentState;
     class Parent extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
                 <Dropdown>
                     <button class="one">one</button>
@@ -1480,7 +1467,6 @@ test("multi-level dropdown: mouseentering a dropdown item should close any subdr
     expect.assertions(4);
     class Parent extends Component {
         static components = { Dropdown, DropdownItem };
-        static props = [];
         static template = xml`
                     <Dropdown>
                         <button class="main">Main</button>
@@ -1525,7 +1511,6 @@ test.tags("desktop");
 test("multi-level dropdown: unsubscribe all keynav when root destroyed", async () => {
     class Parent extends Component {
         static components = { Dropdown };
-        static props = [];
         static template = xml`
             <Dropdown>
                 <button class="first">First</button>
@@ -1571,7 +1556,7 @@ test("multi-level dropdown: unsubscribe all keynav when root destroyed", async (
         keySet.clear();
     }
 
-    await makeMockEnv();
+    await makeTestApp();
     mockService("hotkey", {
         add(key) {
             const remove = super.add(...arguments);

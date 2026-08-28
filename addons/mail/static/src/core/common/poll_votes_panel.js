@@ -2,10 +2,10 @@ import { TabHeader, TabPanel, Tabs } from "@mail/core/common/tabs";
 import { attClassObjectToString } from "@mail/utils/common/format";
 import { onExternalClick } from "@mail/utils/common/hooks";
 
-import { Component, props, types } from "@odoo/owl";
+import { Component, signal, t, useProps } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
-import { useChildRef, useService } from "@web/core/utils/hooks";
+import { useService } from "@web/core/utils/hooks";
 
 export class PollVotesPanel extends Component {
     static components = { Dialog, Tabs, TabHeader, TabPanel };
@@ -14,12 +14,12 @@ export class PollVotesPanel extends Component {
     setup() {
         super.setup(...arguments);
         this.store = useService("mail.store");
-        this.props = props({
-            "close?": types.function([]),
-            poll: types.instanceOf(this.store["mail.poll"].Class),
+        this.props = useProps({
+            close: t.function([]).optional(),
+            poll: t.instanceOf(this.store["mail.poll"]),
         });
         this.ui = useService("ui");
-        this.tabsRef = useChildRef();
+        this.tabsRef = signal.ref();
         onExternalClick(this.tabsRef, (ev) => {
             if (ev.target && !ev.target.closest(".modal-header")) {
                 this.props.close?.();

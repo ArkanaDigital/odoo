@@ -15,6 +15,18 @@ from odoo.addons.mrp.tests.common import TestMrpCommon
 
 class TestMrpOrder(TestMrpCommon, MailCase):
 
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'mrp.group_mrp_manager',
+        'mrp.group_mrp_routings',  # view visibility (duration/workorder fields) granted to cls.env.user in Common
+        'mrp.group_mrp_byproducts',  # view visibility (byproducts) granted to mrp users in Common
+        'stock.group_stock_manager',  # setup: warehouse/route/rule/orderpoint/location/picking_type config in test bodies
+        'uom.group_uom',  # view visibility (uom_id) granted to cls.env.user in Common
+        'hr.group_hr_manager',  # FIXME: used by self.env['hr.employee'].create(
+    )
+
+    _test_user_name = 'Test Product & Inventory Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -130,10 +142,8 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         action = man_order.button_mark_done()
         self.assertEqual(man_order.state, 'progress', "Production order should be open a backorder wizard, then not done yet.")
 
-        quantity_issues = man_order._get_consumption_issues()
-        action = man_order._action_generate_consumption_wizard(quantity_issues)
-        backorder = Form(self.env['mrp.production.backorder'].with_context(**action['context']))
-        backorder.save().action_close_mo()
+        backorder = Form(self.env['mrp.production.backorder'].with_context(**action['context'])).save()
+        Form.from_action(self.env, backorder.action_close_mo()).save().action_confirm()
         self.assertEqual(man_order.state, 'done', "Production order should be done.")
 
         # check that copy handles moves correctly
@@ -628,7 +638,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
                 Command.create({'product_id': self.product_8.id, 'product_qty': 4.16}),
             ]
         })
-        self.env['decimal.precision'].search([('name', '=', 'Product Unit')]).digits = 0
+        self.env['decimal.precision'].sudo().search([('name', '=', 'Product Unit')]).digits = 0
         production_form = Form(self.env['mrp.production'])
         production_form.product_id = self.product_6
         production_form.bom_id = bom_eff
@@ -1306,13 +1316,13 @@ class TestMrpOrder(TestMrpCommon, MailCase):
 
         finished_good_ub_form = Form(self.env["mrp.unbuild"])
         finished_good_ub_form.mo_id = finished_good_mo
-        finished_good_ub_form.lot_id = finished_good_mo.lot_producing_ids[:1]
+        finished_good_ub_form.lot_ids = finished_good_mo.lot_producing_ids[:1]
         finished_good_ub = finished_good_ub_form.save()
         finished_good_ub.action_unbuild()
 
         subassembly_ub_form = Form(self.env["mrp.unbuild"])
         subassembly_ub_form.mo_id = subassembly_mo1
-        subassembly_ub_form.lot_id = subassembly_mo1.lot_producing_ids[:1]
+        subassembly_ub_form.lot_ids = subassembly_mo1.lot_producing_ids[:1]
         subassembly_ub = subassembly_ub_form.save()
         subassembly_ub.action_unbuild()
 
@@ -1350,7 +1360,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
 
         ub_form = Form(self.env["mrp.unbuild"])
         ub_form.mo_id = mo1
-        ub_form.lot_id = sn
+        ub_form.lot_ids = sn
         ub = ub_form.save()
         ub.action_unbuild()
 
@@ -1956,7 +1966,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         """
 
         # the overall decimal accuracy is set to 3 digits
-        precision = self.env.ref('uom.decimal_product_uom')
+        precision = self.env.ref('uom.decimal_product_uom').sudo()
         precision.digits = 3
 
         # define L and ml, L has rounding .001 but ml has rounding .01
@@ -2069,14 +2079,12 @@ class TestMrpOrder(TestMrpCommon, MailCase):
             'production_id': mo.id,
             'location_id': self.shelf_1.id,
             'location_dest_id': self.scrap_location.id,
-            'lot_ids': sn2.ids,
             'company_id': self.env.company.id,
         })
 
         warning = False
-        warning = scrap._onchange_lot_ids()
-        self.assertTrue(warning, 'Use of wrong serial number location not detected')
-        self.assertEqual(list(warning.keys())[0], 'warning', 'Warning message was not returned')
+        warning = scrap.onchange({'lot_ids': [Command.link(sn2.id)]}, ['lot_ids'], {'lot_ids': {'context': {}}})
+        self.assertIn('Unavailable Serial numbers. Please correct the serial numbers encoded', warning.get('warning', {}).get('message'))
 
     def test_mo_assign_producing_lot(self):
         """ Checks that in an MO tracked by Lot the reservations of the raws are not
@@ -2125,7 +2133,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         self.assertEqual(len(mo_3.workorder_ids), 2)
 
         mo_3.button_plan()
-        self.assertEqual(mo_3.state, 'confirmed')
+        self.assertEqual(mo_3.state, 'draft')
         self.assertEqual(mo_3.workorder_ids[0].state, 'ready')  # No matter the MO Reservation state, the first WO is always ready
 
         mo_1 = Form(self.env['mrp.production'])
@@ -2142,7 +2150,8 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         self.assertEqual(len(mo_1.workorder_ids), 2)
         self.assertEqual(len(mo_2.workorder_ids), 2)
 
-        (mo_1 | mo_2).button_plan()  # Confirm and plan in the same "request"
+        (mo_1 | mo_2).action_confirm()
+        (mo_1 | mo_2).button_plan()
         self.assertEqual(mo_1.state, 'confirmed')
         self.assertEqual(mo_2.state, 'confirmed')
         self.assertEqual(mo_1.workorder_ids[0].state, 'ready')
@@ -2728,6 +2737,49 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         self.assertEqual(workorder.time_ids[0].loss_type, 'productive', "Remaining time tracking should be productive")
         self.assertEqual(workorder.time_ids[0].duration, real_duration_decreased - real_duration_under_expected, "Time tracking duration should have been reduced to reflect new shorter duration")
 
+    def test_duration_handles_overlaps_and_loss_types(self):
+        """Duration must merge overlapping intervals by time type."""
+        mo = Form(self.env['mrp.production'])
+        mo.bom_id = self.bom_4
+        mo = mo.save()
+        mo.action_confirm()
+        workorder = mo.workorder_ids[0]
+
+        base_dt = datetime(2024, 1, 1, 8, 0, 0)
+        productive_loss = self.env.ref('mrp.block_reason7')  # productive
+        availability_loss = self.env.ref('mrp.block_reason0')  # availability
+
+        self.env['mrp.workcenter.productivity'].create([
+            {   # 08:00-09:00 productive (60 min)
+                'workorder_id': workorder.id,
+                'workcenter_id': workorder.workcenter_id.id,
+                'loss_id': productive_loss.id,
+                'date_start': base_dt,
+                'date_end': base_dt + timedelta(hours=1),
+            },
+            {   # 08:30-09:30 productive - overlaps previous by 30 min
+                'workorder_id': workorder.id,
+                'workcenter_id': workorder.workcenter_id.id,
+                'loss_id': productive_loss.id,
+                'date_start': base_dt + timedelta(minutes=30),
+                'date_end': base_dt + timedelta(hours=1, minutes=30),
+            },
+            {   # 09:00-10:00 availability (60 min) - must NOT be counted in the same interval
+                'workorder_id': workorder.id,
+                'workcenter_id': workorder.workcenter_id.id,
+                'loss_id': availability_loss.id,
+                'date_start': base_dt + timedelta(hours=1, minutes=30),
+                'date_end': base_dt + timedelta(hours=2, minutes=30),
+            },
+        ])
+
+        # Merged productive pool: 08:00-09:30 = 90 min (overlap deduplicated)
+        # Availability alone = 60 min
+        self.assertAlmostEqual(
+            workorder.duration, 150.0, places=1,
+            msg="Overlapping productive intervals must be merged; availability must be completelly added",
+        )
+
     def test_propagate_quantity_on_backorders(self):
         """Create a MO for a product with several work orders.
         Produce different quantities to test quantity propagation and workorder cancellation.
@@ -3254,7 +3306,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         """
 
         self.bom_3.write({'uom_id': self.uom_unit.id})
-        self.env.company.tz = 'UTC'
+        self.env.company.sudo().tz = 'UTC'
 
         # Create an MO.
         mo_form = Form(self.env['mrp.production'])
@@ -3280,7 +3332,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
 
         # New planning: Gift Wrap Maching is at 8:00 (90 minutes),
         # then Cutting Machine at 9:30 (40 minutes), then Weld Machine at 10:10.
-        self.assertRecordValues(mo.workorder_ids, [
+        self.assertRecordValues(mo.workorder_ids.sorted('sequence'), [
             {'date_start': datetime(2025, 10, 1, 8, 0)},
             {'date_start': datetime(2025, 10, 1, 9, 30)},
             {'date_start': datetime(2025, 10, 1, 10, 10)},
@@ -3290,7 +3342,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
     def test_planning_cancelled_workorder(self):
         """Test when plan start time for workorders, cancelled workorders won't be taken into account.
         """
-        self.env.company.tz = 'Europe/Brussels'
+        self.env.company.sudo().tz = 'Europe/Brussels'
         workcenter_1 = self.env['mrp.workcenter'].create({
             'name': 'wc1',
             'time_start': 10,
@@ -3339,6 +3391,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
                 }),
             ],
             'type': 'normal',
+            'continuous': True,
             'bom_line_ids': [
                 Command.create({'product_id': self.product_2.id, 'product_qty': 1}),
             ]})
@@ -3458,7 +3511,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
             'relative_uom_id': self.uom_unit.id,
         })
         # Only consider whole units
-        self.env['decimal.precision'].search([('name', '=', 'Product Unit')]).digits = 0
+        self.env['decimal.precision'].sudo().search([('name', '=', 'Product Unit')]).digits = 0
 
         test_bom = self.env['mrp.bom'].create({
             'product_tmpl_id': self.product_7_template.id,
@@ -3531,12 +3584,52 @@ class TestMrpOrder(TestMrpCommon, MailCase):
             ('state', '=', 'draft'),
         ]))
 
+    def test_component_addition_to_finished_mo(self):
+        """Test that adding a new component move to a finished MO works as intended,
+           where the newly added component move's picked/state/date values are consistent
+           with the other component moves that are already consumed."""
+        with Form(self.env['mrp.production']) as mo_form:
+            mo_form.product_id = self.productA
+            with mo_form.move_raw_ids.new() as component:
+                component.product_id = self.productB
+                component.product_uom_qty = 1
+            mo = mo_form.save()
+
+        mo.button_mark_done()
+        mo.action_toggle_is_locked()
+
+        with freeze_time(mo.date_finished + timedelta(minutes=3)):
+            with Form(mo) as mo_form:
+                with mo_form.move_raw_ids.edit(0) as line:
+                    line.quantity = 1
+                with mo_form.move_raw_ids.new() as component:
+                    component.product_id = self.productC
+                    component.quantity = 1
+                mo = mo_form.save()
+
+            self.assertRecordValues(mo.move_raw_ids, [{
+                'picked': True,
+                'state': 'done',
+                'date': mo.date_finished,
+                'quantity': 1,
+                'raw_material_production_id': mo.id,
+            } for move in mo.move_raw_ids])
+
+            self.assertRecordValues(mo.move_raw_ids.move_line_ids, [{
+                'picked': True,
+                'state': 'done',
+                'date': mo.date_finished,
+                'quantity': 1,
+                'production_id': mo.id,
+            } for move in mo.move_raw_ids])
+
     def test_compute_picking_type_id(self):
         """
         Test that the operation type set on the bom is set in the manufacturing order
         when selecting the BoM"""
         self.env.user.group_ids += self.env.ref("stock.group_adv_location")
-        picking_type = self.env['stock.picking.type'].create({
+        # setup: creating a picking type writes ir.sequence via the sequence_code related inverse
+        picking_type = self.env['stock.picking.type'].sudo().create({
             'name': 'new_picking_type',
             'code': 'internal',
             'sequence_code': 'NPT',
@@ -3566,7 +3659,8 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         """
         stock_location_1 = self.stock_location
         stock_location_2 = stock_location_1.copy()
-        picking_type_1 = self.env['stock.picking.type'].create({
+        # setup: creating/copying a picking type writes ir.sequence via the sequence_code related inverse
+        picking_type_1 = self.env['stock.picking.type'].sudo().create({
             'name': 'new_picking_type_1',
             'code': 'mrp_operation',
             'sequence_code': 'BWH/PT1/',
@@ -3601,7 +3695,8 @@ class TestMrpOrder(TestMrpCommon, MailCase):
 
     def test_onchange_bom_ids_and_picking_type(self):
         warehouse01 = self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)], limit=1)
-        warehouse02, warehouse03 = self.env['stock.warehouse'].create([
+        # setup: creating a warehouse writes res.groups (implied_ids) via _check_multiwarehouse_group
+        warehouse02, warehouse03 = self.env['stock.warehouse'].sudo().create([
             {'name': 'Second Warehouse', 'code': 'WH02'},
             {'name': 'Third Warehouse', 'code': 'WH03'},
         ])
@@ -3640,12 +3735,12 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         self.assertEqual(mo_form.picking_type_id, warehouse01.manu_type_id, 'Should be adapted because of the found BoM '
                                                                             '(the selected picking type should be ignored)')
 
-        mo_form = Form(self.env['mrp.production'].with_context(default_picking_type_id=warehouse03.manu_type_id.id))
+        mo_form = Form(self.env['mrp.production'].sudo().with_context(default_picking_type_id=warehouse03.manu_type_id.id))  # FIXME: remove sudo()
         mo_form.product_id = finished_product
         self.assertFalse(mo_form.bom_id, 'Should not find any BoM, because of the defined picking type')
         self.assertEqual(mo_form.picking_type_id, warehouse03.manu_type_id)
 
-        mo_form = Form(self.env['mrp.production'].with_context(default_picking_type_id=warehouse01.manu_type_id.id))
+        mo_form = Form(self.env['mrp.production'].sudo().with_context(default_picking_type_id=warehouse01.manu_type_id.id))  # FIXME: remove sudo()
         mo_form.product_id = finished_product
         self.assertEqual(mo_form.bom_id, bom_wh01, 'Should select the BoM that matches the default picking type')
         self.assertEqual(mo_form.picking_type_id, warehouse01.manu_type_id, 'Should be the default one')
@@ -3952,7 +4047,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
     def test_manufacture_lead_days(self):
         """Test the lead days computation for manufacturing route.
         """
-        self.env.company.horizon_days = 0
+        self.env.company.sudo().horizon_days = 0
         warehouse = self.warehouse_1
         rule = warehouse.manufacture_pull_id
 
@@ -4086,7 +4181,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
 
         self.assertEqual(production.workorder_ids.duration_expected, current_duration_expected + 10)
 
-        # One should not recompute the expected duration of a full production
+        # One should recompute the expected duration of a full production
         production = production.production_group_id.production_ids[-1]
 
         init_duration_expected = production.workorder_ids.duration_expected
@@ -4099,7 +4194,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
 
         production.button_mark_done()
 
-        self.assertEqual(production.workorder_ids.duration_expected, init_duration_expected + 5)
+        self.assertEqual(production.workorder_ids.duration_expected, round(init_duration_expected, 2))
 
     def test_multi_edit_start_date_wo(self):
         """
@@ -4107,7 +4202,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         will be set too. As if the finish date is not set the planned workorder will not
         be shown in planning gantt view
         """
-        self.env.company.tz = 'Europe/Brussels'
+        self.env.company.sudo().tz = 'Europe/Brussels'
         mo = self.env['mrp.production'].create({
             'product_id': self.product.id,
             'uom_id': self.bom_1.uom_id.id,
@@ -4703,7 +4798,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
     def test_workorder_planning_validity_with_workcenters(self):
         # Create a workcenter with no pauses
         week_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        resource_calendar = self.env['resource.calendar'].create({
+        resource_calendar = self.env['resource.calendar'].sudo().create({
             'name': 'Default Calendar',
             'company_id': False,
             'hours_per_day': 24,
@@ -4969,8 +5064,8 @@ class TestMrpOrder(TestMrpCommon, MailCase):
     def test_workcenter_with_resource_calendar_from_another_company(self):
         """Test that only the resource calendars from the same
         company as the work center can be set."""
-        new_company = self.env['res.company'].create({'name': "new company"})
-        resource_calendar = self.env['resource.calendar'].create({
+        new_company = self.env['res.company'].sudo().create({'name': "new company"})
+        resource_calendar = self.env['resource.calendar'].sudo().create({
             'name': 'Default Calendar',
             'company_id': new_company.id,
             'hours_per_day': 24,
@@ -5097,7 +5192,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         self.assertEqual(self.env['stock.quant']._get_available_quantity(self.productA, self.stock_location, lot_id=serial_number), 1)
 
     def test_product_qty_digits_precision(self):
-        self.env['decimal.precision'].search([('name', '=', 'Product Unit')]).digits = 5
+        self.env['decimal.precision'].sudo().search([('name', '=', 'Product Unit')]).digits = 5
         mo = self.env['mrp.production'].create({
             'bom_id': self.bom_1.id,
             'product_qty': 1.23456,
@@ -5217,7 +5312,7 @@ class TestMrpOrder(TestMrpCommon, MailCase):
                 (0, 12, 12, 24, 'Test full calendar 24h/5d'),
             ]
         ])
-        self.company.tz = 'UTC'
+        self.company.sudo().tz = 'UTC'
         workcenters = self.env['mrp.workcenter'].create([
             {
                 'name': f'Simple Workcenter {i}',
@@ -5411,12 +5506,17 @@ class TestMrpOrder(TestMrpCommon, MailCase):
 
     def test_consumption_issue_only_for_compatible_variant(self):
         """A consumption issue should not be triggered for components that are not compatible with the produced variant."""
-        # Case 1: Product variant = red
-        self.product_4.product_template_attribute_value_ids = self.color_attribute.template_value_ids[0]
+        self.product_4.product_tmpl_id.attribute_line_ids = [Command.create({
+            'attribute_id': self.color_attribute.id,
+            'value_ids': [Command.set(self.color_attribute.value_ids[0:2].ids)],
+        })]
+        product_red, product_blue = self.product_4.product_variant_ids
         # First BoM line applies only to Blue variant
-        self.bom_1.bom_line_ids[0].bom_product_template_attribute_value_ids = self.color_attribute.template_value_ids[1]
+        self.bom_1.bom_line_ids[0].bom_product_template_attribute_value_ids = self.product_4.attribute_line_ids.product_template_value_ids[1]
+        # Case 1: Product variant = red
         mo = self.env['mrp.production'].create({
             'bom_id': self.bom_1.id,
+            'product_id': product_red.id,
         })
         # The BoM contains 2 lines but only 1 raw move should be created
         self.assertEqual(len(self.bom_1.bom_line_ids), 2)
@@ -5425,9 +5525,9 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         mo.button_mark_done()
         self.assertEqual(mo.state, 'done', "The MO should be completed without any consumption issue since the missing component is not compatible with the variant to produce.")
         # Case 2: Blue variant
-        self.product_4.product_template_attribute_value_ids = self.color_attribute.template_value_ids[1]
         mo_2 = self.env['mrp.production'].create({
             'bom_id': self.bom_1.id,
+            'product_id': product_blue.id,
         })
         self.assertEqual(len(mo_2.move_raw_ids), 2)
         mo_2.move_raw_ids[0].unlink()  # Remove one component to simulate missing consumption
@@ -5435,8 +5535,131 @@ class TestMrpOrder(TestMrpCommon, MailCase):
         action = mo_2.button_mark_done()
         self.assertEqual(action['res_model'], 'mrp.consumption.warning', "A consumption issue must be triggered when a component is missing.")
 
+    def test_mo_planning_after_toggling_bom_dependencies(self):
+        """
+        When a BOM's 'allow_operation_dependencies' field is toggled after an MO is created,
+        the old sequence needs to be cleared and replaced when planning the order
+        """
+        test_bom = self.bom_3.copy()
+        test_bom.allow_operation_dependencies = True
+        mo_form = Form(self.env['mrp.production'])
+        mo_form.bom_id = test_bom
+        mo = mo_form.save()
+        op_1, op_2, op_3, = mo.workorder_ids[:3]
+        op_1.blocked_by_workorder_ids = [Command.link(op_2.id)]
+        op_2.blocked_by_workorder_ids = [Command.link(op_3.id)]
+        mo.action_confirm()
+        test_bom.allow_operation_dependencies = False
+        mo.button_plan()
+        self.assertTrue(mo.is_planned)
+
+    def test_update_bom_removes_deleted_operation_workorder(self):
+        """
+        When an operation is deleted from the BOM and action_update_bom is called on a
+        confirmed MO, the workorder for the deleted operation must be removed from workorder_ids.
+        """
+        bom = self.env['mrp.bom'].create({
+            'product_tmpl_id': self.product.product_tmpl_id.id,
+            'product_qty': 1.0,
+            'operation_ids': [
+                Command.create({'name': 'Operation 1', 'workcenter_id': self.workcenter_1.id}),
+                Command.create({'name': 'Operation 2', 'workcenter_id': self.workcenter_2.id}),
+            ],
+        })
+        operation_to_update, operation_to_delete = bom.operation_ids
+        mo = self.env['mrp.production'].create({
+            'product_id': self.product.id,
+            'bom_id': bom.id,
+            'product_qty': 1.0,
+        })
+        mo.action_confirm()
+        self.assertEqual(mo.state, 'confirmed')
+        workorder_to_delete = mo.workorder_ids.filtered(lambda wo: wo.operation_id == operation_to_delete)
+        self.assertRecordValues(mo.workorder_ids - workorder_to_delete, [{'duration_expected': 90.0}])
+
+        operation_to_update.time_cycle_manual = 40.0
+        operation_to_delete.unlink()
+        mo.action_update_bom()
+        self.assertRecordValues(mo.workorder_ids, [{'operation_id': operation_to_update.id, 'duration_expected': 65.0}])
+
+    def test_update_bom_with_cancelled_workorder_of_deleted_operation(self):
+        """
+        Check that updating the BoM of a confirmed MO still works when an operation whose
+        work order is cancelled has been removed from the BoM.
+        """
+        bom = self.env['mrp.bom'].create({
+            'product_tmpl_id': self.product.product_tmpl_id.id,
+            'product_qty': 1.0,
+            'operation_ids': [
+                Command.create({'name': 'Operation 1', 'workcenter_id': self.workcenter_1.id}),
+                Command.create({'name': 'Operation 2', 'workcenter_id': self.workcenter_2.id}),
+            ],
+        })
+        cancelled_operation, remaining_operation = bom.operation_ids
+        mo = self.env['mrp.production'].create({
+            'product_id': self.product.id,
+            'bom_id': bom.id,
+            'product_qty': 1.0,
+        })
+        mo.action_confirm()
+        cancelled_workorder = mo.workorder_ids.filtered(lambda wo: wo.operation_id == cancelled_operation)
+        cancelled_workorder.action_cancel()
+        self.assertEqual(cancelled_workorder.state, 'cancel')
+        # the Update BoM button is only shown on a draft or confirmed MO
+        self.assertEqual(mo.state, 'confirmed')
+
+        cancelled_operation.unlink()
+        mo.action_update_bom()
+        self.assertRecordValues(mo.workorder_ids, [
+            {'operation_id': False, 'state': 'cancel'},
+            {'operation_id': remaining_operation.id, 'state': 'ready'},
+        ])
+
+    @freeze_time('2025-10-01 08:00')
+    def test_update_bom_keeps_workorder_planning(self):
+        """
+        Check that updating the BoM of a planned MO after a component change keeps its work
+        orders planned at the same time.
+        """
+        final_product, component = self.product, self.product_1
+        bom = self.env['mrp.bom'].create({
+            'product_tmpl_id': final_product.product_tmpl_id.id,
+            'product_qty': 1.0,
+            'bom_line_ids': [Command.create({'product_id': component.id, 'product_qty': 1})],
+            'operation_ids': [
+                Command.create({'name': 'Operation 1', 'workcenter_id': self.workcenter_1.id}),
+                Command.create({'name': 'Operation 2', 'workcenter_id': self.workcenter_2.id}),
+            ],
+        })
+        mo = self.env['mrp.production'].create({
+            'product_id': final_product.id,
+            'bom_id': bom.id,
+            'product_qty': 1.0,
+        })
+        mo.action_confirm()
+        mo.button_plan()
+        self.assertTrue(mo.is_planned)
+        planned_starts = mo.workorder_ids.sorted('sequence').mapped('date_start')
+
+        bom.write({'bom_line_ids': [Command.update(bom.bom_line_ids.id, {'product_qty': 2})]})
+        self.assertTrue(mo.is_outdated_bom)
+        mo.action_update_bom()
+        self.assertTrue(mo.is_planned)
+        self.assertEqual(mo.workorder_ids.sorted('sequence').mapped('date_start'), planned_starts)
+
 
 class TestMrpOrderPostInstall(TestMrpCommon):
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'mrp.group_mrp_manager',
+        'mrp.group_mrp_routings',  # view visibility (duration/workorder fields) granted to cls.env.user in Common
+        'mrp.group_mrp_byproducts',  # view visibility (byproducts) granted to mrp users in Common
+        'stock.group_stock_manager',  # setup: warehouse/route/rule/orderpoint/location/picking_type config in test bodies
+        'uom.group_uom',  # view visibility (uom_id) granted to cls.env.user in Common
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

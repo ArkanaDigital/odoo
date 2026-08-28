@@ -13,8 +13,7 @@ from odoo.exceptions import ValidationError
 from odoo.fields import Command, Domain
 from odoo.http import request, route
 from odoo.http.stream import content_disposition
-from odoo.tools import SQL, clean_context, float_round, lazy, str2bool
-from odoo.tools.json import scriptsafe as json_scriptsafe
+from odoo.tools import SQL, BinaryBytes, clean_context, float_round, lazy, str2bool
 from odoo.tools.translate import LazyTranslate
 
 from odoo.addons.payment.controllers import portal as payment_portal
@@ -248,7 +247,7 @@ class WebsiteSale(payment_portal.PaymentPortal):
             options=options,
         )
         search_result = (
-            details[0].get("results", self.env["product.template"]).with_context(bin_size=True)
+            details[0].get("results", self.env["product.template"])
         )
 
         return fuzzy_search_term, product_count, search_result
@@ -315,8 +314,9 @@ class WebsiteSale(payment_portal.PaymentPortal):
         in_stock=None,
         **post,
     ):
+        not_reload_request = request.httprequest.path != "/shop/reload"
         website = self.env.website
-        if not website.has_ecommerce_access():
+        if not_reload_request and not website.has_ecommerce_access():
             return request.redirect(f"/web/login?redirect={request.httprequest.path}")
 
         post = {k: v for k, v in post.items() if not k.startswith("_")}
@@ -328,7 +328,7 @@ class WebsiteSale(payment_portal.PaymentPortal):
             # redirecting:
             # - The category was given as a query parameter instead of in the path,
             # - The category's parents (if any) weren't included in the path.
-            if path != request.httprequest.path:
+            if not_reload_request and path != request.httprequest.path:
                 url = urlparse(request.httprequest.url)
                 return request.redirect(url._replace(path=path).geturl(), code=301)
 
@@ -359,7 +359,6 @@ class WebsiteSale(payment_portal.PaymentPortal):
                 pair.split("-") for pair in attribute_values if pair and pair.count("-") == 1
             ])
         attribute_value_dict = self._get_attribute_value_dict(attribute_value_params)
-        attribute_ids = set(attribute_value_dict.keys())
         attribute_value_ids = set(itertools.chain.from_iterable(attribute_value_dict.values()))
         grouped_attributes_values = (
             self
@@ -369,7 +368,7 @@ class WebsiteSale(payment_portal.PaymentPortal):
             .sorted()
             .grouped("attribute_id")
         )
-        if request.httprequest.args.getlist("attribute_values"):
+        if not_reload_request and request.httprequest.args.getlist("attribute_values"):
             redirect_url = self._get_url_with_attribute_values(grouped_attributes_values)
             return request.redirect(redirect_url, code=301)
         if attribute_value_params:
@@ -459,6 +458,9 @@ class WebsiteSale(payment_portal.PaymentPortal):
         )
         shop_query = request.env["product.template"]._search(shop_domain)
 
+        filters_domain = self._get_shop_domain(search_term, category, attribute_value_dict={})
+        filters_query = request.env["product.template"]._search(filters_domain)
+
         filter_by_price_enabled = website.is_view_active("website_sale.filter_products_price")
         if filter_by_price_enabled:
             # TODO Find an alternative way to obtain the domain through the search metadata.
@@ -502,11 +504,9 @@ class WebsiteSale(payment_portal.PaymentPortal):
                 Domain("list_price", ">=", (min_price or available_min_price) / conversion_rate),
                 Domain("list_price", "<=", (max_price or available_max_price) / conversion_rate),
             ])
-            filtered_query = request.env["product.template"]._search(
-                Domain.AND([shop_domain, price_domain])
+            filters_query = request.env["product.template"]._search(
+                Domain.AND([filters_domain, price_domain])
             )
-        else:
-            filtered_query = shop_query
 
         # Dynamic ribbon filters ("On sale" / "In stock")
         on_sale_active = on_sale == "1"
@@ -541,13 +541,13 @@ class WebsiteSale(payment_portal.PaymentPortal):
             product_count = len(search_product)
 
         ProductTag = self.env["product.tag"]
-        if filter_by_tags_enabled and search_product:
+        if filter_by_tags_enabled:
             all_tags = ProductTag.search_fetch(
                 Domain.AND([
                     Domain("visible_to_customers", "=", True),
                     Domain.OR([
-                        Domain("product_template_ids", "in", filtered_query),
-                        Domain("product_product_ids.product_tmpl_id", "in", filtered_query),
+                        Domain("product_template_ids", "in", filters_query),
+                        Domain("product_product_ids.product_tmpl_id", "in", filters_query),
                     ]),
                     website_domain,
                 ])
@@ -562,8 +562,10 @@ class WebsiteSale(payment_portal.PaymentPortal):
             Domain("parent_id", "=", False) & Domain("not_in_shop", "=", False) & website_domain
         )
         if search:
+            # using a sub-query is more efficient than using a query in the shape of "ids in (...)"
+            # when there are 100k product ids to match.
             search_categories = Category.search(
-                Domain("product_tmpl_ids", "in", search_product.ids) & website_domain
+                Domain("product_tmpl_ids", "in", shop_query)
             ).parents_and_self
             categs_domain &= Domain("id", "in", search_categories.ids)
         else:
@@ -616,21 +618,19 @@ class WebsiteSale(payment_portal.PaymentPortal):
         ProductAttribute = self.env["product.attribute"]
         ProductAttributeValue = self.env["product.attribute.value"]
         pavs_per_attribute = defaultdict(lambda: ProductAttributeValue)
-        if products:
-            grouped_pavs = ProductAttributeValue._read_group(
-                domain=[
-                    ("pav_attribute_line_ids.product_tmpl_id", "in", filtered_query),
-                    ("attribute_id.visibility", "=", "visible"),
-                ],
-                groupby=["attribute_id"],
-                order="attribute_id",
-                aggregates=["id:recordset"],
-            )
-            pavs_per_attribute.update(grouped_pavs)
-            # Return attributes as recordset of `product.attribute`
-            attributes = ProductAttribute.union(pavs_per_attribute.keys())
-        else:
-            attributes = ProductAttribute.browse(attribute_ids).exists().sorted()
+
+        grouped_pavs = ProductAttributeValue._read_group(
+            domain=[
+                ("pav_attribute_line_ids.product_tmpl_id", "in", filters_query),
+                ("attribute_id.visibility", "=", "visible"),
+            ],
+            groupby=["attribute_id"],
+            order="attribute_id",
+            aggregates=["id:recordset"],
+        )
+        pavs_per_attribute.update({attribute: pavs.sorted() for attribute, pavs in grouped_pavs})
+        # Return attributes as recordset of `product.attribute`
+        attributes = ProductAttribute.union(pavs_per_attribute.keys())
         products_prices = products._get_sales_prices(
             # Make sure latest context is applied (see update_context calls in overrides)
             request.pricelist.with_context(self.env.context),
@@ -689,18 +689,35 @@ class WebsiteSale(payment_portal.PaymentPortal):
                 nb_filter_sections += 1
         if category:
             values["main_object"] = category
-            values["markup_data_json"] = json_scriptsafe.dumps(
-                [
-                    website._prepare_ecommerce_store_markup_data(),
-                    self._prepare_breadcrumb_markup_data(website.get_base_url(), category),
-                ],
-                indent=2,
+        values["structured_data"] = products.with_context(
+            shop_category_id=category.id if category else False
+        )._render_jsonld()
+
+        if website.google_analytics_key:
+            if category:
+                item_list_name = category.with_context(lang=False).name
+            elif fuzzy_search_term or search:
+                item_list_name = "Search Results"
+            else:
+                item_list_name = "Shop"
+            # Not translated as they could be used as GA4 aggregation key
+            values["product_tracking_infos"] = products._get_google_analytics_list_data_batch(
+                products_prices, website, item_list_name
             )
+
         values.update(self._get_additional_shop_values(values, **post))
 
         values["default_expand_filter_sections"] = nb_filter_sections < MAX_EXPANDED_FILTER_SECTIONS
 
         return request.render("website_sale.products", values)
+
+    @route(["/shop/reload"], type="jsonrpc", auth="public", website=True)
+    def shop_reload(self, *args, **kwargs):
+        response = self.shop(*args, **kwargs)
+        html_content = response.render()
+        product_count = response.qcontext.get("search_count", 0)
+
+        return {"product_count": product_count, "html": str(html_content)}
 
     @route(
         [
@@ -765,9 +782,19 @@ class WebsiteSale(payment_portal.PaymentPortal):
         if not document or not document.active:
             return request.redirect(SHOP_PATH)
 
-        if not document.shown_on_product_page or not (
-            document.res_id == product_template.id and document.res_model == "product.template"
-        ):
+        if document.attached_on_sale != "shown_on_product_page":
+            return request.redirect(SHOP_PATH)
+
+        if document.res_model == "product.template":
+            if document.res_id != product_template.id:
+                return request.redirect(SHOP_PATH)
+        elif document.res_model == "product.product":
+            if (
+                request.env["product.product"].browse(document.res_id).product_tmpl_id.id
+                != product_template.id
+            ):
+                return request.redirect(SHOP_PATH)
+        else:
             return request.redirect(SHOP_PATH)
 
         return (
@@ -945,11 +972,13 @@ class WebsiteSale(payment_portal.PaymentPortal):
                 )
             # Swap records.
             product_images[main_image_idx], product_images[0] = additional_image, main_image
-            # Swap image data.
-            main_image.image_1920, additional_image.image_1920 = (
-                additional_image.image_1920,
-                main_image.image_1920,
-            )
+            # Swap image data. The contents are read eagerly before writing: the images are
+            # stored in attachments, and writing the first field mutates its attachment, which
+            # would invalidate the other value that is still lazily bound to its attachment.
+            main_image_data = main_image.image_1920.content
+            additional_image_data = additional_image.image_1920.content
+            main_image.image_1920 = BinaryBytes(additional_image_data)
+            additional_image.image_1920 = BinaryBytes(main_image_data)
             additional_image.name = main_image.name  # Update image name but not product name.
 
         # Resequence additional images according to the new ordering.
@@ -974,15 +1003,9 @@ class WebsiteSale(payment_portal.PaymentPortal):
         category = product.public_categ_ids.filtered(
             lambda categ: categ.website_id.id in (website.id, False)
         )[:1]
-        markup_data = [
-            website._prepare_ecommerce_store_markup_data(),
-            product._to_markup_data(website),
-        ]
-        if category:
-            # Add breadcrumb's SEO data.
-            markup_data.append(
-                self._prepare_breadcrumb_markup_data(website.get_base_url(), category)
-            )
+        structured_data = product.with_context(
+            shop_category_id=category.id if category else False
+        )._render_jsonld(is_detail_page=True)
         keep = QueryURL(SHOP_PATH, **request.session.get("attribute_value_params", {}))
 
         attribute_value_params = self._get_attribute_value_params(kwargs)
@@ -1042,34 +1065,10 @@ class WebsiteSale(payment_portal.PaymentPortal):
             "product": product,
             "product_variant": self.env["product.product"].browse(combination_info["product_id"]),
             "view_track": view_track,
-            "markup_data_json": json_scriptsafe.dumps(markup_data, indent=2),
+            "structured_data": structured_data,
             "shop_path": SHOP_PATH,
             "user_email": self.env.user.email
             or request.session.get("stock_notification_email", ""),
-        }
-
-    def _prepare_breadcrumb_markup_data(self, base_url, category):
-        """Generate JSON-LD breadcrumb markup data for the given category.
-
-        See https://schema.org/BreadcrumbList.
-
-        :param str base_url: The base URL of the current website.
-        :param product.public.category category: The current product category.
-        :return: The JSON-LD markup data.
-        :rtype: dict
-        """
-        return {
-            "@context": "https://schema.org",
-            "@type": "BreadcrumbList",
-            "itemListElement": [
-                {
-                    "@type": "ListItem",
-                    "position": i,
-                    "name": cat.name,
-                    "item": f"{base_url}{cat.website_url}",
-                }
-                for i, cat in enumerate(category.parents_and_self, start=1)
-            ],
         }
 
     @route(
@@ -1694,9 +1693,12 @@ class WebsiteSale(payment_portal.PaymentPortal):
 
     # === CHECKOUT FLOW - EXTRA STEP METHODS === #
     def system_page_extra_info(env):  # noqa: N805
-        if env.website.is_view_active("website_sale.extra_info"):
-            return _lt("Shop Checkout - Extra Information")
-        return False
+        if not env.website.is_view_active("website_sale.extra_info"):
+            return []
+        return [{
+                "route_title": _lt("Shop Checkout - Extra Information"),
+                "route_url": "/shop/extra_info",
+            }]
 
     @route(
         ["/shop/extra_info"],
@@ -1707,14 +1709,13 @@ class WebsiteSale(payment_portal.PaymentPortal):
         list_as_website_content=system_page_extra_info,
     )
     def extra_info(self, **post):
-        # Check that this option is activated
+        order_sudo = request.cart
         extra_step = self.env.website.viewref("website_sale.extra_info")
-        if not extra_step.active:
+        if not extra_step.active or not self.env.website._cart_has_extra_step_category():
             return request.redirect(
                 self.env.website._get_next_breadcrumb_step_href("/shop/extra_info")
             )
 
-        order_sudo = request.cart
         if redirect := self.env["website.checkout.step"].validate_checkout_progress(
             "/shop/extra_info", order_sudo
         ):
@@ -1743,6 +1744,9 @@ class WebsiteSale(payment_portal.PaymentPortal):
             "order": order,
             "only_services": order.only_services,
             **self.env.website._get_checkout_step_values("/shop/payment"),
+            "payment_tracking_info": (
+                order._get_order_tracking_info() if self.env.website.google_analytics_key else {}
+            ),
         }
         payment_form_values = {
             **sale_portal.CustomerPortal._get_payment_values(
@@ -1857,7 +1861,9 @@ class WebsiteSale(payment_portal.PaymentPortal):
         rendering_values = {
             "order": order,
             "website_sale_order": order,
-            "order_tracking_info": self.order_2_return_dict(order),
+            "order_tracking_info": (
+                order._get_purchase_tracking_info() if self.env.website.google_analytics_key else {}
+            ),
         }
         if (
             self.env["res.users"]._get_signup_invitation_scope() == "b2c"
@@ -1937,7 +1943,9 @@ class WebsiteSale(payment_portal.PaymentPortal):
         if not self.env.user.has_group("website.group_website_restricted_editor"):
             raise NotFound
 
-        product = self.env["product.template"].browse(product_id)
+        model = options.get("model", "product.template")
+
+        product = self.env[model].browse(product_id)
         if "sequence" in options:
             sequence = options["sequence"]
             if sequence == "top":
@@ -1948,8 +1956,10 @@ class WebsiteSale(payment_portal.PaymentPortal):
                 product.set_sequence_up()
             elif sequence == "down":
                 product.set_sequence_down()
-        if {"x", "y"} <= set(options):
+        if {"x", "y"} <= options.keys():
             product.write({"website_size_x": options["x"], "website_size_y": options["y"]})
+        if {"tag_field", "tag_ids"} <= options.keys():
+            product.write({options["tag_field"]: options["tag_ids"] or False})
 
     @route(["/shop/config/attribute"], type="jsonrpc", auth="user")
     def change_attribute_config(self, attribute_id, **options):
@@ -1984,6 +1994,10 @@ class WebsiteSale(payment_portal.PaymentPortal):
             "product_page_cols_order",
             "product_page_image_roundness",
             "product_page_cta_design",
+            # category
+            "align_category_content",
+            "show_category_title",
+            "show_category_description",
             # wishlist
             "wishlist_opt_products_design_classes",
             "wishlist_grid_columns",
@@ -2002,57 +2016,26 @@ class WebsiteSale(payment_portal.PaymentPortal):
             extra_step = self.env.website._get_checkout_step("/shop/extra_info")
             extra_step_view.active = extra_step.is_published = options.get("extra_step") == "true"
 
+        if "extra_step_category_ids" in options:
+            category_ids = options["extra_step_category_ids"]
+            self.env.website.extra_step_category_ids = (
+                self.env["product.public.category"].browse(category_ids).exists()
+            )
+
         write_vals = {k: v for k, v in options.items() if k in writable_fields}
         if write_vals:
             self.env.website.write(write_vals)
 
-    @route(["/shop/config/category"], type="jsonrpc", auth="user")
-    def _change_category_config(self, category_id, **options):
-        category = self.env["product.public.category"].browse(int(category_id))
-        if not category.exists():
+    @route(["/shop/config/tag"], type="jsonrpc", auth="user")
+    def _change_tag_config(self, tag_id, **options):
+        tag = self.env["product.tag"].browse(int(tag_id))
+        if not tag.exists():
             raise NotFound
-
-        # Restrict options we can write to.
-        targeted_options = {
-            "show_category_title",
-            "show_category_description",
-            "align_category_content",
-        }
-        modified_options = {
-            option: value for option, value in options.items() if option in targeted_options
-        }
-        if modified_options:
-            category.write(modified_options)
-
-    def order_lines_2_google_api(self, order_lines):
-        """Transform a list of order lines into a dict for google analytics."""
-        ret = []
-        for line in order_lines.filtered(lambda line: not line.is_delivery):
-            product = line.product_id
-            ret.append({
-                "item_id": product.barcode or product.id,
-                "item_name": product.name or "-",
-                "item_category": product.categ_id.name or "-",
-                "price": line.price_unit,
-                "quantity": line.product_uom_qty,
-            })
-        return ret
-
-    def order_2_return_dict(self, order):
-        """Return the tracking_cart dict of the order for Google analytics basically defined to
-        be inherited."""
-        tracking_cart_dict = {
-            "transaction_id": order.id,
-            "affiliation": order.company_id.name,
-            "value": order.amount_total,
-            "tax": order.amount_tax,
-            "currency": order.currency_id.name,
-            "items": self.order_lines_2_google_api(order.order_line),
-        }
-        delivery_line = order.order_line.filtered("is_delivery")
-        if delivery_line:
-            tracking_cart_dict["shipping"] = delivery_line.price_unit
-        return tracking_cart_dict
+        if "color" in options:
+            tag.color = options["color"]
+        if "image" in options:
+            image_data = self.env["ir.attachment"].browse(options["image"]).raw
+            tag.image = image_data
 
     # --------------------------------------------------------------------------
     # Products Recently Viewed
@@ -2089,7 +2072,10 @@ class WebsiteSale(payment_portal.PaymentPortal):
 
     @staticmethod
     def _populate_currency_and_pricelist(kwargs):
-        kwargs.update({"currency_id": request.env.website.currency_id.id, "pricelist_id": request.pricelist.id})
+        kwargs.update({
+            "currency_id": request.env.website.currency_id.id,
+            "pricelist_id": request.pricelist.id,
+        })
 
     @staticmethod
     def _validate_and_get_category(category):

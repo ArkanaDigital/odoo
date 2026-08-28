@@ -7,7 +7,7 @@
             <field name="model">discuss.channel</field>
             <field name="priority" eval="10"/>
             <field name="arch" type="xml">
-                <kanban default_order="last_interest_dt desc" action="open_chat_window_action" type="object">
+                <kanban default_order="last_interest_dt desc" action="open_chat_window_action" type="object" default_group_by="discuss_category_id" js_class="discuss_category_kanban">
                     <templates>
                         <t t-name="menu">
                             <a type="open" class="dropdown-item" role="menuitem">Advanced Settings</a>
@@ -16,7 +16,7 @@
                             <widget name="web_ribbon" class="d-flex" title="Archived" bg_color="text-bg-danger" invisible="active"/>
                             <main>
                                 <div class="d-flex gap-2 mb-2">
-                                    <field name="avatar_128" widget="image" options="{'size': [25, 25], 'img_class': 'bg-transparent'}" alt="Channel"/>
+                                    <field name="avatar_128" widget="image" options="{'size': [25, 25], 'img_class': 'rounded bg-transparent'}" alt="Channel"/>
                                     <span class="fw-bold fs-5">#<field name="display_name"/></span>
                                 </div>
                                 <field name="channel_type" groups="base.group_no_one"/>
@@ -24,10 +24,10 @@
                             </main>
                             <footer>
                                 <button type="object" invisible="not can_leave" class="btn btn-secondary ms-auto mt-auto" name="action_unfollow">
-                                    <i class="fa fa-sign-out" role="img"></i> Leave
+                                    <i class="oi" data-icon="logout" role="img"></i> Leave
                                 </button>
                                 <button type="object" invisible="not can_join" class="btn btn-primary ms-auto mt-auto" name="channel_join">
-                                    <i class="fa fa-sign-in" role="img"></i> Join
+                                    <i class="oi" data-icon="login" role="img"></i> Join
                                 </button>
                             </footer>
                         </t>
@@ -41,7 +41,7 @@
             <field name="model">discuss.channel</field>
             <field name="priority" eval="10"/>
             <field name="arch" type="xml">
-                <list default_order="name" action="open_chat_window_action" type="object">
+                <list default_order="name" action="open_chat_window_action" type="object" default_group_by="discuss_category_id">
                     <field name="avatar_128" invisible="parent_channel_id" widget="image" options="{'size': [24, 24]}" width="30" string=""/>
                     <field name="display_name" string="Name"/>
                     <field name="description"/>
@@ -57,14 +57,14 @@
             <field name="model">discuss.channel</field>
             <field name="priority" eval="10"/>
             <field name="arch" type="xml">
-                <form string="Mail Channel Form">
+                <form string="Mail Channel Form" duplicate="0">
                     <header>
                         <button type="object" invisible="not can_join" class="btn btn-primary" name="channel_join">
-                            <i class="fa fa-sign-in" role="img"></i> Join
+                            <i class="oi" data-icon="login" role="img"></i> Join
                         </button>
                         <button type="object" class="btn btn-secondary" name="open_chat_window_action">View</button>
                         <button type="object" invisible="not can_leave" class="btn btn-secondary" name="action_unfollow">
-                            <i class="fa fa-sign-out" role="img"></i> Leave
+                            <i class="oi" data-icon="logout" role="img"></i> Leave
                         </button>
                     </header>
                     <sheet>
@@ -92,13 +92,16 @@
                         <notebook>
                             <page string="Members" name="members">
                                 <field name="channel_type" invisible="1"/>
-                                <field name="channel_member_ids" mode="list" context="{'active_test': False}" readonly="channel_type == 'chat'">
+                                <field name="channel_member_ids" widget="discuss_channel_member_list" mode="list" context="{'active_test': False}" readonly="channel_type == 'chat'">
                                     <list string="Members" editable="bottom">
                                         <control>
                                             <delete invisible="not can_unlink"/>
+                                            <create name="add_members" string="Add Members" context="{'add_members': True}"/>
                                         </control>
-                                        <field name="partner_id" readonly="id or guest_id" required="not guest_id"/>
-                                        <field name="guest_id" readonly="id or partner_id" required="not partner_id"/>
+                                        <column string="Name">
+                                            <field name="partner_id" context="{'display_email': True}" readonly="id or guest_id" required="not guest_id" invisible="guest_id"/>
+                                            <field name="guest_id" context="{'display_email': True}" readonly="id or partner_id" required="not partner_id" invisible="partner_id"/>
+                                        </column>
                                     </list>
                                 </field>
                             </page>
@@ -152,9 +155,6 @@
                     <filter string="Not Joined" name="filter_not_joined" domain="[('is_member', '=', False)]"/>
                     <separator/>
                     <filter string="Archived" name="filter_archived" domain="[('active', '=', False)]"/>
-                    <group>
-                        <filter string="Category" name="group_by_category" context="{'group_by': 'discuss_category_id'}"/>
-                    </group>
                 </search>
             </field>
         </record>

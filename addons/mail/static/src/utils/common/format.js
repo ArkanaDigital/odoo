@@ -6,15 +6,14 @@
  * added by livechat so it only happens when frontend modules are installed and
  * tested while livechat is not installed.
  */
-import { getInnerHtml, getOuterHtml } from "@mail/utils/common/html";
+import { createElementFromContent, getInnerHtml, getOuterHtml } from "@mail/utils/common/html";
 
 import { htmlEscape, markup } from "@odoo/owl";
 
 import { router } from "@web/core/browser/router";
 import { emojiLoader } from "@web/core/emoji_picker/emoji_loader";
-import { formatList, normalize } from "@web/core/l10n/utils";
+import { formatList } from "@web/core/l10n/utils";
 import {
-    createDocumentFragmentFromContent,
     createElementWithContent,
     htmlJoin,
     htmlReplace,
@@ -28,7 +27,7 @@ import { getOrigin } from "@web/core/utils/urls";
 import { setAttributes } from "@web/core/utils/xml";
 
 const urlRegexp =
-    /\b(?:https?:\/\/\d{1,3}(?:\.\d{1,3}){3}|(?:https?:\/\/|(?:www\.))[-a-z0-9@:%._+~#=\u00C0-\u024F\u1E00-\u1EFF]{1,256}\.[a-z]{2,13})\b(?:[-a-z0-9@:%_+~#?&[\]^|{}`\\'$//=\u00C0-\u024F\u1E00-\u1EFF]|[.]*[-a-z0-9@:%_+~#?&[\]^|{}`\\'$//=\u00C0-\u024F\u1E00-\u1EFF]|,(?!$| )|\.(?!$| |\.)|;(?!$| ))*/gi;
+    /\b(?:https?:\/\/\d{1,3}(?:\.\d{1,3}){3}|(?:https?:\/\/|(?:www\.))[-a-z0-9@:%._+~#=\u00C0-\u024F\u1E00-\u1EFF]{1,256}(?:\.{1})?(?:[a-z]{2,13}))\b(?:[-a-z0-9@:%_+~#?&[\]^|{}`\\'$//=\u00C0-\u024F\u1E00-\u1EFF]|[.]*[-a-z0-9@:%_+~#?&[\]^|{}`\\'$//=\u00C0-\u024F\u1E00-\u1EFF]|,(?!$| )|\.(?!$| |\.)|;(?!$| ))*/gi;
 const messageUrlRegExp = new RegExp(`^${escapeRegExp(getOrigin())}/mail/message/(\\d+)$`);
 const MENTION_CLASSNAMES = new Set([
     "o_mail_redirect",
@@ -53,7 +52,6 @@ export function prettifyMessageText(rawBody, { validMentions = {}, thread, trim 
         return rawBody;
     }
     let body = trim ? htmlTrim(rawBody) : htmlJoin([rawBody]);
-    body = htmlReplace(body, /(\r|\n){2,}/g, () => markup`<br/><br/>`);
     body = htmlReplace(body, /(\r|\n)/g, () => markup`<br/>`);
     body = htmlReplace(body, /&nbsp;/g, () => " ");
     body = trim ? htmlTrim(body) : htmlJoin([body]);
@@ -65,6 +63,7 @@ export function prettifyMessageText(rawBody, { validMentions = {}, thread, trim 
     // the current design makes this quite hard to do.
     body = generateMentionsLinks(body, { ...validMentions, thread });
     body = parseAndTransform(body, addLink);
+    body = convertWhitespaceToNbsp(body);
     return body;
 }
 
@@ -213,7 +212,7 @@ export function addLink(node, transformChildren) {
  * @param {boolean} [param0.readonly] If true, returns a non-clickable span; if false, returns a clickable link
  * @returns {HTMLElement} Either an HTMLSpanElement(readonly) or HTMLAnchorElement(clickable)
  */
-function generateMentionElement({ className, id, model, text, readonly }) {
+export function generateMentionElement({ className, id, model, text, readonly }) {
     if (readonly) {
         const span = document.createElement("span");
         setAttributes(span, {
@@ -276,50 +275,28 @@ export function generateSpecialMentionElement(label) {
     return link;
 }
 
-/** @param {import("models").DiscussChannel} channel */
-export function generateChannelMentionElement(channel) {
-    return generateMentionElement({
-        className: `o_channel_redirect${
-            channel.parent_channel_id ? " o_channel_redirect_asThread" : ""
-        }`,
-        id: channel.id,
-        model: "discuss.channel",
-        text: `#${channel.fullNameWithParent}`,
-    });
-}
-
 /**
  * @param {string|ReturnType<markup>} body
  * @param {Object} param1
  * @param {import("models").ResPartner[]} param1.partners
  * @param {import("models").ResRole[]} param1.roles
- * @param {import("models").Thread[]} param1.threads
  * @param {string[]} param1.specialMentions
  * @param {import("models").Thread} param1.thread
  * @return {ReturnType<markup>}
  */
-function generateMentionsLinks(
-    body,
-    { channels = [], partners = [], roles = [], specialMentions = [], thread }
-) {
+function generateMentionsLinks(body, { partners = [], roles = [], specialMentions = [], thread }) {
     const mentions = [];
     for (const partner of partners) {
-        const placeholder = `@-mention-partner-${partner.id}`;
+        const placeholder = `@-mention-partner-${partner.id}!`;
         const text = `@${thread?.getPersonaName(partner) ?? partner.name}`;
         mentions.push({
             link: generatePartnerMentionElement(partner, { thread }),
             placeholder,
+            text,
         });
-        body = htmlReplace(body, text, placeholder);
     }
-    for (const channel of channels) {
-        const placeholder = `#-mention-channel-${channel.id}`;
-        const text = `#${channel.fullNameWithParent}`;
-        mentions.push({
-            link: generateChannelMentionElement(channel),
-            placeholder,
-        });
-        body = htmlReplace(body, text, placeholder);
+    for (const mention of mentions.sort((m1, m2) => m2.text.length - m1.text.length)) {
+        body = htmlReplace(body, mention.text, mention.placeholder);
     }
     for (const special of specialMentions) {
         const text = `@${special}`;
@@ -369,29 +346,25 @@ function _generateEmojisOnHtml(htmlString) {
  * @returns {ReturnType<markup>}
  */
 export function prepareBodyForEditing(body) {
-    const doc = createDocumentFragmentFromContent(body);
-    for (const block of doc.body.querySelectorAll(".o_mail_reply_hide")) {
+    const bodyEl = createElementFromContent(body);
+    for (const block of bodyEl.querySelectorAll(".o_mail_reply_hide")) {
         block.classList.remove("o_mail_reply_hide");
     }
     // for mentioned partner
-    for (const mention of doc.body.querySelectorAll(".o_mail_redirect")) {
-        mention.setAttribute("contenteditable", false);
-    }
-    // for mentioned channel
-    for (const mention of doc.body.querySelectorAll(".o_channel_redirect")) {
+    for (const mention of bodyEl.querySelectorAll(".o_mail_redirect")) {
         mention.setAttribute("contenteditable", false);
     }
     // for special mentions
-    for (const mention of doc.body.querySelectorAll(".o-discuss-mention")) {
+    for (const mention of bodyEl.querySelectorAll(".o-discuss-mention")) {
         mention.setAttribute("contenteditable", false);
     }
     // The "(edited)" label is added by the server and must never be editable.
     // Remove it so that CTRL+A does not select it and it is always re-added at
     // the end by the server upon saving.
-    for (const edited of doc.body.querySelectorAll(".o-mail-Message-edited")) {
+    for (const edited of bodyEl.querySelectorAll(".o-mail-Message-edited")) {
         edited.remove();
     }
-    return getInnerHtml(doc.body);
+    return getInnerHtml(bodyEl);
 }
 
 /**
@@ -416,9 +389,9 @@ export function convertBrToLineBreak(str, { trim = true } = {}) {
     const regex = trim ? /<br\s*\/?>/gi : /<br\/?>/gi;
     str = htmlReplace(str, regex, () => "\n");
     if (!trim) {
-        str = htmlReplace(str, /\s/g, () => markup`&nbsp;`);
+        str = htmlReplace(str, / /g, () => markup`&nbsp;`);
     }
-    return createDocumentFragmentFromContent(str).body.textContent.replaceAll(" ", " ");
+    return createElementFromContent(str).textContent.replaceAll(nbsp, " ");
 }
 
 export function convertLineBreakToBr(str) {
@@ -429,13 +402,39 @@ export function convertLineBreakToBr(str) {
  * @param {string|ReturnType<markup>} content
  * @returns {ReturnType<markup>}
  */
+function convertWhitespaceToNbsp(content) {
+    const body = createElementFromContent(content);
+
+    /** @param {Node | null} node */
+    const replaceWhitespaceInNodes = (node) => {
+        while (node) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                node.nodeValue = node.nodeValue.replace(/\s{2}/g, ` ${nbsp}`);
+            } else if (
+                node.nodeType === Node.ELEMENT_NODE &&
+                ![...MENTION_CLASSNAMES].some((cls) => node.classList.contains(cls))
+            ) {
+                replaceWhitespaceInNodes(node.firstChild);
+            }
+            node = node.nextSibling;
+        }
+    };
+    replaceWhitespaceInNodes(body.firstChild);
+    return getInnerHtml(body);
+}
+
+/**
+ * @param {string|ReturnType<markup>} content
+ * @returns {ReturnType<markup>}
+ */
 export function trimEmptyBlocksAround(content) {
     if (isHtmlEmpty(content)) {
         return content;
     }
-    const body = createDocumentFragmentFromContent(content).body;
+    const body = createElementFromContent(content);
     let changed = false;
 
+    /** @param {ChildNode} node */
     const removeNode = (node) => {
         node.remove();
         changed = true;
@@ -458,68 +457,50 @@ export function trimEmptyBlocksAround(content) {
     /**
      * @param {Element | null | undefined} element
      * @param {BoundarySide} side
-     * @returns {Element | null}
      */
-    const getBoundaryElement = (element, side) => {
-        if (!element) {
-            return null;
-        }
-        return side === "start" ? element.firstElementChild : element.lastElementChild;
-    };
-
     const trimTextNodes = (element, side) => {
-        let node = getBoundaryChild(element, side);
-        while (node?.nodeType === Node.TEXT_NODE && !node.textContent.trim()) {
-            removeNode(node);
-            node = getBoundaryChild(element, side);
-        }
-    };
-
-    const trimEmptyParagraphs = (side) => {
-        trimTextNodes(body, side);
-        let paragraph = getBoundaryElement(body, side);
-        while (["P", "DIV"].includes(paragraph?.tagName) && isHtmlEmpty(paragraph.innerHTML)) {
-            removeNode(paragraph);
-            trimTextNodes(body, side);
-            paragraph = getBoundaryElement(body, side);
-        }
-    };
-
-    const trimBoundaryParagraph = (side) => {
-        trimEmptyParagraphs(side);
-        const paragraph = getBoundaryElement(body, side);
-        if (!paragraph || !["P", "DIV"].includes(paragraph.tagName)) {
+        const node = getBoundaryChild(element, side);
+        if (!node) {
             return;
         }
-        trimTextNodes(paragraph, side);
-        let node = getBoundaryChild(paragraph, side);
-        while (node?.nodeName === "BR") {
-            removeNode(node);
-            trimTextNodes(paragraph, side);
-            node = getBoundaryChild(paragraph, side);
-        }
-        trimEmptyParagraphs(side);
-        if (getBoundaryElement(body, side) !== paragraph) {
-            trimBoundaryParagraph(side);
+        if (node.nodeType === Node.TEXT_NODE) {
+            const trimmed =
+                side === "start" ? node.textContent.trimStart() : node.textContent.trimEnd();
+            if (!trimmed) {
+                removeNode(node);
+                return trimTextNodes(element, side);
+            }
+            if (trimmed !== node.textContent) {
+                node.textContent = trimmed;
+                changed = true;
+            }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.nodeName === "PRE") {
+                // whitespaces are preserved in PRE tag
+                return;
+            }
+            trimTextNodes(node, side);
+            if (isHtmlEmpty(node.innerHTML)) {
+                removeNode(node);
+                return trimTextNodes(element, side);
+            }
         }
     };
-    trimBoundaryParagraph("start");
-    trimBoundaryParagraph("end");
+    trimTextNodes(body, "start");
+    trimTextNodes(body, "end");
     return changed ? getInnerHtml(body) : content;
 }
 
 /**
- * Converts an html string to inline representation.
+ * Converts the content of an element to its inline representation.
  * - Links and mentions are preserved
  * - For the rest: text content of nodes
  *
- * @param {string|ReturnType<markup>} htmlString
- * @returns {ReturnType<markup>}
+ * @param {Element} element modified in place
+ * @returns {Element} the same element
  */
-export function htmlToHtmlInline(htmlString) {
-    const doc = createDocumentFragmentFromContent(htmlString || "");
-    const body = doc.body;
-    const previewBody = body.ownerDocument.createElement("body");
+export function inlineElement(element) {
+    const previewBody = element.ownerDocument.createElement("body");
 
     /** @param {HTMLElement} [node] */
     const isBlock = (node) =>
@@ -531,7 +512,7 @@ export function htmlToHtmlInline(htmlString) {
      */
     const appendText = (parent, text) => {
         if (text) {
-            parent.append(body.ownerDocument.createTextNode(text));
+            parent.append(element.ownerDocument.createTextNode(text));
         }
     };
 
@@ -570,9 +551,14 @@ export function htmlToHtmlInline(htmlString) {
             if ([...node.classList].some((cls) => MENTION_CLASSNAMES.has(cls))) {
                 parent.append(node);
             } else if (href) {
-                const link = body.ownerDocument.createElement("a");
+                const link = element.ownerDocument.createElement("a");
                 link.setAttribute("href", href);
-                link.append(body.ownerDocument.createTextNode(href));
+                for (const attr of ["target", "rel"]) {
+                    if (node.hasAttribute(attr)) {
+                        link.setAttribute(attr, node.getAttribute(attr));
+                    }
+                }
+                link.append(element.ownerDocument.createTextNode(href));
                 parent.append(link);
             }
             return;
@@ -580,13 +566,9 @@ export function htmlToHtmlInline(htmlString) {
         appendInlinePreviewChildren(parent, [...node.childNodes]);
     };
 
-    appendInlinePreviewChildren(previewBody, [...body.childNodes]);
-
-    return htmlTrim(getInnerHtml(previewBody)) ?? "";
-}
-
-export function cleanTerm(term) {
-    return typeof term === "string" ? normalize(term) : "";
+    appendInlinePreviewChildren(previewBody, [...element.childNodes]);
+    element.replaceChildren(...previewBody.childNodes);
+    return element;
 }
 
 /**
@@ -645,20 +627,18 @@ export const EMOJI_REGEX = new RegExp(
 );
 
 /**
- * Wrap emojis present in the given text with a title and return a safe HTML
- * string.
+ * Wrap emojis present in `element` with a title.
  *
- * @param {string|ReturnType<markup>} content
- * @returns {ReturnType<markup>}
+ * @param {Element} element modified in place
+ * @returns {Element} the same element
  */
-export function decorateEmojis(content) {
-    if (!emojiLoader.loaded || !content) {
-        return content;
+export function decorateEmojis(element) {
+    if (!emojiLoader.loaded) {
+        return element;
     }
-    const doc = createDocumentFragmentFromContent(content);
-    const nodes = doc.evaluate(
+    const nodes = element.ownerDocument.evaluate(
         ".//text()",
-        doc.body,
+        element,
         null,
         XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE,
         null
@@ -680,7 +660,7 @@ export function decorateEmojis(content) {
         );
         node.replaceWith(...span.childNodes);
     }
-    return getInnerHtml(doc.body);
+    return element;
 }
 
 /**

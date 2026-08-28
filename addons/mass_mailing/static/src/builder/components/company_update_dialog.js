@@ -1,4 +1,4 @@
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillStart, useProps, proxy, t } from "@odoo/owl";
 import { Dialog } from "@web/core/dialog/dialog";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
@@ -6,41 +6,49 @@ import { useService } from "@web/core/utils/hooks";
 export const FIELD_NAMES = [
     {
         displayName: _t("X Account"),
+        iconClass: "oi_twitter",
         name: "social_twitter",
         placeholder: "https://twitter.com/Odoo",
     },
     {
         displayName: _t("Facebook Account"),
+        iconClass: "oi_facebook",
         name: "social_facebook",
         placeholder: "https://www.facebook.com/Odoo",
     },
     {
         displayName: _t("Github Account"),
+        iconClass: "oi_github",
         name: "social_github",
         placeholder: "https://github.com/odoo",
     },
     {
         displayName: _t("Linkedin Account"),
+        iconClass: "oi_linkedin",
         name: "social_linkedin",
         placeholder: "https://www.linkedin.com/company/odoo",
     },
     {
         displayName: _t("Youtube Account"),
+        iconClass: "oi_youtube",
         name: "social_youtube",
         placeholder: "https://www.youtube.com/user/OpenERPonline",
     },
     {
         displayName: _t("Instagram Account"),
+        iconClass: "oi_instagram",
         name: "social_instagram",
         placeholder: "https://www.instagram.com/explore/tags/odoo/",
     },
     {
         displayName: _t("Tiktok Account"),
+        iconClass: "oi_tiktok",
         name: "social_tiktok",
         placeholder: "https://www.tiktok.com/@odoo",
     },
     {
         displayName: _t("Discord Account"),
+        iconClass: "oi_discord",
         name: "social_discord",
         placeholder: "https://discord.com/servers/discord-town-hall-169256939211980800",
     },
@@ -49,16 +57,12 @@ export const FIELD_NAMES = [
 export class ResCompanyUpdateDialog extends Component {
     static template = "mass_mailing.CompanyUpdateDialog";
     static components = { Dialog };
-    static props = {
-        close: Function,
-        onRecordSaved: { type: Function, optional: true },
-        onCancel: { type: Function, optional: true },
-        resId: Number,
-    };
-    static defaultProps = {
-        onRecordSaved: () => {},
-        onCancel: () => {},
-    };
+    props = useProps({
+        close: t.function(),
+        onRecordSaved: t.function().optional(() => () => {}),
+        onCancel: t.function().optional(() => () => {}),
+        resId: t.number(),
+    });
 
     setup() {
         this.orm = useService("orm");

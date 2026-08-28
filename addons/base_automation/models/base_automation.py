@@ -37,32 +37,6 @@ def job_log_level(status, duration):
         else logging.DEBUG)
 
 
-def _get_domain_fields(env, model, domain):
-    IrModelFields = env["ir.model.fields"]
-    if not domain:
-        return IrModelFields
-    fields = IrModelFields
-    # wondering why we use a regex instead of safe_eval?
-    # because this method is called on a compute method hence could be triggered
-    # from an onchange call (i.e. a manually crafted malicious one)
-    # see: https://github.com/odoo/odoo/pull/189772#issuecomment-2548804283
-    for match in DOMAIN_FIELDS_RE.finditer(domain):
-        if field := match.groupdict().get('field'):
-            fields |= IrModelFields._get(model, field)
-    return fields
-
-
-def _domain_fields_differences(automation, domain1, domain2):
-    IrModelFields = automation.env["ir.model.fields"]
-    if not automation.model_id:
-        return IrModelFields, IrModelFields
-    d1_fields = _get_domain_fields(automation.env, automation.model_id.model, domain1)
-    d2_fields = _get_domain_fields(automation.env, automation.model_id.model, domain2)
-    in_d1_only_fields = d1_fields - d2_fields
-    in_d2_only_fields = d2_fields - d1_fields
-    return in_d1_only_fields, in_d2_only_fields
-
-
 DATE_RANGE = {
     'minutes': relativedelta(minutes=1),
     'hour': relativedelta(hours=1),
@@ -119,6 +93,10 @@ TIME_TRIGGERS = [
     'on_time_created',
     'on_time_updated',
 ]
+
+# which fields have an impact on the registry and the cron
+CRITICAL_FIELDS = ('model_id', 'active', 'trigger', 'on_change_field_ids')
+RANGE_FIELDS = ('trg_date_range', 'trg_date_range_type')
 
 
 def get_webhook_request_payload():
@@ -239,7 +217,7 @@ class BaseAutomation(models.Model):
         readonly=False, store=True,
         help="If present, this condition must be satisfied before the update of the record. "
              "Not checked on record creation.")
-    previous_domain = fields.Char(store=False, default=lambda self: self.filter_domain)
+    previous_domain = fields.Char(compute='_compute_previous_domain')
     filter_domain = fields.Char(
         string='Apply on',
         help="If present, this condition must be satisfied before executing the automation rule.",
@@ -260,10 +238,6 @@ class BaseAutomation(models.Model):
         compute='_compute_trigger_field_ids', readonly=False, store=True,
         help="The automation rule will be triggered if and only if one of these fields is updated."
              "If empty, all fields are watched.")
-
-    # which fields have an impact on the registry and the cron
-    CRITICAL_FIELDS = ['model_id', 'active', 'trigger', 'on_change_field_ids']
-    RANGE_FIELDS = ['trg_date_range', 'trg_date_range_type']
 
     @api.constrains('model_id', 'action_server_ids')
     def _check_action_server_model(self):
@@ -385,6 +359,12 @@ class BaseAutomation(models.Model):
                 continue
             automation.trg_field_ref_model_name = relation
 
+    # doesn't depends on filter_domain on purpose
+    # since it is a backup for onchange when filter_domain is changed
+    def _compute_previous_domain(self):
+        for automation in self:
+            automation.previous_domain = automation.filter_domain
+
     @api.depends('trigger', 'trg_field_ref')
     def _compute_filter_pre_domain(self):
         to_reset = self.filtered(lambda a: a.trigger != 'on_tag_set')
@@ -424,35 +404,19 @@ class BaseAutomation(models.Model):
                 case 'on_unarchive':
                     automation.filter_domain = repr([(field.name, '=', True)])
 
-    @api.depends('model_id', 'trigger', 'filter_domain')
+    @api.depends('model_id', 'trigger')
     def _compute_on_change_field_ids(self):
         to_reset = self.filtered(lambda a: a.trigger != 'on_change')
         to_reset.on_change_field_ids = False
-        for automation in (self - to_reset):
-            automation._onchange_domain()
 
-    @api.depends('model_id', 'trigger', 'filter_domain')
+    @api.depends('model_id', 'trigger')
     def _compute_trigger_field_ids(self):
-        for automation in self:
-            if automation.trigger == "on_create_or_write":
-                automation._onchange_domain()
-                continue
-            automation._onchange_trigger()
+        for rec in self.filtered(lambda a: a.trigger != "on_create_or_write"):
+            rec._onchange_trigger()
 
     @api.depends('model_id')
     def _compute_trigger(self):
         self.trigger = False
-
-    @api.onchange("filter_domain")
-    def _onchange_domain(self):
-        removed_fields, added_fields = _domain_fields_differences(self, self.previous_domain, self.filter_domain)
-        if self.trigger == "on_change":
-            self.on_change_field_ids = self.on_change_field_ids.filtered(lambda f: f._origin.id not in removed_fields.ids)
-            self.on_change_field_ids |= added_fields
-        if self.trigger == "on_create_or_write":
-            self.trigger_field_ids = self.trigger_field_ids.filtered(lambda f: f._origin.id not in removed_fields.ids)
-            self.trigger_field_ids |= added_fields
-        self.previous_domain = self.filter_domain
 
     @api.onchange('trigger')
     def _onchange_trigger(self):
@@ -510,14 +474,14 @@ class BaseAutomation(models.Model):
     def write(self, vals: dict):
         clear_templates = self._has_trigger_onchange()
         res = super().write(vals)
-        if set(vals).intersection(self.CRITICAL_FIELDS):
+        if set(vals).intersection(CRITICAL_FIELDS):
             self._update_cron()
             self._update_registry()
             clear_templates |= self._has_trigger_onchange()
             if clear_templates and any(self._ids):
                 # Invalidate templates cache to update on_change attributes if needed
                 self.env.transaction.invalidate_ormcache('templates')
-        elif set(vals).intersection(self.RANGE_FIELDS):
+        elif set(vals).intersection(RANGE_FIELDS):
             self._update_cron()
         return res
 
@@ -570,7 +534,7 @@ class BaseAutomation(models.Model):
         self.ensure_one()
         match self.trigger:
             case 'on_create_or_write':
-                return _get_domain_fields(self.env, self.model_id.model, self.filter_domain)
+                return False
             case 'on_stage_set':
                 domain = [('ttype', '=', 'many2one'), ('name', 'in', ['stage_id', 'x_studio_stage_id'])]
             case 'on_tag_set':

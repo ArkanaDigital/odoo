@@ -1,4 +1,4 @@
-import { describe, expect, test, Deferred } from "@odoo/hoot";
+import { describe, expect, test } from "@odoo/hoot";
 import { animationFrame, mockDate } from "@odoo/hoot-mock";
 import {
     defineSpreadsheetActions,
@@ -16,6 +16,7 @@ import {
 
 import {
     addGlobalFilter,
+    setGlobalFilterValueWithoutReload,
     setCellContent,
     updatePivot,
     updatePivotMeasureDisplay,
@@ -626,8 +627,8 @@ test("concurrently load the same pivot twice", async function () {
 });
 
 test("display loading while data is not fully available", async function () {
-    const metadataPromise = new Deferred();
-    const dataPromise = new Deferred();
+    const metadataPromise = Promise.withResolvers();
+    const dataPromise = Promise.withResolvers();
     const spreadsheetData = {
         sheets: [
             {
@@ -652,11 +653,11 @@ test("display loading while data is not fully available", async function () {
     };
     onRpc("partner", "fields_get", async ({ method, model }) => {
         expect.step(`${model}/${method}`);
-        await metadataPromise;
+        await metadataPromise.promise;
     });
     onRpc("partner", "formatted_read_grouping_sets", async ({ kwargs, method, model }) => {
         expect.step(`${model}/${method}`);
-        await dataPromise;
+        await dataPromise.promise;
     });
     onRpc("product", "read", () => {
         throw new Error("should not be called because data is put in cache");
@@ -2359,6 +2360,20 @@ test("pivot.getPossibleFieldValues do not throw when the pivot is error", async 
     ]);
 });
 
+test("pivot.definition updates dimensions synchronously", async function () {
+    const { model, pivotId } = await createSpreadsheetWithPivot();
+    const pivot = model.getters.getPivot(pivotId);
+    expect(pivot.definition.rows.map((r) => r.fieldName)).toEqual(["bar"]);
+    expect(pivot.definition.columns.map((r) => r.fieldName)).toEqual(["foo"]);
+
+    updatePivot(model, pivotId, {
+        rows: [{ fieldName: "foo" }],
+        columns: [{ fieldName: "bar" }],
+    });
+    expect(pivot.definition.rows.map((r) => r.fieldName)).toEqual(["foo"]);
+    expect(pivot.definition.columns.map((c) => c.fieldName)).toEqual(["bar"]);
+});
+
 test("Can change display type of a measure", async function () {
     const { model } = await createSpreadsheetWithPivot({
         arch: /* xml */ `
@@ -2623,6 +2638,13 @@ test("`getPivotCellFromPosition` should not throw on missing company default cur
     }).not.toThrow();
 });
 
+test("Pivot normalization of many2one is a string in case of account.root", () => {
+    const normalizer = pivotNormalizationValueRegistry.get("many2one");
+    expect(normalizer({ value: 1 }, { relation: "account.root" })).toBe("1");
+    expect(normalizer({ value: "01" }, { relation: "account.root" })).toBe("01");
+    expect(normalizer({ value: "coucou" }, { relation: "account.root" })).toBe("coucou");
+});
+
 test("Groupable fields in pivot", async function () {
     const groupableFieldTypes = [
         "boolean",
@@ -2679,6 +2701,31 @@ test("REFRESH_PIVOT properly invalidates a pivot table", async function () {
     expect(model.getters.getCellTableBorder(position)).not.toBe(undefined);
     model.dispatch("REFRESH_PIVOT", { id: model.getters.getPivotIds()[0] });
     expect(model.getters.getCellTableBorder(position)).toBe(undefined);
+    await waitForDataLoaded(model);
+    expect(model.getters.getCellTableBorder(position)).not.toBe(undefined);
+});
+
+test("Setting a date global filter does not crash while recomputing a loading pivot table", async function () {
+    mockDate("2016-12-16 00:00:00");
+    const { model, pivotId } = await createSpreadsheetWithPivot({ pivotType: "dynamic" });
+    const position = { sheetId: model.getters.getActiveSheetId(), col: 0, row: 0 };
+    const filter = {
+        id: "date_filter",
+        type: "date",
+        label: "Date",
+    };
+
+    await addGlobalFilter(model, filter, {
+        pivot: { [pivotId]: { chain: "date", type: "date", offset: -1 } },
+    });
+    expect(model.getters.getCellTableBorder(position)).not.toBe(undefined);
+
+    setGlobalFilterValueWithoutReload(model, {
+        id: filter.id,
+        value: { type: "relative", period: "last_7_days" },
+    });
+    expect(model.getters.getCellTableBorder(position)).toBe(undefined);
+
     await waitForDataLoaded(model);
     expect(model.getters.getCellTableBorder(position)).not.toBe(undefined);
 });

@@ -22,6 +22,8 @@ class TestAccessRights(TestProjectCommon):
 
 class TestCRUDVisibilityFollowers(TestAccessRights):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
         self.project_pigs.privacy_visibility = 'followers'
@@ -116,6 +118,8 @@ class TestCRUDVisibilityFollowers(TestAccessRights):
 
 class TestCRUDVisibilityPortal(TestAccessRights):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
         self.project_pigs.privacy_visibility = 'portal'
@@ -143,6 +147,8 @@ class TestCRUDVisibilityPortal(TestAccessRights):
 
 class TestCRUDVisibilityEmployees(TestAccessRights):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
         self.project_pigs.privacy_visibility = 'employees'
@@ -164,6 +170,8 @@ class TestCRUDVisibilityEmployees(TestAccessRights):
 
 
 class TestAllowedUsers(TestAccessRights):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     def setUp(self):
         super().setUp()
@@ -261,7 +269,7 @@ class TestProjectPortalCommon(TestProjectCommon):
 
 class TestPortalProject(TestProjectPortalCommon):
 
-    @mute_logger('odoo.addons.base.models.ir_model')
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_employee_project_access_rights(self):
         pigs = self.project_pigs
 
@@ -283,7 +291,7 @@ class TestPortalProject(TestProjectPortalCommon):
             'project_id': pigs.id})
         tmp_task.with_user(self.user_projectuser).unlink()
 
-    @mute_logger('odoo.addons.base.models.ir_model')
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_favorite_project_access_rights(self):
         pigs = self.project_pigs.with_user(self.user_projectuser)
 
@@ -334,6 +342,8 @@ class TestPortalProject(TestProjectPortalCommon):
 
 @tagged('at_install', '-post_install')  # LEGACY at_install, fails post install
 class TestAccessRightsPrivateTask(TestAccessRights):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -422,6 +432,8 @@ class TestAccessRightsPrivateTask(TestAccessRights):
 
 
 class TestAccessRightsInvitedUsers(TestAccessRights):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):

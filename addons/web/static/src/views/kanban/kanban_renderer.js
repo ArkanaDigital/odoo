@@ -1,5 +1,13 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onPatched, onWillDestroy, proxy } from "@odoo/owl";
+import {
+    Component,
+    onPatched,
+    onWillDestroy,
+    proxy,
+    signal,
+    t,
+    useListener,
+    useProps,
+} from "@odoo/owl";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
@@ -37,6 +45,24 @@ function validateColumnQuickCreateExamples(data) {
     }
 }
 
+export const kanbanRendererProps = {
+    archInfo: t.any(),
+    Compiler: t.any(),
+    list: t.any(),
+    deleteRecord: t.any(),
+    openRecord: t.any(),
+    readonly: t.any().optional(),
+    forceGlobalClick: t.any().optional(),
+    noContentHelp: t.any().optional(),
+    scrollTop: t.any().optional(() => () => {}),
+    canQuickCreate: t.any().optional(),
+    quickCreateState: t.any().optional(),
+    progressBarState: t.any().optional(),
+    addLabel: t.any().optional(),
+    onAdd: t.any().optional(),
+    tooltipInfo: t.any().optional({}),
+};
+
 export class KanbanRenderer extends Component {
     static template = "web.KanbanRenderer";
     static components = {
@@ -50,27 +76,9 @@ export class KanbanRenderer extends Component {
         Widget,
         ActionHelper,
     };
-    static props = [
-        "archInfo",
-        "Compiler",
-        "list",
-        "deleteRecord",
-        "openRecord",
-        "readonly?",
-        "forceGlobalClick?",
-        "noContentHelp?",
-        "scrollTop?",
-        "canQuickCreate?",
-        "quickCreateState?",
-        "progressBarState?",
-        "addLabel?",
-        "onAdd?",
-    ];
+    props = useProps(kanbanRendererProps);
 
-    static defaultProps = {
-        scrollTop: () => {},
-        tooltipInfo: {},
-    };
+    rootRef = signal.ref();
 
     setup() {
         this.dialogClose = [];
@@ -84,6 +92,7 @@ export class KanbanRenderer extends Component {
                 !this.props.list.isGrouped || this.props.list.groups.length > 0,
         });
         this.dialog = useService("dialog");
+        this.uiService = useService("ui");
         this.exampleData = registry
             .category("kanban_examples")
             .get(this.props.archInfo.examples, null);
@@ -95,7 +104,6 @@ export class KanbanRenderer extends Component {
         // Sortable
         let dataRecordId;
         let dataGroupId;
-        this.rootRef = useRef("root");
         if (this.canUseSortable) {
             useSortable({
                 enable: () => this.canResequenceRecords,
@@ -106,7 +114,7 @@ export class KanbanRenderer extends Component {
                 groups: () => this.props.list.isGrouped && ".o_kanban_group",
                 connectGroups: () => this.canMoveRecords,
                 cursor: "move",
-                placeholderClasses: ["visible", "opacity-50", "my-2"],
+                placeholderClasses: ["visible", "opacity-50", "my-2", "pe-none"],
                 // Hooks
                 onDragStart: (params) => {
                     const { element, group } = params;
@@ -170,7 +178,7 @@ export class KanbanRenderer extends Component {
                 if (model.useSampleModel || !model.hasData()) {
                     return;
                 }
-                const firstCard = this.rootRef.el.querySelector(".o_kanban_record");
+                const firstCard = this.rootRef().querySelector(".o_kanban_record");
                 if (firstCard) {
                     // Focus first kanban card
                     firstCard.focus();
@@ -193,7 +201,7 @@ export class KanbanRenderer extends Component {
                 }
             },
             {
-                area: () => this.rootRef.el,
+                area: () => this.rootRef(),
                 isAvailable: (target) => {
                     if (this.props.quickCreateState?.isOpen) {
                         return false;
@@ -210,16 +218,16 @@ export class KanbanRenderer extends Component {
         );
 
         useHotkey("space", ({ target }) => this.onSpaceKeyPress(target), {
-            area: () => this.rootRef.el,
-            isAvailable: () => !this.props.quickCreateState.groupId,
+            area: () => this.rootRef(),
+            isAvailable: () => !this.props.quickCreateState?.groupId,
         });
 
         useHotkey("shift+space", ({ target }) => this.onSpaceKeyPress(target, true), {
-            area: () => this.rootRef.el,
-            isAvailable: () => !this.props.quickCreateState.groupId,
+            area: () => this.rootRef(),
+            isAvailable: () => !this.props.quickCreateState?.groupId,
         });
 
-        const arrowsOptions = { area: () => this.rootRef.el, allowRepeat: true };
+        const arrowsOptions = { area: () => this.rootRef(), allowRepeat: true };
         if (this.env.searchModel) {
             useHotkey(
                 "ArrowUp",
@@ -242,19 +250,9 @@ export class KanbanRenderer extends Component {
         const handleAltKeyUp = () => {
             this.state.selectionAvailable = false;
         };
-        useLayoutEffect(
-            () => {
-                window.addEventListener("keydown", handleAltKeyDown);
-                window.addEventListener("keyup", handleAltKeyUp);
-                window.addEventListener("blur", handleAltKeyUp);
-                return () => {
-                    window.removeEventListener("keydown", handleAltKeyDown);
-                    window.removeEventListener("keyup", handleAltKeyUp);
-                    window.removeEventListener("blur", handleAltKeyUp);
-                };
-            },
-            () => []
-        );
+        useListener(window, "keydown", handleAltKeyDown);
+        useListener(window, "keyup", handleAltKeyUp);
+        useListener(window, "blur", handleAltKeyUp);
 
         // After a group is unfolded through onGroupClick, we want to scroll towards
         // the next group if it exists and is folded, and to the unfolded group
@@ -267,18 +265,21 @@ export class KanbanRenderer extends Component {
                 );
                 let groupIdToFocus = this.lastOpenedGroupId;
                 if (
+                    lastOpenedGroupIndex >= 0 &&
                     lastOpenedGroupIndex < groups.length - 1 &&
                     groups[lastOpenedGroupIndex + 1].group.isFolded
                 ) {
                     groupIdToFocus = groups[lastOpenedGroupIndex + 1].group.id;
                 }
-                const groupEl = this.rootRef.el.querySelector(
+                const groupEl = this.rootRef().querySelector(
                     `.o_kanban_group[data-id="${groupIdToFocus}"]`
                 );
-                const rect = groupEl.getBoundingClientRect();
-                // Don't scroll if the group to focus is completely inside of the viewport
-                if (rect.x + rect.width > window.innerWidth) {
-                    groupEl.scrollIntoView({ behavior: "smooth", inline: "end" });
+                if (groupEl) {
+                    const rect = groupEl.getBoundingClientRect();
+                    // Don't scroll if the group to focus is completely inside of the viewport
+                    if (rect.x + rect.width > window.innerWidth) {
+                        groupEl.scrollIntoView({ behavior: "smooth", inline: "end" });
+                    }
                 }
                 delete this.lastOpenedGroupId;
             }
@@ -290,7 +291,7 @@ export class KanbanRenderer extends Component {
     // ------------------------------------------------------------------------
 
     get canUseSortable() {
-        return !this.env.isSmall;
+        return !this.uiService.isSmall;
     }
 
     get canMoveRecords() {
@@ -399,7 +400,7 @@ export class KanbanRenderer extends Component {
         if (!group.count) {
             classes.push("o_kanban_no_records");
         }
-        if (!this.env.isSmall && group.isFolded) {
+        if (!this.uiService.isSmall && group.isFolded) {
             classes.push("o_column_folded", "flex-basis-0");
         }
         if (this.props.progressBarState && !group.isFolded) {
@@ -529,7 +530,7 @@ export class KanbanRenderer extends Component {
     // ------------------------------------------------------------------------
 
     async onGroupClick(group, ev) {
-        if (!this.env.isSmall && group.isFolded) {
+        if (!this.uiService.isSmall && group.isFolded) {
             this.lastOpenedGroupId = group.id;
             await group.toggle();
             this.props.scrollTop();

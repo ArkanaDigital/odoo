@@ -1,9 +1,10 @@
+import { markup } from "@odoo/owl";
 import { tourState } from "@web_tour/js/tour_state";
 import * as hoot from "@odoo/hoot-dom";
-import { utils } from "@web/core/ui/ui_service";
-import { TourStep } from "@web_tour/js/tour_step";
+import { utils } from "@web/core/ui/ui_utils";
+import { TourStepInteractive } from "@web_tour/js/tour_interactive/tour_step_interactive";
 import { TourInteractiveObserver } from "@web_tour/js/tour_interactive/tour_interactive_observer";
-import { pointerState } from "@web_tour/js/tour_pointer/tour_pointer";
+import { TourPointer, pointerState } from "@web_tour/js/tour_pointer/tour_pointer";
 
 /**
  * @typedef ConsumeEvent
@@ -14,34 +15,54 @@ import { pointerState } from "@web_tour/js/tour_pointer/tour_pointer";
 
 export class TourInteractive {
     static observer = null;
+    static removePointer = () => {};
     mode = "manual";
     currentAction;
     currentActionIndex;
-    anchorEls = [];
+    anchorEl;
     removeListeners = () => {};
 
     /**
      * @param {Tour} data
+     * @param {Object} deps
+     * @param {import("@web/core/network/orm_service").ORM} deps.orm
+     * @param {import("@web/core/effects/effect_plugin").EffectPlugin} deps.effect
+     * @param {import("@web/core/overlay/overlay_plugin").OverlayPlugin} deps.overlay
+     * @param {(nextTour: Object) => void} deps.onChainNextTour
      */
-    constructor(data) {
+    constructor(data, { orm, effect, overlay, onChainNextTour }) {
+        this.orm = orm;
+        this.effect = effect;
+        this.overlay = overlay;
+        this.onChainNextTour = onChainNextTour;
         Object.assign(this, data);
-        this.steps = this.steps.map((step) => new TourStep(step, this));
-        this.actions = this.steps.flatMap((s) => this.getSubActions(s));
+        this.steps = this.steps.map((step) => new TourStepInteractive(step, this));
+        this.actions = this.steps.flatMap((step) => step.actions);
         this.isBusy = false;
+        this.config = tourState.getCurrentConfig() || {};
+        this.robotStep = null;
     }
 
     /**
-     * @param {import("@web_tour/js/tour_pointer/tour_pointer").TourPointer} pointer
-     * @param {Function} onTourEnd
+     * @param {import("@web/env").OdooEnv} env
      */
-    start(env, onTourEnd) {
-        this.onTourEnd = onTourEnd;
+    start(env) {
+        TourInteractive.removePointer();
         if (TourInteractive.observer) {
             TourInteractive.observer.disconnect();
         }
         TourInteractive.observer = new TourInteractiveObserver(() => this._onMutation());
         TourInteractive.observer.observe(document.body);
+        TourInteractive.removePointer = this.overlay.add(
+            TourPointer,
+            { pointerState },
+            { sequence: 1100 } // sequence based on bootstrap z-index values.
+        );
         this.currentActionIndex = tourState.getCurrentIndex();
+        if (this.config.debug && this.currentActionIndex === 0) {
+            // eslint-disable-next-line no-debugger
+            debugger;
+        }
         this.play();
         env.bus.addEventListener("ACTION_MANAGER:UPDATE", () => (this.isBusy = true));
         env.bus.addEventListener("ACTION_MANAGER:UI-UPDATED", () => (this.isBusy = false));
@@ -49,15 +70,14 @@ export class TourInteractive {
 
     backward() {
         let tempIndex = this.currentActionIndex;
-        let tempAction,
-            tempAnchors = [];
-        while (!tempAnchors.length && tempIndex >= 0) {
+        let tempAction, tempAnchor;
+        while (!tempAnchor && tempIndex >= 0) {
             tempIndex--;
             tempAction = this.actions.at(tempIndex);
             if (!tempAction.step.active || tempAction.event === "warn") {
                 continue;
             }
-            tempAnchors = tempAction && this.findTriggers(tempAction.anchor);
+            tempAnchor = tempAction.findTrigger();
         }
 
         if (tempIndex >= 0) {
@@ -66,36 +86,40 @@ export class TourInteractive {
         }
     }
 
-    /**
-     * @returns {HTMLElement[]}
-     */
-    findTriggers(anchor) {
-        if (!anchor) {
-            anchor = this.currentAction.anchor;
-        }
-
-        return anchor
-            .split(/,\s*(?![^(]*\))/)
-            .map((part) => hoot.queryFirst(part, { visible: true }))
-            .filter((el) => !!el)
-            .map((el) => this.getAnchorEl(el, this.currentAction.event))
-            .filter((el) => !!el);
-    }
-
     play() {
         this.removeListeners();
         if (this.currentActionIndex === this.actions.length) {
             TourInteractive.observer.disconnect();
-            this.onTourEnd();
+            this.finish();
             return;
         }
 
         this.currentAction = this.actions.at(this.currentActionIndex);
 
-        if (!this.currentAction.step.active || this.currentAction.event === "warn") {
-            if (this.currentAction.event === "warn") {
-                console.warn(`Step '${this.currentAction.anchor}' ignored.`);
+        if (this.config.robot) {
+            clearTimeout(this.robotWatchdog);
+            const actionAtCall = this.currentAction;
+            this.robotWatchdog = setTimeout(() => {
+                if (this.currentAction === actionAtCall) {
+                    throw new Error(
+                        `Robot: no progress for 10s on step '${actionAtCall.anchor}'.\n` +
+                            actionAtCall.step.error.join("\n")
+                    );
+                }
+            }, 10000);
+        }
+
+        if (!this.currentAction.step.active) {
+            this.currentActionIndex++;
+            this.play();
+            return;
+        }
+
+        if (this.currentAction.event === "warn") {
+            if (!this.currentAction.findTrigger()) {
+                return;
             }
+            console.log(`Step '${this.currentAction.anchor}' ignored.`);
             this.currentActionIndex++;
             this.play();
             return;
@@ -104,40 +128,103 @@ export class TourInteractive {
         console.log(this.currentAction.event, this.currentAction.anchor);
 
         tourState.setCurrentIndex(this.currentActionIndex);
-        this.anchorEls = this.findTriggers();
+        this.anchorEl = this.currentAction.findTrigger();
         this.setActionListeners();
+        if (!this.config.robot && this.anchorEl && !this.hasConsumeEvent) {
+            this.currentActionIndex++;
+            this.play();
+            return;
+        }
         this.updatePointer();
     }
 
-    updatePointer() {
-        pointerState.trigger = undefined;
-        if (this.anchorEls.length) {
-            pointerState.trigger = this.anchorEls[0];
-            pointerState.content = this.currentAction.content;
-            pointerState.position = this.currentAction.tooltipPosition;
-            pointerState.isZone = this.currentAction.event === "drop";
+    async finish() {
+        TourInteractive.removePointer();
+        tourState.clear();
+        let message = this.config.rainbowManMessage || this.rainbowManMessage;
+        if (message && window.DOMPurify) {
+            message = window.DOMPurify.sanitize(message);
+            this.effect.add({
+                type: "rainbow_man",
+                message: markup(message),
+            });
+            if (this.config.robot) {
+                await hoot.waitFor(".o_reward_rainbow_man", { timeout: 10000 });
+            }
+        }
+        console.log("tour succeeded");
+
+        const nextTour = await this.orm.call("web_tour.tour", "consume", [this.name]);
+        if (nextTour) {
+            this.onChainNextTour(nextTour);
         }
     }
 
+    get hasConsumeEvent() {
+        return this.getConsumeEventType(this.anchorEl, this.currentAction.event).length > 0;
+    }
+
+    updatePointer() {
+        if (this.anchorEl) {
+            pointerState.trigger = this.anchorEl;
+            pointerState.content = this.currentAction.content;
+            pointerState.position = this.currentAction.tooltipPosition;
+            pointerState.isZone = this.currentAction.event === "drop";
+            if (this.config.robot) {
+                this.playRobot();
+            }
+        } else {
+            pointerState.trigger = undefined;
+        }
+    }
+
+    /**
+     * Schedules the current step's {@link TourStepInteractive.doAction} once per
+     * step, queued on {@link robotQueue} so steps never race each other: a step
+     * like "edit" on an autocomplete input is considered consumed by the
+     * interactive engine as soon as the first keystroke fires an "input" event,
+     * well before the typing is done. That already advances the tour to the next
+     * step (e.g. "click" on a dropdown item) and would call this again while the
+     * previous step's typing is still in progress — exactly as a human could
+     * never type and click the very same input at once.
+     */
+    playRobot() {
+        const action = this.currentAction;
+        const step = action.step;
+        if (step === this.robotStep) {
+            return;
+        }
+        this.robotStep = step;
+        const selfAdvance = !this.hasConsumeEvent;
+        this.robotQueue = (this.robotQueue || Promise.resolve()).then(async () => {
+            await step.doAction();
+            if (selfAdvance && this.currentAction === action) {
+                this.currentActionIndex++;
+                this.play();
+            }
+        });
+    }
+
     setActionListeners() {
-        const cleanups = this.anchorEls.flatMap((anchorEl, index) =>
-            this.setupListeners({
-                anchorEl,
-                consumeEvents: this.getConsumeEventType(anchorEl, this.currentAction.event),
-                onConsume: () => {
-                    this.currentActionIndex++;
+        if (!this.anchorEl) {
+            this.removeListeners = () => {};
+            return;
+        }
+        const cleanups = this.setupListeners({
+            consumeEvents: this.getConsumeEventType(this.anchorEl, this.currentAction.event),
+            onConsume: () => {
+                this.currentActionIndex++;
+                this.play();
+            },
+            onError: () => {
+                if (this.currentAction.event === "drop") {
+                    this.currentActionIndex--;
                     this.play();
-                },
-                onError: () => {
-                    if (this.currentAction.event === "drop") {
-                        this.currentActionIndex--;
-                        this.play();
-                    }
-                },
-            })
-        );
+                }
+            },
+        });
         this.removeListeners = () => {
-            this.anchorEls = [];
+            this.anchorEl = undefined;
             while (cleanups.length) {
                 cleanups.pop()();
             }
@@ -145,7 +232,6 @@ export class TourInteractive {
     }
 
     /**
-     * @param {HTMLElement} params.anchorEl
      * @param {import("../../tour_utils").ConsumeEvent[]} params.consumeEvents
      * @param {(ev: Event) => any} params.onConsume
      * @param {() => any} params.onError
@@ -177,69 +263,16 @@ export class TourInteractive {
     }
 
     /**
-     *
-     * @param {import("../tour_service").TourStep} step
-     * @returns {{
-     *  event: string,
-     *  anchor: string,
-     *  pointerInfo: { tooltipPosition: string?, content: string? },
-     * }[]}
+     * When the next action is a click on an autocomplete dropdown item, the
+     * current "edit" action already consumed the selection (Tab/Enter or a
+     * direct click on the item), so that next step would never see its own
+     * trigger event fire.
      */
-    getSubActions(step) {
-        const actions = [];
-        if (!step.run || typeof step.run === "function") {
-            actions.push({
-                step,
-                event: "warn",
-                anchor: step.trigger,
-            });
-            return actions;
+    skipNextActionIfDropdownItem() {
+        const nextAction = this.actions.at(this.currentActionIndex + 1);
+        if (nextAction.findTrigger()?.closest(".o-autocomplete--dropdown-item")) {
+            this.currentActionIndex++;
         }
-
-        for (const todo of step.run.split("&&")) {
-            const m = String(todo)
-                .trim()
-                .match(/^(?<action>\w*) *\(? *(?<arguments>.*?)\)?$/);
-
-            let action = m.groups?.action;
-            const anchor = m.groups?.arguments || step.trigger;
-            const pointerInfo = {
-                content: step.content || this.getStepContent(action, anchor),
-                tooltipPosition: step.tooltipPosition,
-            };
-
-            if (action === "drag_and_drop") {
-                actions.push({
-                    step,
-                    event: "drag",
-                    anchor: step.trigger,
-                    ...pointerInfo,
-                });
-                action = "drop";
-            }
-
-            actions.push({
-                step,
-                event: action,
-                anchor: action === "edit" ? step.trigger : anchor,
-                ...pointerInfo,
-            });
-        }
-
-        return actions;
-    }
-
-    getStepContent(action, anchor) {
-        if (action === "click") {
-            return `Click on element`;
-        } else if (action === "edit") {
-            return `Edit element`;
-        } else if (action === "drag_and_drop") {
-            return `Drag element`;
-        } else if (action === "press") {
-            return `Press ${anchor}`;
-        }
-        return ``;
     }
 
     /**
@@ -325,15 +358,7 @@ export class TourInteractive {
                                     ".o-autocomplete--dropdown-item .ui-state-active"
                                 )
                             ) {
-                                const nextStep = this.actions.at(this.currentActionIndex + 1);
-                                if (
-                                    this.findTriggers(nextStep.anchor)
-                                        .at(0)
-                                        ?.closest(".o-autocomplete--dropdown-item")
-                                ) {
-                                    // Skip the next step if the next one is a click on a dropdown item
-                                    this.currentActionIndex++;
-                                }
+                                this.skipNextActionIfDropdownItem();
                                 return true;
                             }
                         },
@@ -343,21 +368,20 @@ export class TourInteractive {
                         target: element.ownerDocument,
                         conditional: (ev) => {
                             if (ev.target.closest(".o-autocomplete--dropdown-item")) {
-                                const nextStep = this.actions.at(this.currentActionIndex + 1);
-                                if (
-                                    this.findTriggers(nextStep.anchor)
-                                        .at(0)
-                                        ?.closest(".o-autocomplete--dropdown-item")
-                                ) {
-                                    // Skip the next step if the next one is a click on a dropdown item
-                                    this.currentActionIndex++;
-                                }
+                                this.skipNextActionIfDropdownItem();
                                 return true;
                             }
                         },
                     });
                 }
             }
+        }
+
+        if (runCommand === "hover") {
+            consumeEvents.push({
+                name: "mouseenter",
+                target: element,
+            });
         }
 
         // Drag & drop run command
@@ -369,65 +393,44 @@ export class TourInteractive {
         }
 
         if (runCommand === "drop") {
+            const conditional = (ev) => {
+                const dropTarget = this.currentAction.findTrigger() || element;
+                const doc = dropTarget.ownerDocument;
+                if (doc.elementsFromPoint(ev.clientX, ev.clientY).includes(dropTarget)) {
+                    return true;
+                }
+                const rect = dropTarget.getBoundingClientRect();
+                const x = Math.min(Math.max(ev.clientX, rect.left + 1), rect.right - 1);
+                const y = Math.min(Math.max(ev.clientY, rect.top + 1), rect.bottom - 1);
+                return doc.elementsFromPoint(x, y).includes(dropTarget);
+            };
             consumeEvents.push({
                 name: "pointerup",
                 target: element.ownerDocument,
-                conditional: (ev) =>
-                    element.ownerDocument
-                        .elementsFromPoint(ev.clientX, ev.clientY)
-                        .includes(element),
+                conditional,
             });
             consumeEvents.push({
                 name: "drop",
                 target: element.ownerDocument,
-                conditional: (ev) =>
-                    element.ownerDocument
-                        .elementsFromPoint(ev.clientX, ev.clientY)
-                        .includes(element),
+                conditional,
             });
         }
 
         return consumeEvents;
     }
 
-    /**
-     * Returns the element that will be used in listening to the `consumeEvent`.
-     * @param {HTMLElement} el
-     * @param {string} consumeEvent
-     */
-    getAnchorEl(el, consumeEvent) {
-        if (consumeEvent === "drag") {
-            // jQuery-ui draggable triggers 'drag' events on the .ui-draggable element,
-            // but the tip is attached to the .ui-draggable-handle element which may
-            // be one of its children (or the element itself
-            return el.closest(
-                ".ui-draggable, .o_draggable, .o_we_draggable, .o-draggable, [draggable='true']"
-            );
-        }
-
-        if (consumeEvent === "input" && !["textarea", "input"].includes(el.tagName.toLowerCase())) {
-            return el.closest("[contenteditable='true']");
-        }
-        if (consumeEvent === "sort") {
-            // when an element is dragged inside a sortable container (with classname
-            // 'ui-sortable'), jQuery triggers the 'sort' event on the container
-            return el.closest(".ui-sortable, .o_sortable");
-        }
-        return el;
-    }
-
     _onMutation() {
+        if (this.currentAction?.event === "warn") {
+            this.play();
+            return;
+        }
         if (this.currentAction) {
-            const tempAnchors = this.findTriggers();
-            if (
-                tempAnchors.length &&
-                (tempAnchors.some((a) => !this.anchorEls.includes(a)) ||
-                    this.anchorEls.some((a) => !tempAnchors.includes(a)))
-            ) {
+            const tempAnchor = this.currentAction.findTrigger();
+            if (tempAnchor && tempAnchor !== this.anchorEl) {
                 this.removeListeners();
-                this.anchorEls = tempAnchors;
+                this.anchorEl = tempAnchor;
                 this.setActionListeners();
-            } else if (!tempAnchors.length && this.anchorEls.length) {
+            } else if (!tempAnchor && this.anchorEl) {
                 if (
                     !hoot.queryFirst(".o_home_menu", { visible: true }) &&
                     !hoot.queryFirst(".dropdown-item.o_loading", { visible: true }) &&

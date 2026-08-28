@@ -1,7 +1,10 @@
 import { describe, expect, test } from "@odoo/hoot";
 import {
+    advanceTime,
     click,
     hover,
+    manuallyDispatchProgrammaticEvent,
+    press,
     queryAll,
     queryAllAttributes,
     queryOne,
@@ -12,7 +15,7 @@ import { animationFrame } from "@odoo/hoot-mock";
 import { setupEditor } from "../_helpers/editor";
 import { unformat } from "../_helpers/format";
 import { getContent } from "../_helpers/selection";
-import { undo } from "../_helpers/user_actions";
+import { getElementTouchPosition, undo } from "../_helpers/user_actions";
 import { expectElementCount } from "../_helpers/ui_expectations";
 
 function availableCommands(menu) {
@@ -31,6 +34,7 @@ test("should only display the table ui menu if the table isContentEditable=true"
     await expectElementCount(".o-we-table-menu", 2);
 });
 
+test.tags("desktop");
 test("should display the table ui menu only if hover on first row/col", async () => {
     const { el } = await setupEditor(`
         <table>
@@ -58,6 +62,7 @@ test("should display the table ui menu only if hover on first row/col", async ()
     await waitForNone(".o-we-table-menu");
 });
 
+test.tags("desktop");
 test("should not display the table UI menu when hovering over non-first row/col cells", async () => {
     const { el } = await setupEditor(`
         <table>
@@ -76,6 +81,27 @@ test("should not display the table UI menu when hovering over non-first row/col 
     await hover(el.querySelector("td.b"));
     await animationFrame();
     await expectElementCount(".o-we-table-menu", 0);
+});
+
+test.tags("mobile");
+test("should display row and column menus when focusing any table cell on mobile", async () => {
+    await setupEditor(`
+        <table>
+            <tbody>
+                <tr><td>1</td><td class="a">2</td><td>3</td></tr>
+                <tr><td>4</td><td class="b">5[]</td><td>6</td></tr>
+                <tr><td class="c">7</td><td>8</td><td>9</td></tr>
+            </tbody>
+        </table>`);
+
+    for (const selector of ["td.a", "td.b", "td.c"]) {
+        await manuallyDispatchProgrammaticEvent(queryOne(selector), "touchend", {
+            touches: [getElementTouchPosition(selector)],
+        });
+        await animationFrame();
+        await expectElementCount("[data-type='column'].o-we-table-menu", 1);
+        await expectElementCount("[data-type='row'].o-we-table-menu", 1);
+    }
 });
 
 test("should not display the table ui menu if the table element isContentEditable=false", async () => {
@@ -139,6 +165,7 @@ test("should display the resizeCursor if the table element isContentEditable=tru
     expect(".o_col_resize").toHaveCount(1);
 });
 
+test.tags("desktop");
 test("should not display the resizeCursor if the table element isContentEditable=false", async () => {
     const { el } = await setupEditor(`
         <table contenteditable="false"><tbody><tr>
@@ -152,6 +179,122 @@ test("should not display the resizeCursor if the table element isContentEditable
 
     await animationFrame();
     expect(".o_col_resize").toHaveCount(0);
+});
+
+test.tags("desktop");
+test("should not resize a table with a non-primary mouse button", async () => {
+    const content = unformat(`
+        <table class="table table-bordered o_table">
+            <tbody>
+                <tr>
+                    <td>
+                        <p>[]<br></p>
+                    </td>
+                    <td><p><br></p></td>
+                </tr>
+                <tr>
+                    <td><p><br></p></td>
+                    <td><p><br></p></td>
+                </tr>
+            </tbody>
+        </table>
+    `);
+    const { el } = await setupEditor(content);
+
+    const firstTd = el.querySelector("td");
+    const initialCellWidth = firstTd.clientWidth;
+
+    const cellRect = firstTd.getBoundingClientRect();
+    const clientX = cellRect.right;
+    const clientY = cellRect.top + cellRect.height / 2;
+
+    // Trigger resize via pointer hover
+    manuallyDispatchProgrammaticEvent(firstTd, "pointermove", {
+        clientX,
+        clientY,
+    });
+
+    // Simulate pointerdown at the right border of first cell.
+    await manuallyDispatchProgrammaticEvent(firstTd, "pointerdown", {
+        button: 2,
+        clientX,
+        clientY,
+    });
+
+    // Simulate pointermove.
+    manuallyDispatchProgrammaticEvent(firstTd, "pointermove", {
+        clientX: clientX + 100,
+        clientY,
+    });
+    manuallyDispatchProgrammaticEvent(firstTd, "pointerup", {
+        button: 2,
+        clientX: clientX + 100,
+        clientY,
+    });
+    await animationFrame();
+
+    expect(firstTd.clientWidth).toBe(initialCellWidth); // Not resized.
+});
+
+test.tags("desktop");
+test("should not allow key events during resize", async () => {
+    const content = unformat(`
+        <table class="table table-bordered o_table">
+            <tbody>
+                <tr>
+                    <td>
+                        <p>[<br></p>
+                    </td>
+                    <td><p><br></p></td>
+                </tr>
+                <tr>
+                    <td><p><br></p></td>
+                    <td><p><br>]</p></td>
+                </tr>
+            </tbody>
+        </table>
+    `);
+    const { el } = await setupEditor(content);
+
+    const firstTd = el.querySelector("td");
+    const cellRect = firstTd.getBoundingClientRect();
+    const clientX = cellRect.right;
+    const clientY = cellRect.top + cellRect.height / 2;
+
+    // Trigger resize via pointer hover
+    manuallyDispatchProgrammaticEvent(firstTd, "pointermove", {
+        clientX,
+        clientY,
+    });
+
+    // Simulate pointerdown at the right border of first cell.
+    await manuallyDispatchProgrammaticEvent(firstTd, "pointerdown", {
+        button: 0,
+        clientX,
+        clientY,
+    });
+
+    // Simulate pointermove.
+    manuallyDispatchProgrammaticEvent(firstTd, "pointermove", {
+        clientX: clientX + 100,
+        clientY,
+    });
+    expect(el).toHaveClass("o_col_resize");
+    await expectElementCount(".o_table", 1);
+
+    // Try to Remove table via backspace key
+    await press("backspace");
+    await animationFrame();
+
+    // Table should not be removed
+    await expectElementCount(".o_table", 1);
+
+    manuallyDispatchProgrammaticEvent(el, "pointermove", {
+        clientX: clientX + 110,
+        clientY,
+    });
+    // Resizing should still be active
+    expect(el).toHaveClass("o_col_resize");
 });
 
 test("should show the table UI menus when hovering a list inside a table cell", async () => {
@@ -620,10 +763,10 @@ test("basic delete column operation", async () => {
 
     // hover on td to show col ui
     await hover(el.querySelector("td.b"));
-    await waitFor(".o-we-table-menu");
+    await waitFor("[data-type='column'].o-we-table-menu");
 
     // click on it to open dropdown
-    await click(".o-we-table-menu");
+    await click("[data-type='column'].o-we-table-menu");
     await waitFor("div[name='delete']");
 
     // delete column
@@ -669,10 +812,10 @@ test("basic clear column content operation", async () => {
 
     // hover on td to show col ui
     await hover(el.querySelector("td.b"));
-    await waitFor(".o-we-table-menu");
+    await waitFor("[data-type='column'].o-we-table-menu");
 
     // click on it to open dropdown
-    await click(".o-we-table-menu");
+    await click("[data-type='column'].o-we-table-menu");
     await waitFor("div[name='clear_content']");
 
     // clear content of the column
@@ -718,10 +861,10 @@ test("basic delete row operation", async () => {
 
     // hover on td to show col ui
     await hover(el.querySelector("td.c"));
-    await waitFor(".o-we-table-menu");
+    await waitFor("[data-type='row'].o-we-table-menu");
 
     // click on it to open dropdown
-    await click(".o-we-table-menu");
+    await click("[data-type='row'].o-we-table-menu");
     await waitFor("div[name='delete']");
 
     // delete row
@@ -766,10 +909,10 @@ test("basic clear row content operation", async () => {
 
     // hover on td to show col ui
     await hover(el.querySelector("td.c"));
-    await waitFor(".o-we-table-menu");
+    await waitFor("[data-type='row'].o-we-table-menu");
 
     // click on it to open dropdown
-    await click(".o-we-table-menu");
+    await click("[data-type='row'].o-we-table-menu");
     await waitFor("div[name='clear_content']");
 
     // clear content of the row
@@ -815,10 +958,10 @@ test("insert column left operation", async () => {
 
     // hover on td to show col ui
     await hover(el.querySelector("td.b"));
-    await waitFor(".o-we-table-menu");
+    await waitFor("[data-type='column'].o-we-table-menu");
 
     // click on it to open dropdown
-    await click(".o-we-table-menu");
+    await click("[data-type='column'].o-we-table-menu");
     await waitFor("div[name='insert_left']");
 
     // insert column left
@@ -871,10 +1014,10 @@ test("editable should be focused after delete operation", async () => {
 
     // hover on td to show col ui
     await hover(el.querySelector("td.a"));
-    await waitFor(".o-we-table-menu");
+    await waitFor("[data-type='column'].o-we-table-menu");
 
     // click on it to open dropdown
-    await click(".o-we-table-menu");
+    await click("[data-type='column'].o-we-table-menu");
     await waitFor("div[name='delete']");
 
     // delete column
@@ -1899,394 +2042,6 @@ test("preserve table rows width on move row below operation", async () => {
     );
 });
 
-test("reset table size to remove custom width", async () => {
-    const { el, editor } = await setupEditor(
-        unformat(`
-        <table style="width: 150px;">
-            <colgroup>
-            <col style="width: 100px;"><col style="width: 50px;">
-            </colgroup>
-            <tbody>
-            <tr><td class="a">1[]</td></tr>
-            <tr><td class="b">2</td></tr>
-            </tbody>
-        </table>`)
-    );
-    await expectElementCount(".o-we-table-menu", 0);
-
-    await hover(el.querySelector("td.a"));
-    await waitFor(".o-we-table-menu");
-    expect("[data-type='row'].o-we-table-menu").toHaveCount(1);
-
-    await click("[data-type='row'].o-we-table-menu");
-    await waitFor(".dropdown-menu");
-    await click(queryOne(".dropdown-menu [name='reset_table_size']"));
-    expect(getContent(el)).toBe(
-        unformat(`
-        <p data-selection-placeholder=""><br></p>
-        <table>
-            <tbody>
-                <tr><td class="a">1[]</td></tr>
-                <tr><td class="b">2</td></tr>
-            </tbody>
-        </table>
-        <p data-selection-placeholder=""><br></p>`)
-    );
-
-    undo(editor);
-    expect(getContent(el)).toBe(
-        unformat(
-            `<p data-selection-placeholder=""><br></p>
-            <table style="width: 150px;">
-            <colgroup>
-            <col style="width: 100px;"><col style="width: 50px;">
-            </colgroup>
-            <tbody>
-            <tr><td class="a">1[]</td></tr>
-            <tr><td class="b">2</td></tr>
-            </tbody>
-        </table>
-        <p data-selection-placeholder=""><br></p>`
-        )
-    );
-});
-
-test("reset table size to remove custom height", async () => {
-    const { el, editor } = await setupEditor(
-        unformat(`
-        <table>
-            <tbody>
-            <tr style="height: 100px;"><td class="a">1[]</td></tr>
-            <tr style="height: 50px;"><td class="b">2</td></tr>
-            </tbody>
-        </table>`)
-    );
-    await expectElementCount(".o-we-table-menu", 0);
-
-    await hover(el.querySelector("td.a"));
-    await waitFor(".o-we-table-menu");
-    expect("[data-type='row'].o-we-table-menu").toHaveCount(1);
-
-    await click("[data-type='row'].o-we-table-menu");
-    await waitFor(".dropdown-menu");
-    await click(queryOne(".dropdown-menu [name='reset_table_size']"));
-    expect(getContent(el)).toBe(
-        unformat(`
-        <p data-selection-placeholder=""><br></p>
-        <table>
-            <tbody>
-                <tr style=""><td class="a">1[]</td></tr>
-                <tr style=""><td class="b">2</td></tr>
-            </tbody>
-        </table>
-        <p data-selection-placeholder=""><br></p>`)
-    );
-
-    undo(editor);
-    expect(getContent(el)).toBe(
-        unformat(`
-        <p data-selection-placeholder=""><br></p>
-        <table>
-            <tbody>
-            <tr style="height: 100px;"><td class="a">1[]</td></tr>
-            <tr style="height: 50px;"><td class="b">2</td></tr>
-            </tbody>
-        </table>
-        <p data-selection-placeholder=""><br></p>`)
-    );
-});
-
-test("reset row size to remove custom height", async () => {
-    const { el } = await setupEditor(
-        unformat(`
-        <table class="table table-bordered o_table">
-            <tbody>
-                <tr style="height: 38px;">
-                    <td class="a">1</td>
-                    <td class="b">2</td>
-                    <td class="c">3</td>
-                </tr>
-                <tr style="height: 100px;">
-                    <td class="d">4[]</td>
-                    <td class="e">5</td>
-                    <td class="f">6</td>
-                </tr>
-                <tr style="height: 38px;">
-                    <td class="g">7</td>
-                    <td class="h">8</td>
-                    <td class="i">9</td>
-                </tr>
-            </tbody>
-        </table>`)
-    );
-    await expectElementCount(".o-we-table-menu", 0);
-
-    await hover(el.querySelector("td.d"));
-    await waitFor(".o-we-table-menu");
-    expect("[data-type='row'].o-we-table-menu").toHaveCount(1);
-
-    await click("[data-type='row'].o-we-table-menu");
-    await waitFor(".dropdown-menu", { timeout: 1000 });
-    await click(queryOne(".dropdown-menu [name='reset_row_size']"));
-    expect(getContent(el)).toBe(
-        unformat(
-            `<p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table">
-                <tbody>
-                    <tr style="">
-                        <td class="a">1</td>
-                        <td class="b">2</td>
-                        <td class="c">3</td>
-                    </tr>
-                    <tr style="">
-                        <td class="d">4[]</td>
-                        <td class="e">5</td>
-                        <td class="f">6</td>
-                    </tr>
-                    <tr style="">
-                        <td class="g">7</td>
-                        <td class="h">8</td>
-                        <td class="i">9</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`
-        )
-    );
-});
-
-test("should redistribute excess width from current column to smaller columns", async () => {
-    const { el } = await setupEditor(
-        unformat(`
-            <table class="table table-bordered o_table" style="width: 500px">
-                <colgroup>
-                    <col style="width: 100px;">
-                    <col style="width: 120px;">
-                    <col style="width: 60px;">
-                    <col style="width: 120px;">
-                    <col style="width: 100px;">
-                </colgroup>
-                <tbody>
-                    <tr>
-                        <td class="a">1</td>
-                        <td class="b">2</td>
-                        <td class="c">3[]</td>
-                        <td class="d">4</td>
-                        <td class="e">5</td>
-                    </tr>
-                    <tr>
-                        <td class="f">6</td>
-                        <td class="g">7</td>
-                        <td class="h">8</td>
-                        <td class="i">9</td>
-                        <td class="j">10</td>
-                    </tr>
-                </tbody>
-            </table>`)
-    );
-    await expectElementCount(".o-we-table-menu", 0);
-
-    await hover(el.querySelector("td.c"));
-    await waitFor(".o-we-table-menu");
-    expect("[data-type='column'].o-we-table-menu").toHaveCount(1);
-
-    await click("[data-type='column'].o-we-table-menu");
-    await waitFor(".dropdown-menu", { timeout: 1000 });
-    await click(queryOne(".dropdown-menu [name='reset_column_size']"));
-    expect(getContent(el)).toBe(
-        unformat(
-            `<p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table" style="width: 500px">
-                <tbody>
-                    <tr>
-                        <td class="a">1</td>
-                        <td class="b">2</td>
-                        <td class="c">3[]</td>
-                        <td class="d">4</td>
-                        <td class="e">5</td>
-                    </tr>
-                    <tr>
-                        <td class="f">6</td>
-                        <td class="g">7</td>
-                        <td class="h">8</td>
-                        <td class="i">9</td>
-                        <td class="j">10</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`
-        )
-    );
-});
-
-test("should redistribute excess width from the current colspan column when resetting column sizes", async () => {
-    const { el } = await setupEditor(
-        unformat(`
-            <table class="table table-bordered o_table" style="width: 1182px">
-                <colgroup>
-                    <col style="width: 236.188px;">
-                    <col style="width: 236.188px;">
-                    <col style="width: 312.125px;">
-                    <col style="width: 160.25px;">
-                    <col style="width: 236.25px;">
-                </colgroup>
-                <tbody>
-                    <tr>
-                        <td>1</td>
-                        <td class="a" colspan="2">2</td>
-                        <td>3</td>
-                        <td>4</td>
-                    </tr>
-                    <tr>
-                        <td>5</td>
-                        <td>6</td>
-                        <td colspan="2">7</td>
-                        <td>8</td>
-                    </tr>
-                    <tr>
-                        <td>9</td>
-                        <td>10</td>
-                        <td>11</td>
-                        <td>12</td>
-                        <td>13</td>
-                    </tr>
-                    <tr>
-                        <td>14</td>
-                        <td colspan="2">15</td>
-                        <td>16</td>
-                        <td>17</td>
-                    </tr>
-                </tbody>
-            </table>`)
-    );
-    await expectElementCount(".o-we-table-menu", 0);
-
-    await hover(el.querySelector("td.a"));
-    await waitFor(".o-we-table-menu");
-    expect("[data-type='column'].o-we-table-menu").toHaveCount(1);
-
-    await click("[data-type='column'].o-we-table-menu");
-    await waitFor(".dropdown-menu", { timeout: 1000 });
-    await click(queryOne(".dropdown-menu [name='reset_column_size']"));
-    expect(getContent(el)).toBe(
-        unformat(`
-            <p data-selection-placeholder="" class="o-horizontal-caret"><br></p>
-            <table class="table table-bordered o_table" style="width: 1182px">
-                <tbody>
-                    <tr>
-                        <td>1</td>
-                        <td class="a" colspan="2">2</td>
-                        <td>3</td>
-                        <td>4</td>
-                    </tr>
-                    <tr>
-                        <td>5</td>
-                        <td>6</td>
-                        <td colspan="2">7</td>
-                        <td>8</td>
-                    </tr>
-                    <tr>
-                        <td>9</td>
-                        <td>10</td>
-                        <td>11</td>
-                        <td>12</td>
-                        <td>13</td>
-                    </tr>
-                    <tr>
-                        <td>14</td>
-                        <td colspan="2">15</td>
-                        <td>16</td>
-                        <td>17</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`)
-    );
-});
-
-test("should redistribute excess width from larger columns to current column", async () => {
-    const { el } = await setupEditor(
-        unformat(`
-            <table class="table table-bordered o_table" style="width: 700px">
-                <colgroup>
-                    <col style="width: 120px;">
-                    <col style="width: 80px;">
-                    <col style="width: 60px;">
-                    <col style="width: 180px;">
-                    <col style="width: 60px;">
-                    <col style="width: 80px;">
-                    <col style="width: 120px;">
-                </colgroup>
-                <tbody>
-                    <tr>
-                        <td class="a">1</td>
-                        <td class="b">2</td>
-                        <td class="c">3</td>
-                        <td class="d">4[]</td>
-                        <td class="e">5</td>
-                        <td class="f">6</td>
-                        <td class="g">7</td>
-                    </tr>
-                    <tr>
-                        <td class="h">8</td>
-                        <td class="i">9</td>
-                        <td class="j">10</td>
-                        <td class="k">11</td>
-                        <td class="l">12</td>
-                        <td class="m">13</td>
-                        <td class="n">14</td>
-                    </tr>
-                </tbody>
-            </table>`)
-    );
-    await expectElementCount(".o-we-table-menu", 0);
-
-    await hover(el.querySelector("td.d"));
-    await waitFor(".o-we-table-menu");
-    expect("[data-type='column'].o-we-table-menu").toHaveCount(1);
-
-    await click("[data-type='column'].o-we-table-menu");
-    await waitFor(".dropdown-menu", { timeout: 1000 });
-    await click(queryOne(".dropdown-menu [name='reset_column_size']"));
-    expect(getContent(el)).toBe(
-        unformat(
-            `<p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table" style="width: 700px">
-                <colgroup>
-                    <col style="width: 120px;">
-                    <col style="width: 80px;">
-                    <col style="">
-                    <col style="">
-                    <col style="">
-                    <col style="width: 80px;">
-                    <col style="width: 120px;">
-                </colgroup>
-                <tbody>
-                    <tr>
-                        <td class="a">1</td>
-                        <td class="b">2</td>
-                        <td class="c">3</td>
-                        <td class="d">4[]</td>
-                        <td class="e">5</td>
-                        <td class="f">6</td>
-                        <td class="g">7</td>
-                    </tr>
-                    <tr>
-                        <td class="h">8</td>
-                        <td class="i">9</td>
-                        <td class="j">10</td>
-                        <td class="k">11</td>
-                        <td class="l">12</td>
-                        <td class="m">13</td>
-                        <td class="n">14</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`
-        )
-    );
-});
-
 test("applies alternating row colors when 'Insert Alternate Colors' option is clicked", async () => {
     const { el } = await setupEditor(
         unformat(`
@@ -2380,65 +2135,6 @@ test("removes alternating row colors when 'Clear Alternate Colors' option is cli
     expect(
         cells.every((cell) => getComputedStyle(cell).backgroundColor === secondRowCellColor)
     ).toBe(true);
-});
-
-test("should redistribute excess width from the current column to a colspan column when resetting column sizes", async () => {
-    const { el } = await setupEditor(
-        unformat(`
-            <table class="table table-bordered o_table" style="width: 500px">
-                <colgroup>
-                    <col style="width: 100px;">
-                    <col style="width: 50px;">
-                    <col style="width: 200px">
-                    <col style="width: 50px">
-                    <col style="width: 100px">
-                </colgroup>
-                <tbody>
-                    <tr>
-                        <td colspan="2">1</td>
-                        <td class="a">2</td>
-                        <td >3</td>
-                        <td >4</td>
-                    </tr>
-                    <tr>
-                        <td>5</td>
-                        <td>6</td>
-                        <td>7</td>
-                        <td colspan="2">8</td>
-                    </tr>
-                </tbody>
-            </table>`)
-    );
-    await expectElementCount(".o-we-table-menu", 0);
-
-    await hover(el.querySelector("td.a"));
-    await waitFor(".o-we-table-menu");
-    expect("[data-type='column'].o-we-table-menu").toHaveCount(1);
-
-    await click("[data-type='column'].o-we-table-menu");
-    await waitFor(".dropdown-menu", { timeout: 1000 });
-    await click(queryOne(".dropdown-menu [name='reset_column_size']"));
-    expect(getContent(el)).toBe(
-        unformat(`
-            <p data-selection-placeholder="" class="o-horizontal-caret"><br></p>
-            <table class="table table-bordered o_table" style="width: 500px">
-                <tbody>
-                    <tr>
-                        <td colspan="2">1</td>
-                        <td class="a">2</td>
-                        <td>3</td>
-                        <td>4</td>
-                    </tr>
-                    <tr>
-                        <td>5</td>
-                        <td>6</td>
-                        <td>7</td>
-                        <td colspan="2">8</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`)
-    );
 });
 
 describe("Disable table merge options", () => {
@@ -2737,6 +2433,53 @@ describe("Merge column cells", () => {
                 <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`)
         );
     });
+
+    test.tags("mobile");
+    test("merges selected cells in a single row into one with colspan (mobile)", async () => {
+        const { el } = await setupEditor(
+            unformat(`
+                <table class="table table-bordered o_table">
+                    <tbody>
+                        <tr>
+                            <td class="a"><p><br></p></td>
+                            <td><p><br></p></td>
+                            <td class="b"><p><br></p></td>
+                        </tr>
+                    </tbody>
+                </table>`)
+        );
+
+        await manuallyDispatchProgrammaticEvent(queryOne("td.b"), "touchstart", {
+            touches: [getElementTouchPosition("td.b")],
+        });
+        await advanceTime(200);
+        await manuallyDispatchProgrammaticEvent(queryOne("td.a"), "touchmove", {
+            touches: [getElementTouchPosition("td.a")],
+        });
+        await manuallyDispatchProgrammaticEvent(queryOne("td.a"), "touchend", {
+            touches: [getElementTouchPosition("td.a")],
+        });
+
+        await expectElementCount(".o-we-table-menu", 2);
+        await waitFor("[data-type='row'].o-we-table-menu");
+
+        await click("[data-type='row'].o-we-table-menu");
+        await waitFor("div[name='merge_cell']");
+        await click("div[name='merge_cell']");
+
+        expect(getContent(el)).toBe(
+            unformat(`
+                <p data-selection-placeholder=""><br></p>
+                <table class="table table-bordered o_table o_selected_table">
+                    <tbody>
+                        <tr>
+                            <td class="a o_selected_td" colspan="3"><p o-we-hint-text='Type "/" for commands' class="o-we-hint">[]<br></p></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`)
+        );
+    });
 });
 
 describe("Merge row cells", () => {
@@ -2928,6 +2671,67 @@ describe("Merge row cells", () => {
         expect("div[name='merge_cell']").toHaveCount(0);
         await click("[data-type='column'].o-we-table-menu");
         await animationFrame();
+    });
+
+    test.tags("mobile");
+    test("merges selected cells in a single column into one with rowspan (mobile)", async () => {
+        const { el } = await setupEditor(
+            unformat(`
+                <table class="table table-bordered o_table">
+                    <tbody>
+                        <tr>
+                            <td><p><br></p></td>
+                            <td class="a"><p><br></p></td>
+                        </tr>
+                        <tr>
+                            <td><p><br></p></td>
+                            <td><p><br></p></td>
+                        </tr>
+                        <tr>
+                            <td><p><br></p></td>
+                            <td class="b"><p><br></p></td>
+                        </tr>
+                    </tbody>
+                </table>`)
+        );
+
+        await manuallyDispatchProgrammaticEvent(queryOne("td.b"), "touchstart", {
+            touches: [getElementTouchPosition("td.b")],
+        });
+        await advanceTime(200);
+        await manuallyDispatchProgrammaticEvent(queryOne("td.a"), "touchmove", {
+            touches: [getElementTouchPosition("td.a")],
+        });
+        await manuallyDispatchProgrammaticEvent(queryOne("td.a"), "touchend", {
+            touches: [getElementTouchPosition("td.a")],
+        });
+
+        await expectElementCount(".o-we-table-menu", 2);
+        await waitFor("[data-type='column'].o-we-table-menu");
+
+        await click("[data-type='column'].o-we-table-menu");
+        await waitFor("div[name='merge_cell']");
+        await click("div[name='merge_cell']");
+
+        expect(getContent(el)).toBe(
+            unformat(`
+                <p data-selection-placeholder=""><br></p>
+                <table class="table table-bordered o_table o_selected_table">
+                    <tbody>
+                        <tr>
+                            <td><p><br></p></td>
+                            <td class="a o_selected_td" rowspan="3"><p o-we-hint-text='Type "/" for commands' class="o-we-hint">[]<br></p></td>
+                        </tr>
+                        <tr>
+                            <td><p><br></p></td>
+                        </tr>
+                        <tr>
+                            <td><p><br></p></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`)
+        );
     });
 });
 
@@ -3197,5 +3001,39 @@ describe("unmerge cells option", () => {
                 </table>
                 <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`)
         );
+    });
+
+    test("unmerge option should not be available in a different table", async () => {
+        const { el } = await setupEditor(
+            unformat(`
+                <table class="table table-bordered o_table">
+                    <tbody>
+                        <tr>
+                            <td class="a" colspan="2"><p>a[]</p><p>b</p></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <table class="table table-bordered o_table">
+                    <tbody>
+                        <tr>
+                            <td><p><br></p></td>
+                            <td><p><br></p></td>
+                            <td><p><br></p></td>
+                        </tr>
+                    </tbody>
+                </table>`)
+        );
+        await expectElementCount(".o-we-table-menu", 0);
+        await click("td.a");
+
+        const secondTable = el.querySelectorAll("table")[1];
+        const secondTableCell = secondTable.querySelector("td");
+
+        // Check the row menu of the second table.
+        await hover(secondTableCell);
+        await expectElementCount("[data-type='row'].o-we-table-menu", 1);
+        await click("[data-type='row'].o-we-table-menu");
+        await expectElementCount(".dropdown-menu", 1);
+        expect(availableCommands(queryOne(".dropdown-menu"))).not.toInclude("unmerge_cell");
     });
 });

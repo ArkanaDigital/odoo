@@ -106,11 +106,8 @@ defineModels([
 ]);
 defineMailModels();
 
-onRpc("/calendar/check_credentials", async () => ({}));
-onRpc("check_synchronization_status", async () => ({}));
 onRpc("get_working_hours_for_all_attendees", () => ({}));
 onRpc("get_attendee_detail", () => []);
-onRpc("get_default_duration", () => 1);
 onRpc("get_state_selections", () => [
     ["accepted", "Yes"],
     ["declined", "No"],
@@ -118,6 +115,12 @@ onRpc("get_state_selections", () => [
     ["needsAction", "Needs Action"],
 ]);
 onRpc("res.users", "read", () => [{ user: serverState.userId, employee_id: [{ employee_id: 1 }] }]);
+onRpc("res.users", "get_calendar_model_data", () => ({
+    credential_status: {},
+    sync_status: {},
+    sync_email: false,
+    default_duration: 1,
+}))
 
 beforeEach(() => {
     mockDate("2020-12-10 15:00:00");
@@ -176,8 +179,8 @@ function mountHomeWorkingView() {
         resModel: "calendar.event",
         arch: `
             <calendar js_class="attendee_calendar" event_open_popup="1" date_start="start" date_stop="stop" all_day="allday">
-                <field name="partner_ids" options="{'block': True, 'icon': 'fa fa-users'}" filters="1" write_model="calendar.filter" write_field="partner_id" filter_field="partner_checked" avatar_field="avatar_128"/>
-                <field name="partner_id" string="Organizer" options="{'icon': 'fa fa-user-o'}"/>
+                <field name="partner_ids" options="{'block': True, 'icon': 'group'}" filters="1" write_model="calendar.filter" write_field="partner_id" filter_field="partner_checked" avatar_field="avatar_128"/>
+                <field name="partner_id" string="Organizer" options="{'icon': 'person'}"/>
                 <field name="user_id"/>
                 <field name="start"/>
                 <field name="stop"/>
@@ -240,10 +243,10 @@ test(`multicalendar`, async () => {
     expect(queryAll(`.fc-col-header-cell[data-date="2020-12-12"] .o_worklocation_text i.add_wl`, { visible: false })).toHaveCount(0);
 
     await contains(`.fc-col-header-cell[data-date="2020-12-10"] .o_homework_content`).click();
-    expect(`.o_cw_popover div[name="employee_name"]`).toHaveText("Brian");
-    expect(`.o_cw_popover .o_cw_popover_edit`).toHaveCount(0);
-    expect(`.o_cw_popover .o_cw_popover_delete`).toHaveCount(0);
-    await contains(`.o_cw_popover_close`).click();
+    expect(`.o_popover div[name="employee_name"]`).toHaveText("Brian");
+    expect(`.o_popover .o_cw_popover_edit`).toHaveCount(0);
+    expect(`.o_popover .o_cw_popover_delete`).toHaveCount(0);
+    await contains(`.o_card_popover_close`).click();
 });
 
 test(`test exceptions are correctly rendered`, async () => {

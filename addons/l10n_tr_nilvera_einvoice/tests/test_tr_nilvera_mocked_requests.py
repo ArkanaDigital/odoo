@@ -1,4 +1,5 @@
 import re
+from base64 import b64encode
 from dateutil.relativedelta import relativedelta
 from functools import wraps
 from io import BytesIO
@@ -22,12 +23,12 @@ UUID_INVALID_INVOICE = 'uuid_invalid_invoice'
 UUID_VALID_INVOICE = 'uuid_valid_invoice'
 
 
-def mock_requests_request(method, url, *args, **kwargs):
+def mock_requests_request(method, endpoint, *args, **kwargs):
     response = MagicMock()
     response.status_code = 200
 
-    if method == 'GET' and 'Check/TaxNumber' in url:
-        if EINVOICE_PARTNER_VAT in url:
+    if method == 'GET' and 'Check/TaxNumber' in endpoint:
+        if EINVOICE_PARTNER_VAT in endpoint:
             response.json.return_value = [
                 {
                     'DocumentType': 'Invoice',
@@ -37,7 +38,7 @@ def mock_requests_request(method, url, *args, **kwargs):
                     'Type': 'OZEL',
                 },
             ]
-        elif COMPANY_VAT in url:
+        elif COMPANY_VAT in endpoint:
             response.json.return_value = [
                 {
                     'TaxNumber': 'text',
@@ -49,10 +50,10 @@ def mock_requests_request(method, url, *args, **kwargs):
                     'Type': 'text',
                 },
             ]
-        elif EARCHIVE_PARTNER_VAT in url:
+        elif EARCHIVE_PARTNER_VAT in endpoint:
             response.json.return_value = []
 
-    elif method == 'GET' and (match := re.fullmatch(r'/einvoice/sale/([\w-]+)/Status', url)):
+    elif method == 'GET' and (match := re.fullmatch(r'/einvoice/sale/([\w-]+)/Status', endpoint)):
         if match.group(1) == UUID_INVALID_STATUS:
             data = {
                 "InvoiceStatus": {
@@ -72,14 +73,14 @@ def mock_requests_request(method, url, *args, **kwargs):
             }
             response.get.side_effect = data.get
 
-    elif method == 'POST' and 'Send/Xml' in url:
-        if UNAUTHORIZED_ALIAS in url:
+    elif method == 'POST' and 'Send/Xml' in endpoint:
+        if UNAUTHORIZED_ALIAS in endpoint:
             response.status_code = 401
             response.text = 'Unauthorized'
-        elif SERVER_ERROR_ALIAS in url:
+        elif SERVER_ERROR_ALIAS in endpoint:
             response.status_code = 500
             response.text = 'Internal Server Error'
-        elif ERRORENOUS_ALIAS in url:
+        elif ERRORENOUS_ALIAS in endpoint:
             response.status_code = 422
             response.json.return_value = {
                 "Message": "HATALI ISTEK",
@@ -95,13 +96,21 @@ def mock_requests_request(method, url, *args, **kwargs):
                 "InvoiceNumber": "",
             }
 
-    elif method == 'GET' and '/einvoice/Purchase' in url:
-        if '/xml' in url:
+    elif method == 'GET' and re.fullmatch(r'/(einvoice|earchive)/(sale|invoices)/[\w-]+/pdf', endpoint):
+        # Outbound PDF retrieval: e-invoice sales use "sale", e-archive uses "invoices".
+        with file_open('l10n_tr_nilvera_einvoice/tests/test_files/fetching/invoice.pdf', 'rb') as pdf:
+            response = b64encode(pdf.read()).decode()
+
+    elif method == 'GET' and '/einvoice/Purchase' in endpoint:
+        if '/xml' in endpoint:
             with file_open('l10n_tr_nilvera_einvoice/tests/test_files/fetching/invoice.xml', 'rb') as xml:
                 response = xml.read().decode()
-        elif '/pdf' in url:
+        elif '/pdf' in endpoint:
             with file_open('l10n_tr_nilvera_einvoice/tests/test_files/fetching/invoice.pdf', 'rb') as pdf:
-                response = pdf.read()
+                # Nilvera's /pdf endpoint returns the PDF base64-encoded inside a JSON
+                # string body. NilveraClient.request() calls response.json() by default,
+                # so the caller receives a base64 str, not raw bytes.
+                response = b64encode(pdf.read()).decode()
         else:
             data = {
                     'TotalPages': 1,
@@ -133,6 +142,8 @@ def patch_nilvera_request(function):
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestTRNilveraMockedRequests(TestUBLTRCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     @patch_nilvera_request
     def setUpClass(cls):
@@ -146,6 +157,12 @@ class TestTRNilveraMockedRequests(TestUBLTRCommon):
             'type': 'purchase',
             'company_id': cls.company.id,
         })
+
+    def test_amount_in_words_rounds_subunit(self):
+        note = self.env['account.edi.xml.ubl.tr']._l10n_tr_get_amount_integer_partn_text_note(
+            3989.33, self.env.ref('base.TRY'),
+        )
+        self.assertEqual(note, 'YALNIZ : ÜÇBINDOKUZYÜZSEKSENDOKUZ TRY OTUZÜÇ KURUS')
 
     @patch_nilvera_request
     def test_which_service_to_call(self):
@@ -230,6 +247,20 @@ class TestTRNilveraMockedRequests(TestUBLTRCommon):
         self.assertEqual(invoice.l10n_tr_nilvera_send_status, 'succeed')
 
     @patch_nilvera_request
+    def test_get_pdf_earchive(self, mocked_request):
+        # E-archive PDF retrieval must use the "invoices" resource, not the e-invoice "sale" one.
+        _, invoice = self._generate_invoice_xml(self.earchive_partner, include_invoice=True)
+        invoice.l10n_tr_nilvera_send_status = 'succeed'
+
+        invoice.l10n_tr_nilvera_get_pdf()
+
+        mocked_request.assert_any_call(
+            'GET',
+            f'/earchive/invoices/{invoice.l10n_tr_nilvera_uuid}/pdf',
+        )
+        self.assertTrue(invoice.l10n_tr_nilvera_pdf_id)
+
+    @patch_nilvera_request
     def test_fetch_invalid_status(self):
         _, invoice = self._generate_invoice_xml(self.einvoice_partner, include_invoice=True)
         invoice.l10n_tr_nilvera_uuid = UUID_INVALID_STATUS
@@ -239,6 +270,32 @@ class TestTRNilveraMockedRequests(TestUBLTRCommon):
         self.assertIn(
             invoice.message_ids[0].preview,
             "The invoice status couldn't be retrieved from Nilvera.",
+        )
+
+    @patch_nilvera_request
+    def test_cancel_earchive(self, mocked_request):
+        _, invoice = self._generate_invoice_xml(self.earchive_partner, include_invoice=True)
+        invoice.l10n_tr_nilvera_send_status = 'sent'
+
+        invoice.button_cancel_earchive()
+
+        mocked_request.assert_called_once_with(
+            'PUT',
+            endpoint=f'/earchive/Invoices/{invoice.l10n_tr_nilvera_uuid}/Cancel',
+        )
+        self.assertEqual(invoice.state, 'cancel')
+        self.assertEqual(invoice.l10n_tr_nilvera_send_status, 'cancelled')
+        self.assertIn("Cancellation request created on Nilvera.", invoice.message_ids[0].body)
+
+    def test_cancel_earchive_invalid_status(self):
+        _, invoice = self._generate_invoice_xml(self.earchive_partner, include_invoice=True)
+
+        with self.assertRaises(UserError) as error:
+            invoice.button_cancel_earchive()
+
+        self.assertEqual(
+            str(error.exception),
+            "Only e-Archive invoices that have been sent successfully to Nilvera can be cancelled.",
         )
 
     @freeze_time('2025-03-05')
@@ -286,3 +343,7 @@ class TestTRNilveraMockedRequests(TestUBLTRCommon):
             self.assertFalse(invoice.attachment_ids)
             self.assertTrue(invoice.ubl_cii_xml_id)  # XML file used at import
             self.assertTrue(invoice.l10n_tr_nilvera_pdf_id)
+            self.assertTrue(
+                invoice.l10n_tr_nilvera_pdf_id.raw.content.startswith(b'%PDF-'),
+                "PDF attachment must contain decoded PDF bytes, not base64 text",
+            )

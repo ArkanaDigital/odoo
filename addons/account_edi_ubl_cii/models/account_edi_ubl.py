@@ -1,22 +1,26 @@
-import io
 import logging
 import re
 
 from collections import defaultdict
 from markupsafe import Markup
 
-from odoo import _, fields, models, Command
+from odoo import Command, _, api, fields, models
 from odoo.exceptions import UserError
 from odoo.fields import Domain
-from odoo.tools import formatLang, frozendict, html2plaintext, html_escape, pdf, unique
+from odoo.tools import formatLang, frozendict, html2plaintext, html_escape, unique
+from odoo.tools.partner_identifiers import get_tin_metadata_of_country
+
+from odoo.addons.base.models.res_partner_bank import sanitize_account_number
 from odoo.addons.account_edi_ubl_cii.models.account_edi_common import (
-    EAS_MAPPING,
     FloatFmt,
     GST_COUNTRY_CODES,
-    UOM_TO_UNECE_CODE,
 )
-from odoo.addons.base.models.res_partner_bank import sanitize_account_number
 from odoo.addons.account_edi_ubl_cii.tools.ubl_20_optional_fields import PEPPOL_INVOICE_OPTIONAL_FIELDS, PEPPOL_INVOICE_OPTIONAL_LINE_FIELDS, PEPPOL_CREDIT_NOTE_OPTIONAL_FIELDS, PEPPOL_CREDIT_NOTE_OPTIONAL_LINE_FIELDS
+from odoo.addons.account_edi_ubl_cii.tools import Invoice, CreditNote, DebitNote
+from odoo.addons.account_edi_ubl_cii.tools.partner_identifiers import (
+    ISO_6523_ICD_CODELIST,
+    normalize_vat_for_ubl,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -141,7 +145,7 @@ class AccountEdiUBL(models.AbstractModel):
                     percent = tax.amount if not tax.has_negative_factor else 0.0
                 return {
                     'tax_category_code': tax_category_code,
-                    **self._get_tax_exemption_reason(customer.commercial_partner_id, supplier, tax),
+                    **self.with_context(tax_exemption_reason_invoice=vals.get('invoice'))._get_tax_exemption_reason(customer.commercial_partner_id, supplier, tax),
                     'percent': percent,
                     'scheme_id': scheme_id,
                     'is_withholding': tax.amount < 0.0,
@@ -289,6 +293,12 @@ class AccountEdiUBL(models.AbstractModel):
 
         new_base_lines = AccountTax._dispatch_taxes_into_new_base_lines(base_lines, company, exclude_function)
 
+        # fixed tax are not affected by discount, so the removed_tax_data_base_lines should get their discount remove
+        # to have the total equal to the fixed tax
+        for new_base_line in new_base_lines:
+            for removed_taxes_data_base_line in new_base_line['removed_taxes_data_base_lines']:
+                removed_taxes_data_base_line['discount'] = 0
+
         def aggregate_function(target_base_line, base_line):
             target_base_line.setdefault('_aggregated_quantity', 0.0)
             target_base_line['_aggregated_quantity'] += base_line['quantity']
@@ -318,10 +328,12 @@ class AccountEdiUBL(models.AbstractModel):
 
     def _ubl_add_values_company(self, vals, company):
         vals['company'] = company
-        vals['supplier'] = company.partner_id
 
     def _ubl_add_values_currency(self, vals, currency):
         vals['currency'] = currency
+
+    def _ubl_add_values_supplier(self, vals, supplier):
+        vals['supplier'] = supplier
 
     def _ubl_add_values_customer(self, vals, customer):
         vals['customer'] = customer
@@ -343,48 +355,42 @@ class AccountEdiUBL(models.AbstractModel):
         base_line = vals['line_vals']['base_line']
         vals['line_node']['cbc:Quantity'] = {
             '_text': base_line['quantity'],
-            'unitCode': self._get_uom_unece_code(base_line['product_uom_id']),
+            'unitCode': base_line['product_uom_id']._get_unece_code(),
         }
 
     def _ubl_add_line_invoiced_quantity_node(self, vals):
         base_line = vals['line_vals']['base_line']
         vals['line_node']['cbc:InvoicedQuantity'] = {
             '_text': base_line['quantity'],
-            'unitCode': self._get_uom_unece_code(base_line['product_uom_id']),
+            'unitCode': base_line['product_uom_id']._get_unece_code(),
         }
 
     def _ubl_add_line_credited_quantity_node(self, vals):
         base_line = vals['line_vals']['base_line']
         vals['line_node']['cbc:CreditedQuantity'] = {
             '_text': base_line['quantity'],
-            'unitCode': self._get_uom_unece_code(base_line['product_uom_id']),
+            'unitCode': base_line['product_uom_id']._get_unece_code(),
         }
 
     def _ubl_add_line_debited_quantity_node(self, vals):
         base_line = vals['line_vals']['base_line']
         vals['line_node']['cbc:DebitedQuantity'] = {
             '_text': base_line['quantity'],
-            'unitCode': self._get_uom_unece_code(base_line['product_uom_id']),
+            'unitCode': base_line['product_uom_id']._get_unece_code(),
         }
 
     def _ubl_add_line_item_name_description_nodes(self, vals):
         item_node = vals['item_node']
         base_line = vals['line_vals']['base_line']
-        product = base_line['product_id']
 
-        if base_line.get('_removed_tax_data'):
+        line_name = name = base_line.get('name', '')  # Regular business line.
+        description = None
+        if product := base_line['product_id']:
+            name = product.display_name
+            description = line_name.replace(name, '').strip()  # Remove the redundant product's name from the description.
+        elif base_line.get('_removed_tax_data'):
             # Emptying tax extra line.
-            name = description = base_line['_removed_tax_data']['tax'].name
-        else:
-            name = product.name or ''
-            if line_name := base_line.get('name'):
-                # Regular business line.
-                description = line_name
-                if not name:
-                    name = line_name
-            else:
-                # Undefined line.
-                description = product.description_sale or ''
+            name = base_line['_removed_tax_data']['tax'].name
 
         if description:
             item_node['cbc:Description'] = {'_text': description}
@@ -626,7 +632,7 @@ class AccountEdiUBL(models.AbstractModel):
             '_currency': currency,
             'cbc:ChargeIndicator': {'_text': 'true' if is_charge else 'false'},
             'cbc:MultiplierFactorNumeric': {'_text': abs(percent)},
-            'cbc:AllowanceChargeReasonCode': {'_text': '95' if amount > 0.0 else 'ADK'},
+            'cbc:AllowanceChargeReasonCode': {'_text': 'ADK' if is_charge else '95'},
             'cbc:AllowanceChargeReason': {'_text': _("Discount")},
             'cbc:Amount': {
                 '_text': FloatFmt(abs(amount), max_dp=currency.decimal_places),
@@ -715,7 +721,15 @@ class AccountEdiUBL(models.AbstractModel):
         }
 
     def _ubl_add_line_period_nodes(self, vals):
-        vals['line_node']['cac:InvoicePeriod'] = []
+        nodes = vals['line_node']['cac:InvoicePeriod'] = []
+
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            base_line = vals['line_vals']['base_line']
+            if base_line.get('deferred_start_date') or base_line.get('deferred_end_date'):
+                nodes.append({
+                    'cbc:StartDate': {'_text': base_line['deferred_start_date']},
+                    'cbc:EndDate': {'_text': base_line['deferred_end_date']},
+                })
 
     def _ubl_add_line_pricing_reference_node(self, vals):
         vals['line_node']['cac:PricingReference'] = {}
@@ -773,8 +787,50 @@ class AccountEdiUBL(models.AbstractModel):
         partner = vals['party_vals']['partner']
         vals['party_node']['cac:PostalAddress'] = self._ubl_get_partner_address_node(vals, partner)
 
+    def _ubl_add_party_tax_scheme_nodes_vat_gst(self, vals):
+        nodes = vals['party_node']['cac:PartyTaxScheme']
+        partner = vals['party_vals']['partner']
+        commercial_partner = partner.commercial_partner_id
+
+        identifier_vals = commercial_partner._get_preferred_tax_identifier_vals()
+        if not identifier_vals:
+            return
+        if identifier_vals.get('category') == 'GST':
+            tax_scheme_id = 'GST'
+        else:
+            tax_scheme_id = 'VAT'
+        if identifier_vals.get('scheme'):
+            normalized_value = self.env['res.partner']._validate_identifier_by_scheme(
+                identifier_vals['scheme'],
+                identifier_vals['value']
+            ).get('value')
+        else:
+            normalized_value = normalize_vat_for_ubl(commercial_partner.country_code, identifier_vals['value'])
+
+        nodes.append({
+            'cbc:CompanyID': {'_text': normalized_value},
+            'cac:TaxScheme': {
+                'cbc:ID': {'_text': tax_scheme_id},
+            },
+        })
+
     def _ubl_add_party_tax_scheme_nodes(self, vals):
         vals['party_node']['cac:PartyTaxScheme'] = []
+
+    def _ubl_add_party_legal_entity_nodes_iso_6523_icd(self, vals):
+        nodes = vals['party_node']['cac:PartyLegalEntity']
+        partner = vals['party_vals']['partner']
+        commercial_partner = partner.commercial_partner_id
+
+        identifier_vals = commercial_partner._get_preferred_legal_entity_identifier_vals()
+        scheme, value = (identifier_vals.get('scheme'), identifier_vals['value']) if identifier_vals else (None, None)
+        nodes.append({
+            'cbc:RegistrationName': {'_text': commercial_partner.name},
+            'cbc:CompanyID': {
+                '_text': self.env['res.partner']._validate_identifier_by_scheme(scheme, value).get('value') if scheme and value else value,
+                'schemeID': scheme if scheme in ISO_6523_ICD_CODELIST else None,
+            },
+        })
 
     def _ubl_add_party_legal_entity_nodes(self, vals):
         vals['party_node']['cac:PartyLegalEntity'] = []
@@ -966,6 +1022,11 @@ class AccountEdiUBL(models.AbstractModel):
             node['cac:DeliveryLocation']['cbc:ID']['schemeID'] = '0088'
             node['cac:DeliveryLocation']['cbc:ID']['_text'] = delivery_partner.global_location_number
 
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            invoice = vals['invoice']
+            if invoice.delivery_date:
+                node['cbc:ActualDeliveryDate']['_text'] = invoice.delivery_date
+
         party_node = node['cac:DeliveryParty'] = {}
 
         sub_vals = {
@@ -1055,15 +1116,24 @@ class AccountEdiUBL(models.AbstractModel):
     def _ubl_add_id_node(self, vals):
         vals['document_node']['cbc:ID'] = {'_text': None}
 
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            vals['document_node']['cbc:ID']['_text'] = vals['invoice'].name
+
     def _ubl_add_copy_indicator_node(self, vals):
         vals['document_node']['cbc:CopyIndicator'] = {'_text': None}
 
     def _ubl_add_issue_date_node(self, vals):
-        vals['document_node']['cbc:IssueDate'] = {'_text': None}
+        issue_date_node = vals['document_node']['cbc:IssueDate'] = {'_text': None}
         vals['document_node']['cbc:IssueTime'] = {'_text': None}
 
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            issue_date_node['_text'] = vals['invoice'].invoice_date
+
     def _ubl_add_due_date_node(self, vals):
-        vals['document_node']['cbc:DueDate'] = {'_text': None}
+        due_date_node = vals['document_node']['cbc:DueDate'] = {'_text': None}
+
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            due_date_node['_text'] = vals['invoice'].invoice_date_due
 
     def _ubl_add_invoice_type_code_node(self, vals):
         vals['document_node']['cbc:InvoiceTypeCode'] = {'_text': None}
@@ -1107,12 +1177,34 @@ class AccountEdiUBL(models.AbstractModel):
         vals['document_node']['cac:InvoicePeriod'] = {}
 
     def _ubl_add_order_reference_node(self, vals):
-        vals['document_node']['cac:OrderReference'] = {
+        order_ref_node = vals['document_node']['cac:OrderReference'] = {
             'cbc:ID': {'_text': None},
             'cbc:SalesOrderID': {
                 '_text': None,
             },
         }
+
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            invoice = vals['invoice']
+
+            # Purchase order reference
+            # An identifier of a referenced purchase order, issued by the Buyer.
+            # Suppose the following case:
+            # - Buyer does a RFQ to the Seller.
+            # - Seller confirms with a SO.
+            # - Buyer converts the RFQ to a PO.
+            # => There is no automatic tracking of this information.
+            # Instead, the user can encode this information on 'Customer Reference' a.k.a the 'ref' field.
+            # Since ID is required, the fallback is also fine and avoid to force the encoding of this
+            # manual information.
+            order_ref_node['cbc:ID']['_text'] = invoice.ref or invoice.name
+
+            # Sales order reference
+            # An identifier of a referenced sales order issued by the Seller.
+            if self.module_installed('sale'):
+                so_names = set(invoice.invoice_line_ids.sale_line_ids.order_id.mapped('name'))
+                if so_names:
+                    order_ref_node['cbc:SalesOrderID']['_text'] = ",".join(so_names)
 
     def _ubl_add_billing_reference_nodes(self, vals):
         vals['document_node']['cac:BillingReference'] = []
@@ -1156,6 +1248,21 @@ class AccountEdiUBL(models.AbstractModel):
             'cac:FinancialInstitutionBranch': self._ubl_get_payment_means_payee_financial_account_institution_branch_node_from_partner_bank(vals, partner_bank),
         }
 
+    def _ubl_get_payment_means_payer_financial_account_node_from_payer_bank(self, vals, payer_bank):
+        return {
+            'cbc:ID': {
+                '_text': sanitize_account_number(payer_bank.account_number),
+            },
+        }
+
+    def _ubl_get_payment_means_payment_mandate_node_from_mandate(self, vals, mandate):
+        return {
+            'cbc:ID': {
+                '_text': mandate.name,
+            },
+            'cac:PayerFinancialAccount': self._ubl_get_payment_means_payer_financial_account_node_from_payer_bank(vals, mandate.partner_bank_id),
+        }
+
     def _ubl_add_payment_means_nodes(self, vals):
         vals['document_node']['cac:PaymentMeans'] = []
 
@@ -1169,7 +1276,12 @@ class AccountEdiUBL(models.AbstractModel):
         }
 
     def _ubl_add_payment_terms_nodes(self, vals):
-        vals['document_node']['cac:PaymentTerms'] = []
+        nodes = vals['document_node']['cac:PaymentTerms'] = []
+
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            invoice = vals['invoice']
+            if payment_terms_node := self._ubl_get_payment_terms_node_from_payment_term(vals, invoice.invoice_payment_term_id):
+                nodes.append(payment_terms_node)
 
     def _ubl_get_allowance_charge_early_payment_tax_category_node(self, vals, tax_category):
         return {
@@ -1640,6 +1752,44 @@ class AccountEdiUBL(models.AbstractModel):
             'currencyID': currency.name,
         }
 
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            invoice = vals['invoice']
+
+            if in_foreign_currency:
+                amount_total = invoice.amount_total
+                amount_residual = invoice.amount_residual
+            else:
+                amount_total = invoice.amount_total_signed * -invoice.direction_sign
+                amount_residual = invoice.amount_residual_signed * -invoice.direction_sign
+
+            node['cbc:PayableAmount']['_text'] = FloatFmt(
+                amount_residual,
+                min_dp=currency.decimal_places,
+            )
+            node['cbc:PrepaidAmount']['_text'] = FloatFmt(
+                amount_total - amount_residual,
+                min_dp=currency.decimal_places,
+            )
+
+        if self._is_document(vals, 'invoice', 'credit_note', 'self_invoice', 'self_credit_note'):
+            invoice = vals['invoice']
+
+            if in_foreign_currency:
+                amount_total = invoice.amount_total
+                amount_residual = invoice.amount_residual
+            else:
+                amount_total = invoice.amount_total_signed * -invoice.direction_sign
+                amount_residual = invoice.amount_residual_signed * -invoice.direction_sign
+
+            node['cbc:PayableAmount']['_text'] = FloatFmt(
+                amount_residual,
+                min_dp=currency.decimal_places,
+            )
+            node['cbc:PrepaidAmount']['_text'] = FloatFmt(
+                amount_total - amount_residual,
+                min_dp=currency.decimal_places,
+            )
+
     def _ubl_add_legal_monetary_total_payable_rounding_amount_node(self, vals):
         AccountTax = self.env['account.tax']
         base_lines = vals['base_lines']
@@ -1688,6 +1838,154 @@ class AccountEdiUBL(models.AbstractModel):
         self._ubl_add_legal_monetary_total_allowance_charge_total_amount_node(sub_vals)
         self._ubl_add_legal_monetary_total_payable_rounding_amount_node(sub_vals)
         self._ubl_add_legal_monetary_total_prepaid_payable_amount_node(sub_vals)
+
+    def _fill_document_values_invoice(self, vals):
+        document_node = vals['document_node']
+        document_node['_template'] = Invoice
+        document_node['_nsmap'][None] = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+        self._ubl_add_version_id_node(vals)
+        self._ubl_add_customization_id_node(vals)
+        self._ubl_add_profile_id_node(vals)
+        self._ubl_add_invoice_period_nodes(vals)
+        self._ubl_add_id_node(vals)
+        self._ubl_add_issue_date_node(vals)
+        self._ubl_add_due_date_node(vals)
+        self._ubl_add_invoice_type_code_node(vals)
+        self._ubl_add_notes_nodes(vals)
+        self._ubl_add_document_currency_code_node(vals)
+        self._ubl_add_tax_currency_code_node(vals)
+        self._ubl_add_buyer_reference_node(vals)
+        self._ubl_add_order_reference_node(vals)
+        self._ubl_add_accounting_supplier_party_node(vals)
+        self._ubl_add_accounting_customer_party_node(vals)
+        self._ubl_add_delivery_nodes(vals)
+        self._ubl_add_payment_means_nodes(vals)
+        self._ubl_add_payment_terms_nodes(vals)
+        self._ubl_add_allowance_charge_nodes(vals)
+        self._ubl_add_invoice_line_nodes(vals)
+        self._ubl_add_tax_totals_nodes(vals)
+        self._ubl_add_legal_monetary_total_node(vals)
+
+    def _fill_document_values_credit_note(self, vals):
+        document_node = vals['document_node']
+        document_node['_template'] = CreditNote
+        document_node['_nsmap'][None] = "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+        self._ubl_add_version_id_node(vals)
+        self._ubl_add_customization_id_node(vals)
+        self._ubl_add_profile_id_node(vals)
+        self._ubl_add_invoice_period_nodes(vals)
+        self._ubl_add_id_node(vals)
+        self._ubl_add_issue_date_node(vals)
+        self._ubl_add_credit_note_type_code_node(vals)
+        self._ubl_add_notes_nodes(vals)
+        self._ubl_add_document_currency_code_node(vals)
+        self._ubl_add_tax_currency_code_node(vals)
+        self._ubl_add_buyer_reference_node(vals)
+        self._ubl_add_order_reference_node(vals)
+        self._ubl_add_accounting_supplier_party_node(vals)
+        self._ubl_add_accounting_customer_party_node(vals)
+        self._ubl_add_delivery_nodes(vals)
+        self._ubl_add_payment_means_nodes(vals)
+        self._ubl_add_payment_terms_nodes(vals)
+        self._ubl_add_allowance_charge_nodes(vals)
+        self._ubl_add_credit_note_line_nodes(vals)
+        self._ubl_add_tax_totals_nodes(vals)
+        self._ubl_add_legal_monetary_total_node(vals)
+
+    def _fill_document_values_debit_note(self, vals):
+        document_node = vals['document_node']
+        document_node['_template'] = DebitNote
+        document_node['_nsmap'][None] = "urn:oasis:names:specification:ubl:schema:xsd:DebitNote-2"
+        self._ubl_add_version_id_node(vals)
+        self._ubl_add_customization_id_node(vals)
+        self._ubl_add_profile_id_node(vals)
+        self._ubl_add_invoice_period_nodes(vals)
+        self._ubl_add_id_node(vals)
+        self._ubl_add_issue_date_node(vals)
+        self._ubl_add_notes_nodes(vals)
+        self._ubl_add_document_currency_code_node(vals)
+        self._ubl_add_tax_currency_code_node(vals)
+        self._ubl_add_buyer_reference_node(vals)
+        self._ubl_add_order_reference_node(vals)
+        self._ubl_add_accounting_supplier_party_node(vals)
+        self._ubl_add_accounting_customer_party_node(vals)
+        self._ubl_add_delivery_nodes(vals)
+        self._ubl_add_payment_means_nodes(vals)
+        self._ubl_add_payment_terms_nodes(vals)
+        self._ubl_add_allowance_charge_nodes(vals)
+        self._ubl_add_debit_note_line_nodes(vals)
+        self._ubl_add_tax_totals_nodes(vals)
+        self._ubl_add_requested_monetary_total_node(vals)
+
+    def _fill_document_values(self, vals):
+        document_node = vals['document_node']
+        document_node['_nsmap']['cac'] = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+        document_node['_nsmap']['cbc'] = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+        document_node['_nsmap']['ext'] = "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+
+        if self._is_document(vals, 'invoice', 'self_invoice'):
+            self._fill_document_values_invoice(vals)
+        elif self._is_document(vals, 'credit_note', 'self_credit_note'):
+            self._fill_document_values_credit_note(vals)
+        elif self._is_document(vals, 'debit_note'):
+            self._fill_document_values_debit_note(vals)
+
+    def _export_document_node_constraints(self, vals):
+        return {}
+
+    def _export_document(self, vals):
+        vals['document_node'] = {
+            '_nsmap': {},
+            '_template': Invoice,
+        }
+        self._fill_document_values(vals)
+
+        vals['constraints'] = {
+            k: v
+            for k, v in self._export_document_node_constraints(vals).items()
+            if v
+        }
+        return vals
+
+    def _ubl_add_values_document_type(self, vals):
+        invoice = vals['invoice']
+
+        if invoice.move_type == 'out_invoice':
+            document_type = 'invoice'
+        elif invoice.move_type == 'out_refund':
+            document_type = 'credit_note'
+        elif invoice.move_type == 'in_invoice':
+            document_type = 'self_invoice'
+        elif invoice.move_type == 'in_refund':
+            document_type = 'self_credit_note'
+
+        self._define_document_type(vals, document_type)
+
+    def _init_invoice_export_values(self, invoice):
+        vals = {'invoice': invoice.with_context(lang=invoice.partner_id.lang)}
+
+        self._ubl_add_values_document_type(vals)
+        self._ubl_add_values_company(vals, invoice.company_id)
+        self._ubl_add_values_currency(vals, invoice.currency_id)
+        if self._is_document(vals, 'invoice', 'credit_note'):
+            customer = invoice.partner_id
+            supplier = invoice.company_id.partner_id
+            delivery = invoice.partner_shipping_id or customer
+        elif self._is_document(vals, 'self_invoice', 'self_credit_note'):
+            customer = invoice.company_id.partner_id
+            supplier = invoice.partner_id
+            delivery = customer.child_ids.filtered(lambda p: p.type == 'delivery')[:1] or customer
+
+        self._ubl_add_values_supplier(vals, supplier)
+        self._ubl_add_values_customer(vals, customer)
+        self._ubl_add_values_delivery(vals, delivery)
+
+        vals['base_lines'], vals['tax_lines'] = invoice._get_rounded_base_and_tax_lines()
+        return vals
+
+    def _export_invoice(self, invoice):
+        vals = self._init_invoice_export_values(invoice)
+        return self._export_document(vals)
 
     # -------------------------------------------------------------------------
     # IMPORT: INVOICE
@@ -1743,24 +2041,28 @@ class AccountEdiUBL(models.AbstractModel):
                     customer_values[key] = node.text
                     break
 
-        # Peppol EAS/Endpoint.
-        if (node := party_node.find(".//{*}EndpointID")) is not None:
-            customer_values['peppol_endpoint'] = node.text.strip()
-            if peppol_eas := node.attrib.get('schemeID'):
-                customer_values['peppol_eas'] = peppol_eas
+        # Routing endpoint (cbc:EndpointID schemeID="..."): feeds both routing_identifier
+        # and additional_identifiers.
+        if (node := party_node.find(".//{*}EndpointID")) is not None and node.text:
+            scheme, value = node.attrib.get('schemeID'), node.text.strip()
+            customer_values['routing_scheme'] = scheme
+            customer_values['routing_endpoint'] = value
+            meta = self.env['res.partner']._get_all_identifiers_metadata_by_scheme().get(scheme)
+            if meta and meta['key'] in self.env['res.partner']._get_all_additional_identifiers_metadata():
+                customer_values.setdefault('additional_identifiers', {})[meta['key']] = value
 
         if not customer_values['vat'] and (country_code := customer_values.get('country_code')):
-            for scheme_id, field in EAS_MAPPING.get(country_code, {}).items():
-                if field == 'vat' and (vat := party_node.findtext(f".//{{*}}PartyIdentification/{{*}}ID[@schemeID='{scheme_id}']")):
-                    customer_values['vat'] = vat
-                    break
+            vat_scheme = get_tin_metadata_of_country(country_code).get('scheme')
+            if vat := party_node.findtext(f".//{{*}}PartyIdentification/{{*}}ID[@schemeID='{vat_scheme}']"):
+                customer_values['vat'] = vat
 
     def _import_ubl_retrieve_customer_search_plan(self, collected_values):
         ResPartner = self.env['res.partner']
         return [
             ResPartner._import_retrieve_customer_from_vat,
             ResPartner._import_retrieve_customer_from_additional_identifiers,
-            ResPartner._import_retrieve_customer_from_eas_endpoint,
+            ResPartner._import_retrieve_customer_from_routing_identifier,
+            ResPartner._import_retrieve_customer_from_bank_account_number,
             ResPartner._import_retrieve_customer_from_email,
             ResPartner._import_retrieve_customer_from_phone,
             ResPartner._import_retrieve_customer_from_name,
@@ -1769,6 +2071,10 @@ class AccountEdiUBL(models.AbstractModel):
     def _import_ubl_retrieve_customer(self, collected_values):
         company = collected_values['company']
         customer_values = collected_values['customer_values']
+        customer_values.update({
+            'account_numbers': collected_values.get('partner_bank_values', {}).get('account_numbers'),
+            'company': company,
+        })
         self.env['res.partner']._import_retrieve_customer(
             search_plan=self._import_ubl_retrieve_customer_search_plan(collected_values),
             company=company,
@@ -1777,47 +2083,91 @@ class AccountEdiUBL(models.AbstractModel):
         if partner := customer_values.get('customer'):
             collected_values['to_write']['partner_id'] = partner.id
 
+    def _import_ubl_get_country(self, collected_values):
+        customer_values = collected_values['customer_values']
+        country_code = customer_values.get('country_code')
+        if not country_code:
+            return None
+
+        if country_code == 'GB':
+            # While the code is gb, the xml_id is uk
+            country_code = 'UK'
+        return self.env.ref(f'base.{country_code.lower()}', raise_if_not_found=False)
+
     def _import_ubl_prepare_missing_customer_create_values(self, collected_values):
         customer_values = collected_values['customer_values']
         partner_create_values = {
             'is_company': True,
         }
-        for key in ('phone', 'name', 'email', 'street', 'street2', 'zip', 'city', 'additional_identifiers'):
+        for key in ('phone', 'name', 'email', 'street', 'street2', 'zip', 'city'):
             if value := customer_values.get(key):
                 partner_create_values[key] = value
 
-        if (peppol_eas := customer_values.get('peppol_eas')) and (peppol_endpoint := customer_values.get('peppol_endpoint')):
-            partner_create_values['peppol_eas'] = peppol_eas
-            partner_create_values['peppol_endpoint'] = peppol_endpoint
+        # The additional identifiers and routing endpoint come from an external
+        # file: keep only the values that validate, so create() does not raise
+        if identifiers := customer_values.get('additional_identifiers'):
+            valid_identifiers = {
+                key: value
+                for key, value in identifiers.items()
+                if self.env['res.partner']._validate_identifier(key, value)['valid']
+            }
+            if valid_identifiers:
+                partner_create_values['additional_identifiers'] = valid_identifiers
 
-        country = None
-        if country_code := customer_values.get('country_code'):
-            if country_code == 'GB':
-                # While the code is gb, the xml_id is uk
-                country_code = 'UK'
-            country = self.env.ref(f'base.{country_code.lower()}', raise_if_not_found=False)
-            if country:
-                partner_create_values['country_id'] = country.id
+        if (scheme := customer_values.get('routing_scheme')) and (endpoint := customer_values.get('routing_endpoint')):
+            result = self.env['res.partner']._validate_identifier_by_scheme(scheme, endpoint)
+            if result['valid']:
+                partner_create_values['routing_scheme'] = scheme
+                partner_create_values['routing_endpoint'] = result['value']
+
+        country = self._import_ubl_get_country(collected_values)
+        if country:
+            partner_create_values['country_id'] = country.id
 
         if vat := customer_values.get('vat'):
             partner_create_values['vat'], _country_code = self.env['res.partner']._run_vat_checks(country, vat, validation='setnull')
         return partner_create_values
 
+    def _check_customer_vat_match(self, customer, vat, collected_values):
+        """
+        Compare the VAT from an EDI document against a partner's stored VAT,
+        with country-specific normalization where needed.
+        Should stay consistent with `_get_country_specific_vat_variants`.
+        """
+        country = self._import_ubl_get_country(collected_values)
+        customer_vat = customer.vat.replace(' ', '').upper()
+        vat_to_compare = vat.replace(' ', '').replace('.', '').upper()
+        if country.code == 'CH':
+            customer_vat = re.sub(r"(TVA|IVA|MWST)?$", "", customer_vat.replace('.', '').replace('-', ''))
+            vat_to_compare = re.sub(r"(TVA|IVA|MWST)?$", "", vat_to_compare.replace('-', ''))
+        return customer_vat == vat_to_compare
+
     def _import_ubl_create_missing_customer(self, collected_values):
         customer_values = collected_values['customer_values']
         logs = collected_values['logs']
         customer = customer_values.get('customer')
-        if customer:
-            return
 
         name = customer_values.get('name')
         vat = customer_values.get('vat')
         if not name or not vat:
             return
 
+        vat_mismatch = False
+        if customer:
+            if not customer.vat:
+                country = self._import_ubl_get_country(collected_values)
+                customer.vat, _country_code = self.env['res.partner']._run_vat_checks(country, vat, validation='setnull')
+                return
+            if self._check_customer_vat_match(customer, vat, collected_values):
+                return
+            vat_mismatch = True
+
         partner_create_values = self._import_ubl_prepare_missing_customer_create_values(collected_values)
         customer = self.env['res.partner'].create(partner_create_values)
-        logs.append(_("Could not retrieve a partner corresponding to '%s'. A new partner was created.", name))
+        if vat_mismatch:
+            logs.append(_("Could not retrieve a partner corresponding to '%s' with the same VAT. A new partner was created.", name))
+        else:
+            logs.append(_("Could not retrieve a partner corresponding to '%s'. A new partner was created.", name))
         customer_values['customer'] = customer
         collected_values['to_write']['partner_id'] = customer.id
 
@@ -1934,17 +2284,14 @@ class AccountEdiUBL(models.AbstractModel):
             collected_values['to_write']['invoice_origin'] = invoice_origin
 
     def _import_ubl_invoice_add_narration(self, collected_values):
-        tree = collected_values['tree']
-        notes = []
-        note = tree.findtext('./{*}Note')
-        if note:
-            notes.append(html_escape(note))
-        for node in tree.findall('./{*}PaymentTerms/{*}Note'):
-            if note := node.text:
-                notes.append(html_escape(note))
-
-        if narration := ''.join(f'<p>{note}</p>' for note in notes):
+        if narration := ''.join(f'<p>{note}</p>' for note in self._get_notes(collected_values)):
             collected_values['to_write']['narration'] = narration
+
+    @api.model
+    def _get_notes(self, collected_values):
+        tree = collected_values["tree"]
+        nodes = tree.findall("./{*}Note") + tree.findall("./{*}PaymentTerms/{*}Note")
+        return [html_escape(node.text) for node in nodes if node.text]
 
     def _import_ubl_invoice_add_payment_reference(self, collected_values):
         tree = collected_values['tree']
@@ -2079,24 +2426,42 @@ class AccountEdiUBL(models.AbstractModel):
             if not category_code:
                 continue
 
+            tax_key = frozendict({
+                'category_code': category_code,
+                'percentage': percentage,
+            })
             allowance_charge_values['attempt_tax_values'] = tax_values = {
                 'amount_type': 'percent',
                 'type_tax_use': odoo_document_type,
                 'ubl_cii_tax_category_code': category_code,
                 'amount': percentage,
+                '_tax_key': tax_key,
             }
             taxes_values.append(tax_values)
 
     def _import_ubl_invoice_line_add_name(self, collected_values):
+        """
+        In UBL, both Name and Description elements are optional
+        An item may contain multiple Description elements
+        """
         line_tree = collected_values['line_tree']
         item_ref = line_tree.findtext('.//{*}Item/{*}SellersItemIdentification/{*}ID')
-        item_name = line_tree.findtext('.//{*}Item/{*}Name')
-        name = collected_values['name'] = (
-            line_tree.findtext('.//{*}Item/{*}Description')
-            or (f"[{item_ref}] {item_name}" if (item_ref and item_name) else item_name)
-        )
-        if name:
+        name = line_tree.findtext('.//{*}Item/{*}Name')
+        if item_ref and name and f'[{item_ref}]' not in name:
+            name = f"[{item_ref}] {name}"
+        collected_values['name'] = name
+
+        description = ''
+        for description_elem in line_tree.iterfind('.//{*}Item/{*}Description'):
+            if description_elem.text:
+                description += description_elem.text + '\n'
+
+        if name and description:
+            collected_values['to_write']['name'] = f'{name}\n{description.strip()}'
+        elif name:
             collected_values['to_write']['name'] = name
+        elif description:
+            collected_values['to_write']['name'] = description.strip()
 
     def _import_ubl_invoice_line_add_allowance_charges_values(self, collected_values):
         line_tree = collected_values['line_tree']
@@ -2162,7 +2527,7 @@ class AccountEdiUBL(models.AbstractModel):
         line_extension_amount = line_extension_amount_str and float(line_extension_amount_str) * file_document_sign
         price_amount = price_amount_str and float(price_amount_str)
         invoiced_quantity = invoiced_quantity_str and float(invoiced_quantity_str) * file_document_sign
-        base_quantity = base_quantity_str and float(base_quantity_str) * file_document_sign
+        base_quantity = base_quantity_str and float(base_quantity_str)
 
         total_allowances = sum(allowance['amount'] for allowance in collected_values['allowances'])
         total_charges = sum(charge['amount'] for charge in collected_values['charges'])
@@ -2198,7 +2563,7 @@ class AccountEdiUBL(models.AbstractModel):
 
         # Line level.
         if (
-            line_extension_amount
+            line_extension_amount is not None
             and not invoiced_quantity
         ):
             price_unit = subtotal
@@ -2216,11 +2581,14 @@ class AccountEdiUBL(models.AbstractModel):
             # discount_amount = 250.0
             if not currency.is_zero(price_subtotal):
                 quantity = subtotal * price_quantity / (price_subtotal - price_discount_amount)
-                price_unit = (subtotal / quantity) + (price_discount_amount / price_quantity)
+                if quantity:
+                    price_unit = (subtotal / quantity) + (price_discount_amount / price_quantity)
+                else:
+                    price_unit = price_amount
                 discount_amount += price_discount_amount * quantity / price_quantity
 
         elif (
-            line_extension_amount
+            line_extension_amount is not None
             and invoiced_quantity
         ):
             quantity = invoiced_quantity
@@ -2348,11 +2716,19 @@ class AccountEdiUBL(models.AbstractModel):
 
     def _import_ubl_invoice_line_add_product_values(self, collected_values):
         line_tree = collected_values['line_tree']
+        partner = collected_values.get('customer_values', {}).get('customer')
+        sellers_item_id = line_tree.findtext('.//{*}Item/{*}SellersItemIdentification/{*}ID')
+        buyers_item_id = line_tree.findtext('.//{*}Item/{*}BuyersItemIdentification/{*}ID')
+        standard_item_id = line_tree.findtext('.//{*}Item/{*}StandardItemIdentification/{*}ID[@schemeID="0160"]')
 
         product_values = collected_values['product_values'] = {
-            'default_code': line_tree.findtext('.//{*}Item/{*}SellersItemIdentification/{*}ID'),
+            'barcode': standard_item_id,
+            'default_code': sellers_item_id or buyers_item_id,
             'name': line_tree.findtext('.//{*}Item/{*}Name'),
-            'barcode': line_tree.findtext('.//{*}Item/{*}StandardItemIdentification/{*}ID[@schemeID="0160"]'),
+            'sellers_item_id': sellers_item_id,
+            'buyers_item_id': buyers_item_id,
+            'standard_item_id': standard_item_id,
+            'vendor_partner_id': partner.commercial_partner_id.id if partner else None,
         }
 
         # CommodityClassification
@@ -2515,6 +2891,8 @@ class AccountEdiUBL(models.AbstractModel):
     def _import_ubl_retrieve_taxes_search_plan(self, collected_values):
         AccountTax = self.env['account.tax']
         return [
+            AccountTax._import_retrieve_tax_from_account_default_tax,
+            AccountTax._import_retrieve_tax_from_predicted_tax,
             AccountTax._import_retrieve_tax_from_price_include_exclude,
         ]
 
@@ -2524,13 +2902,16 @@ class AccountEdiUBL(models.AbstractModel):
         lines_collected_values = collected_values['lines_collected_values']
         tax_values_list = list(collected_values['taxes_values'])
         for line_collected_values in lines_collected_values:
+            if account := line_collected_values['account_values'].get('account'):
+                for tax_values in line_collected_values['taxes_values']:
+                    tax_values['account'] = account
             line_tax_values_list = line_collected_values['taxes_values']
             for charge in line_collected_values['charges']:
                 if tax_values := charge.get('attempt_tax_values'):
                     line_tax_values_list.append(tax_values)
-            if 'tax_ids' in line_collected_values.get('predicted_vals', {}):
+            if predicted_tax_ids := line_collected_values.get('predicted_vals', {}).get('tax_ids'):
                 for line_tax_values in line_tax_values_list:
-                    line_tax_values['tax'] = line_collected_values['predicted_vals']['tax_ids']
+                    line_tax_values['predicted_tax_ids'] = predicted_tax_ids
             tax_values_list.extend(line_tax_values_list)
 
         if customer := collected_values.get('customer_values', {}).get('customer'):
@@ -2547,6 +2928,11 @@ class AccountEdiUBL(models.AbstractModel):
             company=company,
             tax_values_list=tax_values_list,
         )
+
+        for tax_values in collected_values['taxes_values']:
+            tax_key = tax_values.get('_tax_key')
+            if tax_key and (global_tax_values := collected_values['tax_total_values'].get(tax_key)):
+                global_tax_values['related_taxes_values'].append(tax_values)
 
         # Taxes at the document line level.
         for line_collected_values in lines_collected_values:
@@ -2624,10 +3010,13 @@ class AccountEdiUBL(models.AbstractModel):
             base_line_kwargs['product_id'] = product
         if uom := collected_values['product_uom_values'].get('uom'):
             base_line_kwargs['product_uom_id'] = uom
+        elif collected_values['product_uom_values'].get('force_empty'):
+            # Override the product_uom_id compute so the saved line keeps no UoM.
+            base_line_kwargs['_create_values']['product_uom_id'] = False
         if account := collected_values['account_values'].get('account'):
             base_line_kwargs['account_id'] = account
 
-        if name := collected_values.get('name'):
+        if name := to_write.get('name'):
             base_line_kwargs['_create_values']['name'] = name
         if deferred_start_date := to_write.get('deferred_start_date'):
             base_line_kwargs['_create_values']['deferred_start_date'] = deferred_start_date
@@ -2725,6 +3114,7 @@ class AccountEdiUBL(models.AbstractModel):
 
     def _import_ubl_invoice_retrieve_product_uoms(self, collected_values):
         lines_collected_values = collected_values['lines_collected_values']
+        logs = collected_values['logs']
         cache = {}
         for line_collected_values in lines_collected_values:
             product_uom_values = line_collected_values['product_uom_values']
@@ -2733,15 +3123,28 @@ class AccountEdiUBL(models.AbstractModel):
 
             to_write['product_uom_id'] = False
             if uom_code:
-                matched_uom_xmlid = {v: k for k, v in UOM_TO_UNECE_CODE.items()}.get(uom_code)
-                if matched_uom_xmlid:
-                    if matched_uom_xmlid in cache:
-                        uom = cache[matched_uom_xmlid]
-                    else:
-                        uom = cache[matched_uom_xmlid] = self.env.ref(matched_uom_xmlid, raise_if_not_found=False)
-                    if uom:
-                        to_write['product_uom_id'] = uom.id
-                        product_uom_values['uom'] = uom
+                if uom_code in cache:
+                    uom = cache[uom_code]
+                else:
+                    uom = cache[uom_code] = self.env['uom.uom']._get_uom_from_unece_code(uom_code)
+                if uom:
+                    product = line_collected_values['product_values'].get('product')
+                    product_uom = product.product_tmpl_id.uom_id if product else self.env['uom.uom']
+                    if product and not uom._has_common_reference(product_uom):
+                        logs.append(_(
+                            "The Unit of Measure '%(uom)s' (from unit code '%(code)s') was "
+                            "ignored on the line for product '%(product)s' because it is not "
+                            "compatible with the product's Unit of Measure '%(product_uom)s'. "
+                            "The UoM was left empty.",
+                            uom=uom.name,
+                            code=uom_code,
+                            product=product.display_name,
+                            product_uom=product_uom.name,
+                        ))
+                        product_uom_values['force_empty'] = True
+                        continue
+                    to_write['product_uom_id'] = uom.id
+                    product_uom_values['uom'] = uom
 
     def _import_ubl_invoice_retrieve_accounts(self, collected_values):
         lines_collected_values = collected_values['lines_collected_values']
@@ -2771,7 +3174,7 @@ class AccountEdiUBL(models.AbstractModel):
             if vehicle_values in cache:
                 vehicles = cache[vehicle_values]
             else:
-                vehicles = self.env['fleet.vehicle'].search([  # noqa: OLS03001
+                vehicles = self.env['fleet.vehicle'].sudo().search([  # noqa: OLS03001
                     ('company_id', '=', company.id),
                 ] + Domain.OR([
                     [(field, 'in', vals)] for field, vals in vehicle_values
@@ -2838,8 +3241,10 @@ class AccountEdiUBL(models.AbstractModel):
         # Fix 'price_unit' if some price-included taxes are involved.
         for base_line in base_lines:
             for tax_data in base_line['tax_details']['taxes_data']:
-                if tax_data['tax'].price_include:
-                    base_line['price_unit'] += tax_data['raw_tax_amount_currency'] / (base_line['quantity'] if base_line['quantity'] else 1)
+                if tax_data['original_price_include']:
+                    discount = base_line['discount'] / 100
+                    raw_tax_amount_currency = tax_data['raw_tax_amount_currency'] / (1 - discount)
+                    base_line['price_unit'] += raw_tax_amount_currency / (base_line['quantity'] if base_line['quantity'] else 1)
 
         # Remove lines having a zero amount except 100% discounts
         collected_values['base_lines'] = [
@@ -3049,12 +3454,6 @@ class AccountEdiUBL(models.AbstractModel):
             if pdf_extension != 'pdf':
                 return additional_docs
 
-            # add a watermark to the generated pdf
-            with io.BytesIO(pdf_raw) as pdf_stream:
-                new_pdf_stream = pdf.add_banner(pdf_stream, _('Generated by Odoo'), logo=False)
-                pdf_raw = new_pdf_stream.getvalue()
-                new_pdf_stream.close()
-
             invoice_name = invoice.display_name.replace(_('Draft'), '')
             pdf_filename = _('%(invoice_name)s - Generated by Odoo', invoice_name=invoice_name)
 
@@ -3113,6 +3512,9 @@ class AccountEdiUBL(models.AbstractModel):
         self._import_ubl_invoice_document_sign(collected_values)
         self._import_ubl_invoice_update_move_type(collected_values)
 
+        # Bank values are required for retrieving the partner via their bank account number
+        self._import_ubl_invoice_add_partner_bank_values(collected_values)
+
         # partner_id.
         self._import_ubl_invoice_add_customer_values(collected_values)
         self._import_ubl_retrieve_customer(collected_values)
@@ -3127,7 +3529,6 @@ class AccountEdiUBL(models.AbstractModel):
         self._import_ubl_invoice_add_currency(collected_values)
 
         # partner_bank_id
-        self._import_ubl_invoice_add_partner_bank_values(collected_values)
         self._import_ubl_retrieve_partner_bank(collected_values)
 
         # ref / invoice_origin / narration / payment_reference / delivery_date

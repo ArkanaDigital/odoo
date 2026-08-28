@@ -1,7 +1,7 @@
-import { onMounted, proxy } from "@odoo/owl";
+import { onMounted, proxy, signal, t, useProps } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
 import { normalize } from "@web/core/l10n/utils";
-import { Setting } from "@web/views/form/setting/setting";
+import { Setting, settingProps } from "@web/views/form/setting/setting";
 import { FormLabelHighlightText } from "../highlight_text/form_label_highlight_text";
 import { HighlightText } from "../highlight_text/highlight_text";
 
@@ -12,20 +12,40 @@ export class SearchableSetting extends Setting {
         FormLabel: FormLabelHighlightText,
         HighlightText,
     };
+    props = useProps({
+        ...settingProps,
+        fieldLabels: t.array(),
+    });
+
+    settingRef = signal.ref();
     setup() {
         this.state = proxy({
             search: this.env.searchState,
-            showAllContainer: this.env.showAllContainer,
             highlightClass: {},
         });
-        this.labels = [this.labelString, this.props.title].filter(Boolean);
+        this.showAllContainer = this.env.showAllContainer;
+        this.labels = this.getLabels();
         super.setup();
         onMounted(() => {
             if (browser.location.hash.substring(1) === this.props.id) {
                 this.state.highlightClass = { o_setting_highlight: true };
                 setTimeout(() => (this.state.highlightClass = {}), 5000);
             }
+            if (this.settingRef()) {
+                this.labels = this.getLabels();
+            }
         });
+    }
+
+    getLabels() {
+        const settingRef = this.settingRef();
+        const fieldLabels = settingRef
+            ? this.props.fieldLabels
+                  .filter((fl) => settingRef.querySelector(`#${fl.fieldId}`))
+                  .map((fl) => fl.string)
+            : this.props.fieldLabels.map((fl) => fl.string);
+
+        return [this.labelString, ...fieldLabels, this.props.help].filter(Boolean);
     }
 
     get classNames() {
@@ -38,7 +58,7 @@ export class SearchableSetting extends Setting {
         if (!this.state.search.value) {
             return true;
         }
-        if (this.state.showAllContainer.showAllContainer) {
+        if (this.showAllContainer()) {
             return true;
         }
         if (normalize(this.labels.join()).includes(this.state.search.value)) {

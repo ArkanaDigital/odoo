@@ -24,18 +24,19 @@ export class ProductTemplate extends ProductTemplateAccounting {
     async _onScaleNotAvailable() {}
 
     isConfigurable() {
-        return this.attribute_line_ids.find(
-            (l) =>
-                l.product_template_value_ids.length > 1 ||
-                l.product_template_value_ids.some((v) => v.is_custom)
+        return (
+            this.attribute_line_ids.map((a) => a.active !== false && a.product_template_value_ids)
+                .length >= 1
         );
     }
 
     needToConfigure() {
+        const activeLines = this.attribute_line_ids.filter((l) => l.active !== false);
         return (
-            this.isConfigurable() &&
-            this.attribute_line_ids.length > 0 &&
-            this.attribute_line_ids.some((l) => l.attribute_id.create_variant === "no_variant")
+            this.isCombo() ||
+            (this.isConfigurable() &&
+                activeLines.length > 0 &&
+                activeLines.some((l) => l.attribute_id.create_variant === "no_variant"))
         );
     }
 
@@ -84,7 +85,9 @@ export class ProductTemplate extends ProductTemplateAccounting {
     }
 
     getImageUrl() {
-        return `/web/image?model=product.template&field=image_128&id=${this.id}&unique=${this.write_date}`;
+        return this.image_128
+            ? `/web/image?model=product.template&field=image_128&id=${this.id}&unique=${this.write_date}`
+            : false;
     }
 
     _isArchivedCombination(attributeValueIds) {
@@ -125,6 +128,11 @@ export class ProductTemplate extends ProductTemplateAccounting {
 
     get canBeDisplayed() {
         return this.active && this.available_in_pos;
+    }
+
+    get showProductImageInSelf() {
+        const config = this.models["pos.config"].getFirst();
+        return config.self_ordering_mode === "kiosk" || this.image_128;
     }
 
     get searchString() {

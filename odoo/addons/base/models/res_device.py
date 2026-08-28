@@ -7,11 +7,13 @@ from odoo import api, fields, models, tools
 from odoo.http import request
 from odoo.http.session import (
     STORED_SESSION_BYTES,
+    collapse_ip_address,
     get_session_max_inactivity,
     logout,
     session_store,
     update_device,
 )
+from odoo.modules import module
 from odoo.tools import SQL
 from odoo.tools._vendor.useragents import UserAgent
 from odoo.tools.translate import _
@@ -24,7 +26,7 @@ _logger = logging.getLogger(__name__)
 class ResDeviceLog(models.Model):
     _name = 'res.device.log'
     _description = 'Device Log'
-    _rec_names_search = ['ip_address', 'user_agent']
+    _rec_names_search = ('ip_address', 'user_agent')
 
     # Fields that identify a session
     session_identifier = fields.Char('Session Identifier', required=True, index='btree')
@@ -64,10 +66,7 @@ class ResDeviceLog(models.Model):
         user_id = request.session.uid
         session_identifier = request.session.sid[:STORED_SESSION_BYTES]
 
-        if self.env.cr.readonly:
-            self.env.cr.rollback()
-
-        with self.env.registry.cursor() as cr:
+        def insert_device_log(cr):
             info = {
                 'session_identifier': session_identifier,
                 'user_id': user_id,
@@ -84,7 +83,25 @@ class ResDeviceLog(models.Model):
                 VALUES (%(session_identifier)s, %(user_id)s, %(ip_address)s, %(user_agent)s, %(country)s, %(city)s, %(first_activity)s, %(last_activity)s, %(revoked)s)
             """, **info))
             _logger.info('User %(user_id)d inserts device log: %(session_identifier)s - %(ip_address)s - %(user_agent)s', info)
-            session_store().save(request.session)
+
+        def insert_device_log_in_new_cursor():
+            with self.env.registry.cursor() as cr:
+                insert_device_log(cr)
+
+        if self.env.cr.readonly:
+            if module.current_test and self.env.cr.readonly:
+                # During testing, we cannot open a new rw cursor from a ro
+                # cursor. Rollbacking the current (readonly) cursor, removes the
+                # savepoint and allows to start a read-write transaction.
+                self.env.cr.rollback()
+                insert_device_log_in_new_cursor()
+            else:
+                self.env.cr.postcommit.add(insert_device_log_in_new_cursor)
+        else:
+            insert_device_log(self.env.cr)
+        self.env.cr.postrollback.add(insert_device_log_in_new_cursor)
+
+        session_store().save(request.session)
 
     @api.autovacuum
     def _gc_device_log(self):
@@ -187,7 +204,7 @@ class ResDevice(models.Model):
             self.is_current = False
             return
         session_identifier = request.session.sid[:STORED_SESSION_BYTES]
-        ip_address = request.httprequest.remote_addr
+        ip_address = collapse_ip_address(request.httprequest.remote_addr)
         user_agent = request.httprequest.user_agent.string
         for device in self:
             device.is_current = \
@@ -211,7 +228,7 @@ class ResDevice(models.Model):
         #   recent log.
         # - `id` is not aggregated, this allows the ORM to use relational fields
         #   with this model and use the index of `id`.
-        return """
+        return SQL("""
             SELECT
                 L1.id,
                 L1.session_identifier,
@@ -238,11 +255,11 @@ class ResDevice(models.Model):
                         AND L2.id > L1.id
                         AND L2.revoked IS NOT TRUE
                 ))
-        """
+        """)
 
     def init(self):
         tools.drop_view_if_exists(self.env.cr, self._table)
-        self.env.cr.execute('CREATE OR REPLACE VIEW %s AS (%s)' % (self._table, self._query))
+        self.env.cr.execute(SQL('CREATE OR REPLACE VIEW %s AS (%s)', SQL.identifier(self._table), self._query))
 
 
 class ResSession(models.Model):
@@ -319,7 +336,7 @@ class ResSession(models.Model):
         # - The aggregated fields will be computed (this is because the most
         #   recent log may not correspond to the current device, the latter to
         #   be used for a good user experience).
-        return """
+        return SQL("""
             SELECT
                 D1.id,
                 D1.session_identifier,
@@ -337,7 +354,7 @@ class ResSession(models.Model):
                         AND D2.session_identifier = D1.session_identifier
                         AND D2.id > D1.id
                 ))
-        """
+        """)
 
     @check_identity
     def revoke(self):

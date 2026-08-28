@@ -2,7 +2,7 @@ from odoo import Command, fields
 from odoo.tests import common, new_test_user, tagged
 
 
-@tagged('at_install', '-post_install')  # LEGACY at_install
+@tagged('at_install', '-post_install')
 class TestPrivateReadGroup(common.TransactionCase):
 
     @classmethod
@@ -885,14 +885,15 @@ class TestPrivateReadGroup(common.TransactionCase):
                 ],
             )
 
-        # group tasks with some ir.rule on users
+        # group tasks with some ir.access on users
         users_model = self.env['ir.model']._get(mario._name)
-        self.env['ir.rule'].create({
+        self.env['ir.access'].create({
             'name': "Only The Lone Wanderer allowed",
             'model_id': users_model.id,
-            'domain_force': [('id', '=', mario.id)],
+            'operation': 'crud',
+            'domain': [('id', '=', mario.id)],
         })
-        # as demo user, ir.rule should apply
+        # as demo user, ir.access should apply
         tasks = tasks.with_user(self.base_user)
 
         # warming up various caches; this avoids extra queries
@@ -1187,6 +1188,7 @@ class TestPrivateReadGroup(common.TransactionCase):
             FROM "test_read_group_related_inherits"
             JOIN "test_read_group_related_base" AS "test_read_group_related_inherits__base_id"
                 ON ("test_read_group_related_inherits"."base_id" = "test_read_group_related_inherits__base_id"."id")
+            WHERE TRUE
             GROUP BY "test_read_group_related_inherits__base_id"."name"
             ORDER BY "test_read_group_related_inherits__base_id"."name" ASC
         """]):
@@ -1201,6 +1203,7 @@ class TestPrivateReadGroup(common.TransactionCase):
             FROM "test_read_group_related_inherits"
             JOIN "test_read_group_related_base" AS "test_read_group_related_inherits__base_id"
                 ON ("test_read_group_related_inherits"."base_id" = "test_read_group_related_inherits__base_id"."id")
+            WHERE TRUE
             GROUP BY "test_read_group_related_inherits__base_id"."name"
             ORDER BY "test_read_group_related_inherits__base_id"."name" ASC
         """]):
@@ -1220,6 +1223,7 @@ class TestPrivateReadGroup(common.TransactionCase):
                 ON ("test_read_group_related_inherits"."base_id" = "test_read_group_related_inherits__base_id"."id")
             LEFT JOIN "test_read_group_related_foo" AS "test_read_group_related_inherits__base_id__foo_id"
                 ON ("test_read_group_related_inherits__base_id"."foo_id" = "test_read_group_related_inherits__base_id__foo_id"."id")
+            WHERE TRUE
             GROUP BY "test_read_group_related_inherits__base_id__foo_id"."name"
             ORDER BY "test_read_group_related_inherits__base_id__foo_id"."name" ASC
         """
@@ -1255,13 +1259,9 @@ class TestPrivateReadGroup(common.TransactionCase):
         field_info = RelatedFoo.fields_get(['bar_base_ids'], ['groupable'])
         self.assertTrue(field_info['bar_base_ids']['groupable'])
 
-        # With ir.rule on the comodel of the many2many
-        related_base_model = self.env['ir.model']._get('test_read_group.related_base')
-        self.env['ir.rule'].create({
-            'name': "Only The Lone Wanderer allowed",
-            'model_id': related_base_model.id,
-            'domain_force': str([('id', '=', 161)]),
-        })
+        # With access domain on the comodel of the many2many
+        access = self.env.ref('test_orm.access_test_read_group_related_base')
+        access.domain = "[('id', '=', 161)]"
 
         # warmup
         RelatedFoo._read_group([], ['bar_base_ids'], ['__count'])
@@ -1372,10 +1372,11 @@ class TestPrivateReadGroup(common.TransactionCase):
 
         # Test without sudo + ir_rules
         users_model = self.env['ir.model']._get(RelatedFoo._name)
-        self.env['ir.rule'].create({
+        self.env['ir.access'].create({
             'name': "Only The Lone Wanderer allowed",
             'model_id': users_model.id,
-            'domain_force': [('id', 'in', foos[1:].ids)],
+            'operation': 'crud',
+            'domain': [('id', 'in', foos[1:].ids)],
         })
         RelatedBase = RelatedBase.with_user(self.base_user)
 
@@ -1483,10 +1484,11 @@ class TestPrivateReadGroup(common.TransactionCase):
 
         # Test without sudo + ir_rules
         users_model = self.env['ir.model']._get(RelatedFoo._name)
-        self.env['ir.rule'].create({
+        self.env['ir.access'].create({
             'name': "Only The Lone Wanderer allowed",
             'model_id': users_model.id,
-            'domain_force': [('id', 'in', foos[1:].ids)],
+            'operation': 'crud',
+            'domain': [('id', 'in', foos[1:].ids)],
         })
 
         # Warmup ormcache
@@ -1519,3 +1521,81 @@ class TestPrivateReadGroup(common.TransactionCase):
                     RelatedBase._read_group([], [fname_chain], ['__count']),
                     [('bar_a', 1), (False, 4)],
                 )
+
+
+@tagged('at_install', '-post_install')
+class TestPublicReadGroup(common.TransactionCase):
+
+    def test_public_read_group(self):
+        User = self.env['test_read_group.user']
+        mario, luigi = User.create([{'name': 'Mario'}, {'name': 'Luigi'}])
+        tasks = self.env['test_read_group.task'].create([
+            {   # both users
+                'name': "Super Mario Bros.",
+                'user_ids': [Command.set((mario + luigi).ids)],
+            },
+            {   # mario only
+                'name': "Paper Mario",
+                'user_ids': [Command.set(mario.ids)],
+            },
+            {   # luigi only
+                'name': "Luigi's Mansion",
+                'user_ids': [Command.set(luigi.ids)],
+            },
+            {   # no user
+                'name': 'Donkey Kong',
+            },
+        ])
+        self.assertEqual(
+            tasks.read_group([], ['user_ids'], ['__count']),
+            [
+                (mario.id, 2),
+                (luigi.id, 2),
+                (False, 1),
+            ],
+        )
+
+        orders = self.env['test_read_group.order'].create([
+            {
+                'name': 'order 1',
+            },
+            {
+                'name': 'order 2',
+            },
+            {
+                'name': 'order 3',
+            },
+        ])
+        orders[1:].many2one_id = orders[0]
+        self.assertEqual(
+            orders.read_group([], ['many2one_id'], ['many2one_id:array_agg', 'name:min']),
+            [
+                (orders[0].id, orders[0].ids * 2, 'order 2'),
+                (False, [None], 'order 1'),
+            ],
+        )
+
+    def test_selection_ordering(self):
+        """ Test _read_group and _order_field_to_sql respect the module selection definition order. """
+        Model = self.env['test_read_group.on_selection']
+
+        # The model's SELECTION is defined in reverse lexical order:
+        # [('c', "C"), ('b', "B"), ('a', "A")]
+        records = Model.create([
+            {'no_expand': 'a', 'value': 1},
+            {'no_expand': 'b', 'value': 2},
+            {'no_expand': 'c', 'value': 3},
+        ])
+
+        groups = Model._read_group(
+            domain=[('id', 'in', records.ids)],
+            groupby=['no_expand'],
+        )
+        self.assertEqual([state for state, in groups], ['c', 'b', 'a'])
+
+        groups = Model._read_group(
+            domain=[('id', 'in', records.ids)],
+            groupby=['no_expand'],
+            order='no_expand ASC',
+        )
+        self.assertEqual([state for state, in groups], ['c', 'b', 'a'])

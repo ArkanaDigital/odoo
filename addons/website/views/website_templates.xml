@@ -39,7 +39,7 @@
             t-if="submenu.is_mega_menu and is_vertical_nav"
             t-attf-class="o_mega_nav o_cc1 position-fixed top-0 #{offcanvas_is_leftside and 'start-0' or 'end-0'} invisible d-flex align-items-center w-100"
         >
-            <button class="btn nav-link oi oi-chevron-left ms-n2 px-2"/>
+            <button class="btn nav-link oi ms-n2 px-2" data-icon="chevron_backward"/>
         </div>
         <!-- Is a dropdown in desktop -> becomes accordion in Mobile / Sidebar / Hamburger -->
         <div t-elif="is_accordion_nav" class="accordion-item">
@@ -182,8 +182,10 @@
         <!-- TODO: Once we have style in DB, add this preconnect only if a
         google font is actually used. Note that if no font is used, the
         preconnect is actually not connecting to the google servers. -->
-        <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin=""/>
+        <t t-call="website.font_links"/>
         <link rel="apple-touch-icon" t-att-href="x_icon"/>
+        <!-- JSON-LD structured data: page-specific payload or fall back to the website's Organization schema. -->
+        <script type="application/ld+json" t-out="structured_data or website._render_jsonld()"/>
     </xpath>
 
     <xpath expr="//head/script" position="before">
@@ -243,7 +245,7 @@
     </xpath>
     <xpath expr="//t[@t-call='web.brand_promotion']/.." position="attributes">
         <attribute name="class" add="o_not_editable small" separator=" "/>
-        <attribute name="t-if">not editable</attribute>
+        <attribute name="t-if">not editable and not translatable</attribute>
     </xpath>
     <xpath expr="//t[@t-call='web.brand_promotion']/.." position="attributes">
         <attribute name="class" remove="text-sm-end" add="mt-auto mb-0 text-md-end" separator=" "/>
@@ -392,7 +394,9 @@
                 <path fill="#FFF" d="M8 8V1a1 1 0 1 1 2 0v8a1 1 0 0 1-1 1H1a1 1 0 1 1 0-2h7z"/>
             </svg>
             <div class="o_frontend_to_backend_buttons d-flex">
-                <a href="#" title="Go to your Odoo Apps" class="o_frontend_to_backend_apps_btn fa fa-th d-flex align-items-center justify-content-center text-decoration-none" data-bs-toggle="dropdown"/>
+                <a href="#" title="Go to your Odoo Apps" class="o_frontend_to_backend_apps_btn d-flex align-items-center justify-content-center text-decoration-none" data-bs-toggle="dropdown" data-bs-display="static" data-hotkey="h">
+                    <i class="oi oi-lg" data-icon="apps" aria-hidden="true"/>
+                </a>
                 <div class="dropdown-menu o_frontend_to_backend_apps_menu" role="menu">
                     <a role="menuitem" class="dropdown-item" t-out="menu['name']"
                        t-as="menu" t-foreach="env['ir.ui.menu'].with_context(force_action=True).load_menus_root()['children']"
@@ -426,13 +430,15 @@
     </xpath>
 </template>
 
-<template id="auth_pages_meta_robots" inherit_id="web.login_layout" name="Auth Pages - No Index">
-    <xpath expr="t[@t-call]" position="before">
-        <t t-set="head">
-            <t t-out="head"/>
-            <meta name="robots" content="noindex, nofollow"/>
-        </t>
-    </xpath>
+<template id="font_links" name="Font Links">
+    <t t-set="font_urls" t-value="website._get_font_urls()"/>
+    <t t-if="any([url.startswith('https://fonts.google') for url in font_urls])">
+        <link rel="preconnect" href="https://fonts.googleapis.com"/>
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
+    </t>
+    <t t-foreach="font_urls" t-as="url">
+        <link t-att-href="url" rel="stylesheet"/>
+    </t>
 </template>
 
 <template id="custom_code_layout" name="Custom Code Layout" inherit_id="website.layout" priority="55">
@@ -718,7 +724,7 @@
                     <t t-call="portal.user_dropdown"
                         _icon="true"
                         _item_class.f="dropdown"
-                        _icon_class.f="fa-stack"
+                        _icon_class.f="oi-stack"
                         _link_class.f="o_navlink_background btn d-flex align-items-center rounded-circle p-1 pe-2 text-reset"
                         _dropdown_menu_class.f="dropdown-menu-end"/>
                 </ul>
@@ -1078,45 +1084,47 @@
         <t t-call="website.navbar"
             _navbar_classes.f="o_header_force_no_radius d-none d-lg-block p-0">
             <div id="o_main_nav" class="o_main_nav">
-                <div aria-label="Top" t-attf-class="#{header_content_width} d-flex align-items-center justify-content-between py-3">
-                    <!-- Brand -->
-                    <t t-call="website.placeholder_header_brand"
-                        _link_class.f="me-4"/>
-                    <!-- Navbar -->
-                    <t t-call="website.navbar_nav"
-                        _nav_class.f="pe-2">
-                        <!-- Menu -->
-                        <t t-foreach="website.menu_id.child_id" t-as="submenu">
-                            <t t-call="website.submenu"
-                                item_class.f="nav-item"
-                                link_class.f="nav-link"/>
+                <div aria-label="Top" class="position-relative">
+                    <div t-attf-class="#{header_content_width} d-flex align-items-center justify-content-between py-3">
+                        <!-- Brand -->
+                        <t t-call="website.placeholder_header_brand"
+                            _link_class.f="me-4"/>
+                        <!-- Navbar -->
+                        <t t-call="website.navbar_nav"
+                            _nav_class.f="pe-2">
+                            <!-- Menu -->
+                            <t t-foreach="website.menu_id.child_id" t-as="submenu">
+                                <t t-call="website.submenu"
+                                    item_class.f="nav-item"
+                                    link_class.f="nav-link"/>
+                            </t>
                         </t>
-                    </t>
-                    <ul class="o_header_sales_one_right_col navbar-nav align-items-center gap-1 flex-grow-1 justify-content-end">
-                        <!-- Call To Action -->
-                        <t t-call="website.placeholder_header_call_to_action"
-                            _item_class.f="flex-grow-1"
-                            _div_class.f="d-flex align-items-center"/>
-                        <!-- Search bar -->
-                        <t t-call="website.placeholder_header_search_box"
-                            _simple_button_layout="True"
-                            _simple_button_classes.f="o_navlink_background rounded-circle p-1 lh-1"/>
-                        <!-- Sign In -->
-                        <t t-call="portal.placeholder_user_sign_in"
-                            _link_class.f="btn rounded-circle text-reset fw-bold o_navlink_background"/>
-                        <!-- User Dropdown -->
-                        <t t-call="portal.user_dropdown"
-                            _icon="true"
-                            _item_class.f="dropdown"
-                            _icon_class.f="fa-stack"
-                            _link_class.f="btn d-flex align-items-center rounded-circle p-1 pe-3 text-reset o_navlink_background"
-                            _dropdown_menu_class.f="dropdown-menu-end"/>
-                        <!-- Language Selector -->
-                        <t t-call="website.placeholder_header_language_selector"
-                            _btn_class.f="btn rounded-circle text-reset o_navlink_background"
-                            _txt_class.f="small"
-                            _dropdown_menu_class.f="dropdown-menu-end"/>
-                    </ul>
+                        <ul class="o_header_sales_one_right_col navbar-nav align-items-center gap-1 flex-grow-1 justify-content-end">
+                            <!-- Call To Action -->
+                            <t t-call="website.placeholder_header_call_to_action"
+                                _item_class.f="flex-grow-1"
+                                _div_class.f="d-flex align-items-center"/>
+                            <!-- Search bar -->
+                            <t t-call="website.placeholder_header_search_box"
+                                _simple_button_layout="True"
+                                _simple_button_classes.f="o_navlink_background rounded-circle p-1 lh-1 text-reset"/>
+                            <!-- Sign In -->
+                            <t t-call="portal.placeholder_user_sign_in"
+                                _link_class.f="btn rounded-circle text-reset fw-bold o_navlink_background"/>
+                            <!-- User Dropdown -->
+                            <t t-call="portal.user_dropdown"
+                                _icon="true"
+                                _item_class.f="dropdown"
+                                _icon_class.f="oi-stack"
+                                _link_class.f="btn d-flex align-items-center rounded-circle p-1 pe-3 text-reset o_navlink_background"
+                                _dropdown_menu_class.f="dropdown-menu-end"/>
+                            <!-- Language Selector -->
+                            <t t-call="website.placeholder_header_language_selector"
+                                _btn_class.f="btn rounded-circle text-reset o_navlink_background"
+                                _txt_class.f="small"
+                                _dropdown_menu_class.f="dropdown-menu-end"/>
+                        </ul>
+                    </div>
                 </div>
                 <div aria-label="Bottom" t-if="is_view_active('website.header_text_element') or is_view_active('website.header_social_links')" class="o_header_sales_one_bot o_header_hide_on_scroll gap-3 py-2">
                     <ul t-attf-class="#{header_content_width} navbar-nav justify-content-between align-items-center">
@@ -1197,7 +1205,7 @@
                             <t t-call="portal.user_dropdown"
                                 _user_name="true"
                                 _icon="true"
-                                _icon_class.f="fa-stack"
+                                _icon_class.f="oi-stack"
                                 _item_class.f="dropdown"
                                 _link_class.f="btn d-flex align-items-center border-0 fw-bold text-reset o_navlink_trigger_hover"
                                 _icon_wrap_class.f="position-relative me-2 p-2 rounded-circle o_navlink_background transition-base"
@@ -1342,45 +1350,47 @@
         <t t-call="website.navbar"
             _navbar_classes.f="o_header_sales_four_top o_header_force_no_radius d-none d-lg-block p-0 z-1">
             <div id="o_main_nav" class="o_main_nav">
-                <div aria-label="Top" t-attf-class="#{header_content_width} d-flex">
-                    <!-- Navbar -->
-                    <t t-call="website.navbar_nav"
-                        _nav_class.f="align-items-center me-auto pe-3">
-                        <!-- Menu -->
-                        <t t-foreach="website.menu_id.child_id" t-as="submenu">
-                            <t t-call="website.submenu"
-                                item_class.f="nav-item small"
-                                link_class.f="nav-link"/>
+                <div aria-label="Top" class="position-relative">
+                    <div t-attf-class="#{header_content_width} d-flex">
+                        <!-- Navbar -->
+                        <t t-call="website.navbar_nav"
+                            _nav_class.f="align-items-center me-auto pe-3">
+                            <!-- Menu -->
+                            <t t-foreach="website.menu_id.child_id" t-as="submenu">
+                                <t t-call="website.submenu"
+                                    item_class.f="nav-item small"
+                                    link_class.f="nav-link"/>
+                            </t>
                         </t>
-                    </t>
-                    <ul class="o_header_separator navbar-nav align-items-center gap-3 flex-shrink-0">
-                        <!-- Text element -->
-                        <t t-call="website.placeholder_header_text_element"
-                            _txt_elt_content.f="mail"
-                            _div_class.f="d-flex align-items-center"
-                            _item_class.f="position-relative"/>
-                        <!-- Social -->
-                        <t t-call="website.placeholder_header_social_links"
-                            _div_class.f="d-flex align-items-center"
-                            _item_class.f="position-relative"/>
-                        <!-- Sign In -->
-                        <t t-call="portal.placeholder_user_sign_in"
-                            _item_class.f="position-relative small"
-                            _link_class.f="{{_additional_btn_color or 'nav-link'}} d-flex align-items-center h-100 border-0 px-2 text-decoration-none"/>
-                        <!-- User Dropdown -->
-                        <t t-call="portal.user_dropdown"
-                            _user_name="true"
-                            _item_class.f="dropdown position-relative d-flex align-items-center"
-                            _link_class.f="nav-link border-0"
-                            _user_name_class.f="small"
-                            _dropdown_menu_class.f="dropdown-menu-end"/>
-                        <!-- Language Selector -->
-                        <t t-call="website.placeholder_header_language_selector"
-                            _div_classes.f="position-relative"
-                            _btn_class.f="nav-link"
-                            _txt_class.f="small"
-                            _dropdown_menu_class.f="dropdown-menu-end"/>
-                    </ul>
+                        <ul class="o_header_separator navbar-nav align-items-center gap-3 flex-shrink-0">
+                            <!-- Text element -->
+                            <t t-call="website.placeholder_header_text_element"
+                                _txt_elt_content.f="mail"
+                                _div_class.f="d-flex align-items-center"
+                                _item_class.f="position-relative"/>
+                            <!-- Social -->
+                            <t t-call="website.placeholder_header_social_links"
+                                _div_class.f="d-flex align-items-center"
+                                _item_class.f="position-relative"/>
+                            <!-- Sign In -->
+                            <t t-call="portal.placeholder_user_sign_in"
+                                _item_class.f="position-relative small"
+                                _link_class.f="{{_additional_btn_color or 'nav-link'}} d-flex align-items-center h-100 border-0 px-2 text-decoration-none"/>
+                            <!-- User Dropdown -->
+                            <t t-call="portal.user_dropdown"
+                                _user_name="true"
+                                _item_class.f="dropdown position-relative d-flex align-items-center"
+                                _link_class.f="nav-link border-0"
+                                _user_name_class.f="small"
+                                _dropdown_menu_class.f="dropdown-menu-end"/>
+                            <!-- Language Selector -->
+                            <t t-call="website.placeholder_header_language_selector"
+                                _div_classes.f="position-relative"
+                                _btn_class.f="nav-link"
+                                _txt_class.f="small"
+                                _dropdown_menu_class.f="dropdown-menu-end"/>
+                        </ul>
+                    </div>
                 </div>
                 <div aria-label="Bottom" class="o_header_sales_four_bot o_header_hide_on_scroll z-0">
                     <div t-attf-class="#{header_content_width}">
@@ -1568,7 +1578,7 @@
                         <t t-call="website.placeholder_header_search_box"
                             _layout.f="modal"
                             _simple_button_layout="True"
-                            _simple_button_classes.f="o_navlink_background rounded-circle p-1 lh-1"/>
+                            _simple_button_classes.f="o_navlink_background rounded-circle p-1 lh-1 text-reset"/>
                         <!-- Text element -->
                         <t t-call="website.placeholder_header_text_element"/>
                         <!-- Social -->
@@ -1790,23 +1800,23 @@
                         <div class="col-lg-4 offset-lg-1 pt24 pb24">
                             <h5>Connect with us</h5>
                             <ul class="list-unstyled">
-                                <li><i class="fa fa-comment fa-fw me-2"/><a href="/contactus">Contact us</a></li>
-                                <li><i class="fa fa-envelope fa-fw me-2"/><a href="mailto:info@yourcompany.example.com">info@yourcompany.example.com</a></li>
-                                <li><i class="fa fa-phone fa-fw me-2"/><a href="tel:+1 555-555-5556"><span class="o_force_ltr">+1 555-555-5556</span></a></li>
+                                <li><i class="oi oi-filled oi-fw me-2" data-icon="chat_bubble"/><a href="/contactus">Contact us</a></li>
+                                <li><i class="oi oi-filled oi-fw me-2" data-icon="mail"/><a href="mailto:info@yourcompany.example.com">info@yourcompany.example.com</a></li>
+                                <li><i class="oi oi-filled oi-fw me-2" data-icon="phone"/><a href="tel:+1 555-555-5556"><span class="o_force_ltr">+1 555-555-5556</span></a></li>
                             </ul>
                             <div class="s_social_media text-start o_not_editable" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <h5 class="s_social_media_title d-none" contenteditable="true">Follow us</h5>
                                 <a href="#" class="s_social_media_facebook" target="_blank" aria-label="Facebook">
-                                    <i class="fa fa-facebook rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_twitter" target="_blank" aria-label="X">
-                                    <i class="fa fa-twitter rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank" aria-label="LinkedIn">
-                                    <i class="fa fa-linkedin rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                                 <a href="/" class="text-800" aria-label="Extra page">
-                                    <i class="fa fa-home rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="home"/>
                                 </a>
                             </div>
                         </div>
@@ -1834,22 +1844,22 @@
                         <div class="col-lg-4 offset-lg-3 pb48">
                             <p><b>My Company</b><br/>8000 Marina Blvd, Suite 300 <br/> Brisbane CA 94005 <br/>United States</p>
                             <ul class="list-unstyled mb-2">
-                                <li><i class="fa fa-phone fa-fw me-2"/><span class="o_force_ltr"><a href="tel:+1 555-555-5556">+1 555-555-5556</a></span></li>
-                                <li><i class="fa fa-envelope fa-fw me-2"/><span><a href="mailto:hello@mycompany.com">hello@mycompany.com</a></span></li>
+                                <li><i class="oi oi-filled oi-fw me-2" data-icon="phone"/><span class="o_force_ltr"><a href="tel:+1 555-555-5556">+1 555-555-5556</a></span></li>
+                                <li><i class="oi oi-filled oi-fw me-2" data-icon="mail"/><span><a href="mailto:hello@mycompany.com">hello@mycompany.com</a></span></li>
                             </ul>
                             <div class="s_social_media text-start o_not_editable" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <h5 class="s_social_media_title d-none" contenteditable="true">Follow us</h5>
                                 <a href="#" class="s_social_media_facebook" target="_blank">
-                                    <i class="fa fa-facebook rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_twitter" target="_blank">
-                                    <i class="fa fa-twitter rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank">
-                                    <i class="fa fa-instagram rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank">
-                                    <i class="fa fa-linkedin rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                             </div>
                         </div>
@@ -1870,13 +1880,13 @@
                             <div class="s_social_media text-center o_not_editable no_icon_color" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <h5 class="s_social_media_title d-none" contenteditable="true">Follow us</h5>
                                 <a href="#" class="s_social_media_facebook" target="_blank" aria-label="Facebook">
-                                    <i class="fa fa-facebook rounded-empty-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-empty-circle shadow-sm o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_twitter" target="_blank" aria-label="X">
-                                    <i class="fa fa-twitter rounded-empty-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-empty-circle shadow-sm o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank" aria-label="LinkedIn">
-                                    <i class="fa fa-linkedin rounded-empty-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-empty-circle shadow-sm o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                             </div>
                             <div class="s_hr pt24 pb24" data-snippet="s_hr" data-name="Separator">
@@ -1936,17 +1946,17 @@
                         <div class="col-lg-2 col-10 offset-1 offset-lg-0 pb16">
                             <h5>Follow us</h5>
                             <ul class="list-unstyled">
-                                <li><i class="fa fa-fw fa-facebook-square me-2"/><a href="#" target="_blank">Facebook</a></li>
-                                <li><i class="fa fa-fw fa-twitter-square me-2"/><a href="#" target="_blank">X</a></li>
-                                <li><i class="fa fa-fw fa-linkedin-square me-2"/><a href="#" target="_blank">Linkedin</a></li>
-                                <li><i class="fa fa-fw fa-instagram me-2"/><a href="#" target="_blank">Instagram</a></li>
+                                <li><i class="oi oi-fw me-2" data-icon="oi_facebook-square"/><a href="#" target="_blank">Facebook</a></li>
+                                <li><i class="oi oi-fw me-2" data-icon="oi_twitter-square"/><a href="#" target="_blank">X</a></li>
+                                <li><i class="oi oi-fw me-2" data-icon="oi_linkedin-square"/><a href="#" target="_blank">Linkedin</a></li>
+                                <li><i class="oi oi-fw me-2" data-icon="oi_instagram"/><a href="#" target="_blank">Instagram</a></li>
                             </ul>
                         </div>
                         <div class="col-lg-3 col-10 offset-1 offset-lg-0 pb16">
                             <h5>Get in touch</h5>
                             <ul class="list-unstyled">
-                                <li><i class="fa fa-fw fa-envelope me-2"/><a href="mailto:info@yourcompany.com">info@yourcompany.com</a></li>
-                                <li><i class="fa fa-fw fa-phone me-2"/><a href="tel:+1 555-555-5556"><span class="o_force_ltr">+1 555-555-5556"</span></a></li>
+                                <li><i class="oi oi-fw oi-filled me-2" data-icon="mail"/><a href="mailto:info@yourcompany.com">info@yourcompany.com</a></li>
+                                <li><i class="oi oi-fw oi-filled me-2" data-icon="phone"/><a href="tel:+1 555-555-5556"><span class="o_force_ltr">+1 555-555-5556"</span></a></li>
                             </ul>
                         </div>
                         <div class="col-lg-3 col-10 offset-1 offset-lg-0 pb16">
@@ -1986,13 +1996,13 @@
                             <div class="s_social_media no_icon_color o_not_editable text-center" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <h5 class="s_social_media_title d-none" contenteditable="true">Follow us</h5>
                                 <a href="#" class="s_social_media_facebook" target="_blank">
-                                    <i class="fa fa-facebook fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_twitter" target="_blank">
-                                    <i class="fa fa-twitter fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank">
-                                    <i class="fa fa-instagram fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                             </div>
                         </div>
@@ -2025,13 +2035,13 @@
                             <div class="s_social_media text-start no_icon_color o_not_editable" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <h6 class="s_social_media_title d-block mb-2" contenteditable="true">Follow us</h6>
                                 <a href="#" class="s_social_media_twitter" target="_blank">
-                                    <i class="fa fa-twitter fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank">
-                                    <i class="fa fa-linkedin fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank">
-                                    <i class="fa fa-instagram fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                             </div>
                         </div>
@@ -2085,7 +2095,7 @@
                             <p>
                                 8000 Marina Blvd, Suite 300 • Brisbane CA 94005 • United States
                             </p>
-                            <div class="s_hr d-lg-none o_snippet_desktop_invisible pb16 pt16">
+                            <div class="s_hr d-lg-none o_snippet_desktop_invisible pb16 pt16" data-snippet="s_hr" data-name="Separator">
                                 <hr class="w-100 mx-auto"/>
                             </div>
                         </div>
@@ -2117,22 +2127,22 @@
                             <a href="#" class="o_translate_inline btn btn-primary">Get in touch</a>
                         </div>
                         <div class="col-lg-4">
-                            <i class="fa fa-envelope fa-fw me-2"/><a href="mailto:info@yourcompany.example.com">info@yourcompany.example.com</a>
+                            <i class="oi oi-filled oi-fw me-2" data-icon="mail"/><a href="mailto:info@yourcompany.example.com">info@yourcompany.example.com</a>
                         </div>
                         <div class="col-lg-4 pb24">
-                            <i class="fa fa-phone fa-fw me-2"/><a href="tel:+1 555-555-5556"><span class="o_force_ltr">+1 555-555-5556</span></a>
+                            <i class="oi oi-filled oi-fw me-2" data-icon="phone"/><a href="tel:+1 555-555-5556"><span class="o_force_ltr">+1 555-555-5556</span></a>
                         </div>
                         <div class="col-lg-2 offset-lg-2 pb24">
                             <div class="s_social_media text-start o_not_editable" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <h5 class="s_social_media_title d-none" contenteditable="true">Follow Us</h5>
                                 <a href="#" class="s_social_media_facebook" target="_blank" aria-label="Facebook">
-                                    <i class="fa fa-facebook rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_twitter" target="_blank" aria-label="X">
-                                    <i class="fa fa-twitter rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank" aria-label="Instagram">
-                                    <i class="fa fa-instagram rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi rounded-circle shadow-sm o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                             </div>
                         </div>
@@ -2202,19 +2212,19 @@
                             <div class="s_social_media text-start o_not_editable no_icon_color" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <p class="s_social_media_title d-none" contenteditable="true">Follow us</p>
                                 <a href="#" class="s_social_media_twitter" target="_blank">
-                                    <i class="fa fa-twitter fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank">
-                                    <i class="fa fa-linkedin fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank">
-                                    <i class="fa fa-instagram fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                                 <a href="#" class="s_social_media_facebook" target="_blank">
-                                    <i class="fa fa-facebook fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_youtube" target="_blank">
-                                    <i class="fa fa-youtube-play fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_youtube-play"/>
                                 </a>
                             </div>
                         </div>
@@ -2318,19 +2328,19 @@
                             <div class="s_social_media text-start o_not_editable no_icon_color" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <p class="s_social_media_title d-none" contenteditable="true">Follow us</p>
                                 <a href="#" class="s_social_media_twitter" target="_blank">
-                                    <i class="fa fa-twitter fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank">
-                                    <i class="fa fa-linkedin fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank">
-                                    <i class="fa fa-instagram fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                                 <a href="#" class="s_social_media_facebook" target="_blank">
-                                    <i class="fa fa-facebook fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_youtube" target="_blank">
-                                    <i class="fa fa-youtube-play fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_youtube-play"/>
                                 </a>
                             </div>
                         </div>
@@ -2447,19 +2457,19 @@
                             <div class="s_social_media text-start o_not_editable no_icon_color" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <p class="s_social_media_title d-none" contenteditable="true">Follow us</p>
                                 <a href="#" class="s_social_media_twitter" target="_blank">
-                                    <i class="fa fa-twitter fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank">
-                                    <i class="fa fa-linkedin fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank">
-                                    <i class="fa fa-instagram fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                                 <a href="#" class="s_social_media_facebook" target="_blank">
-                                    <i class="fa fa-facebook fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_youtube" target="_blank">
-                                    <i class="fa fa-youtube-play fa-stack o_editable_media"/>
+                                    <i class="oi oi-stack o_editable_media" data-icon="oi_youtube-play"/>
                                 </a>
                             </div>
                         </div>
@@ -2526,19 +2536,19 @@
                             <div class="s_social_media text-start o_not_editable" data-snippet="s_social_media" data-name="Social Media" contenteditable="false">
                                 <h5 class="s_social_media_title d-block mb-2" contenteditable="true">Follow us</h5>
                                 <a href="#" class="s_social_media_twitter" target="_blank">
-                                    <i class="fa fa-twitter fa-stack rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi oi-stack rounded-circle shadow-sm o_editable_media" data-icon="oi_twitter"/>
                                 </a>
                                 <a href="#" class="s_social_media_linkedin" target="_blank">
-                                    <i class="fa fa-linkedin fa-stack rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi oi-stack rounded-circle shadow-sm o_editable_media" data-icon="oi_linkedin"/>
                                 </a>
                                 <a href="#" class="s_social_media_instagram" target="_blank">
-                                    <i class="fa fa-instagram fa-stack rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi oi-stack rounded-circle shadow-sm o_editable_media" data-icon="oi_instagram"/>
                                 </a>
                                 <a href="#" class="s_social_media_facebook" target="_blank">
-                                    <i class="fa fa-facebook fa-stack rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi oi-stack rounded-circle shadow-sm o_editable_media" data-icon="oi_facebook"/>
                                 </a>
                                 <a href="#" class="s_social_media_youtube" target="_blank">
-                                    <i class="fa fa-youtube-play fa-stack rounded-circle shadow-sm o_editable_media"/>
+                                    <i class="oi oi-stack rounded-circle shadow-sm o_editable_media" data-icon="oi_youtube-play"/>
                                 </a>
                             </div>
                         </div>
@@ -2553,9 +2563,6 @@
 <template id="template_footer_slideout" inherit_id="website.layout" name="Template Footer Slideout" active="False">
     <xpath expr="//footer[@id='bottom']" position="attributes">
         <attribute name="t-attf-class" add="o_footer_slideout" separator=" "/>
-    </xpath>
-    <xpath expr="//div[@id='wrapwrap']" position="attributes">
-        <attribute name="t-attf-class" add="o_footer_effect_enable" separator=" "/>
     </xpath>
 </template>
 
@@ -2581,7 +2588,9 @@
 
 <template id="footer_copyright_company_name" inherit_id="website.layout">
     <xpath expr="//footer//span[hasclass('o_footer_copyright_name')]" position="replace">
-        <span class="o_footer_copyright_name me-2 small">Copyright &amp;copy; Company name</span>
+        <span class="o_footer_copyright_name me-2 small" t-ignore="true">
+            Copyright &amp;copy; <span t-out="res_company.name"/>
+        </span>
     </xpath>
     <xpath expr="//footer//span[hasclass('o_footer_copyright_name')]/.." position="attributes">
         <attribute name="class" remove="text-sm-start" add="d-flex flex-column-reverse gap-2 text-md-start" separator=" "/>
@@ -2610,7 +2619,7 @@
                href="#top"
                title="Scroll To Top"
                class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center">
-                <span class="oi fa-1x oi-chevron-up"/>
+                <span class="oi" data-icon="keyboard_arrow_up"/>
             </a>
         </div>
     </xpath>
@@ -2634,23 +2643,24 @@
                 <div class="modal-dialog d-flex s_popup_size_full">
                     <div class="modal-content oe_structure">
                         <!-- Keep this section equivalent to the rendering of the `website.cookies_bar.discrete` client template -->
-                        <section class="o_colored_level o_cc o_cc1">
+                        <section class="o_colored_level o_cc o_cc1 pe-5 oe_unremovable">
                             <div class="container">
                                 <div class="row">
                                     <div class="col-lg-8 pt16">
                                         <p>
-                                            <span class="pe-1">We use cookies to provide you a better user experience on this website.</span>
+                                            <span>We use cookies to provide you a better user experience on this website.</span>
                                             <a href="/website/cookie-policy" class="o_cookies_bar_text_policy small o_translate_inline">Cookie Policy</a>
                                         </p>
                                     </div>
-                                    <div class="col-lg-4 text-end pt16 pb16">
-                                        <a href="#" id="cookies-consent-essential" role="button"
-                                           class="js_close_popup btn btn-outline-primary rounded-circle btn-sm px-2">Only essentials</a>
-                                        <a href="#" id="cookies-consent-all" role="button"
-                                           class="js_close_popup btn btn-outline-primary rounded-circle btn-sm">I agree</a>
+                                    <div class="col-lg-4 text-end pt16 pb16 oe_unremovable">
+                                        <a href="#" id="cookies-consent-essential" role="button" data-name="Refuse optional cookies"
+                                           class="js_close_popup btn btn-outline-primary rounded-circle btn-sm px-2 mb-2 oe_unremovable">Only essentials</a>
+                                        <a href="#" id="cookies-consent-all" role="button" data-name="Accept all cookies"
+                                           class="js_close_popup btn btn-outline-primary rounded-circle btn-sm mb-2 oe_unremovable">I agree</a>
                                     </div>
                                 </div>
                             </div>
+                            <button type="button" class="s_popup_close o_cookies_bar_close border-0 p-0 o_we_no_overlay o_not_editable shadow-none" aria-label="Close">×</button>
                         </section>
                     </div>
                 </div>
@@ -2683,6 +2693,7 @@
     </xpath>
     <xpath expr="//*[contains(@t-attf-class, 'js_change_lang')]/span" position="before">
         <t t-if="flags">
+            <t t-if="no_text and not codes" t-set="flag_lang_alt" t-value="lg.name.split('/').pop()"/>
             <t t-call="website.lang_flag"
                 flag_image_url="lg.flag_image_url"/>
         </t>
@@ -2852,7 +2863,7 @@
         t-attf-class="o_unpublished_badge badge bg-black-75 shadow-sm {{badge_classes}}"
         t-att-title="is_minimal_badge and unpublished_label or ''"
     >
-        <i t-attf-class="fa fa-ban {{not is_minimal_badge and 'me-2' or ''}}" aria-hidden="true"/><t t-if="not is_minimal_badge"><t t-out="unpublished_label"/></t>
+        <i t-attf-class="oi {{not is_minimal_badge and 'me-2' or ''}}" aria-hidden="true" data-icon="block"/><t t-if="not is_minimal_badge"><t t-out="unpublished_label"/></t>
     </small>
 </template>
 
@@ -2993,13 +3004,13 @@
                 <form class="offset-md-3 col-md-6" method="POST">
                     <div class="alert alert-info mt32" t-if="not request.params.get('visibility_password')">
                         <div class="h5 text-center">
-                            <i class="fa fa-lock fa-2x"/><br/>
+                            <i class="oi oi-2x" data-icon="lock"/><br/>
                             <span class="mt-1">A password is required to access this page.</span>
                         </div>
                     </div>
                     <div class="alert alert-warning mt32" t-else="">
                         <div class="h5 text-center">
-                            <i class="fa fa-lock fa-2x"/><br/>
+                            <i class="oi oi-2x" data-icon="lock"/><br/>
                             <span class="mt-1">Wrong password</span>
                         </div>
                     </div>
@@ -3009,7 +3020,7 @@
                             <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()" />
                             <input type="password" id="password" class="form-control" required="required" name="visibility_password" />
                           <button class="btn border border-start-0 o_show_password" type="button">
-                            <i class="fa fa-eye"></i>
+                            <i class="oi" data-icon="visibility"></i>
                           </button>
                         </div>
                     </div>
@@ -3145,7 +3156,16 @@ Sitemap: <t t-out="website.domain"/>/sitemap.xml
 </t>
 <t t-else="">
 Sitemap: <t t-out="url_root"/>sitemap.xml
-<t id="robots_module_rules"/>
+<t id="robots_module_rules">
+Disallow: /web/login
+Disallow: /*/web/login
+Disallow: /web/signup
+Disallow: /*/web/signup
+Disallow: /web/reset_password
+Disallow: /*/web/reset_password
+Disallow: /my/
+Disallow: /*/my/*
+</t>
 
 ##############
 #   custom   #
@@ -3209,7 +3229,7 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
             <small t-attf-class="o_search_found_results {{'d-none' if not search else ''}}">
                 <span class="o_search_count" t-out="search_count"/> result(s)
             </small>
-            <i t-attf-class="{{'d-none' if search else ''}} oi oi-search"/>
+            <i t-attf-class="{{'d-none' if search else ''}} oi" data-icon="search"/>
         </button>
     </div>
 </template>
@@ -3271,7 +3291,7 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
 
 <template id="website.search_image_item_view">
     <img t-if="result.get('image_url')" t-att-src="result['image_url']" class="o_search_result_image flex-shrink-0 rounded-2"/>
-    <i t-else="" t-attf-class="o_search_result_image flex-shrink-0 align-content-center rounded-2 fs-6 text-center text-muted fa #{result['_fa']}"/>
+    <i t-else="" t-attf-class="o_search_result_image flex-shrink-0 align-content-center rounded-2 fs-6 text-center text-muted oi" t-att-data-icon="result['_icon']"/>
 </template>
 
 <template id="website.search_result_items">
@@ -3372,7 +3392,7 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
         <t t-set="placeholder" t-value="placeholder or 'Search...'" />
         <form t-attf-class="o_searchbar_form s_searchbar_input #{_form_classes}" t-att-action="action" method="get" t-attf-data-snippet="s_searchbar_input">
             <a t-if="_simple_button_layout" t-attf-class="o_search_btn {{_simple_button_classes or 'p-1 bg-o-color-3 lh-1'}} btn o_not_editable" role="button" title="Search" href="#">
-                <i class="fa-stack lh-lg oi oi-search" role="img"/>
+                <i class="oi-stack lh-lg oi" data-icon="search" role="img"/>
             </a>
             <t>$0</t>
             <input name="order" type="hidden" class="o_search_order_by oe_unremovable" t-att-value="order_by if order_by else 'name asc'"/>
@@ -3403,7 +3423,8 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
                     </p>
                     <span
                         t-if="not step_last"
-                        class="fa fa-angle-right d-inline-block align-middle mx-3 text-muted fs-5"
+                        class="oi d-inline-block align-middle mx-3 text-muted fs-5"
+                        data-icon="keyboard_arrow_right"
                     />
                 </div>
             </span>
@@ -3419,7 +3440,8 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
                     </p>
                     <span
                         t-if="not step_last"
-                        class="fa fa-angle-right d-inline-block align-middle mx-3 text-muted fs-5"
+                        class="oi d-inline-block align-middle mx-3 text-muted fs-5"
+                        data-icon="keyboard_arrow_right"
                     />
                 </div>
             </a>
@@ -3443,16 +3465,16 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
                 <div class="s_social_media o_not_editable oe_unmovable oe_unremovable" data-snippet="s_social_media" data-name="Social Media">
                     <h5 class="s_social_media_title d-none">Follow us</h5>
                     <a href="#" class="s_social_media_facebook o_nav-link_secondary nav-link m-0 p-0 text-decoration-none" target="_blank" aria-label="Facebook">
-                        <i class="fa fa-facebook fa-stack p-1 o_editable_media"/>
+                        <i class="oi oi-stack p-1 o_editable_media" data-icon="oi_facebook"/>
                     </a>
                     <a href="#" class="s_social_media_twitter o_nav-link_secondary nav-link m-0 p-0 text-decoration-none" target="_blank" aria-label="X">
-                        <i class="fa fa-twitter fa-stack p-1 o_editable_media"/>
+                        <i class="oi oi-stack p-1 o_editable_media" data-icon="oi_twitter"/>
                     </a>
                     <a href="#" class="s_social_media_linkedin o_nav-link_secondary nav-link m-0 p-0 text-decoration-none" target="_blank" aria-label="LinkedIn">
-                        <i class="fa fa-linkedin fa-stack p-1 o_editable_media"/>
+                        <i class="oi oi-stack p-1 o_editable_media" data-icon="oi_linkedin"/>
                     </a>
                     <a href="#" class="s_social_media_instagram o_nav-link_secondary nav-link m-0 p-0 text-decoration-none" target="_blank" aria-label="Instagram">
-                        <i class="fa fa-instagram fa-stack p-1 o_editable_media"/>
+                        <i class="oi oi-stack p-1 o_editable_media" data-icon="oi_instagram"/>
                     </a>
                 </div>
             </div>
@@ -3487,15 +3509,15 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
             <t t-elif="_txt_elt_content == 'list'">
                 <div t-attf-class="s_text_block d-flex flex-column flex-lg-row gap-1 gap-lg-4 align-items-lg-center #{_div_class}" data-name="Text">
                     <small class="d-flex align-items-center">
-                        <i class="fa fa-1x fa-fw fa-usd fa-stack me-1"/>
+                        <i class="oi oi-1x oi-fw oi-stack me-1" data-icon="attach_money"/>
                         Low Price Guarantee
                     </small>
                     <small class="d-flex align-items-center">
-                        <i class="fa fa-1x fa-fw fa-shopping-basket fa-stack me-1"/>
+                        <i class="oi oi-1x oi-fw oi-stack me-1" data-icon="shopping_basket"/>
                         30 Days Online Returns
                     </small>
                     <small class="d-flex align-items-center">
-                        <i class="fa fa-1x fa-fw fa-truck fa-stack me-1"/>
+                        <i class="oi oi-1x oi-fw oi-stack me-1" data-icon="local_shipping"/>
                         Standard Shipping
                     </small>
                 </div>
@@ -3504,13 +3526,13 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
                 <div t-attf-class="s_text_block #{_div_class}" data-name="Text">
                     <a href="tel:+1 555-555-5556" class="nav-link o_nav-link_secondary">
                         <small>
-                            <i class="fa fa-1x fa-fw fa-phone me-1"/>͏ <!-- Empty character needed to be able to delete the icon. -->
+                            <i class="oi oi-1x oi-fw oi-filled me-1" data-icon="phone"/>͏ <!-- Empty character needed to be able to delete the icon. -->
                             <span class="o_force_ltr">+1 555-555-5556</span>
                         </small>
                     </a>
                     <a href="mailto:info@yourcompany.example.com" class="nav-link o_nav-link_secondary">
                         <small>
-                            <i class="fa fa-1x fa-fw fa-envelope me-1"/>
+                            <i class="oi oi-1x oi-fw oi-filled me-1" data-icon="mail"/>
                             info@yourcompany.example.com
                         </small>
                     </a>
@@ -3519,14 +3541,14 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
             <t t-elif="_txt_elt_content == 'mail'">
                 <div t-attf-class="s_text_block #{_div_class}" data-name="Text">
                     <a href="mailto:info@yourcompany.example.com" class="nav-link o_nav-link_secondary">
-                        <small><i class="fa fa-1x fa-fw fa-envelope me-1"/> info@yourcompany.example.com</small>
+                        <small><i class="oi oi-1x oi-fw oi-filled me-1" data-icon="mail"/> info@yourcompany.example.com</small>
                     </a>
                 </div>
             </t>
             <t t-elif="_txt_elt_content == 'mail_stretched'">
                 <div t-attf-class="s_text_block #{_div_class}" data-name="Text">
                     <a href="tel:+1 555-555-5556" class="nav-link o_nav-link_secondary p-2 o_navlink_background_hover d-flex align-items-center h-100 text-reset">
-                        <i class="fa fa-1x fa-fw fa-phone me-1"/>
+                        <i class="oi oi-1x oi-fw i-filled me-1" data-icon="phone"/>
                         <span class="o_force_ltr"><small>+1 555-555-5556</small></span>
                     </a>
                 </div>
@@ -3534,7 +3556,7 @@ Sitemap: <t t-out="url_root"/>sitemap.xml
             <t t-else="">
                 <div t-attf-class="s_text_block #{_div_class}" data-name="Text">
                     <a href="tel:+1 555-555-5556" class="nav-link o_nav-link_secondary p-2">
-                        <i class="fa fa-1x fa-fw fa-phone me-1"/>
+                        <i class="oi oi-1x oi-fw oi-filled me-1" data-icon="phone"/>
                         <span class="o_force_ltr"><small>+1 555-555-5556</small></span>
                     </a>
                 </div>

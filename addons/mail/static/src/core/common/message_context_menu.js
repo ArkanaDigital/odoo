@@ -1,9 +1,12 @@
 import { ActionList } from "./action_list";
 import { useMessageActions } from "./message_actions";
 
-import { Component, computed, props, types } from "@odoo/owl";
+import { propSignal } from "@mail/utils/common/hooks";
+
+import { Component, computed, t, useProps } from "@odoo/owl";
 
 import { Dropdown } from "@web/core/dropdown/dropdown";
+import { DropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { useService } from "@web/core/utils/hooks";
 
 export class MessageContextMenu extends Component {
@@ -13,15 +16,16 @@ export class MessageContextMenu extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
-        this.props = props({
-            anchorRef: types.signal(types.instanceOf(HTMLElement)),
-            dropdownState: types.object(),
-            message: types.instanceOf(this.store["mail.message"].Class),
-            "thread?": types.instanceOf(this.store["mail.thread"].Class),
+        this.props = useProps({
+            dropdownState: t.instanceOf(DropdownState),
+            message: t.instanceOf(this.store["mail.message"]),
+            thread: t.instanceOf(this.store["mail.thread"]).optional(),
         });
+        /** Anchor element, owned by the parent and bound here with `t-ref`. */
+        this.anchorRef = propSignal("anchorRef", t.instanceOf(HTMLElement));
         this.messageActions = useMessageActions({
             message: () => this.props.message,
-            reactionAnchorRef: computed(() => this.props.anchorRef()),
+            reactionAnchorRef: computed(() => this.anchorRef()),
             thread: () => this.props.thread,
         });
     }

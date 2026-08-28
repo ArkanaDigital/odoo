@@ -1,10 +1,9 @@
-import { cleanTerm } from "@mail/utils/common/format";
-
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, t, useProps } from "@odoo/owl";
 
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { Dialog } from "@web/core/dialog/dialog";
 import { _t } from "@web/core/l10n/translation";
+import { normalize } from "@web/core/l10n/utils";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { highlightText } from "@web/core/utils/html";
@@ -17,11 +16,14 @@ const VIEW_HIDDEN = "VIEW_HIDDEN";
 
 class CreateChannelDialog extends Component {
     static components = { Dialog };
-    static props = ["close", "name?"];
     static template = "mail.CreateChannelDialog";
 
     setup() {
         super.setup();
+        this.props = useProps({
+            close: t.function([t.instanceOf(MouseEvent)]),
+            name: t.string().optional(),
+        });
         this.store = useService("mail.store");
         this.orm = useService("orm");
         this.state = proxy({
@@ -56,22 +58,30 @@ class CreateChannelDialog extends Component {
 export class DiscussCommand extends Component {
     static components = { DiscussAvatar };
     static template = "mail.DiscussCommand";
-    static props = {
-        counter: { type: Number, optional: true },
-        executeCommand: Function,
-        imgUrl: { type: String, optional: true },
-        name: String,
-        persona: { type: Object, optional: true },
-        channel: { type: Object, optional: true },
-        action: { type: Object, optional: true },
-        searchValue: String,
-        slots: Object,
-    };
 
     setup() {
         super.setup();
         this.store = useService("mail.store");
         this.ui = useService("ui");
+        this.props = useProps({
+            action: t
+                .object({
+                    icon: t.string().optional(),
+                    searchValueSuffix: t.boolean().optional(),
+                })
+                .optional(),
+            channel: t.instanceOf(this.store["discuss.channel"]).optional(),
+            counter: t.number().optional(),
+            executeCommand: t.function([]),
+            name: t.string(),
+            persona: t
+                .or([
+                    t.instanceOf(this.store["res.partner"]),
+                    t.instanceOf(this.store["mail.guest"]),
+                ])
+                .optional(),
+            searchValue: t.string(),
+        });
     }
 
     get formattedEmail() {
@@ -122,11 +132,11 @@ export class DiscussCommandPalette {
         this.ui = env.services.ui;
         this.commands = [];
         this.options = options;
-        this.cleanedTerm = cleanTerm(this.options.searchValue);
+        this.cleanedTerm = normalize(this.options.searchValue);
     }
 
     async fetch() {
-        await this.store.channels.fetch(); // FIXME: needed to search group chats without explicit name
+        await this.store.hasHiddenChannelsFetcher.fetch();
         await this.store.searchConversations(this.cleanedTerm);
     }
 
@@ -139,8 +149,8 @@ export class DiscussCommandPalette {
             partners = Object.values(this.store["res.partner"].records).filter(
                 (partner) =>
                     partner.main_user_id?.share === false &&
-                    (cleanTerm(partner.displayName).includes(this.cleanedTerm) ||
-                        cleanTerm(partner.email).includes(this.cleanedTerm)) &&
+                    (normalize(partner.displayName || "").includes(this.cleanedTerm) ||
+                        normalize(partner.email || "").includes(this.cleanedTerm)) &&
                     (!filtered || !filtered.has(partner))
             );
             partners = this.suggestion
@@ -159,7 +169,8 @@ export class DiscussCommandPalette {
                 (channel) =>
                     channel.channel_type &&
                     channel.channel_type !== "chat" &&
-                    cleanTerm(channel.displayName).includes(this.cleanedTerm) &&
+                    channel.displayName &&
+                    normalize(channel.displayName).includes(this.cleanedTerm) &&
                     (!filtered || !filtered.has(channel))
             )
             .sort((c1, c2) => {
@@ -248,7 +259,7 @@ export class DiscussCommandPalette {
                 },
                 name: _t("Create Channel"),
                 className: "o-mail-DiscussCommand-createChannel d-flex",
-                props: { action: { icon: "fa fa-fw fa-hashtag", searchValueSuffix: true } },
+                props: { action: { icon: "tag", searchValueSuffix: true } },
             };
         }
         if (channelOrPersona === VIEW_HIDDEN) {
@@ -276,7 +287,7 @@ commandProviderRegistry.add("find_or_start_conversation", {
             if (palette.cleanedTerm) {
                 palette.commands.push(palette.makeDiscussCommand(NEW_CHANNEL));
             }
-            if (palette.store.has_unpinned_channels) {
+            if (palette.store.has_hidden_channels) {
                 palette.commands.push(palette.makeDiscussCommand(VIEW_HIDDEN));
             }
         }

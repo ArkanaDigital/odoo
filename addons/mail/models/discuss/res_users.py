@@ -42,15 +42,29 @@ class ResUsers(models.Model):
         if reset_role:
             current_cm.filtered("channel_role").write({"channel_role": False})
         current_cm.filtered(
-            lambda cm: (cm.channel_id.channel_type == "channel" and cm.channel_id.group_public_id)
+            lambda cm: (
+                cm.channel_id.channel_type == "channel"
+                and cm.channel_id.group_public_id
+                and not (
+                    cm.channel_id.group_public_id & (cm.partner_id.user_ids - self).all_group_ids
+                )
+            )
         ).unlink()
+
+    def _store_init_fields(self, res: Store.FieldList):
+        super()._store_init_fields(res)
+        res.one(
+            "res_users_settings_id",
+            "_store_settings_fields",
+            value=self.env["res.users.settings"]._find_or_create_for_user,
+        )
 
     def _store_init_global_fields(self, res: Store.FieldList):
         super()._store_init_global_fields(res)
         # sudo: ir.config_parameter - reading hard-coded config params to check their existence, safe to
         # return whether the features are enabled
         get_bool = self.env["ir.config_parameter"].sudo().get_bool
-        res.attr("hasGifPickerFeature", get_bool("discuss.use_tenor_api"))
+        res.attr("hasGifPickerFeature", get_bool("discuss.use_klipy_api"))
         res.attr("hasMessageTranslationFeature", get_bool("mail.use_google_translate_api"))
         res.attr(
             "hasCannedResponses",

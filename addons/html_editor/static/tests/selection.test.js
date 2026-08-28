@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@odoo/hoot";
 import { isInViewPort, press, queryFirst, queryOne } from "@odoo/hoot-dom";
 import { animationFrame, tick } from "@odoo/hoot-mock";
-import { Component, xml } from "@odoo/owl";
+import { Component, signal, xml } from "@odoo/owl";
 import {
     defineModels,
     fields,
@@ -11,7 +11,6 @@ import {
 } from "@web/../tests/web_test_helpers";
 import { useAutofocus } from "@web/core/utils/hooks";
 import { Plugin } from "../src/plugin";
-import { MAIN_PLUGINS } from "../src/plugin_sets";
 import { setupEditor } from "./_helpers/editor";
 import { getContent, setSelection } from "./_helpers/selection";
 import { insertText, tripleClick } from "./_helpers/user_actions";
@@ -46,7 +45,7 @@ test("plugins should be notified when ranges are removed", async () => {
     }
 
     const { el } = await setupEditor("<p>a[b]</p>", {
-        config: { Plugins: [...MAIN_PLUGINS, TestPlugin] },
+        config: { includePlugins: [TestPlugin] },
     });
     const countBefore = count;
     document.getSelection().removeAllRanges();
@@ -329,11 +328,13 @@ test("should focus the nearest editable ancestor when selection is inside a non-
 
 test("restore a selection when you are not in the editable shouldn't move the focus", async () => {
     class TestInput extends Component {
-        static template = xml`<input t-custom-ref="input" t-att-value="'eee'" class="test"/>`;
+        static template = xml`<input t-ref="this.inputRef" t-att-value="'eee'" class="test"/>`;
         static props = ["*"];
 
+        inputRef = signal.ref();
+
         setup() {
-            useAutofocus({ refName: "input", mobile: true });
+            useAutofocus({ ref: this.inputRef, mobile: true });
         }
     }
 
@@ -369,7 +370,7 @@ test("restore a selection when you are not in the editable shouldn't move the fo
     }
 
     const { editor } = await setupEditor("<p>te[]st</p>", {
-        config: { Plugins: [...MAIN_PLUGINS, TestPlugin] },
+        config: { includePlugins: [TestPlugin] },
     });
     await insertText(editor, "/test");
     await press("enter");
@@ -1336,7 +1337,7 @@ describe("crash fixes", () => {
         }
 
         const { el } = await setupEditor("<p>x<span>a[]</span></p>", {
-            config: { Plugins: [...MAIN_PLUGINS, TestPlugin] },
+            config: { includePlugins: [TestPlugin] },
         });
         expect(getContent(el)).toBe("<p>x[]</p>");
     });
@@ -1437,4 +1438,11 @@ describe("Focus changes", () => {
         await animationFrame();
         expect(getContent(el)).toBe("<p>ab[]cd</p>");
     });
+});
+
+test.tags("desktop");
+test("Triple click shouldn't escape contenteditable context", async () => {
+    const { el } = await setupEditor(`<p>a<span contenteditable="true">c</span>b</p>`);
+    await tripleClick(el.querySelector("span"));
+    expect(getContent(el)).toBe(`<p>a<span contenteditable="true">[c]</span>b</p>`);
 });

@@ -18,7 +18,7 @@ from odoo.addons.test_mail.data.test_mail_data import MAIL_TEMPLATE, MAIL_TEMPLA
 from odoo.addons.test_mail.models.mail_test_ticket import MailTestTicket
 from odoo.addons.test_mail.models.test_mail_models import MailTestGateway, MailTestGatewayGroups
 from odoo.sql_db import Cursor
-from odoo.tests import Form, tagged, RecordCapturer
+from odoo.tests import Form, tagged, RecordCapturer, Like
 from odoo.tools import mute_logger
 from odoo.tools.mail import email_normalize, email_split_and_format, formataddr
 
@@ -98,8 +98,42 @@ class TestEmailParsing(MailCommon):
 
         # Parsing the same email, but with content-type set to "pdf"
         mail_with_aliased_mime = self.format(test_mail_data.MAIL_PDF_MIME_TEMPLATE, pdf_mime="pdf")
-        res_alias = self.env['mail.thread'].message_parse(self.from_string(mail_with_aliased_mime))
+        with self.assertLogs('odoo.addons.mail.models.mail_thread') as log_catcher:
+            res_alias = self.env['mail.thread'].message_parse(self.from_string(mail_with_aliased_mime))
+        self.assertEqual(log_catcher.output, [
+                    Like("...Message containing an unexpected Content-Type 'pdf', assuming 'application/octet-stream'..."),
+                ])
         self.assertEqual(res_alias['attachments'][0].content, test_mail_data.PDF_PARSED, "Attachment with aliased Content-Type: pdf must parse without error")
+
+    def test_message_parse_attachment_no_slash_mime(self):
+        """Content-Type with no '/' (e.g. 'base64') must not corrupt binary attachments.
+
+        Some mailers send attachments with a bare token as Content-Type instead of a
+        proper 'type/subtype' pair:
+
+            Content-Type: base64; name="foo.pdf"
+            Content-Transfer-Encoding: base64
+
+        Python's email library normalises any MIME type without a '/' to 'text/plain',
+        which makes get_content() decode the binary payload as UTF-8 text and silently
+        replace invalid byte sequences with U+FFFD — corrupting the file.  The parser
+        must detect this before the text/plain branch runs and treat the part as binary.
+        """
+        for mime_type in ('base64', 'octet', 'data'):
+            with self.subTest(mime_type=mime_type):
+                received_mail = self.from_string(self.format(
+                    test_mail_data.MAIL_PDF_MIME_TEMPLATE, pdf_mime=mime_type))
+                with self.assertLogs('odoo.addons.mail.models.mail_thread') as log_catcher:
+                    res = self.env['mail.thread'].message_parse(received_mail)
+
+                [attachment] = res['attachments']
+                self.assertEqual(
+                    attachment.content, test_mail_data.PDF_PARSED,
+                    f"Attachment with Content-Type: {mime_type} must not be corrupted",
+                )
+                self.assertEqual(log_catcher.output, [
+                    Like(f"...Message containing an unexpected Content-Type '{mime_type}', assuming 'application/octet-stream'..."),
+                ])
 
     def test_message_parse_bugs(self):
         """ Various corner cases or message parsing """
@@ -1072,6 +1106,22 @@ class TestMailgateway(MailGatewayCommon):
             )
         self.assertFalse(new_recs)
         self.assertNotSentEmail()
+
+    @mute_logger('odoo.addons.mail.models.mail_thread', 'odoo.models')
+    def test_message_route_bounce_multi_company_alias_domain(self):
+        """Incoming emails: company-specific bounce alias from catchall"""
+        with self.mock_mail_gateway():
+            record = self.format_and_process(
+                MAIL_TEMPLATE, self.partner_1.email_formatted,
+                f'{self.alias_catchall_c2}@{self.alias_domain_c2_name}',
+                subject='Test multi-company routing alias',
+            )
+        self.assertFalse(record)
+        self.assertSentEmail(
+            f'"MAILER-DAEMON" <{self.alias_bounce_c2}@{self.alias_domain_c2_name}>',
+            ['whatever-2a840@postmaster.twitter.com'],
+            subject='Re: Test multi-company routing alias'
+        )
 
     @mute_logger('odoo.addons.mail.models.mail_thread', 'odoo.models')
     def test_message_route_bounce_other_recipients(self):
@@ -2278,7 +2328,7 @@ class TestMailGatewayLoops(MailGatewayCommon):
         self.assertEqual(record.name, 'Inquiry')
         self.assertFalse(record.message_partner_ids, 'Inquiry')
         self.assertNotSentEmail()
-        self.assertEqual(record.message_ids.partner_ids, self.other_partner,
+        self.assertEqual(record.message_ids.partner_cc_ids, self.other_partner,
                          'MailGateway: recipients = alias should not be linked to message')
 
         # for some stupid reason, people add an alias as follower
@@ -2382,6 +2432,7 @@ class TestMailGatewayRecipients(MailGatewayCommon):
                         subject=f'Test To {additional_to}',
                 )
                 self.assertEqual(record.message_ids[0].partner_ids, exp_partners)
+                self.assertFalse(record.message_ids[0].partner_cc_ids)
 
                 with self.mock_mail_gateway():
                     record = self.format_and_process(
@@ -2390,7 +2441,27 @@ class TestMailGatewayRecipients(MailGatewayCommon):
                         cc=additional_to,
                         subject=f'Test Cc {additional_to}',
                 )
-                self.assertEqual(record.message_ids[0].partner_ids, exp_partners)
+                self.assertEqual(record.message_ids[0].partner_cc_ids, exp_partners)
+                self.assertFalse(record.message_ids[0].partner_ids)
+
+    def test_gateway_recipients_with_cc(self):
+        to1, to2, cc1, cc2 = self.env['res.partner'].create([
+            {'email': f'"{name}Partner" <{name}@{self.alias_domain}>', 'name': f'{name}Partner'}
+            for name in ('to1', 'to2', 'cc1', 'cc2')
+        ])
+        main = f'groups@{self.alias_domain}'
+        to = f'{main},{to1.email_normalized},{to2.email_normalized},to@external.com'
+        cc = f'{cc1.email_normalized},{cc2.email_normalized},cc@external.com'
+        record = self.format_and_process(MAIL_TEMPLATE, self.email_from, to=to, cc=cc, subject='Specific')
+
+        # Test: recipients
+        self.assertEqual(len(record), 1, 'message_process: a new mail.test should have been created')
+        self.assertEqual(len(record.message_ids), 1)
+        msg = record.message_ids[0]
+        self.assertEqual(msg.partner_ids, to1 | to2)
+        self.assertEqual(msg.partner_cc_ids, cc1 | cc2)
+        self.assertEqual(set(email_split_and_format(msg.incoming_email_to)), set(email_split_and_format(to)) - {main})
+        self.assertEqual(set(email_split_and_format(msg.incoming_email_cc)), set(email_split_and_format(cc)))
 
 
 @tagged('mail_gateway', 'mail_loop', 'mail_reply')
@@ -2734,6 +2805,43 @@ class TestMailGatewayReplies(MailGatewayCommon):
                 },
                 'notif': [
                     {'email_to': [email_normalize(self.email_from)], 'type': 'email'},
+                ],
+                'subtype': 'mail.mt_comment',
+            }],
+        )
+        # second internal user reply (verifies that earlier OOO record with outgoing_email_to=False
+        # does not falsely suppress OOO notification for another internal partner)
+        self.user_employee_c2.notification_type = 'email'
+        with self.mock_datetime_and_now(datetime(2025, 6, 17, 14, 17, 00)):
+            with self.mock_mail_gateway(), self.mock_mail_app():
+                self.format_and_process(
+                    MAIL_TEMPLATE_EXTRA_HTML, self.user_employee_c2.email_formatted,
+                    self.alias.alias_full_name,
+                    extra=f'In-Reply-To:{initial_msg.message_id}\nReferences:{initial_msg.message_id}\n',
+                    extra_html='Employee C2  user reply',
+                    subject='Employee C2 user reply',
+                )
+        self.assertEqual(len(self._new_msgs), 2, 'Employee C2 reply + OOO message sent to employee C2 user')
+        ooo_message_2 = self._new_msgs[1]
+        self.assertMailNotifications(
+            ooo_message_2,
+            [{
+                'content': "<p>Le numéro que vous avez composé n'est plus attribué.</p>",
+                'email_values': {
+                    'subject': 'Auto: Employee C2 user reply',
+                },
+                'message_type': 'out_of_office',
+                'message_values': {
+                    'author_id': self.partner_employee,
+                    'email_from': self.partner_employee.email_formatted,
+                    'model': record._name,
+                    'partner_ids': self.partner_employee_c2,
+                    'notified_partner_ids': self.partner_employee_c2,
+                    'res_id': record.id,
+                    'subject': 'Auto: Employee C2 user reply',
+                },
+                'notif': [
+                    {'partner': self.partner_employee_c2, 'type': 'email'},
                 ],
                 'subtype': 'mail.mt_comment',
             }],

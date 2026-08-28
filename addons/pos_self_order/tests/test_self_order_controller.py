@@ -1,9 +1,9 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-import json
-import uuid
 from unittest.mock import patch
-from datetime import timedelta
+from datetime import timedelta, datetime
+
+from odoo import Command, fields
 
 import odoo.tests
 from odoo.addons.pos_self_order.tests.self_order_common_test import SelfOrderCommonTest
@@ -11,29 +11,30 @@ from odoo.addons.pos_self_order.tests.self_order_common_test import SelfOrderCom
 
 @odoo.tests.tagged('post_install', '-at_install')
 class TestSelfOrderController(SelfOrderCommonTest):
-    def make_request_to_controller(self, url, params):
-        response = self.url_open(url, json.dumps({'jsonrpc': '2.0', 'params': params}),
-            method='POST',
-            headers={
-                'Content-Type': 'application/json',
-            }
-        )
-        return response.json().get('result')
-
     def test_get_orders_by_access_token(self):
+        self.cola.taxes_id = False
         self.pos_config.self_ordering_mode = 'mobile'
         self.pos_config.with_user(self.pos_user).open_ui()
         self.pos_config.current_session_id.set_opening_control(0, '')
 
         order_data = self._create_order_data(
-            state='paid',
+            state='draft',
             product=self.cola,
             qty=3,
-            price_unit=1.0,
-            price_subtotal_incl=0
+            price_unit=2.2,
+            price_subtotal_incl=6.6,
         )
+
         data = self.make_request_to_controller('/pos-self-order/process-order/mobile', order_data)
         order1 = self.env['pos.order'].browse(data['pos.order'][0]['id'])
+        order1.payment_ids.create({
+            'payment_method_id': self.bank_payment_method.id,
+            'amount': 6.6,
+            'payment_date': datetime.now(),
+            'pos_order_id': order1.id,
+        })
+        order1.amount_paid = 6.6
+        order1.action_pos_order_paid()
 
         order_data = self._create_order_data(
             state='draft',
@@ -209,6 +210,7 @@ class TestSelfOrderController(SelfOrderCommonTest):
         self.pos_config.self_ordering_mode = 'mobile'
         self.pos_config.with_user(self.pos_user).open_ui()
         self.pos_config.current_session_id.set_opening_control(0, '')
+        self.env['ir.config_parameter'].sudo().set_str('google_address_autocomplete.google_places_api_key', 'test_api_key')
 
         with patch('odoo.addons.base_geolocalize.models.base_geocoder.BaseGeocoder.geo_find', return_value=(50.0, 4.0)):
             self.delivery_preset.write({
@@ -253,6 +255,7 @@ class TestSelfOrderController(SelfOrderCommonTest):
         self.pos_config.self_ordering_mode = 'mobile'
         self.pos_config.with_user(self.pos_user).open_ui()
         self.pos_config.current_session_id.set_opening_control(0, '')
+        self.env['ir.config_parameter'].sudo().set_str('google_address_autocomplete.google_places_api_key', 'test_api_key')
 
         with patch('odoo.addons.base_geolocalize.models.base_geocoder.BaseGeocoder.geo_find', return_value=(0.0, 0.0)):
             self.delivery_preset.write({
@@ -330,34 +333,6 @@ class TestSelfOrderController(SelfOrderCommonTest):
         preset_data = self.delivery_preset._load_pos_self_data_fields(self.pos_config)
         self.assertIn('free_delivery_min_amount', preset_data)
 
-    def _create_order_data(self, state, product, qty, price_unit, price_subtotal_incl=None, payments=[]):
-        return {
-            'access_token': self.pos_config.access_token,
-            'table_identifier': self.pos_table_1.identifier,
-            'order': {
-                'table_id': self.pos_table_1.id,
-                'company_id': self.env.company.id,
-                'state': state,
-                'preset_id': self.in_preset.id,
-                'session_id': self.pos_config.current_session_id.id,
-                'amount_total': price_subtotal_incl,
-                'amount_paid': 0,
-                'amount_tax': 0,
-                'amount_return': 0,
-                'uuid': uuid.uuid4().hex,
-                'lines': [[0, 0, {
-                    'uuid': uuid.uuid4().hex,
-                    'product_id': product.id,
-                    'qty': qty,
-                    'price_unit': price_unit,
-                    'price_subtotal': product.lst_price,
-                    'tax_ids': [(6, 0, product.taxes_id.ids)],
-                    'price_subtotal_incl': price_subtotal_incl or 0,
-                }]],
-                'payment_ids': payments,
-            }
-        }
-
     def test_delivery_fee_is_applied(self):
         """Test that the delivery fee line is added server-side when the preset is delivery
         and the order total is below the free delivery threshold."""
@@ -377,32 +352,11 @@ class TestSelfOrderController(SelfOrderCommonTest):
             'free_delivery_min_amount': 50.0,
         })
 
-        # Submit a delivery order without a delivery fee line (cola total ~2.2, below 50.0 threshold)
-        order_data = {
-            'access_token': self.pos_config.access_token,
-            'table_identifier': self.pos_table_1.identifier,
-            'order': {
-                'table_id': self.pos_table_1.id,
-                'company_id': self.env.company.id,
-                'state': 'draft',
-                'preset_id': self.delivery_preset.id,
-                'session_id': self.pos_config.current_session_id.id,
-                'amount_total': 0,
-                'amount_paid': 0,
-                'amount_tax': 0,
-                'amount_return': 0,
-                'uuid': uuid.uuid4().hex,
-                'lines': [[0, 0, {
-                    'uuid': uuid.uuid4().hex,
-                    'product_id': self.cola.id,
-                    'qty': 1,
-                    'price_unit': self.cola.lst_price,
-                    'price_subtotal': self.cola.lst_price,
-                    'tax_ids': [(6, 0, self.cola.taxes_id.ids)],
-                    'price_subtotal_incl': self.cola.lst_price,
-                }]],
-            },
-        }
+        # Submit a delivery order without a delivery fee line (cola total ~2.2, below 50.0 threshold).
+        order_data = self._create_order_data(
+            [{'product': self.cola, 'qty': 1, 'price_unit': self.cola.lst_price}],
+            preset=self.delivery_preset,
+        )
 
         data = self.make_request_to_controller('/pos-self-order/process-order/mobile', order_data)
         order = self.env['pos.order'].browse(data['pos.order'][0]['id'])
@@ -458,7 +412,7 @@ class TestSelfOrderController(SelfOrderCommonTest):
         data = self.make_request_to_controller('/pos-self/data/' + str(self.pos_config.id), {
             'access_token': self.pos_config.access_token,
         })
-        loaded_category_ids = [category['id'] for category in data['pos.category']]
+        loaded_category_ids = [category['id'] for category in data['pos.category']['records']]
         self.assertIn(mool_categ.id, loaded_category_ids, "The category linked to the printer should be loaded")
         self.assertIn(adgu_categ.id, loaded_category_ids, "The category linked to the printer should be loaded")
         self.assertIn(manv_categ.id, loaded_category_ids, "The category linked to the printer should be loaded")
@@ -467,6 +421,57 @@ class TestSelfOrderController(SelfOrderCommonTest):
         self.assertIn(stva_categ.id, loaded_category_ids, "The category linked to the printer should be loaded")
         self.assertNotIn(lowe_categ.id, loaded_category_ids, "The category not linked to any printer should not be loaded")
         self.start_tour(self_route, "test_preparation_categories_are_loaded")
+
+    def test_generate_return_values_includes_payment_method(self):
+        self.pos_config.write({
+            'self_ordering_mode': 'mobile',
+            'self_ordering_pay_after': 'each',
+        })
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.pos_config.current_session_id.set_opening_control(0, '')
+
+        payment_method = self.pos_config.payment_method_ids[0]
+        order = self.env['pos.order'].create({
+            'amount_total': 2.2,
+            'amount_paid': 0,
+            'amount_tax': 0,
+            'amount_return': 0,
+            'date_order': fields.Datetime.to_string(fields.Datetime.now()),
+            'company_id': self.env.company.id,
+            'session_id': self.pos_config.current_session_id.id,
+            'lines': [Command.create({
+                'product_id': self.cola.id,
+                'qty': 1,
+                'price_unit': 2.2,
+                'price_subtotal': 2.2,
+                'price_subtotal_incl': 2.2,
+            })],
+        })
+        order.lines._onchange_amount_line_all()
+        order._compute_prices()
+
+        payment_context = {"active_ids": order.ids, "active_id": order.id}
+        order_payment = self.env['pos.make.payment'].with_context(**payment_context).create({
+            'payment_method_id': payment_method.id,
+        })
+        order_payment.with_context(**payment_context).check()
+
+        params = {
+            'access_token': self.pos_config.access_token,
+            'order_access_tokens': [{
+                'access_token': order.access_token,
+            }],
+        }
+        data = self.make_request_to_controller('/pos-self-order/get-user-data', params)
+
+        self.assertIn('pos.payment.method', data)
+        returned_pm_ids = {pm['id'] for pm in data['pos.payment.method']}
+        self.assertIn(payment_method.id, returned_pm_ids)
+
+        # In kiosk mode, payment methods must not be sent to the client.
+        self.pos_config.write({'self_ordering_mode': 'kiosk'})
+        data = self.make_request_to_controller('/pos-self-order/get-user-data', params)
+        self.assertNotIn('pos.payment.method', data)
 
     def test_config_session_loaded_fields(self):
         self.pos_config.write({
@@ -479,16 +484,83 @@ class TestSelfOrderController(SelfOrderCommonTest):
         self.pos_config.current_session_id.set_opening_control(0, "")
         data = self.make_request_to_controller('/pos-self/data/' + str(self.pos_config.id), {})
 
-        self.assertEqual(len(data['pos.config']), 1)
-        config_data = data['pos.config'][0]
+        self.assertEqual(len(data['pos.config']['records']), 1)
+        config_data = data['pos.config']['records'][0]
         self.assertEqual(config_data['id'], self.pos_config.id)
         self.assertEqual(config_data['self_ordering_mode'], 'mobile')
         self.assertTrue(len(config_data['_self_ordering_image_home_ids']) > 1)
         self.assertFalse(config_data.get('access_token'))
         self.assertFalse(config_data.get('self_ordering_url'))
 
-        self.assertEqual(len(data['pos.session']), 1)
-        session_data = data['pos.session'][0]
+        self.assertEqual(len(data['pos.session']['records']), 1)
+        session_data = data['pos.session']['records'][0]
         self.assertEqual(session_data['id'], self.pos_config.current_session_id.id)
         self.assertEqual(session_data['state'], 'opened')
-        self.assertFalse(config_data.get('access_token'))
+        self.assertFalse(session_data.get('access_token'))
+
+    def test_order_sanatization(self):
+        self.pos_config.write({
+            'self_ordering_mode': 'mobile',
+            'self_ordering_pay_after': 'each',
+        })
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.pos_config.current_session_id.set_opening_control(0, '')
+        params = {
+            'company_id': self.env.company.id,
+            'uuid': '61f8181c-18e1-4b83-8a7b-21224750fe2f',
+            'state': 'draft',
+            'preset_id': self.in_preset.id,
+            'session_id': self.pos_config.current_session_id.id,
+            'amount_total': 0,
+            'amount_paid': 0,
+            'account_move': 'test',  # This field should be removed by the _check_pos_order method
+            'access_token': 'test',  # This field should be removed by the _check_pos_order method
+            'amount_tax': 0,
+            'amount_return': 0,
+            'lines': [[0, 0, {
+                    'product_id': self.cola.id, 'qty': 1,
+                    'price_unit': self.cola.lst_price,
+                    'price_subtotal': self.cola.lst_price,
+                    'tax_ids': [(6, 0, self.cola.taxes_id.ids)],
+                    'price_subtotal_incl': 0,
+                }],
+            ],
+        }
+        data = self.env['pos.order']._check_pos_order(self.pos_config, params, 'mobile')
+        self.assertFalse('account_move' in data)  # Do not add it back, if needed contact the PoS team.
+        self.assertFalse('access_token' in data)  # Do not add it back, if needed contact the PoS team.
+
+    def test_foreign_line_update_is_dropped(self):
+        self.pos_config.write({
+            'self_ordering_mode': 'mobile',
+            'self_ordering_pay_after': 'each',
+        })
+        self.pos_config.with_user(self.pos_user).open_ui()
+        self.pos_config.current_session_id.set_opening_control(0, '')
+
+        data = self._create_order_data(
+            state='paid',
+            product=self.cola,
+            qty=3,
+            price_unit=1.0,
+            price_subtotal_incl=0
+        )
+        victim_order = self.env['pos.order'].create(data['order'])
+        victim_line = victim_order.lines[0]
+
+        params = {
+            'uuid': '61f8181c-18e1-4b83-8a7b-21224750fe2f',  # attacker order, unrelated to victim_order
+            'state': 'draft',
+            'preset_id': self.in_preset.id,
+            'session_id': self.pos_config.current_session_id.id,
+            'lines': [[Command.UPDATE, victim_line.id, {
+                'product_id': self.cola.id, 'qty': 10,
+                'price_unit': self.cola.lst_price,
+            }]],
+        }
+        data = self.env['pos.order']._check_pos_order(self.pos_config, params, 'mobile')
+
+        # The update targets a line of another order: it must not reach sync_from_ui.
+        self.assertFalse(data['lines'])
+        self.assertEqual(victim_line.qty, 3)
+        self.assertEqual(victim_line.order_id, victim_order)

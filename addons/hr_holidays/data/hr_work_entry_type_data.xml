@@ -65,6 +65,51 @@
         }"/>
     </function>
 
+<!-- AU : Australia -->
+    <record id="hr_work_entry.l10n_au_work_entry_type_overtime_regular" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_overtime_saturday" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_overtime_sunday" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_overtime_pto" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_overtime_saturday_pto" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_overtime_sunday_pto" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_public_holiday_week_day" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_public_holiday_saturday" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_public_holiday_sunday" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_saturday_shift" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_au_work_entry_type_sunday_shift" model="hr.work.entry.type">
+        <field name="time_off_selectable">False</field>
+    </record>
+
 <!-- BE : Belgium -->
     <record id="hr_work_entry.l10n_be_work_entry_type_small_unemployment" model="hr.work.entry.type">
         <field name="requires_allocation">True</field>
@@ -298,7 +343,7 @@
     </record>
 
     <record id="hr_work_entry.l10n_be_work_entry_type_small_unemployment_birth" model="hr.work.entry.type">
-        <field name="name">Brief Holiday (Birth)</field>
+        <field name="name">Birth leave (Circumstantial leave)</field>
         <field name="requires_allocation">yes</field>
         <field name="employee_requests">yes</field>
         <field name="request_unit">half_day</field>
@@ -328,6 +373,16 @@
     </record>
 
     <record id="hr_work_entry.l10n_be_work_entry_type_work_incapacity_worker_second_week" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="leave_validation_type">hr</field>
+        <field name="request_unit">half_day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+        <field name="color">12</field>
+        <field name="country_id" ref="base.be"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_work_incapacity_worker_second_week_short_term_employee" model="hr.work.entry.type">
         <field name="requires_allocation">False</field>
         <field name="leave_validation_type">hr</field>
         <field name="request_unit">half_day</field>
@@ -388,6 +443,16 @@
         <field name="country_id" ref="base.be"/>
     </record>
 
+    <record id="hr_work_entry.l10n_be_work_entry_type_work_accident_second_week_short_term_employee" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="leave_validation_type">hr</field>
+        <field name="request_unit">half_day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+        <field name="color">16</field>
+        <field name="country_id" ref="base.be"/>
+    </record>
+
     <record id="hr_work_entry.l10n_be_work_entry_type_work_accident_unpaid" model="hr.work.entry.type">
         <field name="requires_allocation">False</field>
         <field name="leave_validation_type">hr</field>
@@ -412,6 +477,16 @@
         <field name="request_unit">half_day</field>
         <field name="unit_of_measure">day</field>
         <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_phc" model="hr.work.entry.type">
+        <field name="name">Public Holiday Compensation</field>
+        <field name="requires_allocation">yes</field>
+        <field name="employee_requests">no</field>
+        <field name="request_unit">day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+        <field name="country_id" ref="base.be"/>
     </record>
 
     <record id="hr_work_entry.l10n_be_work_entry_type_non_taxable_political_service" model="hr.work.entry.type">
@@ -471,6 +546,41 @@
     </record>
 
     <record id="hr_work_entry.l10n_be_work_entry_type_voluntary_overtime_net" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+        <field name="requires_allocation" eval="False"/>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_political_leave" model="hr.work.entry.type">
+        <field name="requires_allocation">True</field>
+        <field name="request_unit">day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="employee_requests">True</field>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave"/>
+    </record>
+
+    <record id="hr_work_entry.be_work_entry_type_additional_hours" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="time_off_selectable">False</field>
+        <field name="request_unit">hour</field>
+    </record>
+
+    <record id="hr_work_entry.be_work_entry_type_additional_hours_50" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="time_off_selectable">False</field>
+        <field name="request_unit">hour</field>
+    </record>
+
+    <record id="hr_work_entry.be_work_entry_type_additional_hours_100" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="time_off_selectable">False</field>
+        <field name="request_unit">hour</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_be_work_entry_type_overtime_recoverable" model="hr.work.entry.type">
         <field name="request_unit">hour</field>
         <field name="unit_of_measure">hour</field>
         <field name="requires_allocation" eval="False"/>
@@ -942,6 +1052,17 @@
         <field name="country_id" ref="base.mx"/>
     </record>
 
+    <record id="hr_work_entry.l10n_mx_work_entry_type_care_children_with_cancer_imss" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="leave_validation_type">no_validation</field>
+        <field name="allocation_validation_type">hr</field>
+        <field name="request_unit">day</field>
+        <field name="unit_of_measure">day</field>
+        <field name="unpaid" eval="True"/>
+        <field name="leave_notif_subtype_id" ref="hr_holidays.mt_leave_unpaid"/>
+        <field name="color">5</field>
+        <field name="country_id" ref="base.mx"/>
+    </record>
 
 <!-- OM : Oman -->
     <record id="hr_work_entry.l10n_om_work_entry_type_sick_leave_100" model="hr.work.entry.type">
@@ -1022,6 +1143,18 @@
     </record>
 
 <!-- SA : Saudi Arabia -->
+    <record id="hr_work_entry.l10n_sa_work_entry_type_sick_leave_75" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="request_unit">half_day</field>
+        <field name="unit_of_measure">day</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_sa_work_entry_type_sick_leave_0" model="hr.work.entry.type">
+        <field name="requires_allocation">False</field>
+        <field name="request_unit">half_day</field>
+        <field name="unit_of_measure">day</field>
+    </record>
+
     <record id="hr_work_entry.l10n_sa_work_entry_type_marriage" model="hr.work.entry.type">
         <field name="name">Marriage Leave</field>
         <field name="code">Marriage Leave</field>
@@ -1088,6 +1221,11 @@
         <field name="country_id" ref="base.sa"/>
     </record>
 
+    <record id="hr_work_entry.l10n_sa_work_entry_type_overtime" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">hour</field>
+    </record>
+
 <!-- SK : Slovakia -->
     <record id="hr_work_entry.l10n_sk_work_entry_type_maternity" model="hr.work.entry.type">
         <field name="requires_allocation">False</field>
@@ -1135,6 +1273,23 @@
         <field name="leave_validation_type">hr</field>
         <field name="request_unit">day</field>
         <field name="country_id" ref="base.tr"/>
+    </record>
+
+<!-- US : United States -->
+    <record id="hr_work_entry.l10n_us_work_entry_type_jury_duty" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="employee_requests">True</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_us_work_entry_type_bereavement" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">day</field>
+        <field name="employee_requests">True</field>
+    </record>
+
+    <record id="hr_work_entry.l10n_us_work_entry_type_fmla_leave" model="hr.work.entry.type">
+        <field name="request_unit">hour</field>
+        <field name="unit_of_measure">day</field>
     </record>
 
 <!-- PH : Philippines -->

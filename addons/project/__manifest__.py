@@ -2,7 +2,7 @@
 
 {
     'name': 'Project',
-    'version': '1.3',
+    'version': '1.4',
     'website': 'https://www.odoo.com/app/project',
     'category': 'Services/Project',
     'sequence': 45,
@@ -19,8 +19,6 @@
     ],
     'data': [
         'security/project_security.xml',
-        'security/ir.model.access.csv',
-        'security/ir.model.access.xml',
         'data/digest_data.xml',
         'data/portal_entry_data.xml',
         'report/project_task_burndown_chart_report_views.xml',
@@ -57,6 +55,7 @@
         'wizard/project_project_stage_delete_views.xml',
         'wizard/project_template_create_wizard.xml',
         'views/project_menus.xml',
+        'security/ir.access.csv',
     ],
     'demo': [
         'data/mail_template_demo.xml',
@@ -124,10 +123,8 @@
             ('include', 'web.icons_fonts'),
             'web/static/src/webclient/navbar/navbar.scss',
             'web/static/src/scss/animation.scss',
-            'web/static/src/core/color_picker/color_picker.scss',
             'web/static/src/scss/mimetypes.scss',
             'web/static/src/scss/ui.scss',
-            'web/static/src/views/fields/translation_dialog.scss',
 
             'web/static/src/module_loader.js',
             'web/static/src/session.js',
@@ -180,6 +177,7 @@
             'web/static/src/views/*.scss',
             'web/static/src/views/fields/**/*',
             'web/static/src/views/form/**/*',
+            'web/static/src/views/card/**/*',
             'web/static/src/views/kanban/**/*',
             'web/static/src/views/list/**/*',
             'web/static/src/views/view_button/**/*',

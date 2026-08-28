@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@odoo/hoot";
-import { Component, xml } from "@odoo/owl";
+import { Component, useProps, xml } from "@odoo/owl";
 import {
     assertDateTimePicker,
     editTime,
@@ -10,7 +10,7 @@ import { DateTimeInput } from "@web/core/datetime/datetime_input";
 import {
     contains,
     defineParams,
-    makeMockEnv,
+    makeTestApp,
     mountWithCleanup,
     serverState,
 } from "@web/../tests/web_test_helpers";
@@ -21,12 +21,12 @@ const { DateTime } = luxon;
 class DateTimeInputComp extends Component {
     static components = { DateTimeInput };
     static template = xml`<DateTimeInput t-props="this.props" />`;
-    static props = ["*"];
+    props = useProps();
 }
 
 async function changeLang(lang) {
     serverState.lang = lang;
-    await makeMockEnv();
+    await makeTestApp();
 }
 
 describe("DateTimeInput (date)", () => {
@@ -77,7 +77,7 @@ describe("DateTimeInput (date)", () => {
     test("pick a date", async () => {
         expect.assertions(4);
 
-        await makeMockEnv();
+        await makeTestApp();
 
         await mountWithCleanup(DateTimeInputComp, {
             props: {
@@ -170,6 +170,8 @@ describe("DateTimeInput (date)", () => {
     test("enter a date value", async () => {
         expect.assertions(4);
 
+        await makeTestApp();
+
         await mountWithCleanup(DateTimeInputComp, {
             props: {
                 value: DateTime.fromFormat("09/01/1997", "dd/MM/yyyy"),
@@ -221,7 +223,7 @@ describe("DateTimeInput (date)", () => {
         class Root extends Component {
             static components = { DateTimeInput };
             static template = xml`<div class="d-flex"><DateTimeInput t-props="this.props" /></div>`;
-            static props = ["*"];
+            props = useProps();
         }
         await mountWithCleanup(Root, {
             props: {
@@ -280,8 +282,6 @@ describe("DateTimeInput (datetime)", () => {
     });
 
     test("pick a date and time", async () => {
-        await makeMockEnv();
-
         await mountWithCleanup(DateTimeInputComp, {
             props: {
                 value: DateTime.fromFormat("09/01/1997 12:30:01", "dd/MM/yyyy HH:mm:ss"),
@@ -340,7 +340,8 @@ describe("DateTimeInput (datetime)", () => {
             },
         });
 
-        await makeMockEnv();
+        await makeTestApp();
+
         await mountWithCleanup(DateTimeInputComp, {
             props: {
                 value: DateTime.fromFormat("09/01/1997 08:30", "dd/MM/yyyy HH:mm"),
@@ -363,6 +364,8 @@ describe("DateTimeInput (datetime)", () => {
 
     test("enter a datetime value", async () => {
         expect.assertions(6);
+
+        await makeTestApp();
 
         await mountWithCleanup(DateTimeInputComp, {
             props: {
@@ -464,7 +467,8 @@ describe("DateTimeInput (datetime)", () => {
     test("start with no value", async () => {
         expect.assertions(5);
 
-        await makeMockEnv();
+        await makeTestApp();
+
         await mountWithCleanup(DateTimeInputComp, {
             props: {
                 type: "datetime",

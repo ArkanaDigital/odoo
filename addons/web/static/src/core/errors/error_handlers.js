@@ -1,15 +1,22 @@
-import { RPCError, RequestEntityTooLargeError } from "../network/rpc";
-import { registry } from "../registry";
-import { session } from "@web/session";
-import { user } from "@web/core/user";
+import { usePlugin } from "@odoo/owl";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 import {
     ClientErrorDialog,
     ErrorDialog,
     NetworkErrorDialog,
     RequestEntityTooLargeErrorDialog,
     RPCErrorDialog,
-} from "./error_dialogs";
-import { UncaughtClientError, ThirdPartyScriptError, UncaughtPromiseError } from "./error_service";
+} from "@web/core/errors/error_dialogs";
+import {
+    ThirdPartyScriptError,
+    UncaughtClientError,
+    UncaughtPromiseError,
+} from "@web/core/errors/error_service";
+import { RequestEntityTooLargeError, RPCError } from "@web/core/network/rpc";
+import { registry } from "@web/core/registry";
+import { user } from "@web/core/user";
+import { useService } from "@web/core/utils/hooks";
+import { session } from "@web/session";
 
 /**
  * @typedef {import("../../env").OdooEnv} OdooEnv
@@ -34,6 +41,10 @@ export function rpcErrorHandler(env, error, originalError) {
     if (!(error instanceof UncaughtPromiseError)) {
         return false;
     }
+
+    const notification = useService("notification");
+    const dialog = useService("dialog");
+
     if (originalError instanceof RPCError) {
         // When an error comes from the server, it can have an exeption name.
         // (or any string truly). It is used as key in the error dialog from
@@ -48,7 +59,7 @@ export function rpcErrorHandler(env, error, originalError) {
         if (!ErrorComponent && exceptionName) {
             if (errorNotificationRegistry.contains(exceptionName)) {
                 const notif = errorNotificationRegistry.get(exceptionName);
-                env.services.notification.add(notif.message || originalError.data.message, notif);
+                notification.add(notif.message || originalError.data.message, notif);
                 return true;
             }
             if (errorDialogRegistry.contains(exceptionName)) {
@@ -62,7 +73,7 @@ export function rpcErrorHandler(env, error, originalError) {
             }
         }
 
-        env.services.dialog.add(ErrorComponent || RPCErrorDialog, {
+        dialog.add(ErrorComponent || RPCErrorDialog, {
             traceback: error.traceback,
             message: originalError.message,
             name: originalError.name,
@@ -94,12 +105,17 @@ export function requestEntityTooLargeHandler(env, error, originalError) {
     if (!(error instanceof UncaughtPromiseError)) {
         return false;
     }
+
+    const dialog = useService("dialog");
+
     if (originalError instanceof RequestEntityTooLargeError) {
-        env.services.dialog.add(RequestEntityTooLargeErrorDialog);
+        dialog.add(RequestEntityTooLargeErrorDialog);
         return true;
     }
 }
-errorHandlerRegistry.add("requestEntityTooLargeHandler", requestEntityTooLargeHandler, { sequence: 99 });
+errorHandlerRegistry.add("requestEntityTooLargeHandler", requestEntityTooLargeHandler, {
+    sequence: 99,
+});
 
 // -----------------------------------------------------------------------------
 // Default handler
@@ -120,8 +136,9 @@ const defaultDialogs = new Map([
  * @returns {boolean}
  */
 export function defaultHandler(env, error) {
+    const dialog = useService("dialog");
     const DialogComponent = defaultDialogs.get(error.constructor) || ErrorDialog;
-    env.services.dialog.add(DialogComponent, {
+    dialog.add(DialogComponent, {
         traceback: error.traceback,
         message: error.message,
         name: error.name,
@@ -140,7 +157,8 @@ errorHandlerRegistry.add("defaultHandler", defaultHandler, { sequence: 100 });
  * all errors if we're not an internal user (except in debug or test mode).
  */
 export function swallowAllVisitorErrors(env, error, originalError) {
-    if (!user.isInternalUser && !odoo.debug && !session.test_mode) {
+    const debugMode = usePlugin(DebugModePlugin);
+    if (!user.isInternalUser && !debugMode.isActive() && !session.test_mode) {
         return true;
     }
 }

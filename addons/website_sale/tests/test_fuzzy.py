@@ -2,11 +2,20 @@
 
 from odoo.tests import tagged
 
+from odoo.addons.http_routing.tests.common import MockRequest
 from odoo.addons.product.tests.common import ProductVariantsCommon
 
 
 @tagged("-at_install", "post_install")
 class TestFuzzy(ProductVariantsCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'website.group_website_designer',  # read website to run _search_with_fuzzy
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     def test_variant_default_code(self):
         website = self.env.ref("base.default_website")
 
@@ -45,25 +54,55 @@ class TestFuzzy(ProductVariantsCommon):
         self.assertIsNone(fuzzy_term, "Should have no suggestion")
 
     def test_search_products_accessibility_multi_company(self):
-        company_2 = self.env["res.company"].create({"name": "test"})
+        company_2 = self.env["res.company"].sudo().create({"name": "test"})
         website = self.env.ref("base.default_website")
-        self.product_template_sofa.company_id = company_2
-        self.env.user.company_ids = company_2
+        self.product_template_sofa.sudo().company_id = company_2  # FIXME: remove the sudo()
+        self.env.user.sudo().company_id = company_2
+
         options = {"display_currency": False, "allowFuzzy": True}
         _, results, _ = website._search_with_fuzzy(
             "product_template", "Sofa", 0, 5, "name asc", options
         )
         self.assertNotIn(self.product_template_sofa, results[0]["results"])
 
-        self.env.user.company_ids += website.company_id
-        self.product_template_sofa.company_id = website.company_id
+        self.env.user.sudo().company_ids += website.company_id
+        self.product_template_sofa.sudo().company_id = website.company_id  # FIXME: remove the sudo()
         _, results, _ = website._search_with_fuzzy(
             "product_template", "Sofa", 0, 5, "name asc", options
         )
         self.assertIn(self.product_template_sofa, results[0]["results"])
 
-        self.product_template_sofa.company_id = False
+        self.product_template_sofa.sudo().company_id = False  # FIXME: remove the sudo()
         _, results, _ = website._search_with_fuzzy(
             "product_template", "Sofa", 0, 5, "name asc", options
         )
         self.assertIn(self.product_template_sofa, results[0]["results"])
+
+    def test_search_product_tags(self):
+        """ Tests that when searching a product by its tags, we only fetch the tags visible to customers"""
+        website = self.env.ref("base.default_website")
+        tag1, tag2 = self.env['product.tag'].create([
+            {'name': 'Some tag1'},
+            {'name': 'Some tag2', 'visible_to_customers': False},
+        ])
+        self.product_template_sofa.product_tag_ids = tag1 + tag2
+        options = {'display_currency': self.env.ref('base.EUR'), 'allowFuzzy': False}
+        result_count, _, _ = website._search_with_fuzzy('product_template', 'Some tag1', 0, 5, 'name asc', options)
+        self.assertEqual(result_count, 1)
+        result_count, _, _ = website._search_with_fuzzy('product_template', 'Some tag2', 0, 5, 'name asc', options)
+        self.assertEqual(result_count, 0)
+
+        result_count, results, _ = website.with_context(website_id=website.id)._search_with_fuzzy('product_template', 'Some tag', 0, 5, 'name asc', options)
+        self.assertEqual(result_count, 1)
+        # Needed because `_get_additionnal_combination_info` uses request.pricelist & request.fiscal_position
+        with MockRequest(self.env, website=website) as request:
+            request.pricelist = self.env['product.pricelist'].create({
+                'name': 'Some pricelist',
+            })
+            request.fiscal_position = self.env['account.fiscal.position'].sudo().create({
+                'name': 'Some fiscal postion'
+            })
+            results = website._search_render_results(results, 5)
+            result_tags = results[0]['results_data'][0]['product_tag_ids']
+            self.assertEqual(len(result_tags), 1)
+            self.assertEqual(result_tags[0]['name'], 'Some tag1')

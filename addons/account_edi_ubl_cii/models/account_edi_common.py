@@ -4,122 +4,19 @@ from copy import deepcopy
 from datetime import datetime
 from collections import defaultdict
 from markupsafe import Markup
+from lxml import etree
 
 from odoo import _, api, models
+from odoo.addons.account.tools import dict_to_xml
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
-from odoo.tools import float_compare, float_is_zero, float_repr
+from odoo.tools import float_compare, float_is_zero, float_repr, html2plaintext
 from odoo.tools.float_utils import float_round
 from odoo.tools.misc import formatLang, html_escape
+from odoo.tools.translate import _lt
 from odoo.tools.xml_utils import find_xml_value
 
-from odoo.addons.account.tools.country_groups import EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES
-
-# -------------------------------------------------------------------------
-# UNIT OF MEASURE
-# -------------------------------------------------------------------------
-UOM_TO_UNECE_CODE = {
-    'uom.product_uom_unit': 'C62',
-    'uom.product_uom_dozen': 'DZN',
-    'uom.product_uom_kgm': 'KGM',
-    'uom.product_uom_gram': 'GRM',
-    'uom.product_uom_day': 'DAY',
-    'uom.product_uom_hour': 'HUR',
-    'uom.product_uom_minute': 'MIN',
-    'uom.product_uom_ton': 'TNE',
-    'uom.product_uom_meter': 'MTR',
-    'uom.product_uom_km': 'KMT',
-    'uom.product_uom_cm': 'CMT',
-    'uom.product_uom_litre': 'LTR',
-    'uom.product_uom_cubic_meter': 'MTQ',
-    'uom.product_uom_lb': 'LBR',
-    'uom.product_uom_oz': 'ONZ',
-    'uom.product_uom_inch': 'INH',
-    'uom.product_uom_foot': 'FOT',
-    'uom.product_uom_mile': 'SMI',
-    'uom.product_uom_floz': 'OZA',
-    'uom.product_uom_qt': 'QTL',
-    'uom.product_uom_gal': 'GLL',
-    'uom.product_uom_cubic_inch': 'INQ',
-    'uom.product_uom_cubic_foot': 'FTQ',
-    'uom.product_uom_square_meter': 'MTK',
-    'uom.product_uom_square_foot': 'FTK',
-    'uom.product_uom_yard': 'YRD',
-    'uom.product_uom_millimeter': 'MMT',
-    'uom.product_uom_kwh': 'KWH',
-}
-
-# -------------------------------------------------------------------------
-# ELECTRONIC ADDRESS SCHEME (EAS), see https://docs.peppol.eu/poacc/billing/3.0/codelist/eas/
-# -------------------------------------------------------------------------
-EAS_MAPPING = {
-    'AD': {'9922': 'vat'},
-    'AE': {'0235': 'vat'},
-    'AL': {'9923': 'vat'},
-    'AT': {'9915': 'vat'},
-    'AU': {'0151': 'vat'},
-    'BA': {'9924': 'vat'},
-    'BE': {'0208': 'additional_identifiers', '9925': 'vat'},
-    'BG': {'9926': 'vat'},
-    'CH': {'9927': 'vat', '0183': None},
-    'CY': {'9928': 'vat'},
-    'CZ': {'9929': 'vat'},
-    'DE': {'9930': 'vat', '0246': 'l10n_de_widnr'},
-    'DK': {'0184': 'vat', '0198': 'vat'},
-    'EE': {'9931': 'vat'},
-    'ES': {'9920': 'vat'},
-    'FI': {'0216': None},
-    'FR': {'0225': 'peppol_endpoint', '0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # `peppol_endpoint` used as place holder for custom logic via `_get_peppol_endpoint_value`
-    'SG': {'0195': 'additional_identifiers'},
-    'GB': {'9932': 'vat'},
-    'GR': {'9933': 'vat'},
-    'HR': {'9934': 'vat', '0088': 'company_registry'},
-    'HU': {'9910': 'l10n_hu_eu_vat'},
-    'IE': {'9935': 'vat'},
-    'IS': {'0196': 'vat'},
-    'IT': {'0211': 'vat', '0210': 'l10n_it_codice_fiscale'},
-    'JP': {'0221': 'vat'},
-    'LI': {'9936': 'vat'},
-    'LT': {'9937': 'vat'},
-    'LU': {'9938': 'vat'},
-    'LV': {'0218': 'company_registry', '9939': 'vat'},
-    'MC': {'9940': 'vat'},
-    'ME': {'9941': 'vat'},
-    'MK': {'9942': 'vat'},
-    'MT': {'9943': 'vat'},
-    'MY': {'0230': None},
-    # Do not add the vat for NL, since: "[NL-R-003] For suppliers in the Netherlands, the legal entity identifier
-    # MUST be either a KVK or OIN number (schemeID 0106 or 0190)" in the Bis 3 rules (in PartyLegalEntity/CompanyID).
-    'NG': {'0244': 'vat'},
-    'NL': {'0106': None, '0190': None},
-    'NO': {'0192': 'additional_identifiers'},
-    'NZ': {'0088': 'company_registry'},
-    'PL': {'9945': 'vat'},
-    'PT': {'9946': 'vat'},
-    'RO': {'9947': 'vat'},
-    'RS': {'9948': 'vat'},
-    'SE': {'0007': 'company_registry', '9955': 'vat'},
-    'SI': {'9949': 'vat'},
-    'SK': {'9950': 'vat', '0245': 'company_registry'},
-    'SM': {'9951': 'vat'},
-    'TR': {'9952': 'vat'},
-    'VA': {'9953': 'vat'},
-    # DOM-TOM
-    'BL': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Saint Barthélemy
-    'GF': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # French Guiana
-    'GP': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Guadeloupe
-    'MF': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Saint Martin
-    'MQ': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Martinique
-    'NC': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # New Caledonia
-    'PF': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # French Polynesia
-    'PM': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Saint Pierre and Miquelon
-    'RE': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Réunion
-    'TF': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # French Southern and Antarctic Lands
-    'WF': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Wallis and Futuna
-    'YT': {'0009': 'additional_identifiers', '9957': 'vat', '0002': None},  # Mayotte
-
-    'AX': {'0216': None},  # Åland Islands
-}
+from odoo.addons.base.models.res_country import EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES
 
 # -------------------------------------------------------------------------
 # MAPPING FOR TAX EXEMPTION
@@ -213,12 +110,21 @@ TAX_EXEMPTION_MAPPING = {
     'VATEX-FR-298SEXDECIESA': 'Exempt based on article 298 sexdecies A of the Code Général des Impôts (CGI ; General tax code)',
     'VATEX-FR-CGI295': 'Exempt based on article 295 of the Code Général des Impôts (CGI ; General tax code)',
     'VATEX-FR-AE': 'Exempt based on 2 of article 283 of the Code Général des Impôts (CGI ; General tax code)',
+    'VATEX-FR-F': 'VATEX-FR-F - Second-hand sales',
+    'VATEX-FR-I': 'VATEX-FR-I - Sales of works of art',
+    'VATEX-FR-J': 'VATEX-FR-J - Sales of antiques',
 }
 
 GST_COUNTRY_CODES = {
     'AU', 'NZ', 'IN', 'SG', 'MY', 'PK', 'BD', 'LK', 'NP', 'BT', 'PG', 'SA',
     'AG', 'BS', 'BB', 'DM', 'GD', 'JM', 'KN', 'LC', 'VC', 'TT',
 }
+
+
+COCONTRACTANT_DEFAULT_NOTE = _lt('Reverse charge: In the absence of a written objection within one month of receipt of the invoice, '
+                              'the customer is deemed to acknowledge that they are a taxable person required to file periodic returns. '
+                              'If this condition is not met, the customer will be liable for the payment of the tax, interest, '
+                              'and penalties due in relation to this condition.')
 
 # -------------------------------------------------------------------------
 # SUPPORTED FILE TYPES FOR IMPORT
@@ -280,6 +186,25 @@ class AccountEdiCommon(models.AbstractModel):
     # HELPERS
     # -------------------------------------------------------------------------
 
+    def _vals_to_etree(self, vals):
+        document_node = vals['document_node']
+        return dict_to_xml(document_node, nsmap=document_node['_nsmap'], template=document_node['_template'])
+
+    def _etree_to_string(self, tree):
+        return etree.tostring(tree, xml_declaration=True, encoding='UTF-8')
+
+    def _define_document_type(self, vals, document_type):
+        vals['_document_type'] = {
+            'name': document_type,
+            'model': self,
+        }
+
+    def _get_document_type(self, vals):
+        return vals.get('_document_type', {}).get('name')
+
+    def _is_document(self, vals, *document_types):
+        return self._get_document_type(vals) in document_types
+
     def module_installed(self, module_name):
         return self.env['ir.module.module']._get(module_name).state == 'installed'
 
@@ -291,15 +216,6 @@ class AccountEdiCommon(models.AbstractModel):
     def _get_currency_decimal_places(self, currency_id):
         # Allows other documents to easily override in case there is a flat max precision number
         return currency_id.decimal_places
-
-    def _get_uom_unece_code(self, uom):
-        """
-        list of codes: https://docs.peppol.eu/poacc/billing/3.0/codelist/UNECERec20/ (sorted by letter)
-        """
-        xmlid = uom.get_external_id()
-        if xmlid and uom.id in xmlid:
-            return UOM_TO_UNECE_CODE.get(xmlid[uom.id], 'C62')
-        return 'C62'
 
     def _find_value(self, xpaths, tree, nsmap=False):
         """ Iteratively queries the tree using the xpaths and returns a result as soon as one is found """
@@ -315,6 +231,20 @@ class AccountEdiCommon(models.AbstractModel):
     def _can_export_selfbilling(self):
         return False
 
+    def _get_belgian_cocontractant_note(self, customer, supplier):
+        invoice = self.env.context.get('tax_exemption_reason_invoice')
+        if self._is_cocontractant_fiscal_position(invoice, customer, supplier):
+            note = html2plaintext(invoice.fiscal_position_id.note) if invoice.fiscal_position_id.note else ''
+            return note or COCONTRACTANT_DEFAULT_NOTE
+        return ''
+
+    def _is_cocontractant_fiscal_position(self, invoice, customer, supplier):
+        return (invoice and
+                customer.country_id.code == 'BE' and
+                supplier.country_id == customer.country_id and
+                (co_contractant := self.env['account.chart.template'].ref('fiscal_position_template_4', raise_if_not_found=False)) and
+                invoice.fiscal_position_id == co_contractant
+        )
     # -------------------------------------------------------------------------
     # TAXES
     # -------------------------------------------------------------------------
@@ -370,16 +300,18 @@ class AccountEdiCommon(models.AbstractModel):
             else:
                 return 'S'  # standard VAT
 
-        if supplier.country_id.code in EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES and supplier.vat:
+        supplier_in_eea = supplier.country_id.code in EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES
+        customer_in_eea = customer.country_id.code in EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES
+
+        if (supplier_in_eea or customer_in_eea) and supplier.vat:
             if tax.amount != 0 and not tax.has_negative_factor:
                 # Special case: Purchase reverse-charge taxes for self-billed invoices.
                 # See explanation above.
                 # In the XML we put the zero-percent tax with code 'G' or 'K' that the buyer would have used.
                 return 'S'
-            if customer.country_id.code not in EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES:
-                return 'G'
-            if customer.country_id.code in EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES:
+            if supplier_in_eea and customer_in_eea:
                 return 'K'
+            return 'G'
 
         if tax.amount != 0:
             return 'S'
@@ -399,6 +331,12 @@ class AccountEdiCommon(models.AbstractModel):
             return {
                 'tax_exemption_reason_code': tax.ubl_cii_tax_exemption_reason_code,
                 'tax_exemption_reason': tax.ubl_cii_tax_exemption_reason,
+            }
+
+        if reason := tax and not tax.amount and self._get_belgian_cocontractant_note(customer, supplier):
+            return {
+                'tax_exemption_reason_code': 'VATEX-EU-AE',
+                'tax_exemption_reason': reason,
             }
 
         if tax and (code := tax.ubl_cii_tax_exemption_reason_code):
@@ -696,7 +634,8 @@ class AccountEdiCommon(models.AbstractModel):
                 mimetype = attachment_data.attrib.get('mimeCode')
                 if not (extension := SUPPORTED_FILE_TYPES.get(mimetype)):
                     continue
-                text = (attachment_data.text or '').strip()
+                # Strip internal newlines/spaces to prevent 'raw' field validation failure on create
+                text = ''.join((attachment_data.text or '').split())
                 # Normalize the name of the file : some e-fff emitters put the full path of the file
                 # (Windows or Linux style) and/or the name of the xml instead of the pdf.
                 # Get only the filename with the right extension.
@@ -720,13 +659,13 @@ class AccountEdiCommon(models.AbstractModel):
 
         return attachments
 
-    def _import_partner(self, company_id, name, phone, email, vat, *, peppol_eas=False, peppol_endpoint=False, additional_identifiers=None, postal_address={}, **kwargs):
+    def _import_partner(self, company_id, name, phone, email, vat, *, routing_identifier=False, additional_identifiers=None, postal_address={}, **kwargs):
         """ Retrieve the partner, if no matching partner is found, create it (only if he has a vat and a name) """
         logs = []
-        if peppol_eas and peppol_endpoint:
-            domain = [('peppol_eas', '=', peppol_eas), ('peppol_endpoint', '=', peppol_endpoint)]
-        else:
-            domain = False
+        domain = False
+        if routing_identifier:
+            scheme, _sep, endpoint = routing_identifier.partition(':')
+            domain = [('routing_scheme', '=', scheme), ('routing_endpoint', '=', endpoint)]
         partner = self.env['res.partner'] \
             .with_company(company_id) \
             ._retrieve_partner(name=name, phone=phone, email=email, vat=vat, additional_identifiers=additional_identifiers, domain=domain)
@@ -739,8 +678,8 @@ class AccountEdiCommon(models.AbstractModel):
         ) if state_code and country else self.env['res.country.state']
         if not partner and name and vat:
             partner_vals = {'name': name, 'email': email, 'phone': phone, 'is_company': True}
-            if peppol_eas and peppol_endpoint:
-                partner_vals.update({'peppol_eas': peppol_eas, 'peppol_endpoint': peppol_endpoint})
+            if routing_identifier:
+                partner_vals['routing_identifier'] = routing_identifier
             if additional_identifiers:
                 partner_vals['additional_identifiers'] = additional_identifiers
             partner = self.env['res.partner'].create(partner_vals)
@@ -980,6 +919,13 @@ class AccountEdiCommon(models.AbstractModel):
                 discount_amount += amount
         return discount_amount, charges
 
+    def _get_basis_qty(self, tree, xpath_dict):
+        """ Return the base quantity used to derive the unit price from PriceAmount.
+        The standard UBL/CII divides PriceAmount by BaseQuantity to obtain the unit price upon
+        import.
+        """
+        return float(self._find_value(xpath_dict['basis_qty'], tree) or 1) or 1.0
+
     def _retrieve_line_vals(self, record, tree, document_type=False, qty_factor=1):
         """
         Read the xml invoice, extract the invoice line values, compute the odoo values
@@ -1022,7 +968,7 @@ class AccountEdiCommon(models.AbstractModel):
         """
         xpath_dict = self._get_line_xpaths(document_type, qty_factor)
         # basis_qty (optional)
-        basis_qty = float(self._find_value(xpath_dict['basis_qty'], tree) or 1) or 1.0
+        basis_qty = self._get_basis_qty(tree, xpath_dict)
 
         # gross_price_unit (optional)
         gross_price_unit = None
@@ -1044,11 +990,8 @@ class AccountEdiCommon(models.AbstractModel):
         quantity_node = tree.find(xpath_dict['delivered_qty'])
         if quantity_node is not None:
             delivered_qty = float(quantity_node.text)
-            uom_xml = quantity_node.attrib.get('unitCode')
-            if uom_xml:
-                uom_infered_xmlid = {v: k for k, v in UOM_TO_UNECE_CODE.items()}.get(uom_xml)
-                if uom_infered_xmlid:
-                    product_uom = self.env.ref(uom_infered_xmlid, raise_if_not_found=False) or self.env['uom.uom']
+            if unece_code := quantity_node.attrib.get('unitCode'):
+                product_uom = self.env['uom.uom']._get_uom_from_unece_code(unece_code)
         if product and product_uom and not product_uom._has_common_reference(product.product_tmpl_id.uom_id):
             # uom incompatibility
             product_uom = self.env['uom.uom']

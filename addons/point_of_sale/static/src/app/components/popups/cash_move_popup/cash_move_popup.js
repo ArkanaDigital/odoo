@@ -1,8 +1,7 @@
-import { useRef } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { parseFloat } from "@web/views/fields/parsers";
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillStart, proxy, useProps, t } from "@odoo/owl";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { CashMoveListPopup } from "@point_of_sale/app/components/popups/cash_move_popup/cash_move_list_popup/cash_move_list_popup";
 import { Dialog } from "@web/core/dialog/dialog";
@@ -17,7 +16,11 @@ const { DateTime } = luxon;
 export class CashMovePopup extends Component {
     static template = "point_of_sale.CashMovePopup";
     static components = { Dialog, CashInput };
-    static props = ["confirmKey?", "close", "getPayload?"];
+    props = useProps({
+        confirmKey: t.string().optional(),
+        close: t.function(),
+        getPayLoad: t.function().optional(),
+    });
     setup() {
         super.setup();
         this.notification = useService("notification");
@@ -30,9 +33,8 @@ export class CashMovePopup extends Component {
             reason: "",
             cashMoves: [],
         });
-        this.confirm = useAsyncLockedMethod(this.confirm);
+        this.confirm = useAsyncLockedMethod(this.confirm.bind(this));
         this.ui = useService("ui");
-        this.inputRef = useRef("inputRef");
         onWillStart(() => {
             this.loadCashMoves();
         });
@@ -62,13 +64,12 @@ export class CashMovePopup extends Component {
 
         const type = this.state.type;
         const translatedType = _t(type);
-        const extras = { formattedAmount, translatedType };
         const reason = this.state.reason.trim();
 
         await this.pos.data.call(
             "pos.session",
             "try_cash_in_out",
-            this._prepareTryCashInOutPayload(type, amount, reason, this.partnerId, extras),
+            this._prepareTryCashInOutPayload(type, amount, reason, this.partnerId),
             {},
             true
         );
@@ -85,6 +86,7 @@ export class CashMovePopup extends Component {
             tracking_number: "",
             sequence_number: 0,
             pos_reference: "",
+            state: "cancel", // transient receipt-only order, must never reach IndexedDB
         });
         await this.pos.ticketPrinter.printCashMoveReceipt({
             reason,
@@ -102,15 +104,15 @@ export class CashMovePopup extends Component {
     }
     onClickButton(type) {
         this.state.type = type;
-        this.inputRef.el.focus();
+        this.inputRef?.()?.focus();
     }
     format(value) {
         return this.env.utils.isValidFloat(value)
             ? this.env.utils.formatCurrency(parseFloat(value))
             : "";
     }
-    _prepareTryCashInOutPayload(type, amount, reason, partnerId, extras) {
-        return [[this.pos.session.id], type, amount, reason, partnerId, extras];
+    _prepareTryCashInOutPayload(type, amount, reason, partnerId) {
+        return [[this.pos.session.id], type, amount, reason, partnerId];
     }
     isValidCashMove() {
         return this.env.utils.isValidFloat(this.state.amount) && this.state.reason.trim() !== "";

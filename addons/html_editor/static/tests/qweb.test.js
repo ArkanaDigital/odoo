@@ -12,11 +12,11 @@ import { animationFrame, tick } from "@odoo/hoot-mock";
 import { setupEditor } from "./_helpers/editor";
 import { getContent, setContent, setSelection } from "./_helpers/selection";
 import { QWebPlugin } from "@html_editor/others/qweb_plugin";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 import { processThroughCleanForSave } from "./_helpers/dispatch";
 import { expectElementCount } from "./_helpers/ui_expectations";
+import { EditorVersionPlugin } from "../src/core/editor_version_plugin";
 
-const config = { Plugins: [...MAIN_PLUGINS, QWebPlugin] };
+const config = { includePlugins: [QWebPlugin] };
 describe("qweb picker", () => {
     test("switch selected value to t-else value", async () => {
         const { el, editor } = await setupEditor(
@@ -341,7 +341,10 @@ test("cleaning removes content editable", async () => {
             <t t-raw="test">Hello</t>
         </div>`,
         {
-            config: { Plugins: config.Plugins.filter((plugin) => plugin.id !== "editorVersion") },
+            config: {
+                includePlugins: config.includePlugins,
+                excludePlugins: [EditorVersionPlugin],
+            },
         }
     );
     expect(getContent(el)).toBe(`
@@ -405,7 +408,6 @@ test("formatting toolbar items are disabled on t-att-class and t-att-style (and 
 
     expect(`button[name="font_type"]`).toHaveAttribute("disabled");
     expect(`button[name="font_family"]`).toHaveAttribute("disabled");
-    expect(`button[name="font_size"]`).toHaveAttribute("disabled");
     expect(`button[title="Apply Font Color"]`).toHaveAttribute("disabled");
     expect(`button[title="Apply Background Color"]`).toHaveAttribute("disabled");
     expect(`button[name="link"]`).toHaveAttribute("disabled");
@@ -415,4 +417,5 @@ test("formatting toolbar items are disabled on t-att-class and t-att-style (and 
     expect(`button[name="italic"]`).toHaveCount(0);
     expect(`button[name="underline"]`).toHaveCount(0);
     expect(`button[name="strikethrough"]`).toHaveCount(0);
+    expect(`button[name="font_size"]`).toHaveCount(0);
 });

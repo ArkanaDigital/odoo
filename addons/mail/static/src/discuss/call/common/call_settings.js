@@ -1,4 +1,4 @@
-import { Component, onWillStart, useListener, xml } from "@odoo/owl";
+import { Component, onWillStart, t, useListener, usePlugin, useProps, xml } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
 import { browser } from "@web/core/browser/browser";
@@ -9,17 +9,22 @@ import { useMicrophoneVolume } from "@mail/utils/common/hooks";
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { DeviceSelect } from "@mail/discuss/call/common/device_select";
 import { Dialog } from "@web/core/dialog/dialog";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 export class CallSettings extends Component {
     static template = "discuss.CallSettings";
-    static props = ["close?", "initialTab?", "isCompact?", "withActionPanel?"];
-    static defaultProps = {
-        withActionPanel: true,
-    };
     static components = { ActionPanel, DeviceSelect, Tabs, TabHeader, TabPanel };
+
+    debugMode = usePlugin(DebugModePlugin);
 
     setup() {
         super.setup();
+        this.props = useProps({
+            close: t.function([t.instanceOf(MouseEvent)]).optional(),
+            initialTab: t.string().optional(),
+            isCompact: t.boolean().optional(),
+            withActionPanel: t.boolean().optional(true),
+        });
         this.notification = useService("notification");
         this.store = useService("mail.store");
         this.rtc = useService("discuss.rtc");
@@ -106,10 +111,10 @@ export class CallSettings extends Component {
 
 export class CallSettingsDialog extends Component {
     static template = xml`
-        <Dialog size="'medium'" footer="false" title.translate="Voice &amp; Video Settings">
+        <Dialog size="'md'" footer="false" title.translate="Voice &amp; Video Settings">
             <CallSettings initialTab="this.props.initialTab" withActionPanel="false"/>
         </Dialog>
     `;
-    static props = ["initialTab?"];
+    props = useProps({ initialTab: t.string().optional() });
     static components = { CallSettings, Dialog };
 }

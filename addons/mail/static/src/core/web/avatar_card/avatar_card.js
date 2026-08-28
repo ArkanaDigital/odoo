@@ -1,52 +1,38 @@
-import { useService } from "@web/core/utils/hooks";
+import { ActionList } from "@mail/core/common/action_list";
+import { ImStatus } from "@mail/core/common/im_status";
+
+import { Component, computed, signal, t, useListener, useProps } from "@odoo/owl";
+
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
-import { Component, signal } from "@odoo/owl";
-import { ImStatus } from "@mail/core/common/im_status";
-import { useDynamicInterval } from "@mail/utils/common/misc";
-import { formatLocalDateTime } from "@mail/utils/common/dates";
-import { ActionList } from "@mail/core/common/action_list";
+import { usePopover } from "@web/core/popover/popover_hook";
+import { useService } from "@web/core/utils/hooks";
 
 export class AvatarCard extends Component {
     static template = "mail.AvatarCard";
     static components = { ActionList, Dropdown, DropdownItem, ImStatus };
-    static props = {
-        id: { type: Number },
-        close: { type: Function },
-        model: {
-            type: String,
-            validate: (m) => AvatarCard.allowedModels.includes(m),
-        },
-    };
     static get allowedModels() {
         return ["res.users", "res.partner"];
     }
 
+    viewProfileBtnRef = signal.ref();
+
     setup() {
+        this.props = useProps({
+            close: t.function([]),
+            id: t.number(),
+            model: t.selection(AvatarCard.allowedModels),
+        });
         this.actionService = useService("action");
         this.store = useService("mail.store");
         this.dialog = useService("dialog");
-        this.partnerLocalDateTimeFormatted = signal("");
         this.store.fetchStoreData("avatar_card", {
             id: this.props.id,
             model: this.props.model,
         });
-        useDynamicInterval(
-            (...args) => this.onChangeTz(...args),
-            () => [this.partner?.tz, this.store.self?.tz]
+        this.partnerLocalDateTimeFormatted = computed(() =>
+            this.store.localTimeIn(this.partner?.tz)
         );
-    }
-
-    /**
-     * @param {string} partnerTz
-     * @param {string} currentUserTz
-     */
-    onChangeTz(partnerTz, currentUserTz) {
-        this.partnerLocalDateTimeFormatted.set(formatLocalDateTime(partnerTz, currentUserTz));
-        if (!this.partnerLocalDateTimeFormatted()) {
-            return;
-        }
-        return 60000 - (Date.now() % 60000);
     }
 
     get avatarUrl() {
@@ -124,4 +110,22 @@ export class AvatarCard extends Component {
         }
         this.actionService.doAction(action, { newWindow });
     }
+}
+
+/**
+ * @param {import("@odoo/owl").Signal<HTMLElement>} ref
+ * @param {() => import("models").ResPartner | undefined} getPartner
+ */
+export function usePartnerAvatarCardOnClick(ref, getPartner) {
+    const avatarCard = usePopover(AvatarCard);
+    useListener(ref, "click", () => {
+        const partner = getPartner();
+        if (!partner || avatarCard.isOpen) {
+            return;
+        }
+        avatarCard.open(ref(), {
+            id: partner.id,
+            model: "res.partner",
+        });
+    });
 }

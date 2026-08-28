@@ -20,11 +20,15 @@ $o-mail-Message-sidebarSmallWidth: 36px !default;
 $o-mail-Message-sidebarWidth: 48px !default;
 $o-mail-NavigableList-zIndex: 21;
 $o-mail-Chatter-minWidth: 530px !default;
-$o-mail-DiscussSidebar-compactWidth: 60px !default; // same value as COMPACT_SIDEBAR_WIDTH
+
+$o-mail-Meeting-bgColor: #131313 !default;
 
 $o-mail-CallMenu-bgColor-darker: #111827FF !default;
 $o-mail-CallMenu-bgColor: #1F2937FF !default;
 $o-mail-CallMenu-bgColor-lighter: #374151FF !default;
+
+$o-call-button-size: 3.3rem !default;
+$o-call-button-border-radius: 17px !default;
 
 @mixin o-FileViewer-arrow {
     background-color: rgba(black, 0.4);

@@ -3,7 +3,7 @@ import * as Utils from "@pos_self_order/../tests/tours/utils/common";
 export function clickProduct(productName) {
     return {
         content: `Click on product '${productName}'`,
-        trigger: `.product_list .o_self_product_box span:contains('${productName}')`,
+        trigger: `.product_list .o_self_product_card span:contains('${productName}')`,
         run: "click",
     };
 }
@@ -63,7 +63,7 @@ export function clickCancel() {
 export function checkOrderTotal(amount) {
     return {
         content: `Confirm '${amount}' is displayed correctly`,
-        trigger: `.o_self_product_list_page .o_self_shadow_bottom .o-so-tabular-nums:contains('${amount}')`,
+        trigger: `.o_self_product_list_page .order-total:contains('${amount}')`,
     };
 }
 
@@ -77,7 +77,7 @@ export function checkProductQty(productName, qty) {
 export function clickDiscard() {
     return {
         content: "Click on Discard button",
-        trigger: ".btn.btn-link .oi-close",
+        trigger: ".btn.btn-link [data-icon='close_small']",
         run: "click",
     };
 }

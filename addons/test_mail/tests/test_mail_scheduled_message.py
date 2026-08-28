@@ -22,7 +22,7 @@ class TestScheduledMessage(MailCommon, TestRecipients):
         # force 'now' to ease test about schedulers
         cls.reference_now = FieldDatetime.to_datetime('2022-12-24 12:00:00')
 
-        with cls.mock_datetime_and_now(cls, cls.reference_now):
+        with cls.mock_datetime_and_now(cls.reference_now):
             cls.test_record = cls.env['mail.test.ticket'].create([{
                 'name': 'Test Record',
                 'customer_id': cls.partner_1.id,
@@ -121,8 +121,11 @@ class TestScheduledMessageBusiness(TestScheduledMessage, CronMixinCase):
             self.schedule_message(self.test_record, scheduled_date='2022-12-24 10:00:00')
         # cannot schedule a message on a model without thread
         # with admin as employee does not have write access on res.users)
+        country = self.env['res.country'].search([], limit=1)
+        is_mail_thread = 'message_partner_ids' in country
+        self.assertFalse(is_mail_thread)
         with self.with_user("admin"), self.assertRaises(ValidationError):
-            self.schedule_message(self.user_employee)
+            self.schedule_message(country)
         scheduled_message = self.schedule_message(self.test_record)
         # cannot reschedule a message in the past
         with self.assertRaises(ValidationError):

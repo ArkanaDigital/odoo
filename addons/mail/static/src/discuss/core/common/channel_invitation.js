@@ -2,7 +2,7 @@ import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { ChannelActionDialog } from "@mail/discuss/core/common/channel_action_dialog";
 
-import { Component, onWillStart, props, proxy, types } from "@odoo/owl";
+import { Component, onWillStart, proxy, signal, t, useProps } from "@odoo/owl";
 
 import { useSequential } from "@mail/utils/common/hooks";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
@@ -14,7 +14,7 @@ import { useDebounced } from "@web/core/utils/timing";
  * Open the channel invitation UI as a centered dialog, reusing {@link ChannelInvitation}.
  *
  * @param {import("@web/env").OdooEnv} env environment providing the dialog service.
- * @param {import("models").DiscussChannel} channel channel to invite people to.
+ * @param {import("models").DiscussChannel} [channel] channel to invite people to.
  * @returns {void}
  */
 export function openChannelInvitationDialog(env, channel) {
@@ -25,7 +25,7 @@ export function openChannelInvitationDialog(env, channel) {
             channel,
             close: () => env.services.dialog.closeAll(),
         },
-        title: channel.displayName,
+        title: channel?.displayName ?? _t("New Chat"),
     });
 }
 
@@ -33,16 +33,23 @@ export class ChannelInvitation extends Component {
     static components = { ActionPanel, DiscussAvatar };
     static template = "discuss.ChannelInvitation";
 
+    inputRef = signal.ref();
+
     setup() {
         super.setup();
         this.orm = useService("orm");
         this.store = useService("mail.store");
-        this.props = props({
-            "autofocus?": types.or([types.boolean(), types.object()]),
-            "channel?": types.instanceOf(this.store["discuss.channel"].Class),
-            "className?": types.string(),
-            "close?": types.function([]),
-            "state?": types.object(),
+        this.props = useProps({
+            channel: t.instanceOf(this.store["discuss.channel"]).optional(),
+            className: t.string().optional(),
+            close: t.function([]).optional(),
+            state: t
+                .object({
+                    searchStr: t.string().optional(),
+                    selectablePartners: t.array(t.instanceOf(this.store["res.partner"])).optional(),
+                    selectedPartners: t.array(t.instanceOf(this.store["res.partner"])).optional(),
+                })
+                .optional(),
         });
         this.rtc = useService("discuss.rtc");
         this.notification = useService("notification");
@@ -63,7 +70,7 @@ export class ChannelInvitation extends Component {
             this.fetchPartnersToInvite.bind(this),
             250
         );
-        this.inputRef = useAutofocus({ refName: "input" });
+        useAutofocus({ ref: this.inputRef });
         onWillStart(() => {
             if (this.store.self_user) {
                 this.fetchPartnersToInvite();
@@ -162,7 +169,7 @@ export class ChannelInvitation extends Component {
     }
 
     onInput() {
-        this.searchStr = this.inputRef.el.value;
+        this.searchStr = this.inputRef()?.value;
         this.debouncedFetchPartnersToInvite();
     }
 
@@ -216,44 +223,61 @@ export class ChannelInvitation extends Component {
     }
 
     async onClickInvite() {
+        if (!this.props.channel) {
+            const partnerIds = this.selectedPartners.map((partner) => partner.id);
+            await this.store.startChat(partnerIds);
+            this.props.close?.();
+            return;
+        }
         let channelId = this.props.channel.id;
-        const invitePromises = [];
         if (this.props.channel?.channel_type === "chat") {
             const partnerIds = this.selectedPartners.map((partner) => partner.id);
             if (this.props.channel.correspondent?.partner_id) {
                 partnerIds.unshift(this.props.channel.correspondent.partner_id.id);
             }
             if (this.state.selectedEmails.length) {
-                const group = await this.store.createGroupChat({ partners_to: partnerIds });
+                const users_to = [
+                    ...new Set([
+                        ...partnerIds
+                            .map(
+                                (partnerId) =>
+                                    this.store["res.partner"].get(partnerId)?.main_user_id?.id
+                            )
+                            .filter(Boolean),
+                    ]),
+                ];
+                const group = await this.store.createGroupChat({ users_to });
                 channelId = group.id;
             } else {
                 await this.store.startChat(partnerIds);
             }
-        } else if (this.selectedPartners.length) {
-            invitePromises.push(
-                this.store.fetchStoreData("/discuss/channel/add_members", {
-                    channel_id: channelId,
-                    partner_ids: this.selectedPartners.map((partner) => partner.id),
-                    invite_to_rtc_call: this.rtc.localChannel?.eq(this.props.channel),
-                })
-            );
+        } else if (this.selectedPartners.length || this.state.selectedEmails.length) {
+            await this.store.fetchStoreData("/discuss/channel/add_members", {
+                channel_id: channelId,
+                partner_ids: this.selectedPartners.map((partner) => partner.id),
+                emails: this.state.selectedEmails,
+                invite_to_rtc_call: this.rtc.localChannel?.eq(this.props.channel),
+            });
         }
-        if (this.state.selectedEmails.length) {
-            invitePromises.push(
-                this.orm.call("discuss.channel", "invite_by_email", [channelId], {
-                    emails: this.state.selectedEmails,
-                })
-            );
-        }
-        await Promise.all(invitePromises);
         this.state.selectedEmails = [];
         this.state.selectedPartners = [];
         this.props.close?.();
     }
 
+    get inviteTitle() {
+        const name = this.props.channel?.displayName;
+        if (this.props.channel?.default_display_mode === "video_full_screen") {
+            return _t('Invite people to "%(name)s"', { name });
+        }
+        if (this.props.channel?.channel_type === "channel") {
+            return _t('Invite people to the channel "%(name)s"', { name });
+        }
+        return _t("Invite people");
+    }
+
     get invitationButtonText() {
         if (!this.props.channel) {
-            return "";
+            return _t("Create Chat");
         }
         if (this.props.channel.default_display_mode === "video_full_screen") {
             return _t("Invite to Meeting");

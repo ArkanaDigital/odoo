@@ -3,6 +3,8 @@
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
+SALE_INVOICE_POLICY = [("order", "Ordered quantities"), ("delivery", "Delivered quantities")]
+
 
 class ResCompany(models.Model):
     _inherit = "res.company"
@@ -17,7 +19,7 @@ class ResCompany(models.Model):
     portal_confirmation_sign = fields.Boolean(string="Online Signature", default=True)
     portal_confirmation_pay = fields.Boolean(string="Online Payment")
     prepayment_percent = fields.Float(
-        string="Prepayment percentage",
+        string="Prepayment",
         default=1.0,
         help="The percentage of the amount needed to be paid to confirm quotations.",
     )
@@ -55,11 +57,50 @@ class ResCompany(models.Model):
         help="This account will be used on Downpayment invoices.",
         tracking=True,
     )
+    show_sol_numbers = fields.Boolean(
+        string="Line Numbers", help="Display line numbers on Sales Orders."
+    )
+
+    sale_invoice_policy = fields.Selection(
+        selection=SALE_INVOICE_POLICY, string="Invoicing Policy", default="order", required=True
+    )
+
+    sale_automatic_invoice = fields.Boolean(
+        string="Automatic Invoicing",
+        help="The invoice is generated automatically and available in the customer portal when the "
+        "transaction is confirmed by the payment provider.\nThe invoice is marked as paid and "
+        "the payment is registered in the payment journal defined in the configuration of the "
+        "payment provider.\nThis mode is advised if you issue the final invoice at the order "
+        "and not after the delivery.",
+    )
+
+    # === CONSTRAINT METHODS === #
 
     @api.constrains("prepayment_percent")
     def _check_prepayment_percent(self):
         for company in self:
-            if company.portal_confirmation_pay and not (0 < company.prepayment_percent <= 1.0):
+            if company.portal_confirmation_pay and not (0 <= company.prepayment_percent <= 1.0):
                 raise ValidationError(
                     company.env._("Prepayment percentage must be a valid percentage.")
                 )
+
+    # === CRUD METHODS ===#
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        result = super().create(vals_list)
+        self._sync_automatic_invoice_cron()
+        return result
+
+    def write(self, vals):
+        result = super().write(vals)
+        if "sale_automatic_invoice" in vals:
+            self._sync_automatic_invoice_cron()
+        return result
+
+    def _sync_automatic_invoice_cron(self):
+        automatic_invoice_cron = self.env.ref("sale.send_invoice_cron", raise_if_not_found=False)
+        if not automatic_invoice_cron:
+            return
+        active_companies = self.search_count([("sale_automatic_invoice", "=", True)], limit=1)
+        automatic_invoice_cron.sudo().active = bool(active_companies)

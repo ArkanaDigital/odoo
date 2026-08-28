@@ -1,14 +1,13 @@
-import { Wysiwyg } from "@html_editor/wysiwyg";
-import { destroy, expect, getFixture } from "@odoo/hoot";
-import { queryOne } from "@odoo/hoot-dom";
-import { Component, markup, onWillDestroy, xml } from "@odoo/owl";
-import { mountWithCleanup } from "@web/../tests/web_test_helpers";
-import { getContent, getSelection, setContent, setSelection } from "./selection";
-import { Deferred, animationFrame, tick } from "@odoo/hoot-mock";
-import { processThroughCleanForSave } from "./dispatch";
-import { fixInvalidHTML } from "@html_editor/utils/sanitize";
-import { toExplicitString } from "@web/../lib/hoot/hoot_utils";
 import { EmbeddedComponentPlugin } from "@html_editor/others/embedded_component_plugin";
+import { fixInvalidHTML } from "@html_editor/utils/sanitize";
+import { Wysiwyg } from "@html_editor/wysiwyg";
+import { animationFrame, expect, getFixture, queryOne, tick } from "@odoo/hoot";
+import { Component, markup, onWillDestroy, useApp, xml } from "@odoo/owl";
+import { toExplicitString } from "@web/../lib/hoot/hoot_utils";
+import { destroyApp, mountWithCleanup } from "@web/../tests/web_test_helpers";
+import { processThroughCleanForSave } from "./dispatch";
+import { getContent, getSelection, setContent, setSelection } from "./selection";
+import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 
 export const Direction = {
     BACKWARD: "BACKWARD",
@@ -19,6 +18,9 @@ const defaultTestConfig = {
     debouncePowerbuttons: false,
     debounceHints: false,
 };
+
+export const PLUGINS_TO_EXCLUDE = ["contrast"];
+export const TEST_PLUGINS = MAIN_PLUGINS.filter((p) => !PLUGINS_TO_EXCLUDE.includes(p.id));
 
 // A generic base64 image for testing
 export const base64Img =
@@ -32,6 +34,8 @@ class TestEditor extends Component {
         <Wysiwyg t-props="this.wysiwygProps" />`;
     static components = { Wysiwyg };
     static props = ["wysiwygProps", "content", "styleContent?", "onMounted?", "onWillDestroy?"];
+
+    app = useApp();
 
     setup() {
         const props = this.props;
@@ -70,7 +74,7 @@ class TestEditor extends Component {
         }
         if (this.wysiwygProps.config.Plugins?.includes(EmbeddedComponentPlugin)) {
             this.wysiwygProps.config.embeddedComponentInfo = {
-                app: this.__owl__.app,
+                app: this.app,
                 env: this.env,
             };
         }
@@ -99,6 +103,17 @@ class TestEditor extends Component {
  */
 export async function setupEditor(content, options = {}) {
     const wysiwygProps = Object.assign({}, options.props);
+    options.config ??= {};
+
+    // Plugin assembly logic:
+    const basePlugins = options.config.basePlugins ?? TEST_PLUGINS;
+    const includePlugins = options.config.includePlugins ?? [];
+    const excludePlugins = options.config.excludePlugins ?? [];
+
+    options.config.Plugins = [...new Set([...basePlugins, ...includePlugins])].filter(
+        (p) => !excludePlugins.includes(p)
+    );
+
     wysiwygProps.config = {
         ...defaultTestConfig,
         ...(options.config || {}),
@@ -123,7 +138,6 @@ export async function setupEditor(content, options = {}) {
             onMounted: options.onMounted,
             onWillDestroy: options.onWillDestroy,
         },
-        env: options.env,
     });
 
     // awaiting for mountWithCleanup is not enough when mounted in an iframe,
@@ -193,9 +207,9 @@ export async function testEditor(config) {
         };
     }
     delete config.props?.mobile;
-    const willBeDestroyed = new Deferred();
+    const willBeDestroyed = Promise.withResolvers();
     config.onWillDestroy = () => willBeDestroyed.resolve();
-    const { el, editor, editorComponent } = await setupEditor(
+    const { el, editor } = await setupEditor(
         reverseSelection ? reverseTextualSelection(contentBefore) : contentBefore,
         config
     );
@@ -269,8 +283,8 @@ export async function testEditor(config) {
         // Test that the saved value matches the cleaned value tested above.
         await compareFunction(content, innerHTML, "Value from editor.getContent()", editor);
     }
-    destroy(editorComponent);
-    await willBeDestroyed;
+    destroyApp();
+    await willBeDestroyed.promise;
 
     if (
         testInBothDirections &&

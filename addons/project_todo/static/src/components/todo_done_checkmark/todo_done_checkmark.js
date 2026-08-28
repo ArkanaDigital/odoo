@@ -1,15 +1,20 @@
-import { onMounted, proxy, useEffect } from "@odoo/owl";
+import { onMounted, useProps, proxy, t, useEffect } from "@odoo/owl";
 import { registry } from "@web/core/registry";
+import { useService } from "@web/core/utils/hooks";
+import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { StateSelectionField, stateSelectionField } from "@web/views/fields/state_selection/state_selection_field";
 
 export class TodoDoneCheckmark extends StateSelectionField {
     static template = "project_todo.TodoDoneCheckmark";
-    static props = {
-        ...stateSelectionField.component.props,
-        viewType: { type: String },
-    };
+    props = useProps({
+        ...standardFieldProps,
+        showLabel: t.boolean().optional(true),
+        withCommand: t.boolean().optional(),
+        viewType: t.string().optional(),
+    });
     setup() {
         super.setup();
+        this.uiService = useService("ui");
         this.stateDone = proxy({
             isDone: false, //This state determines the appearance of the done checkmark and should only be actualized when the mouse leaves it (and atfer the form is loaded)
             notReloadState: false, //used to avoid a change of the checkmark when re-rendering the form
@@ -47,7 +52,7 @@ export class TodoDoneCheckmark extends StateSelectionField {
      */
     async onDoneToggled(ev) {
         const value = this.props.record.data[this.props.name] != '1_done' ? '1_done' : this.notDoneState;
-        if (['kanban', 'list'].includes(this.props.viewType)) {
+        if (['card', 'list'].includes(this.props.viewType)) {
             await super.updateRecord(value);
         }
         else {

@@ -8,6 +8,10 @@ import { Plugin } from "../plugin";
 export class InputPlugin extends Plugin {
     static id = "input";
     static dependencies = ["history", "selection"];
+
+    resources = {
+        on_history_commit_undone_handlers: () => this.updateCachedSelection(),
+    };
     setup() {
         this.addDomListener(this.editable, "beforeinput", this.onBeforeInput);
         this.addDomListener(this.editable, "keydown", this.onKeyDown);
@@ -26,7 +30,12 @@ export class InputPlugin extends Plugin {
         // To work around this, we snapshot the selection here in `keydown`
         // and store it as a cached selection so that the `beforeinput` handler
         // can use this snapshot instead of calling `getSelection()` itself.
-        if (selection?.rangeCount && selection.isCollapsed && ev.key === "Unidentified") {
+        if (
+            selection?.rangeCount &&
+            selection.isCollapsed &&
+            ev.key === "Unidentified" &&
+            selection.focusOffset === 0
+        ) {
             const range = selection.getRangeAt(0);
             this.dependencies.selection.setCachedSelection({
                 anchorNode: selection.anchorNode,
@@ -49,5 +58,31 @@ export class InputPlugin extends Plugin {
     onInput(ev) {
         this.dependencies.history.commit({ batchable: ev.inputType === "insertText" });
         this.trigger("on_input_handlers", ev);
+    }
+
+    updateCachedSelection() {
+        if (this.dependencies.selection.getCachedSelection()) {
+            const selection = this.document.getSelection();
+            // A selection snapshot may already have been cached during
+            // `keydown` to work around virtual keyboards that move the DOM
+            // selection before `beforeinput`. Since `undo()` can also modify
+            // the current selection, that cached snapshot may become stale
+            // and no longer reflect the actual caret position.
+            //
+            // Update the cached selection after the undo so any subsequent
+            // `beforeinput` handlers operate on the correct selection state.
+            if (selection?.rangeCount) {
+                const range = selection.getRangeAt(0);
+                this.dependencies.selection.setCachedSelection({
+                    anchorNode: selection.anchorNode,
+                    anchorOffset: selection.anchorOffset,
+                    focusNode: selection.focusNode,
+                    focusOffset: selection.focusOffset,
+                    rangeCount: 1,
+                    isCollapsed: selection.isCollapsed,
+                    getRangeAt: () => range.cloneRange(),
+                });
+            }
+        }
     }
 }

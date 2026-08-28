@@ -4,7 +4,7 @@ import functools
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from odoo.tests import TransactionCase, tagged
+from odoo.tests.common import TransactionCase, no_retry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -83,11 +83,12 @@ BTREE_INDEX_IGNORE_FIELDS = {
     'mail.message.res_id': 'mail_message_model_res_id_idx',  # usually accessed with `model` in the domain
     'mail.presence.guest_id': 'mail_presence_guest_unique',
     'mail.presence.user_id': 'mail_presence_user_unique',
+    'forum.tag.forum_id': 'forum_tag_forum_id_posts_count_idx',
     'res.users.company_id': None,  # only linted for auth_totp.wizard, not needed.
 }
 
 
-@tagged('post_install', '-at_install')
+@no_retry
 class TestIndexMeta(TransactionCase):
 
     def test_ignore_list(self):
@@ -127,7 +128,7 @@ class TestIndexMeta(TransactionCase):
             self.fail("\n\n".join(msg_parts))
 
 
-@tagged('post_install', '-at_install')
+@no_retry
 class TestTableObjects(TransactionCase):
 
     def test_declared_table_objects_are_installed(self):
@@ -161,7 +162,7 @@ class TestTableObjects(TransactionCase):
             )
 
 
-@tagged('post_install', '-at_install')
+@no_retry
 class TestIndex(TransactionCase):
 
     @functools.cached_property
@@ -266,6 +267,8 @@ class TestIndex(TransactionCase):
                 else:
                     yield segment_field
 
+                if not segment_field.relational:
+                    break
                 model_name = segment_field.comodel_name
 
         def get_dependency_paths(

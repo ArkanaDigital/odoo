@@ -1,43 +1,51 @@
-import { useExternalListener, useLayoutEffect, useRef, useSubEnv } from "@web/owl2/utils";
-import { useCrossDocumentListener } from "../utils/hooks";
-import { Component, onWillDestroy, xml, proxy } from "@odoo/owl";
+import {
+    Component,
+    onWillDestroy,
+    useProps,
+    proxy,
+    signal,
+    t,
+    useListener,
+    useOnChange,
+    xml,
+} from "@odoo/owl";
 import { OVERLAY_SYMBOL } from "@web/core/overlay/overlay_container";
 import { usePosition } from "@web/core/position/position_hook";
 import { getIFrame } from "@web/core/position/utils";
-import { useActiveElement } from "@web/core/ui/ui_service";
+import { useActiveElement } from "@web/core/ui/ui_plugin";
+import { useService } from "@web/core/utils/hooks";
+import { useSubEnv } from "@web/owl2/utils";
+import { useCrossDocumentListener } from "../utils/hooks";
 
 export class EditorOverlay extends Component {
     static template = xml`
-        <div t-custom-ref="root" class="overlay" t-att-class="this.props.className" t-on-pointerdown.stop="() => {}">
+        <div t-ref="this.rootRef" class="overlay" t-att-class="this.props.className" t-on-pointerdown.stop="() => {}">
             <t t-component="this.props.Component" t-props="this.props.props"/>
         </div>`;
 
-    static props = {
-        target: { validate: (el) => el.nodeType === Node.ELEMENT_NODE, optional: true },
-        initialSelection: { type: Object, optional: true },
-        Component: Function,
-        props: { type: Object, optional: true },
-        editable: { validate: (el) => el.nodeType === Node.ELEMENT_NODE },
-        bus: Object,
-        shared: Object,
-        close: Function,
-        isOverlayOpen: Function,
-        getCustomRect: { type: Function, optional: true },
+    props = useProps({
+        target: t.customValidator(t.any(), (el) => el.nodeType === Node.ELEMENT_NODE).optional(),
+        initialSelection: t.object().optional(),
+        Component: t.function(),
+        props: t.object().optional(),
+        editable: t.customValidator(t.any(), (el) => el.nodeType === Node.ELEMENT_NODE),
+        bus: t.object(),
+        shared: t.object(),
+        close: t.function(),
+        isOverlayOpen: t.function(),
+        getCustomRect: t.function().optional(),
 
         // Props from createOverlay
-        positionOptions: { type: Object, optional: true },
-        className: { type: String, optional: true },
-        closeOnPointerdown: { type: Boolean, optional: true },
-        hasAutofocus: { type: Boolean, optional: true },
-    };
+        positionOptions: t.object().optional(),
+        className: t.string().optional(""),
+        closeOnPointerdown: t.boolean().optional(true),
+        hasAutofocus: t.boolean().optional(false),
+    });
 
-    static defaultProps = {
-        className: "",
-        closeOnPointerdown: true,
-        hasAutofocus: false,
-    };
+    rootRef = signal.ref();
 
     setup() {
+        this.uiService = useService("ui");
         this.lastSelection = this.props.initialSelection;
         /** @type {HTMLElement} */
         const editable = this.props.editable;
@@ -53,24 +61,25 @@ export class EditorOverlay extends Component {
             getTarget = this.getSelectionTarget.bind(this);
         }
 
-        useExternalListener(this.props.bus, "updatePosition", () => {
+        useListener(this.props.bus, "updatePosition", () => {
             position.unlock();
         });
-
-        const rootRef = useRef("root");
 
         if (this.props.positionOptions?.updatePositionOnResize ?? true) {
             const resizeObserver = new ResizeObserver(() => {
                 position.unlock();
             });
-            useLayoutEffect(
+            useOnChange(
+                () => [this.rootRef()],
                 (root) => {
+                    if (!root) {
+                        return;
+                    }
                     resizeObserver.observe(root);
                     return () => {
                         resizeObserver.unobserve(root);
                     };
-                },
-                () => [rootRef.el]
+                }
             );
         }
 
@@ -84,7 +93,7 @@ export class EditorOverlay extends Component {
         }
 
         if (this.props.hasAutofocus) {
-            useActiveElement("root");
+            useActiveElement(this.rootRef);
         }
         const topDocument = editable.ownerDocument.defaultView.top.document;
         const scrollContainer = getScrollContainer(editable);
@@ -96,7 +105,7 @@ export class EditorOverlay extends Component {
             // rangeElement is a sibling of the editable, so position_hook's scroll
             // listener won't detect editable.contains(rangeElement) as true. Listen
             // directly so scrolling within the editable still triggers repositioning.
-            useExternalListener(editable, "scroll", () => position.unlock());
+            useListener(editable, "scroll", () => position.unlock());
         }
         const positionOptions = {
             position: "bottom-start",
@@ -107,7 +116,7 @@ export class EditorOverlay extends Component {
                 this.updateVisibility(el, solution, scrollContainer);
             },
         };
-        position = usePosition("root", getTarget, positionOptions);
+        position = usePosition(this.rootRef, getTarget, positionOptions);
 
         this.overlayState = proxy({ isOverlayVisible: true });
         useSubEnv({ overlayState: this.overlayState });
@@ -161,7 +170,7 @@ export class EditorOverlay extends Component {
     updateVisibility(overlayElement, solution, scrollContainer) {
         // @todo: mobile tests rely on a visible (yet overflowing) toolbar
         // Remove this once the mobile toolbar is fixed?
-        if (this.env.isSmall) {
+        if (this.uiService.isSmall) {
             return;
         }
         const shouldBeVisible = this.shouldOverlayBeVisible(
@@ -189,7 +198,7 @@ export class EditorOverlay extends Component {
         if (canFlip) {
             // Don't show the overlay when the selection is out of the screen
             const target = this.props.target || this.getSelectionTarget();
-            if (target.ownerDocument !== window.top.document) {
+            if (target.ownerDocument !== overlayElement.ownerDocument) {
                 const iframe = getIFrame(overlayElement, target);
                 const iframeRect = iframe.getBoundingClientRect();
                 top -= iframeRect.top;

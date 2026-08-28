@@ -1054,6 +1054,14 @@ $-product-radius-map: (
         z-index: 2;
     }
 
+    // Prevents product_details from creating a stacking context when containing
+    // an open age verification snippet. Otherwise the snippet renders below the
+    // blurred background.
+    &:has(.s_age_verification_popup .show) {
+        z-index: auto;
+        position: relative !important;
+    }
+
     @include media-breakpoint-up(lg) {
         padding-top: var(--o-wsale-product-col-details-padding-top-lg, 0px);
     }
@@ -1354,6 +1362,10 @@ $-product-radius-map: (
     // ==== Solo grid styles
     &.o_grid_solo {
         --o-wsale-grid-product-col-display: contents;
+
+        .o_product_detail_img_wrapper {
+            width: 100%;
+        }
 
         @include media-breakpoint-up(lg) {
             .o_wsale_product_page_grid_column, .o_product_detail_img_wrapper, .product_detail_img {
@@ -1706,42 +1718,6 @@ $-product-radius-map: (
     transition: all 0.3s ease-in-out;
 }
 
-// customer reviews
-.o_product_page_reviews_title {
-    .oi {
-        @include font-size(1.4rem);
-
-        &:before {
-            content: "\e809";
-        }
-    }
-    &:not(.collapsed) {
-        .oi:before {
-            content: "\e80b";
-        }
-    }
-}
-
-#o_product_page_reviews_content {
-    .o_website_rating_avg {
-        h1 {
-            @include font-size(3.5rem);
-        }
-    }
-    .o_portal_chatter_composer {
-        position: sticky;
-        transition: top 200ms;
-    }
-    .o_portal_chatter_messages > .o_portal_chatter_message {
-        border-bottom: 1px solid rgba(0, 0, 0, 0.1);;
-        padding: 1rem 0;
-        margin-bottom: 1rem;
-    }
-    .o_portal_chatter_avatar {
-        border-radius: 50%;
-    }
-}
-
 .o_product_tag_img {
     height: 2rem;
 }
@@ -1941,7 +1917,7 @@ $-product-radius-map: (
 
 .oe_website_sale {
     // Changes the chevron color to contrast with user's theme background color
-    .accordion-button:not(.collapsed)::after {
+    .accordion-button::after {
         background-image: escape-svg($accordion-button-icon);
     }
 

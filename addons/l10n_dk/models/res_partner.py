@@ -5,6 +5,8 @@ from urllib import parse
 
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
+from odoo.tools.business_data import split_vat
+from odoo.tools.sql import SQL, table_columns
 
 from odoo.addons.l10n_dk.tools.demo_utils import handle_demo
 
@@ -34,6 +36,7 @@ class ResPartner(models.Model):
         string='Nemhandel Endpoint Type',
         help='Unique identifier used by OIOUBL and Nemhandel',
         compute="_compute_nemhandel_identifier_type", store=True, readonly=False,
+        init_storage='_init_column_nemhandel_identifier',
         tracking=True,
         selection=[
             ('0088', "EAN/GLN"),
@@ -46,6 +49,7 @@ class ResPartner(models.Model):
         string='Nemhandel Endpoint',
         help='Code used to identify the Endpoint on Nemhandel',
         compute="_compute_nemhandel_identifier_value", store=True, readonly=False,
+        init_storage='_init_column_nemhandel_identifier',
         tracking=True,
     )
     nemhandel_supported_documents = fields.Json('Supported Nemhandel Documents')
@@ -53,21 +57,24 @@ class ResPartner(models.Model):
 
     is_using_nemhandel = fields.Boolean(compute='_compute_is_using_nemhandel')
 
+    def _init_column_nemhandel_identifier(self):
+        columns = table_columns(self.env.cr, 'res_partner')
+        if 'nemhandel_identifier_type' not in columns or 'nemhandel_identifier_value' not in columns:
+            return
+        country_dk = self.env.ref('base.dk').id
+        self.env.execute_query(SQL("""
+            UPDATE res_partner p
+            SET nemhandel_identifier_type = '0184',
+                nemhandel_identifier_value = (p.additional_identifiers->>'DK_CVR')::text
+            WHERE (p.vat ILIKE 'DK%%' OR p.country_id = %s)
+                AND p.nemhandel_identifier_value IS NULL
+        """, country_dk))
+
     # -------------------------------------------------------------------------
     # COMPUTE METHODS
     # -------------------------------------------------------------------------
 
-    @api.depends('vat', 'country_id')
-    def _compute_company_registry(self):
-        # OVERRIDE
-        # In Denmark, if you have a VAT number, it's also your company registry (CVR) number
-        super()._compute_company_registry()
-        for partner in self.filtered(lambda p: p.country_id.code == 'DK' and p.vat):
-            vat_country, vat_number = self._split_vat(partner.vat)
-            if vat_country in ('DK', '') and self._check_vat_number('DK', vat_number):
-                partner.company_registry = vat_number
-
-    @api.depends('country_code', 'vat', 'company_registry')
+    @api.depends('country_code', 'vat')
     def _compute_nemhandel_identifier_type(self):
         for partner in self:
             partner.nemhandel_identifier_type = partner.nemhandel_identifier_type
@@ -77,7 +84,7 @@ class ResPartner(models.Model):
             elif country_code != 'DK':
                 partner.nemhandel_identifier_type = False
 
-    @api.depends('country_code', 'vat', 'company_registry', 'nemhandel_identifier_type')
+    @api.depends('country_code', 'vat', 'additional_identifiers', 'nemhandel_identifier_type')
     def _compute_nemhandel_identifier_value(self):
         for partner in self:
             if partner.nemhandel_identifier_value != partner._origin.nemhandel_identifier_value:
@@ -85,9 +92,10 @@ class ResPartner(models.Model):
                 partner.nemhandel_identifier_value = partner.nemhandel_identifier_value
                 continue
             country_code = partner._deduce_country_code()
+            cvr = partner._get_additional_identifier('DK_CVR')
             if country_code == 'DK' and partner.nemhandel_identifier_type == '0184':
-                vat_country, vat_number = partner._split_vat(partner.company_registry or '')
-                partner.nemhandel_identifier_value = vat_number if vat_country == 'DK' else partner.company_registry
+                vat_country, vat_number = split_vat(cvr or '')
+                partner.nemhandel_identifier_value = vat_number if vat_country == 'DK' else cvr
             elif country_code == 'DK':
                 partner.nemhandel_identifier_value = partner.nemhandel_identifier_value
             else:

@@ -11,6 +11,8 @@ from odoo.addons.point_of_sale.tests.common import TestPoSCommon
 class TestPoSStock(TestPoSCommon):
     """ Tests for anglo saxon accounting scenario.
     """
+    _test_user_groups = None  # FIXME list needed groups
+
     def setUp(self):
         super().setUp()
 
@@ -241,7 +243,7 @@ class TestPoSStock(TestPoSCommon):
             self.assertTrue(self.partner_a == order.picking_ids[0].move_ids[0].move_line_ids[0].owner_id, 'Move Lines Owner should be taken into account.')
 
         # close the session
-        self.pos_session.action_pos_session_validate()
+        self.pos_session.close_session_from_ui()
 
     def test_04_order_refund(self):
         self.categ4 = self.env['product.category'].create({
@@ -266,12 +268,12 @@ class TestPoSStock(TestPoSCommon):
         })
         refund_payment.with_context(**payment_context).check()
 
-        self.pos_session.action_pos_session_validate()
+        self.pos_session.close_session_from_ui()
         expense_account_move_line = self.env['account.move.line'].search([('account_id', '=', self.expense_account.id), ('product_id', '=', False)])
         self.assertEqual(expense_account_move_line.balance, 0.0, "Expense account should be 0.0")
 
     def test_stock_duplicate_warehouse_with_PoS_operation_type(self):
-        wh = self.env['stock.warehouse'].create({
+        wh = self.env['stock.warehouse'].sudo().create({
             'name': 'WH1',
             'code': 'WH1',
             'company_id': self.env.company.id,

@@ -64,13 +64,14 @@ export const EDITOR_MUTATION_TYPES = /** @type {const} */ ({
  * purposes in the editor.
  *
  * @template { EditorMutationType } [T=EditorMutationType]
- * @typedef { Extract<|
- *    (NativeMutation<"attributes"> | { value: string })
- *  | (Omit<NativeMutation<"attributes">, "attributeName" | "attributeNamespace" | "type"> & { type: "classList", className: string, value: boolean })
- *  | (NativeMutation<"characterData"> | { value: string })
- *  | (Pick<NativeMutation<"childList">, "previousSibling" | "nextSibling"> | { tree: Tree, parent: Node } & { type: "add" })
- *  | (Pick<NativeMutation<"childList">, "previousSibling" | "nextSibling"> | { tree: Tree, parent: Node } & { type: "remove" })
- *  | { apply: Function, revert: Function } & { type: "custom" },
+ * @typedef { { isAutomatic?: boolean }
+ *   & Extract<|
+ *      (NativeMutation<"attributes"> | { value: string })
+ *    | (Omit<NativeMutation<"attributes">, "attributeName" | "attributeNamespace" | "type"> & { type: "classList", className: string, value: boolean })
+ *    | (NativeMutation<"characterData"> | { value: string })
+ *    | (Pick<NativeMutation<"childList">, "previousSibling" | "nextSibling"> | { tree: Tree, parent: Node } & { type: "add" })
+ *    | (Pick<NativeMutation<"childList">, "previousSibling" | "nextSibling"> | { tree: Tree, parent: Node } & { type: "remove" })
+ *    | { apply: Function, revert: Function } & { type: "custom" },
  * { type: T }
  * > } EditorMutation
  */
@@ -86,15 +87,16 @@ export const EDITOR_MUTATION_TYPES = /** @type {const} */ ({
  * without losing references and to allow as JSON payload.
  *
  * @template { EditorMutationType } [T=EditorMutationType]
- * @typedef { Extract<|
- *     (Omit<EditorMutation<"attributes">, "target"> & { nodeId: NodeId })
- *   | (Omit<EditorMutation<"classList">, "target"> & { nodeId: NodeId })
- *   | (Omit<EditorMutation<"characterData">, "target"> & { nodeId: NodeId })
- *   | (Omit<EditorMutation<"classList">, "target"> & { nodeId: NodeId })
- *   | (Omit<EditorMutation<"add">, "target" | "previousSibling" | "nextSibling" | "tree" | "parent"> & { nodeId: NodeId, previousNodeId: NodeId, nextNodeId: NodeId, serializedNode: SerializedNode, parentNodeId: NodeId })
- *   | (Omit<EditorMutation<"remove">, "target" | "previousSibling" | "nextSibling" | "tree" | "parent"> & { nodeId: NodeId, previousNodeId: NodeId, nextNodeId: NodeId, serializedNode: SerializedNode, parentNodeId: NodeId }),
- *   { type: T }
- * > } SerializedMutation
+ * @typedef { { nodeId: NodeId, isAutomatic?: boolean }
+ *   & Extract<|
+ *       (Omit<EditorMutation<"attributes">, "target">)
+ *     | (Omit<EditorMutation<"classList">, "target">)
+ *     | (Omit<EditorMutation<"characterData">, "target">)
+ *     | (Omit<EditorMutation<"classList">, "target">)
+ *     | (Omit<EditorMutation<"add">, "target" | "previousSibling" | "nextSibling" | "tree" | "parent"> & { previousNodeId: NodeId, nextNodeId: NodeId, serializedNode: SerializedNode, parentNodeId: NodeId })
+ *     | (Omit<EditorMutation<"remove">, "target" | "previousSibling" | "nextSibling" | "tree" | "parent"> & { previousNodeId: NodeId, nextNodeId: NodeId, serializedNode: SerializedNode, parentNodeId: NodeId }),
+ *     { type: T }
+ *   > } SerializedMutation
  */
 
 /** @typedef { WeakMap<NativeMutation<"childList">, { added: Tree[], removed: Tree[] }> } ChildListToTreesMap */
@@ -117,7 +119,7 @@ export const EDITOR_MUTATION_TYPES = /** @type {const} */ ({
  *
  * @typedef { ((node: Node, attributeName: string, attributeValue: string) => boolean)[] } set_attribute_overrides
  *
- * @typedef { ((value: string, params: { mutation: NativeMutation<"attributes">, ensureMutations?: boolean, wasReversed?: boolean }) => void)[] } attributes_mutation_value_processors
+ * @typedef { ((value: string, params: { mutation: NativeMutation<"attributes">, ensureMutations?: boolean, wasReversed?: boolean }) => string)[] } attributes_mutation_value_processors
  *
  * @typedef { ((mutation: NativeMutation) => boolean | undefined)[] } is_mutation_savable_predicates
  * @typedef { ((mutation: EditorMutation<"classList">) => boolean | undefined)[] } is_classlist_mutation_savable_predicates
@@ -125,7 +127,7 @@ export const EDITOR_MUTATION_TYPES = /** @type {const} */ ({
 
 export class DomObserverPlugin extends Plugin {
     static id = "domObserver";
-    static dependencies = ["domReferenceMap"];
+    static dependencies = ["dom", "domReferenceMap"];
     static shared = [
         "ignore",
         "hasStagedMutations",
@@ -148,6 +150,14 @@ export class DomObserverPlugin extends Plugin {
             this.triggerContentUpdated();
             this.clearStage();
         },
+        on_will_normalize_handlers: () => {
+            this.flush();
+            this.isNormalizing = true;
+        },
+        on_normalized_handlers: () => {
+            this.flush();
+            this.isNormalizing = false;
+        },
 
         // Remote / Rebase
         on_will_rebase_history_handlers: () => {
@@ -164,7 +174,7 @@ export class DomObserverPlugin extends Plugin {
         on_remote_history_commit_applied_handlers: (newCommit) => {
             const root =
                 this.getMutationsCommonAncestor(newCommit.data.mutations || []) || this.editable;
-            this.processThrough("normalize_processors", root);
+            this.dependencies.dom.normalize(root);
         },
 
         // Apply / Revert
@@ -420,7 +430,7 @@ export class DomObserverPlugin extends Plugin {
             // Normalize the mutated nodes. Note: this can cause other commits
             // to be written.
             const commitRoot = this.getMutationsCommonAncestor(this.mutations) || this.editable;
-            this.processThrough("normalize_processors", commitRoot);
+            this.dependencies.dom.normalize(commitRoot);
             if (!hasRelatedCommit) {
                 this.trigger("on_pending_mutations_normalized_handlers");
             }
@@ -618,7 +628,11 @@ export class DomObserverPlugin extends Plugin {
                     }
                 }
             })
-            .filter(Boolean);
+            .filter(Boolean)
+            .map((mutation) => {
+                mutation.isAutomatic = !!this.isNormalizing;
+                return mutation;
+            });
     }
 
     /**
@@ -940,6 +954,7 @@ export class DomObserverPlugin extends Plugin {
                         ),
                         nextNodeId,
                         previousNodeId,
+                        isAutomatic: mutation.isAutomatic,
                     };
                 }
                 default: {
@@ -1053,9 +1068,10 @@ export class DomObserverPlugin extends Plugin {
     applyAddMutation(mutation) {
         const { nodeId, serializedNode, parentNodeId, nextNodeId, previousNodeId } = mutation;
 
-        const toAdd =
+        let toAdd =
             this.dependencies.domReferenceMap.getNodeById(nodeId) ||
             this.dependencies.domReferenceMap.unserializeNode(serializedNode);
+        toAdd = this.processThrough("add_node_mutation_processors", toAdd);
         if (!toAdd) {
             return;
         }
@@ -1099,7 +1115,7 @@ export class DomObserverPlugin extends Plugin {
             console.warn("Mutation could not be applied, node to remove is unknown.", mutation);
             return;
         }
-        if (toRemove.parentElement !== parent) {
+        if (toRemove.isConnected && toRemove.parentElement !== parent) {
             console.warn("Mutation could not be applied, parent node does not match.", mutation);
             return;
         }

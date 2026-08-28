@@ -2,7 +2,7 @@
 <templates id="template" xml:space="preserve">
     <t t-name="pos_restaurant.ControlButtons" t-inherit="point_of_sale.ControlButtons" t-inherit-mode="extension">
        <xpath expr="//button[hasclass('more-btn')]" position="before">
-           <button class="course-btn btn btn-lg btn-secondary lh-lg" t-if="this.pos.config.module_pos_restaurant and !this.props.showRemainingButtons and !this.pos.getOrder()?.isRefund" t-on-click="()=>this.pos.addCourse()">
+           <button class="course-btn btn btn-lg btn-secondary lh-lg" t-if="this.showAddCourse" t-on-click="()=>this.pos.addCourse()">
                 <span>Course</span>
            </button>
        </xpath>
@@ -17,14 +17,16 @@
                     <t t-else="">Guests</t>
                 </t>
                 <t t-call="point_of_sale.controlButton"
-                    iconClasses="'fa fa-user d-md-none'"
+                    icon="'person'"
+                    iconClasses="'oi-filled d-md-none'"
                     badge="guestBadge"
                     btnText="guestBtnText"
                     btnClasses="'o_guests_button btn-secondary '"
                     onClick="this.clickTableGuests"/>
                 <!-- Split Button -->
                 <t t-call="point_of_sale.controlButton"
-                    iconClasses="'fa fa-files-o'"
+                    name="o_split_button"
+                    icon="'content_copy'"
                     btnText.translate="Split"
                     btnClasses="'btn-secondary '"
                     onClick="this.openSplitPage"
@@ -35,7 +37,7 @@
                 <button 
                     class="control-button btn btn-lg btn-secondary d-inline-flex flex-md-column justify-content-md-center gap-1 overflow-hidden"
                     t-on-click.stop="() => this.clickTransferOrder()">
-                    <i t-attf-class="oi oi-arrow-right {{!this.ui.isSmall ? ' fa-2x fa-fw' : ''}} align-self-center opacity-50" role="img" aria-hidden="true"/>
+                    <i t-attf-class="oi {{!this.ui.isSmall ? ' oi-2x oi-fw' : ''}} align-self-center opacity-50" role="img" aria-hidden="true" data-icon="east"/>
                     <span t-attf-class="d-flex flex-md-column flex-grow-1 flex-md-grow-0 align-items-center align-items-md-stretch min-w-0 {{this.ui.isSmall ? ' lh-sm' : ''}} text-start text-md-center">
                         <span class="px-1">Transfer / Merge</span>
                     </span>
@@ -45,14 +47,14 @@
                     class="control-button btn btn-lg btn-secondary d-inline-flex flex-md-column justify-content-md-center gap-1 overflow-hidden"
                     t-on-click.stop="() => this.clickTransferCourse()"
                     t-att-disabled="!this.showTransferCourse()">
-                    <i t-attf-class="oi oi-arrow-down {{!this.ui.isSmall ? ' fa-2x fa-fw' : ''}} align-self-center opacity-50" role="img" aria-hidden="true"/>
+                    <i t-attf-class="oi {{!this.ui.isSmall ? ' oi-2x oi-fw' : ''}} align-self-center opacity-50" data-icon="south" role="img" aria-hidden="true"/>
                     <span t-attf-class="d-flex flex-md-column flex-grow-1 flex-md-grow-0 align-items-center align-items-md-stretch min-w-0 {{this.ui.isSmall ? ' lh-sm' : ''}} text-start text-md-center">
                         <span class="px-1">Transfer Course</span>
                     </span>
                 </button>
                 <!-- Edit Order Name Button -->
                 <t t-if="!this.pos.getOrder()?.table_id" t-call="point_of_sale.controlButton"
-                    iconClasses="'fa fa-pencil-square-o'"
+                    icon="'edit_square'"
                     btnText.translate="Set Order Name"
                     btnClasses="'btn-secondary '"
                     onClick="() => this.pos.editFloatingOrderName(this.pos.getOrder())">

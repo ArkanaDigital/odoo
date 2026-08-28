@@ -1,10 +1,8 @@
-import { onWillRender } from "@web/owl2/utils";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { user } from "@web/core/user";
 import { formatNumber } from "@hr_holidays/views/hooks";
 import { useService } from "@web/core/utils/hooks";
-import { Component } from "@odoo/owl";
-
+import { Component, computed } from "@odoo/owl";
 export class TimeOffCardPopover extends Component {
     static template = "hr_holidays.TimeOffCardPopover";
     static props = [
@@ -107,18 +105,19 @@ export class TimeOffCard extends Component {
             (acc, data) => acc + data.amount,
             0
         );
-        this.updateWarning();
-
-        onWillRender(this.updateWarning);
     }
+
+    warning = computed(() => this.updateWarning());
 
     // e.g.: Input: 9.5 Output: 9:30
     formatHour(hoursFloat) {
-        const hours = Math.floor(hoursFloat);
-        const minutes = Math.round((hoursFloat - hours) * 60);
+        const sign = hoursFloat < 0 ? "-" : "";
+        const absValue = Math.abs(hoursFloat);
+        const hours = Math.floor(absValue);
+        const minutes = Math.round((absValue - hours) * 60);
         // Pad minutes with leading zero if needed
         const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
-        return `${hours}:${formattedMinutes}`;
+        return `${sign}${hours}:${formattedMinutes}`;
     }
 
     formatDuration(duration) {
@@ -137,7 +136,7 @@ export class TimeOffCard extends Component {
         const closeExpire =
             data.closest_allocation_duration &&
             data.closest_allocation_duration < data.closest_allocation_remaining;
-        this.warning = errorLeavesSignificant || accrualExcess || closeExpire;
+        return errorLeavesSignificant || accrualExcess || closeExpire;
     }
 
     onClickInfo(ev) {
@@ -148,7 +147,7 @@ export class TimeOffCard extends Component {
             approved: formatNumber(this.lang, data.leaves_approved),
             planned: formatNumber(this.lang, data.leaves_requested),
             left: formatNumber(this.lang, data.virtual_remaining_leaves),
-            warning: this.warning,
+            warning: this.warning(),
             closest: data.closest_allocation_duration,
             unit_of_measure: data.unit_of_measure,
             exceeding_duration: data.exceeding_duration,
@@ -192,6 +191,19 @@ export class TimeOffCard extends Component {
               };
 
         openLeaveWindow(this.actionService, resModel, name, domain, context);
+    }
+
+    getColor() {
+        if(!this.props.index) {return "4";}
+        const colorMap = {
+            0: "4",
+            1: "5",
+            2: "6",
+            3: "7",
+            4: "8",
+            5: "9",
+        };
+        return colorMap[this.props.index % 6];
     }
 }
 

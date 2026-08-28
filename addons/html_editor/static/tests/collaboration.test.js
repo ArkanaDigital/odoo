@@ -509,6 +509,27 @@ describe("sanitize", () => {
             },
         });
     });
+    test("should sanitize form tag when adding a node", async () => {
+        await testMultiEditor({
+            peerIds: ["c1", "c2"],
+            contentBefore: "<p>abc[c1}{c1][c2}{c2]</p>",
+            afterCreate: (peerInfos) => {
+                const document = peerInfos.c1.editor.document;
+                const div = document.createElement("div");
+                div.innerHTML = 'test<form><input type="text"/></form>';
+                peerInfos.c1.editor.editable.append(div);
+                commit(peerInfos.c1.editor);
+                peerInfos.c2.collaborationPlugin.insertRemoteHistoryCommits([
+                    peerInfos.c1.historyPlugin.commits[1],
+                ]);
+            },
+            afterCursorInserted: (peerInfos) => {
+                expect(peerInfos.c2.editor.editable).toHaveInnerHTML(
+                    '<p>abc[c1}{c1][c2}{c2]</p><div class="o-paragraph">test</div>'
+                );
+            },
+        });
+    });
     test("should not sanitize contenteditable attribute (check DOMPurify DEFAULT_ALLOWED_ATTR)", async () => {
         await testMultiEditor({
             peerIds: ["c1"],
@@ -778,7 +799,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: "<p>[c1}{c1][c2}{c2]<br></p>",
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [embedding("counter", Counter)],
             },
@@ -843,7 +864,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: `<p>a[c1}{c1][c2}{c2]</p>`,
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [embedding("counter", Counter)],
             },
@@ -900,7 +921,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: `<p>a[c1}{c1][c2}{c2]</p>`,
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [embedding("counter", Counter)],
             },
@@ -947,7 +968,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: `<p>[c1}{c1][c2}{c2]a</p>`,
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [
                     embedding("wrapper", EmbeddedWrapper, (host) => ({ host }), {
@@ -1042,7 +1063,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: `<p>[c1}{c1][c2}{c2]a</p>`,
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [
                     embedding("wrapper", EmbeddedWrapper, (host) => ({ host }), {
@@ -1122,7 +1143,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: `<p>[c1}{c1][c2}{c2]a</p>`,
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [
                     embedding("wrapper", SimpleEmbeddedWrapper, (host) => ({ host }), {
@@ -1183,7 +1204,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: `<p>[c1}{c1][c2}{c2]a</p>`,
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [
                     embedding("wrapper", SimpleEmbeddedWrapper, (host) => ({ host }), {
@@ -1263,17 +1284,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]<span data-embedded="counter" data-embedded-props='{"value":1}'></span></p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [savedCounter],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const counter1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root
-                .node.component;
-            const counter2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root
-                .node.component;
+            const counter1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const counter2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             expect(getContent(e1.editable, { sortAttrs: true })).toBe(
                 `<p>a[]<span contenteditable="false" data-embedded="counter" data-embedded-props='{"value":1}' data-oe-protected="true"><span class="counter">Counter:1</span></span></p>`
             );
@@ -1319,17 +1340,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]<span data-embedded="counter" data-embedded-props='{"value":1}'></span></p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [savedCounter],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const counter1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root
-                .node.component;
-            const counter2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root
-                .node.component;
+            const counter1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const counter2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             counter2.embeddedState.value = 2;
             await animationFrame();
             mergePeersCommits(peerInfos);
@@ -1397,17 +1418,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]</p><div data-embedded="obj" data-embedded-props='{"obj":{"1":1}}'></div>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [collaborativeObject],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const obj1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root.node
-                .component;
-            const obj2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root.node
-                .component;
+            const obj1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const obj2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             expect(getContent(e1.editable, { sortAttrs: true })).toBe(
                 `<p>a[]</p><div contenteditable="false" data-embedded="obj" data-embedded-props='{"obj":{"1":1}}' data-oe-protected="true"><div class="obj">1_1</div></div><p data-selection-placeholder=""><br></p>`
             );
@@ -1474,7 +1495,7 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]</p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [savedCounter],
                 },
@@ -1489,8 +1510,8 @@ describe("Collaboration with embedded components", () => {
             );
             e2.shared.history.commit();
             await animationFrame();
-            const counter2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root
-                .node.component;
+            const counter2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             counter2.embeddedState.value = 3;
             await animationFrame();
             expect(getContent(e2.editable, { sortAttrs: true })).toBe(
@@ -1515,17 +1536,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]</p><div data-embedded="obj" data-embedded-props='{"obj":{"1":1}}'></div>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [collaborativeObject],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const obj1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root.node
-                .component;
-            const obj2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root.node
-                .component;
+            const obj1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const obj2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             obj1.embeddedState.obj["2"] = 2;
             obj1.embeddedState.obj["3"] = 4;
             obj2.embeddedState.obj["3"] = 3;
@@ -1555,17 +1576,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]</p><div data-embedded="obj" data-embedded-props='{"obj":{"1":1}}'></div>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [collaborativeObject],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const obj1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root.node
-                .component;
-            const obj2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root.node
-                .component;
+            const obj1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const obj2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             obj1.embeddedState.obj["2"] = 2;
             obj2.embeddedState.obj["3"] = 3;
             await animationFrame();
@@ -1589,17 +1610,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]<span data-embedded="counter" data-embedded-props='{"value":1}'></span></p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [savedCounter],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const counter1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root
-                .node.component;
-            const counter2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root
-                .node.component;
+            const counter1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const counter2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             counter2.embeddedState.value = 2;
             await animationFrame();
             counter1.embeddedState.value = 3;
@@ -1632,17 +1653,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]<span data-embedded="counter" data-embedded-props='{"name":"unnamed","value":1}'></span></p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [namedCounter],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const counter1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root
-                .node.component;
-            const counter2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root
-                .node.component;
+            const counter1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const counter2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             counter1.embeddedState.name = "newName";
             await animationFrame();
             expect(getContent(e1.editable, { sortAttrs: true })).toBe(
@@ -1668,17 +1689,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]<span data-embedded="counter" data-embedded-props='{"value":1}'></span></p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [savedCounter],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const counter1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root
-                .node.component;
-            const counter2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root
-                .node.component;
+            const counter1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const counter2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             counter2.embeddedState.value = 2;
             counter1.embeddedState.value = 3;
             await animationFrame();
@@ -1702,15 +1723,15 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]</p><div data-embedded="obj" data-embedded-props='{"obj":{"1":1}}'></div>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [collaborativeObject],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const obj1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root.node
-                .component;
+            const obj1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             const savepoint = e1.shared.history.makeSavePoint();
             obj1.embeddedState.obj["2"] = 2;
             await animationFrame();
@@ -1735,17 +1756,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]<span data-embedded="counter" data-embedded-props='{"baseValue":1}'></span></p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [offsetCounter],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const counter1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root
-                .node.component;
-            const counter2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root
-                .node.component;
+            const counter1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const counter2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             counter1.embeddedState.baseValue = 3;
             counter2.embeddedState.baseValue = 3;
             await animationFrame();
@@ -1776,17 +1797,17 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]</p><div data-embedded="obj"></div>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [collaborativeObject],
                 },
             });
             const e1 = peerInfos.c1.editor;
             const e2 = peerInfos.c2.editor;
-            const obj1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root.node
-                .component;
-            const obj2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root.node
-                .component;
+            const obj1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const obj2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             obj1.embeddedState.obj = {};
             obj1.embeddedState.obj["1"] = 1;
             await animationFrame();
@@ -1818,7 +1839,7 @@ describe("Collaboration with embedded components", () => {
             const peerInfos = await setupMultiEditor({
                 peerIds: ["c1", "c2"],
                 contentBefore: `<p>a[c1}{c1][c2}{c2]</p>`,
-                Plugins: [EmbeddedComponentPlugin],
+                includePlugins: [EmbeddedComponentPlugin],
                 resources: {
                     embedded_components: [collaborativeObject],
                 },
@@ -1842,10 +1863,10 @@ describe("Collaboration with embedded components", () => {
             expect(getContent(e1.editable, { sortAttrs: true })).toBe(
                 `<p>a[]</p><div contenteditable="false" data-embedded="obj" data-embedded-props='{"obj":{"1":"<style"}}' data-oe-protected="true"><div class="obj">1_<style</div></div><p data-selection-placeholder=""><br></p>`
             );
-            const obj1 = [...peerInfos.c1.plugins.get("embeddedComponents").components][0].root.node
-                .component;
-            const obj2 = [...peerInfos.c2.plugins.get("embeddedComponents").components][0].root.node
-                .component;
+            const obj1 = await [...peerInfos.c1.plugins.get("embeddedComponents").components][0]
+                .root.promise;
+            const obj2 = await [...peerInfos.c2.plugins.get("embeddedComponents").components][0]
+                .root.promise;
             obj1.embeddedState.obj["1"] = "-->";
             await animationFrame();
             mergePeersCommits(peerInfos);
@@ -1867,7 +1888,7 @@ describe("Collaboration with embedded components", () => {
         const peerInfos = await setupMultiEditor({
             peerIds: ["c1", "c2"],
             contentBefore: '<p>a[c1}{c1][c2}{c2]</p><div data-embedded="obj"></div>',
-            Plugins: [EmbeddedComponentPlugin],
+            includePlugins: [EmbeddedComponentPlugin],
             resources: {
                 embedded_components: [collaborativeObject],
             },

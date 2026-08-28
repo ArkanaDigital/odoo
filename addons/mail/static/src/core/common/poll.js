@@ -1,7 +1,7 @@
 import { PollVotesPanel } from "@mail/core/common/poll_votes_panel";
-import { useDynamicInterval } from "@mail/utils/common/misc";
+import { computedUntilStale } from "@mail/utils/common/signal";
 
-import { Component, props, proxy, types } from "@odoo/owl";
+import { Component, proxy, signal, types, useProps } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
@@ -14,40 +14,50 @@ export class Poll extends Component {
     setup() {
         super.setup(...arguments);
         this.store = useService("mail.store");
-        this.props = props({
-            poll: types.instanceOf(this.store["mail.poll"].Class),
+        this.props = useProps({
+            poll: types.instanceOf(this.store["mail.poll"]),
         });
+        /** @type {import("@odoo/owl").Signal<Element>} */
+        this.rootRef = signal();
         this.state = proxy({
             isShowingResults: false,
             selectedOptionIds: new Set(),
             voting: false,
         });
-        useDynamicInterval(
-            (endDt) => {
+        this.remainingTime = computedUntilStale(
+            () => {
+                const endDt = this.props.poll.poll_end_dt;
                 if (!endDt) {
-                    return;
+                    return { text: "" };
                 }
                 const diff = endDt.diffNow(["hours", "minutes", "seconds"]);
                 if (diff.valueOf() <= 0) {
-                    this.state.remainingTimeText = _t("Poll will end soon");
-                    return;
+                    return { text: _t("Poll will end soon") };
                 }
                 const hours = Math.ceil(diff.as("hours"));
                 if (hours > 1) {
-                    this.state.remainingTimeText = _t("%(hours)s hours left", { hours });
-                    return (diff.as("hours") - hours + 1) * 3600 * 1000;
+                    return {
+                        text: _t("%(hours)s hours left", { hours }),
+                        ms: (diff.as("hours") - hours + 1) * 3600 * 1000,
+                    };
                 }
                 const minutes = Math.ceil(diff.as("minutes"));
                 if (minutes > 1) {
-                    this.state.remainingTimeText = _t("%(minutes)s minutes left", { minutes });
-                    return (diff.as("minutes") - minutes + 1) * 60 * 1000;
+                    return {
+                        text: _t("%(minutes)s minutes left", { minutes }),
+                        ms: (diff.as("minutes") - minutes + 1) * 60 * 1000,
+                    };
                 }
                 const seconds = Math.ceil(diff.as("seconds"));
-                this.state.remainingTimeText =
-                    seconds > 1 ? _t("%(seconds)s seconds left", { seconds }) : _t("1 second left");
-                return (diff.as("seconds") - seconds + 1) * 1000;
+                return {
+                    text:
+                        seconds > 1
+                            ? _t("%(seconds)s seconds left", { seconds })
+                            : _t("1 second left"),
+                    ms: (diff.as("seconds") - seconds + 1) * 1000,
+                };
             },
-            () => [this.props.poll.poll_end_dt]
+            ({ ms }) => ms
         );
     }
 
@@ -90,7 +100,11 @@ export class Poll extends Component {
     }
 
     onClickNumberOfVotes() {
-        this.env.services.dialog.add(PollVotesPanel, { poll: this.props.poll });
+        this.env.services.dialog.add(
+            PollVotesPanel,
+            { poll: this.props.poll },
+            { rootRef: this.rootRef }
+        );
     }
 
     onOptionCheckboxToggle(optionId, checked) {

@@ -296,6 +296,7 @@ export class StaticList extends DataPoint {
                     ...record.config,
                     ...params,
                     activeFields,
+                    fields: this.fields,
                 };
 
                 // case 1: the record already exists
@@ -796,7 +797,7 @@ export class StaticList extends DataPoint {
                 recordValues = await this.model._loadRecords({ ...this.config, resIds });
             } catch (e) {
                 if (e instanceof ConnectionLostError) {
-                    recordValues = await this.model.offline.readMany2XRecords(
+                    recordValues = await this.model.offlinePlugin.readMany2XRecords(
                         this.resModel,
                         resIds
                     );

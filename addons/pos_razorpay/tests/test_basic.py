@@ -9,6 +9,8 @@ from odoo.tests.common import tagged
 
 @tagged("post_install_l10n", "post_install", "-at_install")
 class TestRazorPayPoS(TestPointOfSaleHttpCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     external_ref_number = ""
     is_cancel_payment_test = False
 
@@ -21,6 +23,7 @@ class TestRazorPayPoS(TestPointOfSaleHttpCommon):
         payment_method = cls.env["pos.payment.method"].create(
             {
                 "name": "RazorPay",
+                "type": "bank",
                 "payment_method_type": "terminal",
                 "payment_provider": "razorpay",
                 "razorpay_tid": "my_razorpay_device_serial_no",

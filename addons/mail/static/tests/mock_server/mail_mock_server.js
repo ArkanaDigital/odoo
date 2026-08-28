@@ -1,16 +1,14 @@
+import { Store } from "@mail/../tests/mock_server/store";
+import { storeHandlerRegistry } from "@mail/../tests/mock_server/store_handler";
 import { markup } from "@odoo/owl";
 import {
     authenticate,
-    Command,
-    getKwArgs,
     logout,
     makeKwArgs,
     MockServer,
     MockServerError,
-    models,
     onRpc,
     serverState,
-    unmakeKwArgs,
 } from "@web/../tests/web_test_helpers";
 import { Domain } from "@web/core/domain";
 import { serializeDateTime } from "@web/core/l10n/dates";
@@ -134,7 +132,9 @@ async function mail_attachment_upload(request) {
     return {
         data: {
             attachment_id: attachmentId,
-            store_data: new mailDataHelpers.Store(IrAttachment.browse(attachmentId)).get_result(),
+            store_data: new Store()
+                .add(IrAttachment.browse(attachmentId), "_store_attachment_fields")
+                .as_dict(),
         },
     };
 }
@@ -146,15 +146,33 @@ async function mail_attachment_delete(request) {
     const BusBus = this.env["bus.bus"];
     /** @type {import("mock_models").IrAttachment} */
     const IrAttachment = this.env["ir.attachment"];
+    /** @type {import("mock_models").MailMessage} */
+    const MailMessage = this.env["mail.message"];
     /** @type {import("mock_models").ResPartner} */
     const ResPartner = this.env["res.partner"];
 
-    const { attachment_id } = await parseRequestParams(request);
+    const { access_token_by_attachment_id, keep_on_messages } = await parseRequestParams(request);
+    const attachmentIds = Object.keys(access_token_by_attachment_id).map(Number);
+    const keptIds = [];
+    if (keep_on_messages) {
+        for (const message of MailMessage._filter([["attachment_ids", "in", attachmentIds]])) {
+            const posted = attachmentIds.filter((id) => message.attachment_ids.includes(id));
+            if (posted.length) {
+                // the attachments stay on their message, out of the thread only
+                IrAttachment.write(posted, { res_id: message.id, res_model: "mail.message" });
+                keptIds.push(...posted);
+            }
+        }
+    }
     const [partner] = ResPartner.read(this.env.user.partner_id);
-    BusBus._sendone(partner, "ir.attachment/delete", {
-        id: attachment_id,
-    });
-    return IrAttachment.unlink([attachment_id]);
+    const deletedIds = attachmentIds.filter((id) => !keptIds.includes(id));
+    for (const attachmentId of deletedIds) {
+        BusBus._sendone(partner, "ir.attachment/delete", {
+            id: attachmentId,
+        });
+    }
+    IrAttachment.unlink(deletedIds);
+    return { kept_attachment_ids: keptIds };
 }
 
 registerRoute("/discuss/channel/attachments", load_attachments);
@@ -179,7 +197,9 @@ async function load_attachments(request) {
         .map(({ id }) => id);
     return {
         count: attachmentIds.length,
-        store_data: new mailDataHelpers.Store(IrAttachment.browse(attachmentIds)).get_result(),
+        store_data: new Store()
+            .add(IrAttachment.browse(attachmentIds), "_store_attachment_fields")
+            .as_dict(),
     };
 }
 
@@ -205,14 +225,20 @@ async function channel_call_join(request) {
     const rtcSessions = DiscussChannelRtcSession._filter([
         ["channel_member_id", "in", channelMembers.map((channelMember) => channelMember.id)],
     ]);
-    return new mailDataHelpers.Store(DiscussChannel.browse(channel_id), {
-        rtc_session_ids: mailDataHelpers.Store.many(rtcSessions, makeKwArgs({ mode: "ADD" })),
-    })
-        .add("Rtc", {
-            iceServers: false,
-            localSession: mailDataHelpers.Store.one(DiscussChannelRtcSession.browse(sessionId)),
+    return new Store()
+        .add(DiscussChannel.browse(channel_id), (res) =>
+            res.many("rtc_session_ids", "_store_rtc_session_fields", {
+                mode: "ADD",
+                value: rtcSessions,
+            })
+        )
+        .add_model_values("Rtc", (res) => {
+            res.attr("iceServers", false);
+            res.one("localSession", "_store_rtc_session_fields", {
+                value: DiscussChannelRtcSession.browse(sessionId),
+            });
         })
-        .get_result();
+        .as_dict();
 }
 
 registerRoute("/mail/rtc/channel/leave_call", channel_call_leave);
@@ -253,12 +279,16 @@ async function channel_call_leave(request) {
         notifications.push([
             channel,
             "mail.record/insert",
-            new mailDataHelpers.Store(DiscussChannel.browse(Number(channelId)), {
-                rtc_session_ids: mailDataHelpers.Store.many(
-                    DiscussChannelRtcSession.browse(sessions.map((session) => session.id)),
-                    makeKwArgs({ only_id: true, mode: "DELETE" })
-                ),
-            }).get_result(),
+            new Store()
+                .add(DiscussChannel.browse(Number(channelId)), (res) =>
+                    res.many("rtc_session_ids", [], {
+                        mode: "DELETE",
+                        value: DiscussChannelRtcSession.browse(
+                            sessions.map((session) => session.id)
+                        ),
+                    })
+                )
+                .as_dict(),
         ]);
     }
     for (const rtcSession of rtcSessions) {
@@ -273,6 +303,12 @@ async function channel_call_leave(request) {
     }
     this.env["discuss.channel.rtc.session"].unlink(Array.from(rtcSessions).map(({ id }) => id));
     BusBus._sendmany(notifications);
+}
+
+registerRoute("/mail/rtc/channel/upgrade_connection", channel_upgrade_connection);
+/** @type {RouteCallback} */
+async function channel_upgrade_connection() {
+    // tests have no SFU server to hand out, so the call stays peer to peer
 }
 
 registerRoute("/discuss/channel/sub_channel/create", discuss_channel_sub_channel_create);
@@ -322,7 +358,7 @@ async function discuss_channel_sub_channel_fetch(request) {
         domain.push(["id", "<", before]);
     }
     const subChannels = DiscussChannel.search(domain, makeKwArgs({ limit, order: "id DESC" }));
-    const store = new mailDataHelpers.Store(DiscussChannel.browse(subChannels));
+    const store = new Store().add(DiscussChannel.browse(subChannels), "_store_channel_fields");
     const lastMessageIds = [];
     for (const channel of subChannels) {
         const lastMessageId = Math.max(channel.message_ids);
@@ -330,9 +366,9 @@ async function discuss_channel_sub_channel_fetch(request) {
             lastMessageIds.push(lastMessageId);
         }
     }
-    store.add(MailMessage.browse(lastMessageIds));
+    store.add(MailMessage.browse(lastMessageIds), "_store_message_fields");
     return {
-        store_data: store.get_result(),
+        store_data: store.as_dict(),
         sub_channel_ids: subChannels,
     };
 }
@@ -364,9 +400,7 @@ async function discuss_settings_mute(request) {
     BusBus._sendone(
         partner,
         "mail.record/insert",
-        new mailDataHelpers.Store(DiscussChannelMember.browse([member.id]), {
-            mute_until_dt,
-        }).get_result()
+        new Store().add(DiscussChannelMember.browse([member.id]), { mute_until_dt }).as_dict()
     );
     return "dummy";
 }
@@ -474,10 +508,12 @@ async function mail_link_preview(request) {
     const { message_id } = await parseRequestParams(request);
     const [message] = MailMessage.search_read([["id", "=", message_id]]);
     const link = createDocumentFragmentFromContent(markup(message.body)).querySelector(
-        "a[href^='https://tenor.com'], a[href^='https://make-link-preview.com']"
+        "a[href^='https://tenor.com'], a[href^='https://make-link-preview.com'], a[href^='https://media.tenor.com']"
     );
     if (link) {
-        const isGifPreview = link.href.startsWith("https://tenor.com");
+        const isGifPreview =
+            link.href.startsWith("https://tenor.com") ||
+            link.href.startsWith("https://media.tenor.com");
         const linkPreviewId = MailLinkPreview.create({
             og_description: isGifPreview ? "Click to view the GIF" : "test description",
             og_image: isGifPreview ? link.href : undefined,
@@ -493,7 +529,7 @@ async function mail_link_preview(request) {
         BusBus._sendone(
             MailMessage._bus_notification_target(message_id),
             "mail.record/insert",
-            new mailDataHelpers.Store(MailMessage.browse(message_id)).get_result()
+            new Store().add(MailMessage.browse(message_id), "_store_message_fields").as_dict()
         );
     }
 }
@@ -517,9 +553,9 @@ async function mail_link_preview_hide(request) {
         BusBus._sendone(
             MailMessage._bus_notification_target(messageLinkPreview.message_id),
             "mail.record/insert",
-            new mailDataHelpers.Store(
-                MailMessage.browse(messageLinkPreview.message_id)
-            ).get_result()
+            new Store()
+                .add(MailMessage.browse(messageLinkPreview.message_id), "_store_message_fields")
+                .as_dict()
         );
     }
 }
@@ -565,6 +601,7 @@ export async function mail_message_post(request) {
         "attachment_ids",
         "body",
         "message_type",
+        "needaction",
         "partner_ids",
         "subtype_xmlid",
     ];
@@ -594,10 +631,9 @@ export async function mail_message_post(request) {
     }
     return {
         message_id: messageIds[0],
-        store_data: new mailDataHelpers.Store(
-            MailMessage.browse(messageIds[0]),
-            makeKwArgs({ for_current_user: true })
-        ).get_result(),
+        store_data: new Store()
+            .add(MailMessage.browse(messageIds[0]), "_store_message_fields")
+            .as_dict(),
     };
 }
 
@@ -609,9 +645,9 @@ async function mail_message_reaction(request) {
     const { action, content, message_id } = await parseRequestParams(request);
     const partner_id = this.env.user?.partner_id ?? false;
     const guest_id = this.env.cookie.get("dgid") ?? false;
-    const store = new mailDataHelpers.Store();
+    const store = new Store();
     MailMessage._message_reaction(message_id, content, partner_id, guest_id, action, store);
-    return store.get_result();
+    return store.as_dict();
 }
 
 registerRoute("/mail/message/translate", translate);
@@ -653,10 +689,18 @@ async function mail_message_update_content(request) {
             }
         }
     }
-    if (update_data.attachment_ids.length === 0) {
-        IrAttachment.unlink(message.attachment_ids);
-    } else {
-        const attachments = IrAttachment.browse(update_data.attachment_ids).filter(
+    const target_attachments = update_data.attachment_ids;
+    const attachments_to_remove = message.attachment_ids.filter(
+        (id) => !target_attachments.includes(id)
+    );
+    const attachments_to_add = target_attachments.filter(
+        (id) => !message.attachment_ids.includes(id)
+    );
+    if (attachments_to_remove.length) {
+        IrAttachment.unlink(attachments_to_remove);
+    }
+    if (attachments_to_add.length) {
+        const attachments = IrAttachment.browse(attachments_to_add).filter(
             (attachment) =>
                 attachment.res_model === "mail.compose.message" &&
                 attachment.create_uid === this.env.user?.id
@@ -668,8 +712,8 @@ async function mail_message_update_content(request) {
                 res_id: message.res_id,
             }
         );
-        msg_values.attachment_ids = update_data.attachment_ids;
     }
+    msg_values.attachment_ids = target_attachments;
     if (update_data.body === "") {
         MailMessageLinkPreview.unlink(message.message_link_preview_ids);
     }
@@ -677,26 +721,32 @@ async function mail_message_update_content(request) {
         msg_values.partner_ids = false;
         msg_values.parent_id = false;
     }
+    if ("subject" in update_data) {
+        msg_values.subject = update_data.subject;
+    }
     MailMessage.write([message_id], msg_values);
     BusBus._sendone(
         MailMessage._bus_notification_target(message.id),
         "mail.record/insert",
-        new mailDataHelpers.Store(MailMessage.browse(message.id), {
-            attachment_ids: mailDataHelpers.Store.many(IrAttachment.browse(message.attachment_ids)),
-            body: ["markup", message.body],
-            parent_id: mailDataHelpers.Store.one(MailMessage.browse(message.parent_id)),
-            partner_ids: mailDataHelpers.Store.many(
-                this.env["res.partner"].browse(message.partner_ids),
-                makeKwArgs({ fields: ["avatar_128", "name"] })
-            ),
-            pinned_at: message.pinned_at,
-            message_link_preview_ids: message.message_link_preview_ids,
-        }).get_result()
+        new Store()
+            .add(MailMessage.browse(message.id), (res) => {
+                res.many("attachment_ids", "_store_attachment_fields", {
+                    value: IrAttachment.browse(message.attachment_ids),
+                });
+                res.attr("body", ["markup", message.body]);
+                res.one("parent_id", "_store_message_fields", {
+                    value: MailMessage.browse(message.parent_id),
+                });
+                res.many("partner_ids", ["avatar_128", "name"], {
+                    value: this.env["res.partner"].browse(message.partner_ids),
+                });
+                res.attr("pinned_at", message.pinned_at);
+                res.attr("message_link_preview_ids", message.message_link_preview_ids);
+                res.attr("subject", message.subject);
+            })
+            .as_dict()
     );
-    return new mailDataHelpers.Store(
-        MailMessage.browse(message_id),
-        makeKwArgs({ for_current_user: true })
-    ).get_result();
+    return new Store().add(MailMessage.browse(message_id), "_store_message_fields").as_dict();
 }
 
 registerRoute("/discuss/channel/<int:cid>/partner/<int:pid>/avatar_128", partnerAvatar128);
@@ -753,12 +803,10 @@ async function read_subscription_data(request) {
     }
     const subtypes = MailMessageSubtype.search(subtypeDomain);
     return {
-        store_data: new mailDataHelpers.Store(
-            MailMessageSubtype.browse(subtypes),
-            makeKwArgs({ fields: ["name"] })
-        )
-            .add(MailFollowers.browse(follower_id), makeKwArgs({ fields: ["subtype_ids"] }))
-            .get_result(),
+        store_data: new Store()
+            .add(MailMessageSubtype.browse(subtypes), ["name"])
+            .add(MailFollowers.browse(follower_id), ["subtype_ids"])
+            .as_dict(),
         subtype_ids: subtypes, // Not sorted for simplicity.
     };
 }
@@ -790,7 +838,7 @@ registerRoute("/mail/store", mail_store);
 /** @type {RouteCallback} */
 export async function mail_store(request) {
     const args = await parseRequestParams(request);
-    return processRequest.call(this, args.fetch_params, args.context).get_result();
+    return processRequest.call(this, args.fetch_params).as_dict();
 }
 
 registerRoute("/discuss/search", search);
@@ -803,12 +851,25 @@ async function search(request) {
     /** @type {import("mock_models").ResPartner} */
     const ResPartner = this.env["res.partner"];
 
-    const store = new mailDataHelpers.Store();
+    const store = new Store();
+    /** @type {import("mock_models").DiscussChannelMember} */
+    const DiscussChannelMember = this.env["discuss.channel.member"];
     const base_domain = [
-        ["name", "ilike", term],
+        ...(!term ? [] : [["name", "ilike", term]]),
         ["channel_type", "!=", "chat"],
     ];
-    const priority_conditions = [[["is_member", "=", true], ...base_domain], base_domain];
+    const currentPartnerId = this.env.user?.partner_id;
+    const favoriteChannelIds = currentPartnerId
+        ? DiscussChannelMember._filter([
+              ["partner_id", "=", currentPartnerId],
+              ["is_favorite", "=", true],
+          ]).map((m) => m.channel_id)
+        : [];
+    const priority_conditions = [
+        [["id", "in", favoriteChannelIds], ...base_domain],
+        [["is_member", "=", true], ...base_domain],
+        base_domain,
+    ];
     const channelIds = new Set();
     let remaining_limit;
     for (const domain of priority_conditions) {
@@ -825,9 +886,14 @@ async function search(request) {
             channelIds.add(channelId);
         }
     }
-    store.add(DiscussChannel.browse(channelIds));
+    store.add(DiscussChannel.browse(channelIds), "_store_channel_fields");
+    const channelMemberIds = DiscussChannelMember.search([
+        ["channel_id", "in", [...channelIds]],
+        ["is_self", "=", true],
+    ]);
+    store.add(DiscussChannelMember.browse(channelMemberIds), (res) => res.attr("is_favorite"));
     ResPartner._search_for_channel_invite(store, term, undefined, limit);
-    return store.get_result();
+    return store.as_dict();
 }
 
 registerRoute("/mail/thread/recipients/get_suggested_recipients", get_suggested_recipients);
@@ -844,10 +910,12 @@ async function mail_thread_unsubscribe(request) {
     const { res_model, res_id, partner_ids } = await parseRequestParams(request);
     const thread = this.env[res_model].browse(res_id);
     this.env["mail.thread"].message_unsubscribe.call(thread, [res_id], partner_ids);
-    return new mailDataHelpers.Store(
-        thread,
-        makeKwArgs({ as_thread: true, request_list: ["followers", "suggestedRecipients"] })
-    ).get_result();
+    return new Store()
+        .add(thread, "_store_thread_fields", {
+            as_thread: true,
+            fields_params: { request_list: ["followers", "suggestedRecipients"] },
+        })
+        .as_dict();
 }
 
 registerRoute("/mail/thread/subscribe", mail_thread_subscribe);
@@ -856,963 +924,118 @@ async function mail_thread_subscribe(request) {
     const { res_model, res_id, partner_ids } = await parseRequestParams(request);
     const thread = this.env[res_model].browse(res_id);
     this.env["mail.thread"].message_subscribe.call(thread, [res_id], partner_ids);
-    return new mailDataHelpers.Store(
-        thread,
-        makeKwArgs({ as_thread: true, request_list: ["followers", "suggestedRecipients"] })
-    ).get_result();
+    return new Store()
+        .add(thread, "_store_thread_fields", {
+            as_thread: true,
+            fields_params: { request_list: ["followers", "suggestedRecipients"] },
+        })
+        .as_dict();
 }
 
-function processRequest(fetchParams, context) {
-    const store = new mailDataHelpers.Store();
-    for (const fetchParam of fetchParams) {
-        const [name, params, data_id] =
-            typeof fetchParam === "string" || fetchParam instanceof String
-                ? [fetchParam, undefined, undefined]
-                : fetchParam;
-        store.data_id = data_id;
-        mailDataHelpers._process_request_for_all.call(this, store, name, params, context);
-        mailDataHelpers._process_request_for_logged_in_user.call(this, store, name, params);
-        mailDataHelpers._process_request_for_internal_user.call(this, store, name, params);
-    }
-    store.data_id = null;
-    return store;
-}
-
-function _resolve_messages(store, fetch_params, { extraKwargs = {}, filter = () => true } = {}) {
-    /** @type {import("mock_models").MailMessage} */
-    const MailMessage = this.env["mail.message"];
-    const res = MailMessage._message_fetch(makeKwArgs(fetch_params));
-    res.messages = res.messages.filter(filter.bind(this));
-    store.resolve_data_request({
-        ...res,
-        messages: mailDataHelpers.Store.many(
-            MailMessage.browse(res.messages.map((message) => message.id)),
-            makeKwArgs({ for_current_user: true, ...extraKwargs })
-        ),
-    });
-    return res.messages;
-}
-function _process_request_for_all(store, name, params, context = {}) {
+function processRequest(fetchParams) {
     /** @type {import("mock_models").DiscussChannel} */
     const DiscussChannel = this.env["discuss.channel"];
     /** @type {import("mock_models").DiscussChannelMember} */
     const DiscussChannelMember = this.env["discuss.channel.member"];
-    /** @type {import("mock_models").MailGuest} */
-    const MailGuest = this.env["mail.guest"];
     /** @type {import("mock_models").MailMessage} */
     const MailMessage = this.env["mail.message"];
-    /** @type {import("mock_models").MailNotification} */
-    const MailNotification = this.env["mail.notification"];
-    /** @type {import("mock_models").ResPartner} */
-    const ResPartner = this.env["res.partner"];
-    /** @type {import("mock_models").ResUsers} */
-    const ResUsers = this.env["res.users"];
-    if (name === "init_messaging") {
-        if (!MailGuest._get_guest_from_context() || !ResUsers._is_public(this.env.uid)) {
-            ResUsers._init_messaging([this.env.uid], store, context);
+    const store = new Store();
+    // Per-request aggregates, batched in a single add once all fetch params have been processed
+    // (mirrors the `_process_request_loop` overrides on WebclientController and
+    // DiscussChannelWebclientController). The mock env has no mutable request context, so these
+    // live on the per-request store instead of `request.env.context`.
+    store.request_message_ids = new Set();
+    store.add_inbox_fields = false;
+    store.add_chatter_fields = false;
+    store.request_channel_ids = new Set();
+    store.add_channels_last_message = false;
+    store.add_channels_last_needaction = false;
+    storeHandlerRegistry.execute_for_user(this, store, fetchParams);
+    // messages (WebclientController layer)
+    if (store.request_message_ids.size) {
+        const fields_params = {};
+        if (store.add_inbox_fields) {
+            fields_params.inbox_fields = true;
         }
-        const guest = ResUsers._is_public(this.env.uid) && MailGuest._get_guest_from_context();
-        const members = DiscussChannelMember._filter([
-            guest ? ["guest_id", "=", guest.id] : ["partner_id", "=", this.env.user.partner_id],
-            ["rtc_inviting_session_id", "!=", false],
-        ]);
-        const channelsDomain = [["id", "in", members.map((m) => m.channel_id)]];
-        store.add(DiscussChannel.browse(DiscussChannel.search(channelsDomain)));
-    }
-    if (name === "failures" && this.env.user?.partner_id) {
-        const [partner] = ResPartner.browse(this.env.user.partner_id);
-        const messages = MailMessage._filter([
-            ["author_id", "=", partner.id],
-            ["res_id", "!=", 0],
-            ["model", "!=", false],
-            ["message_type", "!=", "user_notification"],
-        ]).filter((message) => {
-            // Purpose is to simulate the following domain on mail.message:
-            // ['notification_ids.notification_status', 'in', ['bounce', 'exception']],
-            // But it's not supported by getRecords domain to follow a relation.
-            const notifications = MailNotification._filter([
-                ["mail_message_id", "=", message.id],
-                ["notification_status", "in", ["bounce", "exception"]],
-            ]);
-            return notifications.length > 0;
+        if (store.add_chatter_fields) {
+            fields_params.chatter_fields = true;
+        }
+        store.add(MailMessage.browse([...store.request_message_ids]), "_store_message_fields", {
+            fields_params,
         });
-        messages.length = Math.min(messages.length, 100);
-        MailMessage._message_notifications_to_store(
-            messages.map((message) => message.id),
-            store
-        );
     }
-    if (name === "channels_as_member") {
-        const channels = DiscussChannel._get_channels_as_member();
-        store.add(
-            MailMessage.browse(
-                channels
-                    .map(
-                        (channel) =>
-                            MailMessage._filter([
-                                ["model", "=", "discuss.channel"],
-                                ["res_id", "=", channel.id],
-                            ]).sort((a, b) => b.id - a.id)[0]
-                    )
-                    .filter((lastMessage) => lastMessage)
-                    .map((message) => message.id)
-            ),
-            makeKwArgs({ for_current_user: true })
-        );
-        store.add(channels);
-        store.add(
-            DiscussChannelMember.browse(
-                channels
-                    .map(
-                        (channel) =>
-                            DiscussChannelMember._filter([
-                                ["channel_id", "=", channel.id],
-                                ["is_self", "=", true],
-                            ])[0]
-                    )
-                    .map((channelMember) => channelMember.id)
-            ),
-            ["is_favorite"]
-        );
-        store.add({
-            has_unpinned_channels:
-                DiscussChannelMember.search_count(
-                    [
+    // channels (DiscussChannelWebclientController layer)
+    if (store.request_channel_ids.size) {
+        const channelIds = [...store.request_channel_ids];
+        // is_self is a per-current-user compute only refreshed at create/write in the mock
+        DiscussChannelMember.browse(DiscussChannelMember.search([]))._compute_is_self();
+        store.add(DiscussChannel.browse(channelIds), "_store_channel_fields");
+        const selfMemberIds = channelIds
+            .map(
+                (channelId) =>
+                    DiscussChannelMember._filter([
+                        ["channel_id", "=", channelId],
                         ["is_self", "=", true],
-                        ["is_pinned", "=", false],
-                    ],
-                    makeKwArgs({ limit: 1 })
-                ) > 0,
-        });
-    }
-    if (name === "mail.thread") {
-        store.add(
-            this.env[params.thread_model].browse(params.thread_id),
-            makeKwArgs({ as_thread: true, request_list: params.request_list })
-        );
-    }
-    if (name === "discuss.channel") {
-        const { ids, with_last_message } = params;
-        const channels = DiscussChannel.search([["id", "=", ids]]);
-        store.add(DiscussChannel.browse(channels));
-        if (with_last_message) {
-            store.add(
-                MailMessage.browse(
-                    channels
-                        .map(
-                            (channelId) =>
-                                MailMessage._filter([
-                                    ["model", "=", "discuss.channel"],
-                                    ["res_id", "=", channelId],
-                                ]).sort((a, b) => b.id - a.id)[0]
-                        )
-                        .filter(Boolean)
-                        .map((message) => message.id)
-                ),
-                makeKwArgs({ for_current_user: true })
-            );
-        }
-    }
-    if (name === "res.partner") {
-        const [partnerId] = ResPartner.search([["id", "=", params["id"]]]);
-        store.add(ResPartner.browse(partnerId));
-    }
-    if (name === "res.users") {
-        const [userId] = ResUsers.search([["id", "=", params["id"]]]);
-        store.add(ResUsers.browse(userId));
-    }
-    if (name === "/discuss/channel/members") {
-        const { channel_id, known_member_ids = [], search_term } = params;
-        let memberIds = DiscussChannelMember.search(
-            [
-                ["id", "not in", known_member_ids],
-                ["channel_id", "=", channel_id],
-            ],
-            makeKwArgs({ limit: 100 })
-        );
-        if (search_term) {
-            const lowerTerm = search_term.toLowerCase();
-            memberIds = DiscussChannelMember.browse(memberIds)
-                .filter((member) => {
-                    if (member.partner_id) {
-                        const [partner] = ResPartner.browse(member.partner_id);
-                        return partner?.name?.toLowerCase().includes(lowerTerm);
-                    }
-                    if (member.guest_id) {
-                        const [guest] = MailGuest.browse(member.guest_id);
-                        return guest?.name?.toLowerCase().includes(lowerTerm);
-                    }
-                    return false;
-                })
-                .map((member) => member.id);
-        }
-        const memberCount = DiscussChannelMember.search_count([["channel_id", "=", channel_id]]);
-        store.add(DiscussChannel.browse(channel_id), { member_count: memberCount });
-        store.add(DiscussChannelMember.browse(memberIds));
-    }
-    if (name === "/discuss/channel/messages") {
-        /** @type {import("mock_models").MailMessage} */
-        const MailMessage = this.env["mail.message"];
-        const channel = this.env["discuss.channel"].browse(params.channel_id);
-        const messages = _resolve_messages.call(this, store, {
-            ...params.fetch_params,
-            domain: [],
-            thread: channel,
-        });
-        MailMessage.set_message_done(messages.map((message) => message.id));
-    }
-    if (name === "/discuss/channel/add_members") {
-        DiscussChannel._add_members(
-            [params.channel_id],
-            makeKwArgs({
-                partner_ids: params.partner_ids,
-                user_ids: params.user_ids,
-                invite_to_rtc_call: params.invite_to_rtc_call,
-                post_joined_message: params.post_joined_message,
-            })
-        );
-    }
-    if (name === "/discuss/channel/favorite") {
-        const memberIds = DiscussChannelMember.search([
-            ["channel_id", "=", params.channel_id],
-            ["is_self", "=", true],
-        ]);
-        if (memberIds.length) {
-            DiscussChannelMember.write(memberIds, { is_favorite: params.is_favorite });
-        }
-    }
-    if (name === "/discuss/channel/pin") {
-        const memberIds = DiscussChannelMember.search([
-            ["channel_id", "=", params.channel_id],
-            ["is_self", "=", true],
-        ]);
-        DiscussChannelMember._channel_pin(memberIds, params.pinned);
-        store.add({
-            has_unpinned_channels:
-                DiscussChannelMember.search_count(
-                    [
-                        ["is_self", "=", true],
-                        ["is_pinned", "=", false],
-                    ],
-                    makeKwArgs({ limit: 1 })
-                ) > 0,
-        });
-    }
-    if (name === "/discuss/get_or_create_chat") {
-        const channelId = DiscussChannel._get_or_create_chat(params.partners_to);
-        store.resolve_data_request({ channel: mailDataHelpers.Store.one(channelId) });
-    }
-    if (name === "/discuss/create_channel") {
-        const channelId = DiscussChannel._create_channel(
-            params.name,
-            params.group_id,
-            params.is_readonly
-        );
-        store.resolve_data_request({ channel: mailDataHelpers.Store.one(channelId) });
-    }
-    if (name === "/discuss/create_group") {
-        const channelId = DiscussChannel._create_group(
-            params.partners_to,
-            params.default_display_mode,
-            params.name
-        );
-        store.resolve_data_request({ channel: mailDataHelpers.Store.one(channelId) });
-    }
-}
-
-function _process_request_for_logged_in_user(store, name, params) {
-    /** @type {import("mock_models").BusBus} */
-    const BusBus = this.env["bus.bus"];
-    /** @type {import("mock_models").MailMessage} */
-    const MailMessage = this.env["mail.message"];
-    /** @type {import("mock_models").ResPartner} */
-    const ResPartner = this.env["res.partner"];
-    const bookmark_message_ids = [];
-    if (["add_bookmark", "remove_bookmark"].includes(name)) {
-        const messages = MailMessage.browse(params.message_id);
-        const command = name === "add_bookmark" ? Command.link : Command.unlink;
-        MailMessage.write(messages[0].id, {
-            bookmarked_partner_ids: [command(this.env.user.partner_id)],
-        });
-        bookmark_message_ids.push(...messages.map((m) => m.id));
-    }
-    if (name === "remove_all_bookmarks") {
-        const messages = MailMessage._filter([
-            ["bookmarked_partner_ids", "in", this.env.user.partner_id],
-        ]);
-        MailMessage.write(
-            messages.map((message) => message.id),
-            { bookmarked_partner_ids: [Command.unlink(this.env.user.partner_id)] }
-        );
-        bookmark_message_ids.push(...messages.map((m) => m.id));
-    }
-    if (bookmark_message_ids.length > 0) {
-        const bus_store = new mailDataHelpers.Store();
-        for (const cur_store of [store, bus_store]) {
-            for (const message_id of bookmark_message_ids) {
-                cur_store.add(
-                    MailMessage.browse(message_id),
-                    makeKwArgs({ for_current_user: true })
-                );
-                const bus_last_id = BusBus.lastBusNotificationId;
-                cur_store.add({
-                    bookmarkBox: {
-                        counter: MailMessage._filter([
-                            ["bookmarked_partner_ids", "in", [this.env.user.partner_id]],
-                        ]).length,
-                        counter_bus_id: bus_last_id,
-                        id: "bookmark",
-                        model: "mail.box",
-                    },
-                });
-            }
-        }
-        const [partner] = ResPartner.read(this.env.user.partner_id);
-        BusBus._sendone(partner, "mail.record/insert", bus_store.get_result());
-    }
-    if (name === "/mail/inbox/messages") {
-        _resolve_messages.call(
-            this,
-            store,
-            {
-                ...params.fetch_params,
-                domain: [["needaction", "=", true]],
-            },
-            { extraKwargs: { inbox_fields: true } }
-        );
-    }
-    if (name === "/mail/history/messages") {
-        /** @type {import("mock_models").MailNotification} */
-        const MailNotification = this.env["mail.notification"];
-        _resolve_messages.call(
-            this,
-            store,
-            {
-                ...params.fetch_params,
-                domain: [["needaction", "=", false]],
-            },
-            {
-                filter(message) {
-                    const notifs = MailNotification.search_read([
-                        ["mail_message_id", "=", message.id],
-                        ["is_read", "=", true],
-                        ["res_partner_id", "=", this.env.user.partner_id],
-                    ]);
-                    return notifs.length > 0;
-                },
-            }
-        );
-    }
-    if (name === "/mail/bookmark/messages") {
-        _resolve_messages.call(this, store, {
-            ...params.fetch_params,
-            domain: [["bookmarked_partner_ids", "in", [this.env.user.partner_id]]],
-        });
-    }
-    if (name === "/mail/thread/messages") {
-        const thread = this.env[params.thread_model].browse(params.thread_id);
-        const messages = _resolve_messages.call(this, store, {
-            ...params.fetch_params,
-            domain: [],
-            thread,
-        });
-        MailMessage.set_message_done(messages.map((message) => message.id));
-    }
-}
-
-function _process_request_for_internal_user(store, name, params) {
-    /** @type {import("mock_models").MailActivity} */
-    const MailActivity = this.env["mail.activity"];
-    /** @type {import("mock_models").ResUsers} */
-    const ResUsers = this.env["res.users"];
-    if (name === "mail.activity") {
-        const activities = MailActivity._filter([["id", "in", params.ids]], { active_test: false });
-        store.add(MailActivity.browse(activities.map((a) => a.id)));
-    }
-    if (name === "systray_get_activities" && this.env.user?.partner_id) {
-        const bus_last_id = this.env["bus.bus"].lastBusNotificationId;
-        const groups = ResUsers._get_activity_groups();
-        store.add({
-            activityCounter: groups.reduce(
-                (counter, group) => counter + (group.total_count || 0),
-                0
-            ),
-            activity_counter_bus_id: bus_last_id,
-            activityGroups: groups,
-        });
-    }
-    if (name === "mail.canned.response") {
-        const domain = [
-            "|",
-            ["create_uid", "=", this.env.user.id],
-            ["group_ids", "in", this.env.user.group_ids],
-        ];
-        const CannedResponse = this.env["mail.canned.response"];
-        const cannedResponses = CannedResponse.search(domain);
-        store.add(CannedResponse.browse(cannedResponses));
-    }
-    if (name === "avatar_card") {
-        const { id, model } = params;
-        if (!id || !_get_supported_avatar_card_models().includes(model)) {
-            return;
-        }
-        const Model = this.env[model];
-        const [record] = Model.search([["id", "=", id]]);
-        if (record) {
-            const fields = Model._get_store_avatar_card_fields();
-            store.add(Model.browse(record), makeKwArgs({ fields }));
-        }
-    }
-}
-
-function _get_supported_avatar_card_models() {
-    // not modular but avoids verbose overrides
-    return ["res.users", "res.partner", "resource.resource", "hr.employee", "hr.employee.public"];
-}
-
-const ids_by_model = {
-    "mail.thread": ["model", "id"],
-    MessageReactions: ["message", "content"],
-    Rtc: [],
-    Store: [],
-};
-
-function extractAndDeleteKwArgs(args, ...keys) {
-    const allKwargs = unmakeKwArgs(getKwArgs(args, ...keys));
-    const kwargs = {};
-    for (const key of keys) {
-        if (Object.hasOwn(allKwargs, key)) {
-            kwargs[key] = allKwargs[key];
-            delete allKwargs[key];
-        }
-    }
-    return [kwargs, allKwargs];
-}
-
-export class StoreAttr {
-    constructor(name, value, predicate) {
-        const [kwargs] = extractAndDeleteKwArgs(arguments, "name", "value", "predicate");
-        this.name = kwargs.name;
-        this.value = kwargs.value;
-        this.predicate = kwargs.predicate;
-    }
-
-    _get_value(record, model = null) {
-        if (typeof this.value === "function") {
-            return this.value(record);
-        }
-        const value = this.value ?? record[this.name];
-        return value;
-    }
-}
-
-export class StoreRelation extends StoreAttr {
-    constructor(name_or_record, fields, value, predicate, as_thread, only_id, kwargs) {
-        [{ name_or_record, fields, value, predicate, as_thread, only_id }, kwargs] =
-            extractAndDeleteKwArgs(
-                arguments,
-                "name_or_record",
-                "fields",
-                "value",
-                "predicate",
-                "as_thread",
-                "only_id"
-            );
-        const name = typeof name_or_record === "string" ? name_or_record : null;
-        super(makeKwArgs({ name, value }));
-        this.records = name_or_record instanceof models.Model ? name_or_record : null;
-        this.predicate = predicate;
-        this.as_thread = as_thread;
-        this.fields = fields;
-        this.only_id = only_id;
-        this.kwargs = kwargs;
-    }
-    _get_value(record, model) {
-        let target = super._get_value(record);
-        if (!target) {
-            const res_model_field = model._fields["res_model"] ? "res_model" : "model";
-            if (this.name === "thread" && !record["thread"]) {
-                const res_model = record[res_model_field];
-                const res_id = record["res_id"];
-                if (res_model && res_id) {
-                    target = model.env[res_model].browse(res_id);
-                }
-            }
-        } else {
-            const field = model._fields[this.name];
-
-            target = model.env[field.relation].browse(target);
-        }
-        return this._copy_with_records(target, record);
-    }
-
-    _copy_with_records(target, record) {
-        if (this.records) {
-            throw new Error(`StoreRelation ${this.name} cannot be used with records`);
-        }
-
-        return new this.constructor(
-            target,
-            makeKwArgs({
-                fields: this.fields,
-                value: this.value,
-                predicate: this.predicate,
-                as_thread: this.as_thread,
-                ...this.kwargs,
-            })
-        );
-    }
-
-    _add_to_store(store, target, key) {
-        if (!this.only_id) {
-            store.add(
-                this.records,
-                this.fields,
-                makeKwArgs({ as_thread: this.as_thread, ...this.kwargs })
-            );
-        }
-    }
-}
-
-export class StoreOne extends StoreRelation {
-    _add_to_store(store, target, key) {
-        super._add_to_store(store, target, key);
-        target[key] = this._get_id();
-    }
-    _get_id() {
-        if (!this.records || !this.records.length) {
-            return false;
-        }
-        const id = this.records[0].id;
-        if (this.as_thread) {
-            return { id, model: this.records._name };
-        }
-        if (this.records._name === "discuss.channel") {
-            return { id, model: "discuss.channel" };
-        }
-        return id;
-    }
-}
-
-export class StoreMany extends StoreRelation {
-    constructor(name_or_record, fields, value, predicate, as_thread, mode, only_id, sort) {
-        const [kwargs, otherKwArgs] = extractAndDeleteKwArgs(
-            arguments,
-            "name_or_record",
-            "fields",
-            "value",
-            "predicate",
-            "as_thread",
-            "mode",
-            "only_id",
-            "sort"
-        );
-        name_or_record = kwargs.name_or_record;
-        fields = kwargs.fields;
-        value = kwargs.value;
-        predicate = kwargs.predicate;
-        as_thread = kwargs.as_thread;
-        mode = kwargs.mode || "REPLACE";
-        only_id = kwargs.only_id || false;
-        sort = kwargs.sort || false;
-        super(
-            name_or_record,
-            makeKwArgs({
-                fields,
-                value,
-                predicate,
-                as_thread,
-                only_id,
-                ...otherKwArgs,
-            })
-        );
-        this.mode = mode;
-        this.sort = sort;
-    }
-    _copy_with_records(target, record) {
-        const res = super._copy_with_records(target, record);
-        res.mode = this.mode;
-        res.sort = this.sort;
-        return res;
-    }
-
-    _sort_records() {
-        if (this.sort) {
-            this.records.sort(this.sort);
-            this.sort = false;
-        }
-    }
-    _add_to_store(store, target, key) {
-        this._sort_records();
-        super._add_to_store(store, target, key);
-        const rel_val = this._get_id();
-        const previous_value = this.mode !== "REPLACE" ? target[key] : undefined;
-        target[key] = (previous_value || []).concat(rel_val);
-    }
-    _get_id() {
-        const res = [];
-
-        if (this.records._name === "mail.message.reaction") {
-            const reactionGroups = Object.groupBy(
-                this.records,
-                (r) => `${r.message_id},${r.content}`
-            );
-            for (const groupId in reactionGroups) {
-                const { message_id, content } = reactionGroups[groupId][0];
-                res.push({ message: message_id, content: content });
-            }
-        } else {
-            for (const record of this.records) {
-                res.push(
-                    new StoreOne(
-                        this.records.env[this.records._name].browse(record.id),
-                        makeKwArgs({
-                            as_thread: this.as_thread,
-                        })
-                    )._get_id()
-                );
-            }
-        }
-        if (["ADD", "DELETE"].includes(this.mode)) {
-            return [[this.mode, res]];
-        }
-        return res;
-    }
-}
-
-class Store {
-    constructor(data, fields, as_thread, _delete, kwargs) {
-        this.data = new Map();
-        this.data_id = null;
-        if (data) {
-            this.add(...arguments);
-        }
-    }
-
-    add(data, fields, as_thread, _delete, extra_fields, kwargs) {
-        if (!data) {
-            return this;
-        }
-        [{ data, fields, as_thread, delete: _delete, extra_fields }, kwargs] =
-            extractAndDeleteKwArgs(
-                arguments,
-                "data",
-                "fields",
-                "as_thread",
-                "delete",
-                "extra_fields"
-            );
-        _delete = _delete ?? false;
-        let model_name;
-        if (data instanceof models.Model) {
-            if (fields) {
-                if (Object.keys(kwargs).length) {
-                    throw new Error(
-                        `expected empty kwargs with recordset ${data} values: ${kwargs}`
-                    );
-                }
-                if (_delete) {
-                    throw new Error(`deleted not expected for ${data} with values: ${fields}`);
-                }
-            }
-            if (_delete) {
-                if (data.length !== 1) {
-                    throw new Error(`expected single record ${data} with delete`);
-                }
-                if (fields) {
-                    throw new Error(`for ${data} expected empty values with delete: ${fields}`);
-                }
-            }
-            const ids = data.map((idOrRecord) =>
-                typeof idOrRecord === "number" ? idOrRecord : idOrRecord.id
-            );
-            if (_delete) {
-                if (as_thread) {
-                    this._add_model_values(
-                        "mail.thread",
-                        { id: data[0].id, model: data._name },
-                        makeKwArgs({ delete: _delete })
-                    );
-                } else {
-                    this._add_model_values(
-                        data._name,
-                        { id: ids[0] },
-                        makeKwArgs({ delete: _delete })
-                    );
-                }
-            } else {
-                if (!fields) {
-                    if (as_thread) {
-                        fields = [];
-                    } else {
-                        fields = data._to_store_defaults || [];
-                    }
-                }
-                fields = this._format_fields(fields).concat(this._format_fields(extra_fields));
-                if (as_thread) {
-                    MockServer.env["mail.thread"]._thread_to_store.call(
-                        data,
-                        this,
-                        fields,
-                        makeKwArgs(kwargs)
-                    );
-                } else {
-                    if (data._to_store) {
-                        data._to_store(this, fields, makeKwArgs(kwargs));
-                    } else {
-                        this._add_record_fields(data, fields, as_thread);
-                    }
-                }
-            }
-            return this;
-        } else if (typeof data === "object") {
-            if (fields) {
-                throw new Error(`expected empty values with dict ${data}: ${fields}`);
-            }
-            if (Object.keys(kwargs).length) {
-                throw new Error(`expected empty kwargs with dict ${data}: ${kwargs}`);
-            }
-            if (as_thread) {
-                throw new Error(`expected not as_thread with dict ${data}: ${fields}`);
-            }
-            model_name = "Store";
-            fields = data;
-        } else {
-            if (Object.keys(kwargs).length) {
-                throw new Error(`expected empty kwargs with model name ${data}: ${kwargs}`);
-            }
-            if (as_thread) {
-                throw new Error(`expected not as_thread with model name ${data}: ${fields}`);
-            }
-            model_name = data;
-        }
-        return this._add_model_values(model_name, fields, _delete);
-    }
-
-    _get_records_data_list(records, fields) {
-        const abstractedFields = fields.filter((field) => field instanceof StoreAttr);
-        const records_data_list = records
-            ._read_format(
-                records.map((r) => r.id),
-                fields.filter((f) => !abstractedFields.includes(f)),
-                false
+                    ])[0]
             )
-            .map((data) => [data]);
-        for (const index in records_data_list) {
-            const record = records[index];
-            for (const field of abstractedFields) {
-                if (field instanceof StoreAttr) {
-                    if (!field.predicate || field.predicate(record)) {
-                        const field_data = {};
-                        field_data[field.name] = field._get_value(record, records);
-                        records_data_list[index].push(field_data);
-                    }
-                } else {
-                    records_data_list[index].push(field);
-                }
-            }
+            .filter(Boolean)
+            .map((member) => member.id);
+        store.add(DiscussChannelMember.browse(selfMemberIds), ["is_favorite"]);
+        if (store.add_channels_last_message) {
+            const lastMessageIds = channelIds
+                .map(
+                    (channelId) =>
+                        MailMessage._filter([
+                            ["model", "=", "discuss.channel"],
+                            ["res_id", "=", channelId],
+                        ]).sort((a, b) => b.id - a.id)[0]
+                )
+                .filter(Boolean)
+                .map((message) => message.id);
+            store.add(MailMessage.browse(lastMessageIds), "_store_message_fields");
         }
-        return records_data_list;
-    }
-
-    _add_record_fields(records, fields, as_thread) {
-        if (!records || !records.length) {
-            return this;
-        }
-        if (!(records instanceof models.Model)) {
-            throw new Error(`expected recordset for _add_record_fields: ${records}`);
-        }
-        fields = this._format_fields(fields);
-        const data_list = this._get_records_data_list(records, fields);
-        const model_name = records._name;
-        for (const index in data_list) {
-            for (const data of data_list[index]) {
-                if (as_thread) {
-                    this._add_model_values("mail.thread", {
-                        id: records[index].id,
-                        model: model_name,
-                        ...data,
-                    });
-                } else {
-                    this._add_model_values(model_name, {
-                        id: records[index].id,
-                        ...data,
-                    });
-                }
-            }
-        }
-        return this;
-    }
-    _add_model_values(model_name, values, _delete) {
-        if (typeof model_name !== "string") {
-            throw new Error(`expected string for model name: ${model_name}: ${values}`);
-        }
-        const ids = ids_by_model[model_name] || ["id"];
-        // handle singleton model: update single record in place
-        if (!ids.length) {
-            if (typeof values !== "object") {
-                throw new Error(`expected dict for singleton ${model_name}: ${values}`);
-            }
-            if (_delete) {
-                throw new Error(`Singleton ${model_name} cannot be deleted`);
-            }
-            if (!this.data.has(model_name)) {
-                this.data.set(model_name, {});
-            }
-            this._add_values(values, model_name);
-            return this;
-        }
-        // handle model with ids: add or update existing records based on ids
-        if (!Array.isArray(values)) {
-            if (!values) {
-                return this;
-            }
-            values = [values];
-        }
-        if (!values.length) {
-            return this;
-        }
-        let records = this.data.get(model_name);
-        if (!records) {
-            records = new Map();
-            this.data.set(model_name, records);
-        }
-        for (const vals of values) {
-            if (typeof vals !== "object") {
-                throw new Error(`expected dict for ${model_name}: ${vals}`);
-            }
-            for (const i of ids) {
-                if (!vals[i]) {
-                    throw new Error(`missing id ${i} in ${model_name}: ${vals}`);
-                }
-            }
-            const index = ids.map((i) => vals[i]).join(" AND ");
-            if (!records.has(index)) {
-                records.set(index, {});
-            }
-            this._add_values(vals, model_name, index);
-            if (_delete) {
-                records.get(index)._DELETE = true;
-            } else {
-                delete records.get(index)._DELETE;
-            }
-        }
-        return this;
-    }
-
-    _format_fields(fields) {
-        if (fields === null || fields === undefined) {
-            return [];
-        } else if (
-            typeof fields === "object" &&
-            !Array.isArray(fields) &&
-            !(fields instanceof StoreAttr)
-        ) {
-            fields = Object.entries(fields).map(
-                ([key, value]) => new StoreAttr(makeKwArgs({ name: key, value }))
-            );
-        }
-        if (!Array.isArray(fields)) {
-            fields = [fields];
-        }
-        return fields;
-    }
-
-    _add_values(values, model_name, index) {
-        const target = index ? this.data.get(model_name).get(index) : this.data.get(model_name);
-        for (const [key, val] of Object.entries(values)) {
-            if (key === "_DELETE") {
-                throw new Error(`invalid key ${key} in ${model_name}: ${values}`);
-            }
-            if (val instanceof StoreRelation) {
-                val._add_to_store(this, target, key);
-            } else {
-                target[key] = val;
-            }
+        if (store.add_channels_last_needaction) {
+            const lastNeedactionMessageIds = channelIds
+                .map((channelId) =>
+                    MailMessage._filter([
+                        ["model", "=", "discuss.channel"],
+                        ["res_id", "=", channelId],
+                    ])
+                        .sort((a, b) => b.id - a.id)
+                        .find((message) => MailMessage._needaction(message))
+                )
+                .filter(Boolean)
+                .map((message) => message.id);
+            store.add(MailMessage.browse(lastNeedactionMessageIds), "_store_message_fields");
         }
     }
-
-    get_result() {
-        const res = {};
-        for (const [model_name, records] of this.data) {
-            const ids = ids_by_model[model_name] || ["id"];
-            if (!ids.length) {
-                // singleton
-                res[model_name] = { ...records };
-            } else {
-                res[model_name] = [...records.values()].map((record) => ({ ...record }));
-            }
-        }
-        return res;
-    }
-
-    resolve_data_request(values) {
-        if (this.data_id) {
-            this._add_model_values("DataResponse", { id: this.data_id, _resolve: true, ...values });
-        }
-        return this;
-    }
-
-    toJSON() {
-        throw Error(
-            "Converting Store to JSON is not supported, you might want to call 'get_result()' instead."
-        );
-    }
-
-    static many(records, fields, mode = "REPLACE", as_thread, kwargs) {
-        let otherKwArgs;
-        [kwargs, otherKwArgs] = extractAndDeleteKwArgs(
-            arguments,
-            "records",
-            "fields",
-            "mode",
-            "as_thread"
-        );
-        records = kwargs.records;
-        fields = kwargs.fields;
-        mode = kwargs.mode ?? "REPLACE";
-        as_thread = kwargs.as_thread;
-        return new StoreMany(
-            records,
-            makeKwArgs({
-                fields: fields,
-                mode,
-                as_thread,
-                ...otherKwArgs,
-            })
-        );
-    }
-
-    static one(records, fields, as_thread, kwargs) {
-        let otherKwArgs;
-        [kwargs, otherKwArgs] = extractAndDeleteKwArgs(arguments, "records", "fields", "as_thread");
-        records = kwargs.records;
-        fields = kwargs.fields;
-        as_thread = kwargs.as_thread;
-        return new StoreOne(
-            records,
-            makeKwArgs({
-                fields: fields,
-                as_thread,
-                ...otherKwArgs,
-            })
-        );
-    }
-
-    static attr(name, value, predicate) {
-        [{ name, value, predicate }] = extractAndDeleteKwArgs(
-            arguments,
-            "name",
-            "value",
-            "predicate"
-        );
-        return new StoreAttr(makeKwArgs({ name, value, predicate }));
-    }
+    return store;
 }
 
-export const mailDataHelpers = {
-    _process_request_for_all,
-    _process_request_for_logged_in_user,
-    _process_request_for_internal_user,
-    Store,
-};
+export function _resolve_messages(
+    store,
+    fetch_params,
+    { add_to_store = true, filter = () => true } = {}
+) {
+    /** @type {import("mock_models").MailMessage} */
+    const MailMessage = this.env["mail.message"];
+    const res = MailMessage._message_fetch(makeKwArgs(fetch_params));
+    res.messages = res.messages.filter(filter.bind(this));
+    const messageIds = res.messages.map((message) => message.id);
+    if (add_to_store) {
+        for (const messageId of messageIds) {
+            store.request_message_ids.add(messageId);
+        }
+    }
+    store.resolve_data_request((r) => {
+        for (const [key, value] of Object.entries(res)) {
+            if (key !== "messages") {
+                r.attr(key, value);
+            }
+        }
+        // Serialize with the empty field list: messages resolve as ids in the data request; the
+        // actual `_store_message_fields` serialization happens once in the post-loop batch.
+        r.many("messages", [], { value: MailMessage.browse(messageIds) });
+    });
+    return res.messages;
+}

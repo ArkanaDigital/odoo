@@ -2,7 +2,6 @@
 
 from odoo import api, fields, models
 from odoo.tools import format_amount
-from odoo.tools.sql import column_exists, create_column
 
 
 class SaleOrderLine(models.Model):
@@ -11,7 +10,7 @@ class SaleOrderLine(models.Model):
     _name_search_services_index = models.Index("(order_id DESC, sequence, id) WHERE is_service IS TRUE")
 
     # used to know if generate a task and/or a project, depending on the product settings
-    is_service = fields.Boolean("Is a Service", compute='_compute_is_service', store=True, compute_sudo=True, export_string_translation=False)
+    is_service = fields.Boolean("Is a Service", compute='_compute_is_service', store=True, compute_sudo=True, export_string_translation=False, init_storage='_init_column_is_service')
 
     def _domain_sale_line_service(self, **kwargs):
         """
@@ -26,7 +25,9 @@ class SaleOrderLine(models.Model):
         if kwargs.get("check_is_expense", True):
             domain.append(('is_expense', '=', False))
         if kwargs.get("check_state", True):
-            domain.append(('state', '=', 'sale'))
+            # This domain is later used as a key in a dict inside the _get_last_sol_of_customer_domain function. This
+            # means we can not use mutable list and have to use '|' operator instead.
+            domain.append(('state', 'in', ['draft', 'sale', 'sent']))
         return domain
 
     @api.depends('product_id.type')
@@ -52,20 +53,14 @@ class SaleOrderLine(models.Model):
                     sol |= line
         super(SaleOrderLine, self - sol)._compute_display_name()
 
-    def _auto_init(self):
-        """
-        Create column to stop ORM from computing it himself (too slow)
-        """
-        if not column_exists(self.env.cr, 'sale_order_line', 'is_service'):
-            create_column(self.env.cr, 'sale_order_line', 'is_service', 'bool')
-            self.env.cr.execute("""
-                UPDATE sale_order_line line
-                SET is_service = (pt.type = 'service')
-                FROM product_product pp
-                LEFT JOIN product_template pt ON pt.id = pp.product_tmpl_id
-                WHERE pp.id = line.product_id
-            """)
-        return super()._auto_init()
+    def _init_column_is_service(self):
+        self.env.cr.execute("""
+            UPDATE sale_order_line line
+            SET is_service = (pt.type = 'service')
+            FROM product_product pp
+            LEFT JOIN product_template pt ON pt.id = pp.product_tmpl_id
+            WHERE pp.id = line.product_id AND is_service IS NULL
+        """)
 
     def _additional_name_per_id(self):
         name_per_id = super()._additional_name_per_id() if not self.env.context.get('hide_partner_ref') else {}

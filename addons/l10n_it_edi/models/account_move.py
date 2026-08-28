@@ -6,11 +6,11 @@ import uuid
 import unicodedata
 from datetime import datetime
 from lxml import etree
+from textwrap import wrap
 from odoo.addons.base.models.ir_qweb_fields import Markup, nl2br, nl2br_enclose
-from odoo.exceptions import LockError, UserError
+from odoo.exceptions import LockError, UserError, ValidationError
 from odoo.fields import Domain
 from odoo.tools import BinaryBytes, cleanup_xml_node, float_compare, float_is_zero, float_repr, float_round, html2plaintext
-from odoo.tools.sql import column_exists, create_column
 
 from stdnum.it import codicefiscale, iva
 
@@ -110,11 +110,14 @@ class AccountMove(models.Model):
         help='Only partners that have a 6-chars long l10n_it_pa_index actually belong to the Public Administration'
     )
 
+    l10n_it_invoice_cause = fields.Text("Payment Reason and Notes")
+
     l10n_it_payment_method = fields.Selection(
         selection=L10N_IT_PAYMENT_METHOD_SELECTION,
         compute='_compute_l10n_it_payment_method',
         store=True,
         readonly=False,
+        init_storage=lambda model: None,  # avoid timeout on large databases
     )
 
     l10n_it_document_type = fields.Many2one(
@@ -123,6 +126,7 @@ class AccountMove(models.Model):
         store=True,
         readonly=False,
         copy=False,
+        init_storage=lambda model: None,  # avoid timeout on large databases
     )
 
     l10n_it_convention_code = fields.Char(
@@ -131,15 +135,11 @@ class AccountMove(models.Model):
         help=" Used to connect an individual invoice to a broader framework agreement, a specific project, or a long-term convention."
     )
 
-    def _auto_init(self):
-        # Create compute stored field l10n_it_document_type and l10n_it_payment_method
-        # here to avoid timeout error on large databases.
-        if not column_exists(self.env.cr, 'account_move', 'l10n_it_payment_method'):
-            create_column(self.env.cr, 'account_move', 'l10n_it_payment_method', 'varchar')
-        if not column_exists(self.env.cr, 'account_move', 'l10n_it_document_type'):
-            create_column(self.env.cr, 'account_move', 'l10n_it_document_type', 'integer')
-        return super()._auto_init()
-
+    @api.constrains('l10n_it_invoice_cause')
+    def _check_l10n_it_invoice_cause(self):
+        for move in self:
+            if move.l10n_it_invoice_cause and len(move.l10n_it_invoice_cause) > 600:
+                raise ValidationError(self.env._("The Document Reason can contain up to 600 characters (currently %s)", len(move.l10n_it_invoice_cause)))
 
     # -------------------------------------------------------------------------
     # Computes
@@ -260,7 +260,7 @@ class AccountMove(models.Model):
         # EXTENDS 'account'
         super()._compute_show_reset_to_draft_button()
         for move in self:
-            move.show_reset_to_draft_button = not (move.is_sale_document() and move.l10n_it_edi_transaction) and move.show_reset_to_draft_button
+            move.show_reset_to_draft_button = not (move.l10n_it_edi_state not in (False, 'rejected') and move.l10n_it_edi_transaction) and move.show_reset_to_draft_button
 
     def _parse_xml_with_recovery(self, content, name=None):
         def parse_xml(parser, content):
@@ -356,6 +356,25 @@ class AccountMove(models.Model):
         fields_list = super()._get_fields_to_detach()
         fields_list.append('l10n_it_edi_attachment_file')
         return fields_list
+
+    def _should_detach_attachments(self):
+        # EXTENDS account
+        return self.l10n_it_edi_is_self_invoice or super()._should_detach_attachments()
+
+    def _detach_attachments(self):
+        # EXTENDS account
+        moves_with_it_attachments = self.filtered(
+            lambda move: move.l10n_it_edi_attachment_name and move._should_detach_attachments()
+        )
+
+        super()._detach_attachments()
+
+        moves_with_it_attachments.invalidate_recordset(
+            fnames=['l10n_it_edi_attachment_name']
+        )
+        moves_with_it_attachments.filtered('l10n_it_edi_attachment_name').write({
+            'l10n_it_edi_attachment_name': False,
+        })
 
     # -------------------------------------------------------------------------
     # Business actions
@@ -683,7 +702,7 @@ class AccountMove(models.Model):
 
         return [base_line, vat_line]
 
-    def _l10n_it_edi_get_values(self, pdf_values=None):
+    def _l10n_it_edi_get_values(self, pdf_values=None, extra_attachments=None):
         def grouping_function_withholding(base_line, tax_data):
             if not tax_data:
                 return None
@@ -913,6 +932,18 @@ class AccountMove(models.Model):
                         'riferimento_data': None,
                     })
 
+        # Invoice cause
+        invoice_cause = wrap(self.l10n_it_invoice_cause or '', width=200)
+
+        # Attachments to embed
+        attachments = self.env['ir.attachment'].browse(attachment['id'] for attachment in extra_attachments or [])
+        attachments_data = []
+        for attachment in attachments:
+            attachments_data.append({
+                'name': attachment.name,
+                'content': base64.b64encode(attachment.raw.content).decode(),
+            })
+
         return {
             'record': self,
             'base_lines': base_lines,
@@ -948,6 +979,8 @@ class AccountMove(models.Model):
             'abs': abs,
             'pdf_name': pdf_values['name'] if pdf_values else False,
             'pdf': base64.b64encode(pdf_values['raw']).decode() if pdf_values else False,
+            'invoice_cause': invoice_cause or False,
+            'extra_attachments': attachments_data or False,
             'withholding_values': withholding_values,
             'pension_fund_values': pension_fund_values,
         }
@@ -995,19 +1028,54 @@ class AccountMove(models.Model):
             requiring the address and other information about the buyer.
             The maximum threshold is 400 Euro, except for the forfettario tax regime (RF19), which can
             issue simplified invoices without the amount limit.
+
+            Deprecated since 18.0: use `not _l10n_it_edi_is_simplified_checks`.
+            It will be removed in ``20.0``.
         """
         self.ensure_one()
-        template_reference = self.env.ref('l10n_it_edi.account_invoice_it_simplified_FatturaPA_export', raise_if_not_found=False)
-        buyer = self.commercial_partner_id
-        checks = ['partner_address_missing', 'partner_vat_codice_fiscale_missing']
-        return bool(
-            template_reference
-            and not self.l10n_it_edi_is_self_invoice
-            and list(buyer._l10n_it_edi_export_check(checks).keys()) == ['l10n_it_edi_partner_address_missing']
-            and (not buyer.country_id or buyer.country_id.code == 'IT')
-            and (buyer.l10n_it_codice_fiscale or (buyer.vat and (buyer.vat[:2].upper() == 'IT' or buyer.vat[:2].isdecimal())))
-            and (self.company_id.l10n_it_tax_system == 'RF19' or self.amount_total <= 400)
-        )
+        return not self._l10n_it_edi_is_simplified_checks()
+
+    def _l10n_it_edi_is_simplified_checks(self):
+        """ Warnings can be ignored by setting `l10n_it_document_type == 'TD07'`
+            in the optional `l10n_it_edi_ndd` module
+        """
+        errors = {}
+        build_error = self._l10n_it_edi_build_move_error
+
+        if wrong_partner_moves := self.filtered(lambda move:
+            not move.commercial_partner_id._l10n_it_edi_is_italian()
+            or move.commercial_partner_id._l10n_it_edi_is_public_administration()
+        ):
+            errors['l10n_it_edi_move_simplified_partner'] = build_error(self.env._(
+                "Simplified Invoices (TD07) can only be used with domestic partners"
+                " that do not belong to the Public Administration."
+                " Please issue an ordinary invoice instead."),
+                records=wrong_partner_moves,
+            )
+        if wrong_amount_moves := self.filtered(lambda move:
+            move.company_id.l10n_it_tax_system != 'RF19' and move.amount_total > 400
+        ):
+            errors['l10n_it_edi_move_simplified_amount'] = build_error(self.env._(
+                "Simplified Invoices (TD07) can only be issued for a total amount of up to 400€."
+                " Please issue an ordinary invoice instead."),
+                records=wrong_amount_moves,
+            )
+        if reverse_charge_moves := self.filtered(lambda move: move.l10n_it_edi_is_self_invoice):
+            errors['l10n_it_edi_move_simplified_self_invoice'] = build_error(self.env._(
+                "Simplified Invoices (TD07) cannot be used for self-invoices."
+                " Please issue an ordinary invoice instead."),
+                records=reverse_charge_moves,
+            )
+        if incomplete_address_moves := self.filtered(lambda move:
+            'l10n_it_edi_partner_address_missing' not in move.commercial_partner_id._l10n_it_edi_export_check()
+        ):
+            errors['l10n_it_edi_move_simplified_address_complete'] = build_error(self.env._(
+                "Simplified Invoices (TD07) are generally preferred when partner address"
+                " is incomplete, so please issue an ordinary invoice instead."),
+                records=incomplete_address_moves,
+                level='info',
+            )
+        return errors
 
     def _l10n_it_edi_is_professional_fees(self):
         """
@@ -1127,9 +1195,16 @@ class AccountMove(models.Model):
         }
 
     def _l10n_it_edi_get_document_type(self):
-        """ Retrieve document type from the move. If not set, compare the features
-        of the invoice to the requirements of each Document Type (TDxx)
-        FatturaPA until you find a valid one. """
+        """
+            If the user has selected a document type, generally use that.
+            Retrieve document type from the move. If not set, compare the features
+            of the invoice to the requirements of each Document Type (TDxx)
+            FatturaPA until you find a valid one.
+            If the user has selected (the default) TD01 and the partner has no complete address
+            then we can't issue a TD01 invoice - but if it's possible to issue a simplified invoice,
+            then switch automatically to the TD07.
+        """
+        self.ensure_one()
 
         def compare(actual_values, expected_values):
             """ Compare a single entry from the invoice features with the one of the document_type """
@@ -1143,6 +1218,8 @@ class AccountMove(models.Model):
             return actual_values == expected_values
 
         if self.l10n_it_document_type:
+            if self.l10n_it_document_type.code == 'TD01' and self._l10n_it_edi_is_simplified():
+                return 'TD07'
             return self.l10n_it_document_type.code
 
         invoice_features = self._l10n_it_edi_features_for_document_type_selection()
@@ -1330,6 +1407,8 @@ class AccountMove(models.Model):
         moves = self.with_company(company_id).create([{
                 'l10n_it_edi_attachment_file': BinaryBytes(file_data['raw']),
                 'l10n_it_edi_attachment_name': file_data['name'],
+                'document_tax_mode': 'tax_excluded',
+                'move_type': 'in_invoice',
             } for file_data in files_data
         ])
         attachments_map = dict(Attachment._read_group(
@@ -1353,8 +1432,6 @@ class AccountMove(models.Model):
                 attachment_ids=attachment_ids
             )
             move._extend_with_attachments([file_data], new=True)
-
-        attachments.unlink()
 
         return moves
 
@@ -1467,13 +1544,11 @@ class AccountMove(models.Model):
                 company,
                 tax_factor_percent,
                 ([('l10n_it_pension_fund_type', '=', pension_fund_type)]
-                 + type_tax_use_domain),
-                l10n_it_exempt_reason=pension_fund_natura)
+                 + type_tax_use_domain))
             if pension_fund_tax:
-                if vat_tax_factor_percent not in pension_fund_taxes:
-                    pension_fund_taxes[vat_tax_factor_percent] = pension_fund_tax
-                else:
-                    pension_fund_taxes[vat_tax_factor_percent] |= pension_fund_tax
+                key = (vat_tax_factor_percent, pension_fund_natura)
+                pension_fund_taxes.setdefault(key, self.env['account.tax'])
+                pension_fund_taxes[key] |= pension_fund_tax
             else:
                 message_to_log.append(Markup("%s<br/>%s") % (
                     _("Pension Fund tax not found"),
@@ -1894,7 +1969,7 @@ class AccountMove(models.Model):
                 tax_scope = 'service' if move_line.product_id.type == 'service' else 'consu'
                 extra_domain += [('tax_scope', 'in', [tax_scope, False])]
             if tax := self._l10n_it_edi_search_tax_for_import(company, percentage, extra_domain, l10n_it_exempt_reason=l10n_it_exempt_reason):
-                move_line.tax_ids |= tax
+                move_line.tax_ids |= self.fiscal_position_id.map_tax(tax)
             else:
                 message = Markup("<br/>").join((
                     _("Tax not found for line with description '%s'", move_line.name),
@@ -2005,6 +2080,11 @@ class AccountMove(models.Model):
         companies_partners = companies.mapped("partner_id")
         moves_full = self.filtered(lambda m: not m._l10n_it_edi_is_simplified())
         moves_simplified = self.filtered(lambda m: m._l10n_it_edi_is_simplified())
+        moves_simplified_errors = {
+            k: v
+            for k, v in moves_simplified._l10n_it_edi_is_simplified_checks().items()
+            if v.get('level') in ('error', 'warning')
+        }
 
         full = moves_full.mapped("commercial_partner_id").filtered(lambda p: p not in companies_partners)
         simplified = moves_simplified.mapped("commercial_partner_id").filtered(lambda p: p not in companies_partners | full)
@@ -2018,19 +2098,28 @@ class AccountMove(models.Model):
             **representatives._l10n_it_edi_export_check(['partner_vat_missing']),
             **self._l10n_it_edi_base_export_check(),
             **self._l10n_it_edi_export_taxes_check(),
+            **moves_simplified_errors,
+        }
+
+    def _l10n_it_edi_build_move_error(self, message, records=None, level='warning'):
+        return {
+            'message': message,
+            'level': level,
+            **({
+                'action_text': _("View invoices"),
+                'action': (records or self)._get_records_action(name=_("Invoices to check")),
+            } if len(self) > 1 else {}),
         }
 
     def _l10n_it_edi_base_export_check(self):
-        def build_error(message, records):
-            return {
-                'message': message,
-                **({
-                    'action_text': _("View invoice(s)"),
-                    'action': records._get_records_action(name=_("Invoice(s) to check")),
-                } if len(self) > 1 else {})
-            }
-
         errors = {}
+
+        build_error = self._l10n_it_edi_build_move_error
+
+        if pdf_moves := self.filtered(lambda move: move.invoice_pdf_report_id and not move.l10n_it_edi_attachment_file):
+            message = _("Please delete the PDF attachment before sending to the SDI. Odoo will regenerate the PDF, making sure everything is consistent with the XML.")
+            errors['l10n_it_edi_pdf_already_generated'] = build_error(message=message, records=pdf_moves)
+
         if moves := self.filtered(lambda move: move.l10n_it_edi_is_self_invoice and move._l10n_it_edi_services_or_goods() == 'both'):
             errors['l10n_it_edi_move_rc_mixed_product_types'] = build_error(
                 message=_("Cannot apply Reverse Charge to bills which contains both services and goods."),
@@ -2052,19 +2141,20 @@ class AccountMove(models.Model):
 
     def _l10n_it_edi_export_taxes_check(self):
         errors = {}
-        for kind_code, kind_desc, min_len in (
-            ('vat', _('VAT'), 1),
-            ('withholding_no_enasarco', _('Withholding'), 0),
-            ('pension_fund', _('Pension Fund'), 0),
+        for kind_code, kind_desc, min_len, max_len in (
+            ('vat', _('VAT'), 1, 1),
+            ('withholding_no_enasarco', _('Withholding'), 0, 1),
+            ('pension_fund', _('Pension Fund'), 0, 2),
         ):
-            errors.update(self._l10n_it_edi_check_lines_for_tax_kind(kind_code, kind_desc, min_len))
+            errors.update(self._l10n_it_edi_check_lines_for_tax_kind(kind_code, kind_desc, min_len, max_len))
         return errors
 
-    def _l10n_it_edi_check_lines_for_tax_kind(self, kind_code, kind_desc, min_len=1):
+    def _l10n_it_edi_check_lines_for_tax_kind(self, kind_code, kind_desc, min_len=1, max_len=1):
         assert min_len in (0, 1)
+
         if self.invoice_line_ids.filtered(lambda line:
             line.display_type == 'product'
-            and not (min_len <= len(line.tax_ids._l10n_it_filter_kind(kind_code)) <= 1),
+            and not (min_len <= len(line.tax_ids._l10n_it_filter_kind(kind_code)) <= max_len)
         ):
             return {
                 f'l10n_it_edi_move_{kind_code}_tax_per_line': {
@@ -2156,7 +2246,7 @@ class AccountMove(models.Model):
             'format_uom': format_uom,
         }
 
-    def _l10n_it_edi_render_xml(self, pdf_values=None):
+    def _l10n_it_edi_render_xml(self, pdf_values=None, extra_attachments=None):
         ''' Create the xml file content.
             :return:    The XML content as bytestring.
         '''
@@ -2164,12 +2254,12 @@ class AccountMove(models.Model):
             'l10n_it_edi.account_invoice_it_FatturaPA_export' if not self._l10n_it_edi_is_simplified()
             else 'l10n_it_edi.account_invoice_it_simplified_FatturaPA_export')
         xml_content = self.env['ir.qweb']._render(qweb_template_name, {
-            **self._l10n_it_edi_get_values(pdf_values),
+            **self._l10n_it_edi_get_values(pdf_values, extra_attachments),
             **self._l10n_it_edi_get_formatters()})
         xml_node = cleanup_xml_node(xml_content, remove_blank_nodes=False)
         return etree.tostring(xml_node, xml_declaration=True, encoding='UTF-8')
 
-    def _l10n_it_edi_get_attachment_values(self, pdf_values=None):
+    def _l10n_it_edi_get_attachment_values(self, pdf_values=None, extra_attachments=None):
         self.ensure_one()
         return {
             'name': self._l10n_it_edi_generate_filename(),
@@ -2180,7 +2270,7 @@ class AccountMove(models.Model):
             'res_id': self.id,
             'res_model': self._name,
             'res_field': 'l10n_it_edi_attachment_file',
-            'raw': self._l10n_it_edi_render_xml(pdf_values=pdf_values),
+            'raw': self._l10n_it_edi_render_xml(pdf_values=pdf_values, extra_attachments=extra_attachments),
         }
 
     def _l10n_it_edi_generate_filename(self):
@@ -2227,6 +2317,7 @@ class AccountMove(models.Model):
             content = base64.b64encode(attachment['raw']).decode()
 
             try:
+                self._l10n_it_check_xml_size(content)
                 response = move._l10n_it_edi_upload([{
                     'filename': filename,
                     'xml': content,
@@ -2265,6 +2356,15 @@ class AccountMove(models.Model):
                 results[filename] = {'error_message': error_message}
 
         return results
+
+    @api.model
+    def _l10n_it_check_xml_size(self, content):
+        # 5 mb recommendation https://fex-app.com/FatturaElettronica/FatturaElettronicaBody/Allegati
+        if len(base64.b64decode(content)) > 5000000:
+            raise AccountEdiProxyError(
+                'it_attachments_size',
+                self.env._("Attachments exceed the 5mb limit. Please resize or remove some attachments."),
+            )
 
     def _l10n_it_edi_upload_error_message(self, error_code, error_description):
         """ Translate server errors with the client user's language. """
@@ -2544,24 +2644,17 @@ class AccountMove(models.Model):
         """
         pension_fund_map = extra_info.get('pension_fund_taxes', {})
         tax_rate = get_float(element, './/AliquotaIVA')
-        l10n_it_exemption_reason = get_text(element, "Natura")
+        l10n_it_exemption_reason = get_text(element, "Natura") or False
 
         if not tax_rate and not l10n_it_exemption_reason:
             return None
 
-        pension_fund_tax_candidates = pension_fund_map.get(tax_rate)
-        if not pension_fund_tax_candidates:
-            return None
-
-        if l10n_it_exemption_reason:
-            pension_fund_tax_candidates = pension_fund_tax_candidates.filtered(lambda t: t.l10n_it_exempt_reason == l10n_it_exemption_reason)
-        pension_fund_tax = pension_fund_tax_candidates[:1]
-
-        if not pension_fund_tax:
+        pension_fund_taxes = pension_fund_map.get((tax_rate, l10n_it_exemption_reason))
+        if not pension_fund_taxes:
             return None
 
         if not extra_info.get('pension_fund_assosoftware_tags'):
-            return pension_fund_tax
+            return pension_fund_taxes
 
         parent_selector = ".//AltriDatiGestionali[TipoDato[contains(text(),'AswCassPre')]]"
         parent_tag = element.xpath(parent_selector)
@@ -2571,12 +2664,12 @@ class AccountMove(models.Model):
         reference_tag = parent_tag[0].xpath("./RiferimentoTesto")
         if reference_tag and (match := re.match(r"(?P<kind>TC\d{2}) \((?P<tax_rate>\d+)%\)", reference_tag[0].text)):
             rate = float(match.group("tax_rate"))
-            match_kind = (match.group("kind") == pension_fund_tax.l10n_it_pension_fund_type)
-            match_rate = (float_compare(rate, pension_fund_tax.amount, precision_digits=2) == 0)
-            if match_kind and match_rate:
-                return pension_fund_tax
+            filtered_pension_fund_taxes = pension_fund_taxes.filtered(lambda t:
+                t.l10n_it_pension_fund_type == match.group("kind")
+                and float_compare(rate, t.amount, precision_digits=2) == 0)
+            return filtered_pension_fund_taxes or None
         elif not reference_tag:
-            return pension_fund_tax
+            return pension_fund_taxes
 
         return None
 

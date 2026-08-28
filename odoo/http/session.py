@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 import glob
+import ipaddress
 import json
 import logging
 import os
@@ -183,10 +185,24 @@ class Session(MutableMapping):
         self['session_token'] = session_token
 
 
+class Device(typing.TypedDict):
+    ip_address: str
+    user_agent: str
+    first_activity: int
+    last_activity: int | None
+    country: str
+    city: str
+    trusted: typing.NotRequired[bool]
+
+
 def get_default_session() -> dict:
     """ The dictionary to initialise a new session with. """
     return {
-        'context': {},  # 'lang': request.default_lang()  # must be set at runtime
+        'context': {
+            # the following keys must be set at runtime:
+            # 'lang': request.default_lang(),
+            # 'host_id': env['ir.http']._get_host_id_from_domain(request.httprequest.host),
+        },
         'create_time': time.time(),
         'db': None,
         'debug': '',
@@ -283,7 +299,21 @@ def touch(session: Session):
     session.is_dirty = True
 
 
-def get_device(session: Session, request: Request) -> dict:
+def collapse_ip_address(ip_address: str) -> str:
+    # IPv6 unicast and anycast addresses are commonly structured with a 64-bit
+    # network prefix and a 64-bit interface identifier. The interface identifier
+    # is designed to identify a network interface and may change over time (for
+    # example, due to privacy extensions). Using the /64 prefix for device
+    # identification avoids treating the same network endpoint as multiple
+    # devices when only the interface identifier changes.
+    # The downside is that it is no longer possible to tell apart different
+    # hosts in a same network (e.g. multiple coworkers in a same building).
+    with contextlib.suppress(ipaddress.AddressValueError):
+        return str(ipaddress.IPv6Network(f'{ip_address}/64', strict=False))
+    return ip_address
+
+
+def get_device(session: Session, request: Request) -> Device:
     """
     :return: dict that corresponds to the current device
     """
@@ -293,9 +323,10 @@ def get_device(session: Session, request: Request) -> dict:
         session.is_dirty = True
 
     ip_address = request.httprequest.remote_addr
+    ip_address_key = collapse_ip_address(ip_address)
     user_agent = request.httprequest.user_agent.string
     # No collision with different IP addresses
-    device_key = f'{ip_address.encode().hex()}{adler32(user_agent.encode()):x}'
+    device_key = f'{ip_address_key.encode().hex()}{adler32(user_agent.encode()):x}'
 
     with suppress(KeyError):
         return session['_devices'][device_key]
@@ -303,7 +334,7 @@ def get_device(session: Session, request: Request) -> dict:
     geoip = GeoIP(ip_address)
 
     session['_devices'][device_key] = new_device = {
-        'ip_address': ip_address,
+        'ip_address': ip_address_key,
         'user_agent': user_agent,
         'first_activity': int(datetime.now().timestamp()),
         'last_activity': None,
@@ -315,7 +346,7 @@ def get_device(session: Session, request: Request) -> dict:
     return new_device
 
 
-def update_device(session: Session, request: Request) -> dict | None:
+def update_device(session: Session, request: Request) -> Device | None:
     """
     :return: dict if the current device has been updated, ``None`` otherwise
     """
@@ -346,10 +377,15 @@ def update_device_fingerprint(session: Session, request: Request, fingerprint: s
     :return: ``True`` if the current device is trusted, ``False`` otherwise
     """
     device = get_device(session, request)
-    if device['trusted']:
+    if device.get('trusted'):
         session['_device_fingerprint'] = fingerprint
     elif consteq(session.setdefault('_device_fingerprint', fingerprint), fingerprint):
         device['trusted'] = True
+        session.is_dirty = True
+    else:
+        _logger.warning("Untrusted device for session %s (uid=%s): %s %s",
+            session.sid[:8], session.uid, device['ip_address'], device['user_agent'])
+        device['trusted'] = False
         session.is_dirty = True
     return device['trusted']
 

@@ -195,7 +195,7 @@ export class Record extends DataPoint {
                 });
             } catch (e) {
                 if (e instanceof ConnectionLostError) {
-                    return this.model.offline.scheduleORM(
+                    return this.model.offlinePlugin.scheduleORM(
                         this.resModel,
                         "unlink",
                         [[this.resId]],
@@ -344,12 +344,35 @@ export class Record extends DataPoint {
         return succeeded;
     }
 
+    saveToTranslate() {
+        if (this._parentRecord && this.isNew) {
+            // A new record in a relation is not translatable
+            // We couldn't match the id from the server with "this"
+            return false;
+        }
+        const root = this.model.root;
+        let recordToSave;
+        if (root instanceof Record && !this._noUpdateParent) {
+            // Save the main Form view record if we are not an extended Record
+            // => We are a record being edited in a x2m list
+            //    OR the main record itself
+            recordToSave = root;
+        } else {
+            // We are in editing a record in a main List view (root is not a Record)
+            // OR a record in a X2M relation being edited in its Form view (this._noUpdateParent can be true)
+            // We have an ID already, we just have to save the current changes
+            // In order for the PY translations to update with any new value we have
+            recordToSave = this;
+        }
+        return recordToSave.save();
+    }
+
     setOfflineChanges(id) {
         let scheduledORM;
         if (id) {
-            scheduledORM = this.model.offline.scheduledORM[id];
+            scheduledORM = this.model.offlinePlugin._ormToSync()[id];
         } else {
-            scheduledORM = Object.values(this.model.offline.scheduledORM).find(
+            scheduledORM = Object.values(this.model.offlinePlugin._ormToSync()).find(
                 (s) =>
                     s.value.extras?.actionId === this.model.env.config.actionId &&
                     s.value.method === "web_save" && // Only web_save changes are applied
@@ -1223,11 +1246,11 @@ export class Record extends DataPoint {
         ) {
             // We are trying to sa ve urgently because the user is closing the page when offline.
             // Unfortunately, we can't save on IndexedDB before unload.
-            if (this.model.offline.offline) {
+            if (this.model.offlinePlugin.isOffline()) {
                 this.model._closeUrgentSaveNotification = this.model.notification.add(
                     _t(
                         `Heads up! Your recent changes cannot be saved automatically while you are offline. Please click the %(uploadIcon)s button now to ensure your work is saved before you exit this tab.`,
-                        { uploadIcon: markup`<i class="fa fa-cloud-upload fa-fw"></i>` }
+                        { uploadIcon: markup`<i class="oi oi-fw" data-icon="cloud_upload"></i>` }
                     ),
                     { sticky: true }
                 );
@@ -1256,7 +1279,7 @@ export class Record extends DataPoint {
                 this.model._closeUrgentSaveNotification = this.model.notification.add(
                     _t(
                         `Heads up! Your recent changes are too large to save automatically. Please click the %(uploadIcon)s button now to ensure your work is saved before you exit this tab.`,
-                        { uploadIcon: markup`<i class="fa fa-cloud-upload fa-fw"></i>` }
+                        { uploadIcon: markup`<i class="oi oi-fw" data-icon="cloud_upload"></i>` }
                     ),
                     { sticky: true }
                 );
@@ -1347,7 +1370,7 @@ export class Record extends DataPoint {
         for (const fieldName in this.activeFields) {
             const field = this.fields[fieldName];
             if (["one2many", "many2many"].includes(field.type) && !field.relatedPropertyField) {
-                this._changes[fieldName]?._clearCommands();
+                this._values[fieldName]?._clearCommands();
             }
         }
         this._changes = markRaw({});
@@ -1361,7 +1384,7 @@ export class Record extends DataPoint {
         delete offlineChanges.id; // id never changes, and should not be written
 
         this._offlineTimeStamp = this._offlineTimeStamp || Date.now();
-        this._offlineId = this.model.offline.scheduleORM(
+        this._offlineId = this.model.offlinePlugin.scheduleORM(
             this.resModel,
             "web_save",
             [this.resId ? [this.resId] : [], offlineChanges],
@@ -1451,7 +1474,7 @@ export class Record extends DataPoint {
             });
         } catch (e) {
             if (e instanceof ConnectionLostError) {
-                return this.model.offline.scheduleORM(
+                return this.model.offlinePlugin.scheduleORM(
                     this.resModel,
                     method,
                     [[this.resId]],

@@ -2,6 +2,7 @@
 
 import re
 import urllib.parse
+from datetime import UTC, date, datetime
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
@@ -43,7 +44,7 @@ class WebsiteSeoMetadata(models.AbstractModel):
             images instead of default images
         """
         self.ensure_one()
-        website = self.env["website"].get_current_website()
+        website = self.env.website
         title = website.name
         if 'name' in self:
             title = '%s | %s' % (self.name, title)
@@ -77,8 +78,7 @@ class WebsiteSeoMetadata(models.AbstractModel):
             override `_default_website_meta` method instead of this method. This
             method only replaces user custom values in defaults.
         """
-        website = self.env["website"].get_current_website()
-        root_url = website.domain or request.httprequest.url_root.strip('/')
+        root_url = self.env.website.domain or request.httprequest.url_root.strip('/')
         default_meta = self._default_website_meta()
         opengraph_meta, twitter_meta = default_meta['default_opengraph'], default_meta['default_twitter']
         if self.website_meta_title:
@@ -266,6 +266,175 @@ class WebsiteLocatedMixin(models.AbstractModel):
 
     def _get_extra_tracking_values(self, **kwargs):
         return {}
+
+
+class WebsiteStructuredDataMixin(models.AbstractModel):
+    """Mixin to generate Schema.org JSON-LD structured data for website pages."""
+    _name = 'website.structured_data.mixin'
+    _description = 'Website Structured Data Mixin'
+
+    def _prepare_jsonld_vals(self):
+        """Build the Schema.org property dictionary for this record.
+        Subclasses must override this to return a dict containing at least
+        the ``@type`` key.
+
+        :return: Dictionary of Schema.org properties.
+        :rtype: dict
+        """
+        return {}
+
+    def _get_jsonld_dict(self, is_detail_page=False):
+        """Collect Schema.org dictionaries for the page.
+        Base implementation returns the website's Organization schema.
+        Override to append page-specific schemas.
+
+        :param bool is_detail_page: True if on a record detail page.
+        :return: List of Schema.org dictionaries.
+        :rtype: list[dict]
+        """
+        website = self.env.website or self.env['website'].browse(self.env.context.get('host_id'))
+        return [website._prepare_jsonld_vals()]
+
+    def _render_jsonld(self, is_detail_page=False):
+        """Render the complete JSON-LD payload for the current page.
+        Collects schemas, appends a BreadcrumbList if applicable, and Returns a
+        JSON-LD object with @context and an @graph array bundling all page
+        schemas, or False if none.
+
+        :param bool is_detail_page: True if on a record detail page.
+        :return: JSON-LD string, or False if no schemas exist.
+        :rtype: str | bool
+        """
+        schemas = [s for s in self._get_jsonld_dict(is_detail_page=is_detail_page) if s]
+        if not schemas:
+            return False
+        breadcrumb_items = self._get_breadcrumb_items(is_detail_page=is_detail_page)
+        if len(breadcrumb_items) > 1:
+            schemas.append(self._build_breadcrumb_jsonld(breadcrumb_items))
+        return json_safe.dumps(
+            {'@context': 'https://schema.org', '@graph': schemas},
+            ensure_ascii=False,
+        )
+
+    def _get_breadcrumb_items(self, is_detail_page=False):
+        """Return ordered ``(name, relative_url)`` pairs for the breadcrumb trail.
+        Override to append model-specific items to the base "Home" item.
+
+        :param bool is_detail_page: True if on a record detail page.
+        :return: List of breadcrumb tuples.
+        :rtype: list[tuple[str, str]]
+        """
+        return [(self.env._('Home'), '/')]
+
+    def _build_breadcrumb_jsonld(self, items):
+        """Build a Schema.org ``BreadcrumbList`` dict from ``(name, url)`` pairs.
+        Resolves relative URLs to absolute.
+
+        :param list[tuple[str, str]] items: Ordered breadcrumb entries.
+        :return: BreadcrumbList schema dictionary.
+        :rtype: dict
+        """
+        website = self.env.website or self.env['website'].browse(self.env.context.get('host_id'))
+        base_url = website.get_base_url()
+        return {
+            '@type': 'BreadcrumbList',
+            'itemListElement': [
+                {
+                    '@type': 'ListItem',
+                    'position': i,
+                    'name': name,
+                    'item': url_join(base_url, url),
+                }
+                for i, (name, url) in enumerate(items, start=1)
+            ],
+        }
+
+    def _build_collectionpage_jsonld_vals(self, name, path, records, name_field='name', embed_items=False):
+        """Build a ``CollectionPage`` wrapping an ``ItemList`` of ``records``.
+
+        The caller is responsible for only building a CollectionPage when
+        relevant (e.g. a non-empty listing).
+
+        :param str name: CollectionPage name.
+        :param str path: Relative URL of the collection page; ``base_url`` is
+            prepended internally.
+        :param records: Recordset to list.
+        :param str name_field: Record field used as the flat ListItem name.
+        :param bool embed_items: If True each ``ListItem`` embeds the record's
+            full schema (via ``_prepare_jsonld_vals``) under the ``item`` key;
+            otherwise it emits a flat ``url`` + ``name``.
+        :rtype: dict
+        """
+        website = self.env.website or self.env['website'].browse(self.env.context.get('host_id'))
+        base_url = website.get_base_url()
+        return {
+            '@type': 'CollectionPage',
+            'name': name,
+            'url': f'{base_url}{path}',
+            'publisher': {'@id': f'{base_url}/#organization'},
+            'mainEntity': {
+                '@type': 'ItemList',
+                'numberOfItems': len(records),
+                'itemListElement': [
+                    self._build_listitem_jsonld_vals(record, index, base_url, name_field, embed_items)
+                    for index, record in enumerate(records, start=1)
+                ],
+            },
+        }
+
+    def _build_listitem_jsonld_vals(self, record, position, base_url, name_field, embed_items):
+        """Build a single ``ListItem`` entry for an ``ItemList``.
+
+        :param bool embed_items: If True embed the record's full schema under
+            ``item``; otherwise emit a flat ``url`` + ``name``.
+        :rtype: dict
+        """
+        list_item = {'@type': 'ListItem', 'position': position}
+        if embed_items:
+            list_item['item'] = record._prepare_jsonld_vals()
+        else:
+            list_item['url'] = f'{base_url}{record.website_url}'
+            list_item['name'] = record[name_field]
+        return list_item
+
+    def _build_postaladdress_jsonld_vals(self, partner):
+        """Build a schema.org ``PostalAddress`` dict from a partner's address.
+
+        :param partner: ``res.partner`` whose address fields are read.
+        :return: A ``PostalAddress`` dict, or ``{}`` when no field is filled.
+        :rtype: dict
+        """
+        street = ', '.join(part for part in (partner.street, partner.street2) if part)
+        postal = {
+            key: value
+            for key, value in (
+                ('streetAddress', street),
+                ('addressLocality', partner.city),
+                ('postalCode', partner.zip),
+                ('addressRegion', partner.state_id.code),
+                ('addressCountry', partner.country_id.code),
+            )
+            if value
+        }
+        return {'@type': 'PostalAddress', **postal} if postal else {}
+
+    def _to_iso_datetime(self, dt):
+        """Convert a date/datetime value to an ISO 8601 string in the user's timezone.
+
+        :param dt: Date or Datetime value, or a falsy value.
+        :return: ISO 8601 formatted string (seconds precision), or None if ``dt``
+            is falsy or not a date/datetime.
+        :rtype: str | None
+        """
+        if not dt:
+            return None
+        # Datetime values are tz-naive UTC and must be localized
+        if isinstance(dt, datetime):
+            return dt.replace(tzinfo=UTC).isoformat(timespec='seconds')
+        # Date values have no time component and are serialized as-is
+        if isinstance(dt, date):
+            return dt.isoformat()
+        return None
 
 
 class WebsitePublishedMixin(models.AbstractModel):
@@ -592,7 +761,7 @@ class WebsitePublishedMixin(models.AbstractModel):
         the 'website_published' value if this method sets can_publish False """
         for record in self:
             try:
-                self.env['website'].get_current_website()._check_user_can_modify(record)
+                self.env.website._check_user_can_modify(record)
                 record.can_publish = True
             except AccessError:
                 record.can_publish = False
@@ -712,7 +881,7 @@ class WebsiteSearchableMixin(models.AbstractModel):
         if len(search_terms) <= 2:
             for search_term in search_terms:
                 subdomains = [
-                    Domain(field, "ilike", search_term)
+                    self._search_get_field_domain(field, search_term)
                     for field in fields
                 ]
                 if extra:
@@ -724,7 +893,7 @@ class WebsiteSearchableMixin(models.AbstractModel):
             case_parts = []
             for search_term in search_terms:
                 subdomains = [
-                    Domain(field, "ilike", search_term)
+                    self._search_get_field_domain(field, search_term)
                     for field in fields
                 ]
                 if extra:
@@ -742,6 +911,10 @@ class WebsiteSearchableMixin(models.AbstractModel):
             query.add_where(where_clause)
             domain &= Domain("id", "in", query)
         return domain
+
+    @api.model
+    def _search_get_field_domain(self, field, search_term):
+        return Domain(field, "ilike", search_term)
 
     @api.model
     def _search_get_detail(self, website, order, options):
@@ -786,7 +959,7 @@ class WebsiteSearchableMixin(models.AbstractModel):
     def _search_render_results(self, fetch_fields, mapping, icon, limit):
         results_data = self[:limit].read(fetch_fields)
         for result in results_data:
-            result['_fa'] = icon
+            result['_icon'] = icon
             result['_mapping'] = mapping
         html_fields = [config['name'] for config in mapping.values() if config.get('html')]
         if html_fields:
@@ -867,8 +1040,7 @@ class WebsiteSearchableMixin(models.AbstractModel):
         parts, has_highlight = self._split_for_highlight(value, term)
 
         if has_highlight:
-            website = self.env["website"].get_current_website()
-            value = website._render_template(
+            value = self.env.website._render_template(
                 "website.search_text_with_highlight",
                 {'parts': parts}
             )
@@ -898,7 +1070,7 @@ class WebsiteSearchableMixin(models.AbstractModel):
                 highlighted_tags.append(tag)
 
         if highlighted_tags:
-            website = self.env["website"].get_current_website()
+            website = self.env.website or self.env.ref('base.default_website')
             value = website.sudo()._render_template(
                 "website.search_tags_highlight",
                 {'tags': highlighted_tags}

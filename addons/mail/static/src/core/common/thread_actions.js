@@ -2,9 +2,12 @@ import { useSubEnv } from "@web/owl2/utils";
 
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
-import { SearchMessagesPanel } from "@mail/core/common/search_messages_panel";
+
 import { Action, ACTION_TAGS, useAction, UseActions } from "@mail/core/common/action";
+import { RenameThreadPlugin } from "@mail/core/common/rename_thread_plugin";
+import { SearchMessagesPanel } from "@mail/core/common/search_messages_panel";
 import { MeetingChat } from "@mail/discuss/call/common/meeting_chat";
+import { useMaybePlugin } from "@mail/utils/common/hooks";
 
 export const threadActionsRegistry = registry.category("mail.thread/actions");
 
@@ -27,8 +30,9 @@ export function registerThreadAction(id, definition) {
 }
 
 registerThreadAction("fold-chat-window", {
+    btnAttrs: { "data-available-offline": true },
     condition: ({ owner }) => owner.props.chatWindow && !owner.isDiscussSidebarChannelActions,
-    icon: "oi oi-fw oi-minus",
+    icon: "remove",
     name: ({ owner }) => (!owner.props.chatWindow?.isOpen ? _t("Open") : _t("Fold")),
     onSelected: ({ owner }) => owner.toggleFold(),
     displayActive: ({ owner }) => !owner.props.chatWindow?.isOpen,
@@ -36,20 +40,18 @@ registerThreadAction("fold-chat-window", {
     sequenceQuick: 20,
 });
 registerThreadAction("rename-thread", {
-    condition: ({ channel, owner, thread }) =>
-        channel &&
-        channel.isAllowedToRename &&
-        owner.props.chatWindow?.isOpen &&
-        !owner.isDiscussSidebarChannelActions,
-    icon: "fa fa-fw fa-pencil",
+    condition: ({ action, channel }) => channel && channel.isAllowedToRename && action.editingName,
+    icon: "edit",
     name: _t("Rename Thread"),
-    onSelected: ({ owner }) => (owner.state.editingName = true),
+    onSelected: ({ action }) => action.editingName.set(true),
     sequence: 30,
     sequenceGroup: 20,
+    setup: ({ action }) => (action.editingName = useMaybePlugin(RenameThreadPlugin)?.editingName),
 });
 registerThreadAction("close", {
+    btnAttrs: { "data-available-offline": true },
     condition: ({ owner }) => owner.props.chatWindow && !owner.isDiscussSidebarChannelActions,
-    icon: "oi fa-fw oi-close",
+    icon: "close_small",
     name: _t("Close Chat Window (ESC)"),
     onSelected: ({ owner }) => owner.close(),
     sequence: 100,
@@ -59,12 +61,12 @@ registerThreadAction("search-messages", {
     actionPanelComponent: SearchMessagesPanel,
     actionPanelComponentProps: ({ thread }) => ({ thread }),
     actionPanelOuterClass: "o-mail-SearchMessagesPanel bg-inherit",
-    condition: ({ owner, thread }) =>
-        ["discuss.channel", "mail.box"].includes(thread?.model) &&
+    condition: ({ owner, channel }) =>
+        channel &&
         (!owner.props.chatWindow || owner.props.chatWindow.isOpen) &&
         !owner.isDiscussSidebarChannelActions,
     hotkey: "f",
-    icon: "oi oi-fw oi-search",
+    icon: "search",
     name: ({ action }) => (action.isActive ? _t("Close Search") : _t("Search Messages")),
     sequence: 20,
     sequenceGroup: 20,
@@ -84,10 +86,13 @@ registerThreadAction("meeting-chat", {
     actionPanelComponent: MeetingChat,
     actionPanelOuterClass: "bg-100 border border-secondary",
     badge: ({ thread }) => thread.isUnread,
-    badgeIcon: ({ channel }) => !channel.importantCounter && "fa fa-circle o-text-white opacity-75",
+    badgeIcon: ({ channel }) => !channel.importantCounter && "circle",
+    badgeIconClass: ({ channel }) =>
+        !channel.importantCounter && "oi-filled o-text-white opacity-75",
     badgeText: ({ channel }) => channel.importantCounter || undefined,
+    btnAttrs: { "data-available-offline": true },
     condition: ({ owner }) => owner.env.inMeetingView,
-    icon: "fa fa-fw fa-comments",
+    icon: "forum",
     name: _t("Chat"),
     sequence: 30,
     tags: ({ channel }) => {
@@ -119,7 +124,7 @@ export class ThreadAction extends Action {
 }
 
 /** @typedef {UseActions<ThreadActionParams, ThreadAction>} UseThreadActions_Def */
-class UseThreadActions extends UseActions {
+export class UseThreadActions extends UseActions {
     ActionClass = ThreadAction;
 }
 

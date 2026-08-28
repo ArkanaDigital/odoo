@@ -3,7 +3,6 @@
 
 from datetime import date, datetime, timedelta
 from freezegun import freeze_time
-from json import loads
 
 from odoo.fields import Command
 from odoo.tests import tagged, Form, TransactionCase
@@ -405,7 +404,7 @@ class TestProcRule(TransactionCase):
         """ Create two warehouses + two moves
         verify that the replenishment view is consistent"""
         warehouse_1 = self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)], limit=1)
-        warehouse_2, warehouse_3 = self.env['stock.warehouse'].create([{
+        warehouse_2, warehouse_3 = self.env['stock.warehouse'].sudo().create([{
             'name': 'Warehouse Two',
             'code': 'WH2',
             'resupply_wh_ids': [warehouse_1.id],
@@ -456,7 +455,7 @@ class TestProcRule(TransactionCase):
     def test_orderpoint_replenishment_view_2(self):
         """ Create a warehouse  + location to replenish warehouse instead of main location
         verify that the orderpoints created are for the replenish locations not the warehouse main location"""
-        warehouse_1 = self.env['stock.warehouse'].create({
+        warehouse_1 = self.env['stock.warehouse'].sudo().create({
             'name': 'Warehouse 1',
             'code': 'WH1',
         })
@@ -560,7 +559,7 @@ class TestProcRule(TransactionCase):
 
     def test_orderpoint_compute_warehouse_location(self):
         warehouse_a = self.env['stock.warehouse'].search([], limit=1)
-        warehouse_b = self.env['stock.warehouse'].create({
+        warehouse_b = self.env['stock.warehouse'].sudo().create({
             'name': 'Test Warehouse',
             'code': 'TWH'
         })
@@ -628,7 +627,7 @@ class TestProcRule(TransactionCase):
         self.assertEqual(orderpoint.qty_to_order_to_max, 0)
 
     def test_orderpoint_location_archive(self):
-        warehouse = self.env['stock.warehouse'].create({
+        warehouse = self.env['stock.warehouse'].sudo().create({
             'name': 'Test Warehouse',
             'code': 'TWH'
         })
@@ -673,6 +672,28 @@ class TestProcRule(TransactionCase):
         })
         stock_move._action_confirm()
         self.assertEqual(orderpoint.qty_to_order, 6)
+
+    def test_compute_qty_to_order_after_receipt_line_deletion(self):
+        """Test that deleting a confirmed incoming receipt move updates the orderpoint."""
+        self.product.is_storable = True
+        orderpoint = self.env['stock.warehouse.orderpoint'].create({
+            'name': 'Manual orderpoint',
+            'product_id': self.product.id,
+            'product_min_qty': 10,
+            'product_max_qty': 10,
+            'trigger': 'manual',
+        })
+        stock_move = self.env['stock.move'].create({
+            'product_id': self.product.id,
+            'uom_id': self.product.uom_id.id,
+            'product_uom_qty': 10,
+            'location_id': self.ref('stock.stock_location_suppliers'),
+            'location_dest_id': self.ref('stock.stock_location_stock'),
+        })
+        stock_move._action_confirm()
+        self.assertRecordValues(orderpoint, [{'qty_forecast': 10.0, 'qty_to_order': 0.0}])
+        stock_move.unlink()
+        self.assertRecordValues(orderpoint, [{'qty_forecast': 0.0, 'qty_to_order': 10.0}])
 
     def test_rule_help_message_mto_mtso(self):
         """Verify that the rule's help message correctly displays all relevant
@@ -858,67 +879,132 @@ class TestProcRule(TransactionCase):
         self.assertEqual(orderpoint_1.deadline_date, False)
         self.assertEqual(orderpoint_2.deadline_date, delivery_date_1.date())
 
-    @freeze_time('2025-08-14 10:00:00')
-    def test_orderpoint_wizard_graph(self):
-        """ Test that the graph data is correctly computed. """
-        self.product.is_storable = True
-        orderpoint = self.env['stock.warehouse.orderpoint'].create({
-            'product_id': self.product.id,
-            'product_min_qty': 10,
-            'product_max_qty': 50,
-        })
-
+    def test_get_rules_from_location_preserves_route(self):
+        """_get_rules_from_location should keep the selected route across chained rules."""
         warehouse = self.env['stock.warehouse'].search([], limit=1)
-        out_move = self.env['stock.move'].create({
-            'product_id': self.product.id,
-            'uom_id': self.uom_unit.id,
-            'product_uom_qty': 15.0,
+        product = self.env['product.product'].create({'name': 'Route Chain Product', 'is_storable': True})
+        intermediate_location = self.env['stock.location'].create({
+            'name': 'Route Chain Intermediate',
             'location_id': warehouse.lot_stock_id.id,
-            'location_dest_id': self.ref('stock.stock_location_customers'),
+            'usage': 'internal',
         })
-        out_move._action_confirm()
-        out_move._action_assign()
-        out_move.quantity = 15
-        out_move.picked = True
-        out_move._action_done()
+        selected_route = self.env['stock.route'].create({'name': 'Selected Chain Route'})
+        fallback_route = self.env['stock.route'].create({'name': 'Fallback Product Route'})
+        product.route_ids = [Command.link(fallback_route.id)]
 
+        first_rule = self.env['stock.rule'].create({
+            'name': 'Selected Route First Rule',
+            'route_id': selected_route.id,
+            'action': 'pull',
+            'procure_method': 'make_to_order',
+            'location_src_id': intermediate_location.id,
+            'location_dest_id': warehouse.lot_stock_id.id,
+            'picking_type_id': warehouse.int_type_id.id,
+            'warehouse_id': warehouse.id,
+        })
+        selected_second_rule = self.env['stock.rule'].create({
+            'name': 'Selected Route Second Rule',
+            'route_id': selected_route.id,
+            'action': 'pull',
+            'procure_method': 'make_to_stock',
+            'location_src_id': self.env.ref('stock.stock_location_suppliers').id,
+            'location_dest_id': intermediate_location.id,
+            'picking_type_id': warehouse.in_type_id.id,
+            'warehouse_id': warehouse.id,
+        })
+        fallback_second_rule = self.env['stock.rule'].create({
+            'name': 'Fallback Route Second Rule',
+            'route_id': fallback_route.id,
+            'action': 'pull',
+            'procure_method': 'make_to_stock',
+            'location_src_id': self.env.ref('stock.stock_location_suppliers').id,
+            'location_dest_id': intermediate_location.id,
+            'picking_type_id': warehouse.in_type_id.id,
+            'warehouse_id': warehouse.id,
+        })
+
+        rules = product._get_rules_from_location(warehouse.lot_stock_id, route_ids=selected_route)
+        self.assertIn(first_rule, rules)
+        self.assertIn(selected_second_rule, rules)
+        self.assertNotIn(fallback_second_rule, rules)
+
+    def test_orderpoint_wizard_warehouse_option_lead_time(self):
+        """Check the Warehouses tab lead time follows the selected resupply route."""
+        warehouse_a = self.env['stock.warehouse'].sudo().create({
+            'name': 'Lead Time Warehouse A',
+            'code': 'LTWA',
+        })
+        warehouse_b = self.env['stock.warehouse'].sudo().create({
+            'name': 'Lead Time Warehouse B',
+            'code': 'LTWB',
+            'resupply_wh_ids': [Command.link(warehouse_a.id)],
+        })
+        product = self.env['product.product'].create({
+            'name': 'Lead Time Route Product',
+            'is_storable': True,
+        })
+        resupply_route = warehouse_b.resupply_route_ids
+        destination_rule = resupply_route.rule_ids.filtered(
+            lambda rule: rule.location_dest_id == warehouse_b.lot_stock_id
+        )
+        source_rule = resupply_route.rule_ids.filtered(
+            lambda rule: rule.location_dest_id == self.env.company.internal_transit_location_id
+        )
+        self.assertEqual(len(destination_rule), 1)
+        self.assertEqual(len(source_rule), 1)
+        destination_rule.delay = 3
+        source_rule.delay = 4
+
+        fallback_route = self.env['stock.route'].create({'name': 'Lead Time Fallback Route'})
+        product.route_ids = [Command.link(fallback_route.id)]
+        self.env['stock.rule'].create({
+            'name': 'Fallback Route Rule',
+            'route_id': fallback_route.id,
+            'action': 'pull',
+            'procure_method': 'make_to_stock',
+            'location_src_id': self.env.ref('stock.stock_location_suppliers').id,
+            'location_dest_id': self.env.company.internal_transit_location_id.id,
+            'picking_type_id': warehouse_a.in_type_id.id,
+            'warehouse_id': warehouse_a.id,
+            'delay': 99,
+        })
+
+        orderpoint = self.env['stock.warehouse.orderpoint'].create({
+            'location_id': warehouse_b.lot_stock_id.id,
+            'warehouse_id': warehouse_b.id,
+            'product_id': product.id,
+            'product_min_qty': 0,
+            'product_max_qty': 5,
+        })
         info = self.env['stock.replenishment.info'].create({'orderpoint_id': orderpoint.id})
-        graph_data = loads(info.json_replenishment_graph)
-        self.assertEqual(graph_data['daily_demand'], 0.48)
-        self.assertEqual(graph_data['average_stock'], 30.0)
-        self.assertEqual(graph_data['ordering_period'], 82.0)
-        self.assertListEqual(graph_data['x_axis_vals'], ['', 'In 82 day(s)', 'In 164 day(s)', 'In 246 day(s)'])
-        self.assertListEqual([curve_line_val['y'] for curve_line_val in graph_data['curve_line_vals']], [50, 10, 50, 10, 50, 10])
+        option = info.wh_replenishment_option_ids
 
-        info.write({
-            'based_on': 'one_week',
-            'percent_factor': 200,
-            'product_min_qty': 20,
-            'product_max_qty': 40,
+        self.assertEqual(len(option), 1)
+        self.assertEqual(option.route_id, resupply_route)
+        self.assertEqual(option.lead_time, "7.0 days")
+
+    def test_orderpoint_replenishment_view_internal_transfer(self):
+        """An internal transfer between replenishment locations creates a need at its source."""
+        warehouse = self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)], limit=1)
+        replenish_loc = self.env['stock.location'].create({
+            'name': 'Replenish Location',
+            'location_id': warehouse.view_location_id.id,
+            'replenish_location': True,
         })
-        graph_data = loads(info.json_replenishment_graph)
-        self.assertEqual(graph_data['daily_demand'], 4.29)
-        self.assertEqual(graph_data['average_stock'], 30.0)
-        self.assertEqual(graph_data['ordering_period'], 4.0)
-        self.assertListEqual(graph_data['x_axis_vals'], ['', 'In 4 day(s)', 'In 8 day(s)', 'In 12 day(s)'])
-        self.assertListEqual([curve_line_val['y'] for curve_line_val in graph_data['curve_line_vals']], [40, 20, 40, 20, 40, 20])
-
-        late_out_move = self.env['stock.move'].create({
-            'product_id': self.product.id,
-            'uom_id': self.uom_unit.id,
-            'product_uom_qty': 15.0,
+        self.product.is_storable = True
+        self.env['stock.move'].create({
             'location_id': warehouse.lot_stock_id.id,
-            'location_dest_id': self.ref('stock.stock_location_customers'),
-            'date': datetime.today() - timedelta(days=5),
-        })
-        late_out_move._action_confirm()
-        info._compute_json_replenishment_graph()
-        graph_data = loads(info.json_replenishment_graph)
-        self.assertEqual(graph_data['daily_demand'], 8.57)
-        self.assertEqual(graph_data['average_stock'], 30.0)
-        self.assertEqual(graph_data['ordering_period'], 2.0)
-        self.assertListEqual(graph_data['x_axis_vals'], ['', 'In 2 day(s)', 'In 4 day(s)', 'In 6 day(s)'])
-        self.assertListEqual([curve_line_val['y'] for curve_line_val in graph_data['curve_line_vals']], [40, 20, 40, 20, 40, 20])
+            'location_dest_id': replenish_loc.id,
+            'product_id': self.product.id,
+            'product_uom_qty': 3,
+        })._action_confirm()
+        self.env['stock.warehouse.orderpoint'].action_open_orderpoints()
+        replenishments = self.env['stock.warehouse.orderpoint'].search([
+            ('product_id', '=', self.product.id),
+        ])
+        self.assertRecordValues(replenishments, [
+            {'location_id': warehouse.lot_stock_id.id, 'qty_to_order': 3},
+        ])
 
 
 class TestProcRuleLoad(TransactionCase):
@@ -930,7 +1016,7 @@ class TestProcRuleLoad(TransactionCase):
         """ Try 500 products with a 1000 RR(stock -> shelf1 and stock -> shelf2)
         Also randomly include 4 miss configuration.
         """
-        warehouse = self.env['stock.warehouse'].create({
+        warehouse = self.env['stock.warehouse'].sudo().create({
             'name': 'Test Warehouse',
             'code': 'TWH'
         })

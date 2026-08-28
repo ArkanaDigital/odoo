@@ -4,10 +4,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Odoo Server 19.4a1\n"
+"Project-Id-Version: Odoo Server 19.5a1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-29 17:40+0000\n"
-"PO-Revision-Date: 2026-05-29 17:40+0000\n"
+"POT-Creation-Date: 2026-07-24 17:42+0000\n"
+"PO-Revision-Date: 2026-07-24 17:42+0000\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
@@ -76,6 +76,12 @@ msgid ""
 msgstr ""
 
 #. module: pos_stock
+#. odoo-javascript
+#: code:addons/pos_stock/static/src/app/components/popups/product_info_popup/product_info_popup.xml:0
+msgid "Available"
+msgstr ""
+
+#. module: pos_stock
 #: model:ir.model,name:pos_stock.model_res_company
 msgid "Company"
 msgstr ""
@@ -136,6 +142,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:pos_stock.field_pos_order_receipt__display_name
 #: model:ir.model.fields,field_description:pos_stock.field_pos_pack_operation_lot__display_name
 #: model:ir.model.fields,field_description:pos_stock.field_pos_session__display_name
+#: model:ir.model.fields,field_description:pos_stock.field_product_category__display_name
+#: model:ir.model.fields,field_description:pos_stock.field_product_removal__display_name
 #: model:ir.model.fields,field_description:pos_stock.field_product_template__display_name
 #: model:ir.model.fields,field_description:pos_stock.field_res_company__display_name
 #: model:ir.model.fields,field_description:pos_stock.field_res_config_settings__display_name
@@ -155,6 +163,17 @@ msgid "Failed Pickings"
 msgstr ""
 
 #. module: pos_stock
+#. odoo-javascript
+#: code:addons/pos_stock/static/src/app/components/popups/product_info_popup/product_info_popup.xml:0
+msgid "Forecasted"
+msgstr ""
+
+#. module: pos_stock
+#: model:ir.model.fields,field_description:pos_stock.field_stock_picking_type__has_stock_reports_to_print
+msgid "Has Stock Reports To Print"
+msgstr ""
+
+#. module: pos_stock
 #: model:ir.model.fields,field_description:pos_stock.field_account_move__id
 #: model:ir.model.fields,field_description:pos_stock.field_account_move_line__id
 #: model:ir.model.fields,field_description:pos_stock.field_pos_config__id
@@ -163,6 +182,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:pos_stock.field_pos_order_receipt__id
 #: model:ir.model.fields,field_description:pos_stock.field_pos_pack_operation_lot__id
 #: model:ir.model.fields,field_description:pos_stock.field_pos_session__id
+#: model:ir.model.fields,field_description:pos_stock.field_product_category__id
+#: model:ir.model.fields,field_description:pos_stock.field_product_removal__id
 #: model:ir.model.fields,field_description:pos_stock.field_product_template__id
 #: model:ir.model.fields,field_description:pos_stock.field_res_company__id
 #: model:ir.model.fields,field_description:pos_stock.field_res_config_settings__id
@@ -265,6 +286,8 @@ msgstr ""
 
 #. module: pos_stock
 #. odoo-javascript
+#. odoo-python
+#: code:addons/pos_stock/receipt/pos_order_receipt.py:0
 #: code:addons/pos_stock/static/src/app/models/pos_order.js:0
 msgid "Lot:"
 msgstr ""
@@ -296,7 +319,7 @@ msgstr ""
 #. module: pos_stock
 #. odoo-javascript
 #: code:addons/pos_stock/static/src/app/components/popups/product_info_popup/product_info_popup.xml:0
-msgid "On hand:"
+msgid "On hand"
 msgstr ""
 
 #. module: pos_stock
@@ -402,6 +425,11 @@ msgid "Product"
 msgstr ""
 
 #. module: pos_stock
+#: model:ir.model,name:pos_stock.model_product_category
+msgid "Product Category"
+msgstr ""
+
+#. module: pos_stock
 #: model:ir.model.fields,field_description:pos_stock.field_pos_order__stock_reference_ids
 msgid "Reference"
 msgstr ""
@@ -409,6 +437,11 @@ msgstr ""
 #. module: pos_stock
 #: model:ir.model,name:pos_stock.model_stock_reference
 msgid "Reference between stock documents"
+msgstr ""
+
+#. module: pos_stock
+#: model:ir.model,name:pos_stock.model_product_removal
+msgid "Removal Strategy"
 msgstr ""
 
 #. module: pos_stock
@@ -421,6 +454,8 @@ msgstr ""
 
 #. module: pos_stock
 #. odoo-javascript
+#. odoo-python
+#: code:addons/pos_stock/receipt/pos_order_receipt.py:0
 #: code:addons/pos_stock/static/src/app/models/pos_order.js:0
 msgid "SN:"
 msgstr ""
@@ -506,7 +541,7 @@ msgstr ""
 
 #. module: pos_stock
 #. odoo-python
-#: code:addons/pos_stock/models/pos_order.py:0
+#: code:addons/pos_stock/models/pos_session.py:0
 msgid "Stock variation for %s"
 msgstr ""
 
@@ -611,6 +646,11 @@ msgstr ""
 #. module: pos_stock
 #. odoo-javascript
 #: code:addons/pos_stock/static/src/app/components/popups/product_info_popup/product_info_popup.xml:0
+msgid "available"
+msgstr ""
+
+#. module: pos_stock
+#. odoo-javascript
 #: code:addons/pos_stock/static/src/app/components/product_info_banner/product_info_banner.xml:0
 msgid "available,"
 msgstr ""
@@ -620,4 +660,10 @@ msgstr ""
 #: code:addons/pos_stock/static/src/app/components/popups/product_info_popup/product_info_popup.xml:0
 #: code:addons/pos_stock/static/src/app/components/product_info_banner/product_info_banner.xml:0
 msgid "forecasted"
+msgstr ""
+
+#. module: pos_stock
+#. odoo-javascript
+#: code:addons/pos_stock/static/src/app/components/popups/product_info_popup/product_info_popup.xml:0
+msgid "on hand"
 msgstr ""

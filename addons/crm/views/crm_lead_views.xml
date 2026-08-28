@@ -31,7 +31,7 @@
                         <field name="is_automated_probability" invisible="1"/>
                         <div class="oe_button_box" name="button_box">
                             <button name="action_schedule_meeting" type="object"
-                                class="oe_stat_button" icon="fa-calendar"
+                                class="oe_stat_button" icon="calendar_today" icon_class="oi-filled"
                                 context="{'partner_id': partner_id}"
                                 invisible="not id or type == 'lead'">
                                 <div class="o_stat_info">
@@ -40,7 +40,7 @@
                                 </div>
                             </button>
                             <button name="action_show_potential_duplicates" type="object"
-                                class="oe_stat_button" icon="fa-star"
+                                class="oe_stat_button" icon="star" icon_class="oi-filled"
                                 invisible="duplicate_lead_count &lt; 1">
                                 <div class="o_stat_info">
                                     <field name="duplicate_lead_count" class="o_stat_value"/>
@@ -67,13 +67,13 @@
                         </div>
                         <h2 class="d-none d-sm-flex d-touch-none align-items-end mb-4">
                             <!-- in this view, we want to have a different desktop UI, so we have two different 'touch' and 'desktop' templates -->
-                            <div class="col-3 d-flex flex-column justify-content-between"  invisible="type == 'lead'">
+                            <div class="col-auto d-flex flex-column justify-content-between" invisible="type == 'lead'">
                                 <field name="company_currency" invisible="1"/>
                                 <label for="expected_revenue" class="oe_edit_only mb-2"/>
                                 <div class="d-flex flex-wrap align-items-baseline">
-                                    <field name="expected_revenue" widget="monetary" options="{'currency_field': 'company_currency'}"/>
+                                    <field name="expected_revenue" widget="monetary" options="{'currency_field': 'company_currency'}" class="o_input_16ch"/>
                                     <span groups="crm.group_use_recurring_revenues" class="opacity-50 ms-3 me-1"> + </span>
-                                    <field name="recurring_revenue" widget="monetary" options="{'currency_field': 'company_currency'}"
+                                    <field name="recurring_revenue" widget="monetary" options="{'currency_field': 'company_currency'}" class="o_input_10ch me-3"
                                         groups="crm.group_use_recurring_revenues"/>
                                 </div>
                             </div>
@@ -81,8 +81,9 @@
                                 <field name="recurring_plan" placeholder='e.g. "Monthly"'
                                     required="recurring_revenue != 0" options="{'no_create': True, 'no_open': True}"/>
                             </div>
-                            <span class="ms-2 mb-1"> at</span>
-                            <div class="col-auto d-flex flex-column ms-3">
+                            <span class="mx-3 mb-1" invisible="type == 'lead'"> at</span>
+                            <span class="mx-3 mb-1" groups="crm.group_use_recurring_revenues" invisible="type != 'lead'"> at</span>
+                            <div class="col-auto d-flex flex-column">
                                 <div>
                                     <label for="probability" class="d-inline-block"/>
                                     <a class="border-0 mx-1 p-0 mb-1 mb-md-0 btn btn-light"
@@ -208,12 +209,12 @@
                                 />
                                 <label for="email_from" class="oe_inline"/>
                                 <div class="o_row o_row_readonly">
-                                    <button name="mail_action_blacklist_remove" class="fa fa-ban text-danger"
+                                    <button name="mail_action_blacklist_remove" class="oi text-danger" data-icon="block"
                                         title="This email is blacklisted for mass mailings. Click to unblacklist."
                                         type="object" context="{'default_email': email_from}" groups="base.group_user"
                                         invisible="not is_blacklisted"/>
                                     <field name="email_from" string="Email" widget="email" placeholder="e.g. john.doe@email.com"/>
-                                    <span class="fa fa-exclamation-triangle text-warning oe_edit_only"
+                                    <span class="oi text-warning oe_edit_only" data-icon="warning"
                                         title="By saving this change, the customer email will also be updated."
                                         invisible="not partner_email_update"/>
                                 </div>
@@ -221,12 +222,12 @@
                                 <field name="phone_formatted" invisible="1"/>
                                 <label for="phone" class="oe_inline"/>
                                 <div class="o_row o_row_readonly">
-                                    <button name="phone_action_blacklist_remove" class="fa fa-ban text-danger"
+                                    <button name="phone_action_blacklist_remove" class="oi text-danger" data-icon="block"
                                         title="This phone number is blacklisted for SMS Marketing. Click to unblacklist."
                                         type="object" context="{'default_phone': phone}" groups="base.group_user"
                                         invisible="not phone_blacklisted"/>
                                     <field name="phone" widget="phone" placeholder="e.g. (555) 555-0199"/>
-                                    <span class="fa fa-exclamation-triangle text-warning oe_edit_only"
+                                    <span class="oi text-warning oe_edit_only" data-icon="warning"
                                         title="By saving this change, the customer phone number will also be updated."
                                         invisible="not partner_phone_update"/>
                                 </div>
@@ -385,7 +386,7 @@
             <field name="model">crm.lead</field>
             <field name="priority" eval="2"/>
             <field name="arch" type="xml">
-                <calendar string="Leads Generation" create="0" mode="month" date_start="activity_date_deadline" color="user_id" hide_time="true" event_limit="5">
+                <calendar string="Leads Generation" js_class="crm_calendar" create="0" mode="month" date_start="activity_date_deadline" color="user_id" hide_time="true" event_limit="5">
                     <field name="expected_revenue"/>
                     <field name="partner_id" avatar_field="avatar_128"/>
                     <field name="user_id" filters="1" invisible="1"/>
@@ -403,7 +404,7 @@
                 <form>
                     <group class="crm_quick_create_opportunity_form_group">
                         <div class="d-flex align-items-center" colspan="2">
-                            <i class="fa fa-user" title="Contact"/>
+                            <i class="oi oi-filled" data-icon="person" title="Contact"/>
                             <field name="partner_id"
                                 nolabel="1"
                                 class="o_field_highlight"
@@ -420,26 +421,26 @@
                             />
                         </div>
                         <div class="d-flex align-items-center" colspan="2">
-                            <i class="fa fa-briefcase" title="Opportunity Name"/>
+                            <i class="oi" data-icon="work" title="Opportunity Name"/>
                             <field name="name" nolabel="1" placeholder="Opportunity's Name" class="o_field_highlight"/>
                         </div>
                         <div class="d-flex align-items-center" colspan="2">
-                            <i class="fa fa-envelope" title="Contact Email"/>
+                            <i class="oi oi-filled" data-icon="mail" title="Contact Email"/>
                             <field name="email_from" string="Contact Email" placeholder='Contact Email' nolabel="1" class="o_field_highlight"/>
                         </div>
                         <div class="d-flex align-items-center" colspan="2">
-                            <i class="fa fa-mobile fa-lg" title="Contact Phone"/>
+                            <i class="oi oi-lg" data-icon="smartphone" title="Contact Phone"/>
                             <field name="phone_sanitized" invisible="1"/>
                             <field name="phone_formatted" invisible="1"/>
                             <field name="phone" string="Contact Phone" placeholder='Contact Phone' nolabel="1" class="o_field_highlight" widget="phone"/>
                         </div>
                         <div class="d-flex align-items-center" colspan="2">
-                            <i class="fa fa-money" title="Expected Revenue"/>
+                            <i class="oi" data-icon="payments" title="Expected Revenue"/>
                             <field name="expected_revenue" class="o_field_highlight" widget="monetary" options="{'currency_field': 'company_currency'}"/>
                             <field name="priority" class="w-auto" nolabel="1" widget="priority"/>
                         </div>
                         <div class="d-flex align-items-center" colspan="2" groups="crm.group_use_recurring_revenues">
-                            <i class="fa fa-refresh" title="Recurring Revenue"/>
+                            <i class="oi" data-icon="refresh" title="Recurring Revenue"/>
                             <field name="recurring_revenue" class="o_field_highlight" widget="monetary" options="{'currency_field': 'company_currency'}"/>
                             <field name="recurring_plan" placeholder='e.g. "Monthly"' required="recurring_revenue != 0" options="{'no_create': True, 'no_open': True}"/>
                         </div>
@@ -469,7 +470,7 @@
             <field name="name">crm.lead.view.activity</field>
             <field name="model">crm.lead</field>
             <field name="arch" type="xml">
-                <activity string="Leads or Opportunities">
+                <activity string="Leads or Opportunities" js_class="crm_activity">
                     <field name="user_id"/>
                     <field name="company_currency"/>
                     <templates>
@@ -752,7 +753,7 @@
                     <field name="is_rotting" column_invisible="True"/>
                     <field name="rotting_days" column_invisible="True"/>
                     <widget name="mail_activity_mixin_list_reschedule_dropdown"/>
-                    <button name="%(crm.action_lead_mail_compose)d" type="action" string="Email" icon="fa-envelope" invisible="won_status == 'lost'"/>
+                    <button name="%(crm.action_lead_mail_compose)d" type="action" string="Email" icon="mail" icon_class="oi-filled" invisible="won_status == 'lost'"/>
                 </list>
             </field>
         </record>
@@ -829,7 +830,7 @@
             <field name="name">crm.lead.view.graph</field>
             <field name="model">crm.lead</field>
             <field name="arch" type="xml">
-                <graph string="Opportunities" sample="1">
+                <graph string="Opportunities" js_class="crm_graph" sample="1">
                     <field name="stage_id"/>
                     <field name="user_id"/>
                     <field name="color" invisible="1"/>
@@ -869,7 +870,7 @@
             <field name="name">crm.lead.view.pivot</field>
             <field name="model">crm.lead</field>
             <field name="arch" type="xml">
-                <pivot string="Pipeline Analysis" sample="1">
+                <pivot string="Pipeline Analysis" js_class="crm_pivot" sample="1">
                     <field name="create_date" interval="month" type="row"/>
                     <field name="stage_id" type="col"/>
                     <field name="expected_revenue" type="measure"/>
@@ -937,7 +938,7 @@
                     <field name="activity_state"/>
                     <field name="lead_properties"/>
                     <separator/>
-                    <filter string="My Pipeline" name="assigned_to_me"
+                    <filter string="My Opportunities" name="assigned_to_me"
                         domain="[('user_id', '=', uid)]"
                         help="Opportunities that are assigned to me"/>
                     <filter string="Unassigned" name="unassigned"
@@ -1150,8 +1151,9 @@
             <field name="context">{
                     'default_type': 'opportunity',
                     'search_default_assigned_to_me': 1,
-                    'show_user_team_stages': 1,
                     'show_lead_gen_button': True,
+                    'show_team_switcher': True,
+                    'show_user_team_stages': True,
             }</field>
             <field name="search_view_id" ref="crm.view_crm_case_opportunities_filter"/>
         </record>
@@ -1203,6 +1205,7 @@
                 'search_default_date_deadline': 1,
                 'forecast_field': 'date_deadline',
                 'crm_lead_prioritize_team_help': 1,
+                'show_team_switcher': True,
             }</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">

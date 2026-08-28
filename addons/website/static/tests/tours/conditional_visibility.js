@@ -33,13 +33,13 @@ const snippets = [
     },
 ];
 function checkEyeIcon(snippetName, visible) {
-    const eyeIcon = visible ? "fa-eye" : "fa-eye-slash";
+    const eyeIcon = visible ? "visibility" : "visibility_off";
     const openOrClose = visible ? "open" : "close";
     const endExplanation = `should be ${openOrClose} in the "Invisible Elements" panel`;
     const invisibleElPanel = "o_we_invisible_el_panel";
     return {
         content: `The eye icon of ${snippetName} ${endExplanation}`,
-        trigger: `.${invisibleElPanel} .o_we_invisible_entry:contains("${snippetName}") i.${eyeIcon}`,
+        trigger: `.${invisibleElPanel} .o_we_invisible_entry:contains("${snippetName}") i[data-icon="${eyeIcon}"]`,
     };
 }
 function checkEyesIconAfterSave(footerIsHidden = true) {
@@ -173,8 +173,13 @@ registry.category("web_tour.tours").add("conditional_visibility_4", {
         ...clickOnSnippet(snippets[0]),
         {
             content: "Click on the 'move down' option",
-            trigger: ".o_overlay_options button.fa-angle-down",
+            trigger: ".o_overlay_options button[data-icon='keyboard_arrow_down']",
             run: "click",
+        },
+        {
+            content: "Check that Banner is now before Text - Image in the panel",
+            trigger:
+                ".o_we_invisible_el_panel .o_we_invisible_entry:contains('Banner') ~ .o_we_invisible_entry:contains('Text - Image')",
         },
         ...checkEyesIconAfterSave(),
         {
@@ -193,9 +198,23 @@ registry.category("web_tour.tours").add("conditional_visibility_4", {
         // Click on the "Banner" snippet.
         ...clickOnSnippet(snippets[1]),
         {
+            content: "Wait for the target to be the banner (by looking at its options)",
+            trigger: ".options-container[data-container-title=Banner]",
+        },
+        {
+            content: "Move the mouse away to make sure no option is still being previewed",
+            trigger: "body",
+            run: "hover",
+        },
+        {
             content: "Drag the 'Banner' snippet to the end of the page",
             trigger: ".o_overlay_options button.o_move_handle",
             run: "drag_and_drop :iframe #wrapwrap footer",
+        },
+        {
+            content: "Check that Text - Image is now before Banner in the panel",
+            trigger:
+                ".o_we_invisible_el_panel .o_we_invisible_entry:contains('Text - Image') ~ .o_we_invisible_entry:contains('Banner')",
         },
         ...checkEyesIconAfterSave(false),
         {
@@ -206,7 +225,6 @@ registry.category("web_tour.tours").add("conditional_visibility_4", {
 });
 
 registry.category("web_tour.tours").add("conditional_visibility_5", {
-    undeterministicTour_doNotCopy: true, // Remove this key to make the tour failed. ( It removes delay between steps )
     steps: () => [
         waitForEditMode,
         {

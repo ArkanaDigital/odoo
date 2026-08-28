@@ -6,8 +6,9 @@ import contextlib
 from odoo import _, api, Command, fields, models, modules, tools
 from odoo.exceptions import UserError
 from odoo.http import request
-from odoo.tools import email_normalize
+from odoo.tools import email_normalize, split_every
 from odoo.tools.misc import limited_field_access_token
+from odoo.addons.base.models.res_users import NO_GROUP_CHANGE_LOG
 from odoo.addons.mail.tools.discuss import Store
 
 
@@ -18,7 +19,14 @@ class ResUsers(models.Model):
         - add a welcome message
         - add suggestion preference
     """
-    _inherit = 'res.users'
+    _name = "res.users"
+    _inherit = ['mail.thread', 'mail.activity.mixin', 'res.users']
+    _mail_post_access = 'read'
+
+    name = fields.Char(tracking=1)
+    email = fields.Char(tracking=2)
+    phone = fields.Char(tracking=3)
+    login = fields.Char(tracking=4)
 
     role_ids = fields.Many2many(
         "res.role",
@@ -103,7 +111,7 @@ class ResUsers(models.Model):
         # Special case: internal users with inbox notifications converted to portal must be converted to email users
         new_portal_users = self.filtered_domain([('share', '=', True), ('notification_type', '=', 'inbox')])
         new_portal_users.notification_type = 'email'
-        new_portal_users.write({"group_ids": [Command.unlink(inbox_group_id)]})
+        new_portal_users.with_context(no_group_change_log=NO_GROUP_CHANGE_LOG).write({"group_ids": [Command.unlink(inbox_group_id)]})
 
     @api.depends('out_of_office_from', 'out_of_office_to')
     def _compute_is_out_of_office(self):
@@ -137,8 +145,8 @@ class ResUsers(models.Model):
     def _inverse_notification_type(self):
         inbox_group = self.env.ref('mail.group_mail_notification_type_inbox')
         inbox_users = self.filtered(lambda user: user.notification_type == 'inbox')
-        inbox_users.sudo().write({"group_ids": [Command.link(inbox_group.id)]})
-        (self - inbox_users).sudo().write({"group_ids": [Command.unlink(inbox_group.id)]})
+        inbox_users.with_context(no_group_change_log=NO_GROUP_CHANGE_LOG).sudo().write({"group_ids": [Command.link(inbox_group.id)]})
+        (self - inbox_users).with_context(no_group_change_log=NO_GROUP_CHANGE_LOG).sudo().write({"group_ids": [Command.unlink(inbox_group.id)]})
 
     @api.depends_context("uid")
     def _compute_can_edit_role(self):
@@ -191,9 +199,9 @@ class ResUsers(models.Model):
             for user in users:
                 if user._is_portal():
                     body = user._get_portal_access_update_body(True)
-                    user.partner_id.message_post(
+                    user.message_post(
                         body=body,
-                        message_type='notification',
+                        message_type='tracking',
                         subtype_xmlid='mail.mt_note'
                     )
         return users
@@ -224,9 +232,9 @@ class ResUsers(models.Model):
                 portal_access_changed = user_has_group != user_portal_access_dict[user.id]
                 if portal_access_changed:
                     body = user._get_portal_access_update_body(user_has_group)
-                    user.partner_id.message_post(
+                    user.message_post(
                         body=body,
-                        message_type='notification',
+                        message_type='tracking',
                         subtype_xmlid='mail.mt_note'
                     )
 
@@ -260,9 +268,44 @@ class ResUsers(models.Model):
         return write_res
 
     def action_archive(self):
-        activities_to_delete = self.env['mail.activity'].sudo().search([('user_id', 'in', self.ids)])
-        activities_to_delete.unlink()
+        activities_sudo = self.env['mail.activity'].sudo().search_fetch(
+            [('user_id', 'in', self.ids)],
+            ['res_model', 'role_id', 'create_uid', 'user_id'],
+        )
+        record_activities_sudo = activities_sudo.filtered('res_model')
+        if personal_activities_sudo := activities_sudo - record_activities_sudo:
+            personal_activities_sudo.unlink()
+        to_unassign_sudo = record_activities_sudo.filtered(
+            lambda a: a.role_id or not a.create_uid.active or a.create_uid in self)
+        if to_unassign_sudo:
+            to_unassign_sudo.user_id = False
+        if to_reassign_sudo := (record_activities_sudo - to_unassign_sudo).grouped('create_uid'):
+            for creator_sudo, activities_sudo in to_reassign_sudo.items():
+                activities_sudo.user_id = creator_sudo
         return super().action_archive()
+
+    # The goal here is to log group changes in the user's chatter for a nice UX. However this is
+    # inherently insecure as administrators can always modify these messages. Therefore we must
+    # also log these changes in a more secure manner.
+    def _log_group_changes(self, vals, old_group_ids, editing_groups=None):
+        # always log through super first since the function in base simply uses _logger and should not throw any (permission) exceptions
+        super()._log_group_changes(vals, old_group_ids, editing_groups)
+        user_logs = {}
+        # In this case we use normal sets to make logic operations easier than using recordsets, however
+        # this causes the cache to not prefetch all display names, therefore we do it manually here.
+        self.group_ids.fetch(['display_name'])
+        for user in self:
+            old_groups = set(old_group_ids[user.id])
+            new_groups = set(user.sudo().group_ids.ids)
+            added = self.env['res.groups'].browse(new_groups - old_groups)
+            removed = self.env['res.groups'].browse(old_groups - new_groups)
+            if added or removed:
+                user_logs[user.id] = self.env['ir.qweb']._render('mail.group_change_template', {
+                    'added': sorted(added, key=lambda group: group.display_name.lower()),
+                    'removed': sorted(removed, key=lambda group: group.display_name.lower()),
+                })
+        for user_logs_batch in split_every(1000, user_logs.items(), dict):
+            self.browse(user_logs_batch.keys())._message_log_batch(user_logs_batch, message_type='tracking')
 
     def _notify_security_setting_update(self, subject, content, mail_values=None, **kwargs):
         """ This method is meant to be called whenever a sensitive update is done on the user's account.
@@ -408,15 +451,15 @@ class ResUsers(models.Model):
         if not self._is_public():
             odoobot = odoobot.with_prefetch((odoobot + self.partner_id).ids)
         res.attr("action_discuss_id", xmlid_to_res_id("mail.action_discuss"))
+        res.attr("emailActivityTypeId", xmlid_to_res_id("mail.mail_activity_data_email"))
         res.attr("hasLinkPreviewFeature", self.env["mail.link.preview"]._is_link_preview_enabled())
         res.attr("internalUserGroupId", self.env.ref("base.group_user").id)
         res.attr("mt_comment", xmlid_to_res_id("mail.mt_comment"))
+        res.attr("mt_important_notification", xmlid_to_res_id("mail.mt_important_notification"))
         res.attr("mt_note", xmlid_to_res_id("mail.mt_note"))
         res.one("odoobot", "_store_partner_fields", value=odoobot)
         if not self._is_public():
-            settings = self.env["res.users.settings"]._find_or_create_for_user(self)
             res.one("self_user", "_store_init_fields", value=self)
-            res.attr("settings", settings._res_users_settings_format())
         if guest := self.env["mail.guest"]._get_guest_from_context():
             res.one(
                 "self_guest",
@@ -452,25 +495,18 @@ class ResUsers(models.Model):
     def _store_manual_im_status_fields(self, res: Store.FieldList):
         res.attr("im_status")
 
-    def _store_bookmark_box_global_fields(self, res: Store.FieldList, bus_last_id=None):
-        """ Update the bookmark box info in the given store."""
-        self.ensure_one()
-        # sudo: bus.bus: reading non-sensitive last id
-        bus_last_id = bus_last_id or self.env["bus.bus"].sudo()._bus_last_id()
-        res.attr(
-            "bookmarkBox",
-            {
-                "counter": self.env["mail.message"].search_count(
-                    [("bookmarked_partner_ids", "in", self.partner_id.ids)],
-                ),
-                "counter_bus_id": bus_last_id,
-                "id": "bookmark",
-                "model": "mail.box",
-            },
-        )
-
     def _store_user_fields(self, res: Store.FieldList):
         res.one("partner_id", "_store_partner_fields")
+
+    @api.model
+    @api.readonly
+    def _get_activities_to_assign_count(self):
+        """Activities targeting one of the current user's roles (including archived), not yet assigned to anyone."""
+        role_ids = self.env.user.with_context(active_test=False).role_ids.ids
+        return self.env['mail.activity'].search_count([
+            ('user_id', '=', False),
+            ('role_id', 'in', role_ids),
+        ])
 
     @api.model
     def _get_activity_groups(self):
@@ -479,7 +515,10 @@ class ResUsers(models.Model):
             [("user_id", "=", self.env.uid)],
             order='id desc', limit=search_limit,
         )
+        return self._divide_activities_in_groups(activities)
 
+    def _divide_activities_in_groups(self, activities):
+        """Group activities per model for the systray. Only the most urgent activity is kept per record."""
         user_company_ids = self.env.user.company_ids.ids
         is_all_user_companies_allowed = set(user_company_ids) == set(self.env.context.get('allowed_company_ids') or [])
 
@@ -491,9 +530,6 @@ class ResUsers(models.Model):
                 activities_rec_groups[activity.res_model][activity.res_id] += activity
             else:
                 activities_rec_groups["mail.activity"][activity.id] += activity
-        model_activity_states = {
-            'mail.activity': {'overdue_count': 0, 'today_count': 0, 'planned_count': 0, 'total_count': 0}
-        }
         for model_name, activities_by_record in activities_rec_groups.items():
             res_ids = [id_ for id_ in activities_by_record if id_]
             Model = self.env[model_name]
@@ -509,50 +545,45 @@ class ResUsers(models.Model):
             if has_model_access_right and unallowed_records and not is_all_user_companies_allowed:
                 unallowed_records -= (unallowed_records & existing).with_context(
                     allowed_company_ids=user_company_ids)._filtered_access('read')
-            model_activity_states[model_name] = {'overdue_count': 0, 'today_count': 0, 'planned_count': 0, 'total_count': 0}
-            for record_id, activities in activities_by_record.items():
+            for record_id, record_activities in activities_by_record.items():
+                most_urgent = min(record_activities, key=lambda a: (a.date_deadline, a.id))
                 if record_id in unallowed_records.ids:
-                    model_key = 'mail.activity'
-                    activities_model_groups['mail.activity'] += activities
+                    activities_model_groups['mail.activity'] += most_urgent
                 elif record_id in allowed_records.ids:
-                    model_key = model_name
-                    activities_model_groups[model_name] += activities
+                    activities_model_groups[model_name] += most_urgent
                 elif record_id:
                     continue
 
-                if 'overdue' in activities.mapped('state'):
-                    model_activity_states[model_key]['overdue_count'] += 1
-                    model_activity_states[model_key]['total_count'] += 1
-                elif 'today' in activities.mapped('state'):
-                    model_activity_states[model_key]['today_count'] += 1
-                    model_activity_states[model_key]['total_count'] += 1
-                else:
-                    model_activity_states[model_key]['planned_count'] += 1
-
         model_ids = [self.env["ir.model"]._get_id(name) for name in activities_model_groups]
-        user_activities = {}
-        for model_name, activities in activities_model_groups.items():
-            Model = self.env[model_name]
-            module = Model._original_module
-            icon = module and modules.module.get_module_icon(module)
-            model = self.env["ir.model"]._get(model_name).with_prefetch(model_ids)
-            user_activities[model_name] = {
-                "id": model.id,
-                "name": model.name if model_name != "mail.activity" else _("Other activities"),
-                "model": model_name,
-                "type": "activity",
-                "icon": icon,
-                # activity more important than archived status, active_test is too broad
-                "domain": [('active', 'in', [True, False])] if model_name != "mail.activity" and "active" in Model else [],
-                "total_count": model_activity_states[model_name]['total_count'],
-                "today_count": model_activity_states[model_name]['today_count'],
-                "overdue_count": model_activity_states[model_name]['overdue_count'],
-                "planned_count": model_activity_states[model_name]['planned_count'],
-                "view_type": getattr(Model, '_systray_view', 'list'),
-            }
-            if model_name == 'mail.activity':
-                user_activities[model_name]['activity_ids'] = activities.ids
-        return list(user_activities.values())
+        self.env['ir.model'].sudo().browse(model_ids).fetch(['name'])
+
+        return [
+            self._format_activity_group(model_name, activities)
+            for model_name, activities in activities_model_groups.items()
+        ]
+
+    def _format_activity_group(self, model_name, activities):
+        Model = self.env[model_name]
+        module = Model._original_module
+        icon = (module and modules.module.get_module_icon(module)) or "/base/static/description/icon.png"
+        model = self.env['ir.model']._get(model_name)
+        states = activities.mapped('state')
+
+        return {
+            "id": model.id,
+            "name": model.name if model_name != "mail.activity" else _("Other Activities"),
+            "model": model_name,
+            "type": "activity",
+            "icon": icon,
+            # activity more important than archived status, active_test is too broad
+            "domain": [('active', 'in', [True, False])] if model_name != "mail.activity" and "active" in Model else [],
+            "total_count": states.count('overdue') + states.count('today'),
+            "today_count": states.count('today'),
+            "overdue_count": states.count('overdue'),
+            "planned_count": states.count('planned'),
+            "view_type": getattr(Model, '_systray_view', 'list'),
+            "activity_ids": activities.ids,
+        }
 
     def _store_avatar_card_fields(self, res: Store.FieldList):
         res.attr("share")

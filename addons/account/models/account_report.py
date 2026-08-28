@@ -4,9 +4,10 @@ import ast
 import re
 from collections import defaultdict
 
-from odoo import models, fields, api, _
-from odoo.exceptions import ValidationError, UserError
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Command, Domain
+from odoo.tools.translate import mark_as_copy
 
 FIGURE_TYPE_SELECTION_VALUES = [
     ('monetary', "Monetary"),
@@ -49,7 +50,7 @@ class AccountReport(models.Model):
 
     #  CORE ==========================================================================================================================================
 
-    name = fields.Char(string="Name", required=True, translate=True)
+    name = fields.Char(string="Name", required=True, translate=True, copy=mark_as_copy('name'))
     sequence = fields.Integer(string="Sequence")
     active = fields.Boolean(string="Active", default=True)
     line_ids = fields.One2many(string="Lines", comodel_name='account.report.line', inverse_name='report_id')
@@ -315,10 +316,6 @@ class AccountReport(models.Model):
 
         return super().write(vals)
 
-    def copy_data(self, default=None):
-        vals_list = super().copy_data(default=default)
-        return [dict(vals, name=report._get_copied_name()) for report, vals in zip(self, vals_list)]
-
     def copy(self, default=None):
         '''Copy the whole financial report hierarchy by duplicating each line recursively.
 
@@ -352,18 +349,6 @@ class AccountReport(models.Model):
     def _unlink_if_no_variant(self):
         if self.variant_report_ids:
             raise UserError(_("You can't delete a report that has variants."))
-
-    def _get_copied_name(self):
-        '''Return a copied name of the account.report record by adding the suffix (copy) at the end
-        until the name is unique.
-
-        :return: an unique name for the copied account.report
-        '''
-        self.ensure_one()
-        name = self.name + ' ' + _('(copy)')
-        while self.search_count([('name', '=', name)]) > 0:
-            name += ' ' + _('(copy)')
-        return name
 
     @api.depends('name', 'country_id')
     def _compute_display_name(self):
@@ -1017,7 +1002,7 @@ class AccountReportColumn(models.Model):
     name = fields.Char(string="Name", translate=True, required=True)
     expression_label = fields.Char(string="Expression Label", required=True)
     sequence = fields.Integer(string="Sequence")
-    report_id = fields.Many2one(string="Report", comodel_name='account.report', index='btree_not_null')
+    report_id = fields.Many2one(string="Report", comodel_name='account.report', index='btree_not_null', required=True, ondelete='cascade')
     sortable = fields.Boolean(string="Sortable")
     figure_type = fields.Selection(string="Figure Type", selection=FIGURE_TYPE_SELECTION_VALUES, default="monetary", required=True)
     blank_if_zero = fields.Boolean(string="Blank if Zero", help="When checked, 0 values will not show in this column.")
@@ -1031,6 +1016,7 @@ class AccountReportColumn(models.Model):
 
 class AccountReportExternalValue(models.Model):
     _name = 'account.report.external.value'
+    _inherit = ['res.currency.rate.consolidation.mixin']
     _description = 'Accounting Report External Value'
     _check_company_auto = True
     _order = 'date, id'

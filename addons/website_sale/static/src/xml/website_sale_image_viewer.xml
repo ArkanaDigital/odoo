@@ -2,18 +2,18 @@
 <templates>
     <t t-name="website_sale.ProductImageViewer">
         <div class="o_dialog" t-att-id="this.id" t-att-class="{ o_inactive_modal: !this.data.isActive }">
-            <div role="dialog" class="modal" t-custom-ref="modalRef">
+            <div role="dialog" class="modal">
                 <div class="o_wsale_image_viewer flex-column align-items-center d-flex w-100 h-100" t-on-mousemove="this.onGlobalMousemove">
                     <!-- Header -->
                     <div class="o_wsale_image_viewer_header d-flex w-100 text-white">
                         <div class="flex-grow-1"/>
                         <div class="d-flex align-items-center mb-0 px-3 h4 text-reset cursor-pointer">
-                            <span class="fa fa-times" t-on-click="this.data.close"/>
+                            <span class="oi" data-icon="close" t-on-click="this.data.close"/>
                         </div>
                     </div>
                     <!-- Content -->
                     <div class="o_wsale_image_viewer_image position-absolute top-0 bottom-0 start-0 end-0 align-items-center justify-content-center d-flex o_with_img overflow-hidden">
-                        <div class="o_wsale_image_viewer_void position-absolute align-items-center justify-content-center d-flex w-100 h-100" t-custom-ref="imageContainer" t-att-style="this.imageContainerStyle">
+                        <div class="o_wsale_image_viewer_void position-absolute align-items-center justify-content-center d-flex w-100 h-100" t-ref="this.imageContainerRef" t-att-style="this.imageContainerStyle">
                             <img
                                 alt="Viewer"
                                 class="mw-100 mh-100 transition-base"
@@ -30,7 +30,7 @@
                         <!-- Footer -->
                         <div
                             class="o_wsale_image_viewer_carousel position-absolute bottom-0 d-flex"
-                            t-attf-class="o_wsale_image_viewer_ratio_#{this.props.imageRatio} o_wsale_image_viewer_ratio_mobile_#{this.props.imageRatioMobile}"
+                            t-attf-class="o_wsale_image_viewer_ratio_{{ this.viewerProps.imageRatio }} o_wsale_image_viewer_ratio_mobile_{{ this.viewerProps.imageRatioMobile }}"
                             t-on-touchstart="this._onTouchstartCarousel"
                             t-on-touchmove="this._onTouchmoveCarousel"
                             role="toolbar"
@@ -60,7 +60,8 @@
                                 role="button"
                             >
                                 <i
-                                    class="oi oi-chevron-left border bg-white text-900"
+                                    class="oi border bg-white text-900"
+                                    data-icon="chevron_backward"
                                     role="img"
                                     aria-label="Previous"
                                     title="Previous"
@@ -75,7 +76,8 @@
                                 role="button"
                             >
                                 <i
-                                    class="oi oi-chevron-right border bg-white text-900"
+                                    class="oi border bg-white text-900"
+                                    data-icon="chevron_forward"
                                     role="img"
                                     aria-label="Next"
                                     title="Next"

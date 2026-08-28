@@ -14,9 +14,16 @@ $o-mail-attachment-height: 10em;
     @include media-breakpoint-down(sm) {
         width: 12em;
     }
-    .o_image, .fa {
+    .o_image, .oi {
         z-index: 1;
     }
+}
+
+.o-mail-Attachment-selectCheckbox {
+    width: 1.5em;
+    height: 1.5em;
+    background-color: $body-bg;
+    z-index: 3;
 }
 
 .o-mail-AttachmentCard-image, .o-mail-Attachment-hover-image {
@@ -24,8 +31,20 @@ $o-mail-attachment-height: 10em;
     height: 1.4em;
 }
 
-.o-mail-AttachmentButtons button:hover {
-    filter: brightness(.95);
+.o-mail-Attachment-duplicateCounter {
+    z-index: 3;
+
+    &:hover, &:focus-visible {
+        outline: 2px solid $body-bg;
+    }
+}
+
+.o-mail-Attachment-duplicateList {
+    max-width: 25em;
+}
+
+.o-mail-Attachment-duplicateUnlink:hover {
+    @include button-variant($danger, $danger);
 }
 
 .o-mail-Attachment-hover {
@@ -33,6 +52,10 @@ $o-mail-attachment-height: 10em;
     z-index: 2;
     &.o-bgTranslucent {
         background: rgba(0, 0, 0, 0.4);
+    }
+
+    .btn {
+        --btn-group-gap: 0;
     }
 }
 

@@ -22,7 +22,12 @@ class PartnershipCommon(ProductCommon):
             'service_tracking': 'partnership',
             'grade_id': cls.partner_grade.id,
         })
-        cls.sale_order_partnership = cls.env['sale.order'].create({
+        # SETUP master-data created as the independent admin in setUpClass.
+        # sudo the create and own it by the restricted test_user so that the
+        # sale.order personal-orders ir.rule (sales_team.group_sale_salesman)
+        # lets the test methods read/write/confirm it.
+        cls.sale_order_partnership = cls.env['sale.order'].sudo().create({
             'partner_id': cls.partner.id,
+            'user_id': cls._test_user.id if cls._test_user else cls.env.user.id,
             'order_line': [Command.create({'product_id': cls.partnership_product.id})],
         })

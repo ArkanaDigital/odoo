@@ -312,6 +312,75 @@ class TestUsers(UsersCommonCase):
         non_existing_user = User.browse(last_user_id.id + 1)
         self.assertFalse(non_existing_user._compute_session_token('session_id'))
 
+    def test_create(self):
+        """ creating a user should automatically create a new partner """
+        partners_before = self.env['res.partner'].search([])
+        user_foo = self.env['res.users'].create({'name': 'Foo', 'login': 'foo'})
+
+        self.assertNotIn(user_foo.partner_id, partners_before)
+
+    def test_create_with_ancestor(self):
+        """ creating a user with a specific 'partner_id' should not create a new partner """
+        partner_foo = self.env['res.partner'].create({'name': 'Foo'})
+        partners_before = self.env['res.partner'].search([])
+        user_foo = self.env['res.users'].create({'partner_id': partner_foo.id, 'login': 'foo'})
+        partners_after = self.env['res.partner'].search([])
+
+        self.assertEqual(partners_before, partners_after)
+        self.assertEqual(user_foo.name, 'Foo')
+        self.assertEqual(user_foo.partner_id, partner_foo)
+
+    @mute_logger('odoo.models')
+    def test_copy(self):
+        """ copying a user should automatically copy its partner, too """
+        user_foo = self.env['res.users'].create({
+            'name': 'Foo',
+            'login': 'foo',
+            'employee': True,
+        })
+        foo_before, = user_foo.read()
+        del foo_before['create_date']
+        del foo_before['write_date']
+        user_bar = user_foo.copy({'login': 'bar'})
+        foo_after, = user_foo.read()
+        del foo_after['create_date']
+        del foo_after['write_date']
+        self.assertEqual(foo_before, foo_after)
+
+        self.assertEqual(user_bar.name, 'Foo (copy)')
+        self.assertEqual(user_bar.login, 'bar')
+        self.assertEqual(user_foo.employee, user_bar.employee)
+        self.assertNotEqual(user_foo.id, user_bar.id)
+        self.assertNotEqual(user_foo.partner_id.id, user_bar.partner_id.id)
+
+    @mute_logger('odoo.models')
+    def test_copy_with_ancestor(self):
+        """ copying a user with 'parent_id' in defaults should not duplicate the partner """
+        user_foo = self.env['res.users'].create({'login': 'foo', 'name': 'Foo', 'signature': 'Foo'})
+        partner_bar = self.env['res.partner'].create({'name': 'Bar'})
+
+        foo_before, = user_foo.read()
+        del foo_before['create_date']
+        del foo_before['write_date']
+        del foo_before['login_date']
+        partners_before = self.env['res.partner'].search([])
+        user_bar = user_foo.copy({'partner_id': partner_bar.id, 'login': 'bar'})
+        foo_after, = user_foo.read()
+        del foo_after['create_date']
+        del foo_after['write_date']
+        del foo_after['login_date']
+        partners_after = self.env['res.partner'].search([])
+
+        self.assertEqual(foo_before, foo_after)
+        self.assertEqual(partners_before, partners_after)
+
+        self.assertNotEqual(user_foo.id, user_bar.id)
+        self.assertEqual(user_bar.partner_id.id, partner_bar.id)
+        self.assertEqual(user_bar.login, 'bar', "login is given from copy parameters")
+        self.assertFalse(user_bar.password, "password should not be copied from original record")
+        self.assertEqual(user_bar.name, 'Bar', "name is given from specific partner")
+        self.assertEqual(user_bar.signature, user_foo.signature, "signature should be copied")
+
 
 @tagged('post_install', '-at_install', 'groups')
 class TestUsers2(UsersCommonCase):
@@ -336,7 +405,7 @@ class TestUsers2(UsersCommonCase):
         during installation, so it always works (because it uses the normal
         group_ids field).
         """
-        default_group = self.env.ref('base.default_user_group')
+        default_group = self.env.ref('base.default_user_regular_group')
         test_group = self.env['res.groups'].create({'name': 'test_group'})
         default_group.implied_ids = test_group
 
@@ -346,7 +415,7 @@ class TestUsers2(UsersCommonCase):
         f.login = "bob"
         user = f.save()
 
-        group_user = self.env.ref('base.group_user')
+        group_user = self.env.ref('base.group_user_regular')
 
         self.assertIn(group_user, user.group_ids)
         self.assertEqual(default_group.implied_ids + group_user, user.group_ids)
@@ -476,7 +545,7 @@ class TestUsers2(UsersCommonCase):
             self.assertFalse(mock.called)
 
     @users('user_internal', 'portal_1')
-    @mute_logger('odoo.addons.base.models.ir_model')
+    @mute_logger('odoo.addons.base.models.ir_access')
     def test_user_writeable_fields(self):
         """ Check for writeable fields.
 
@@ -530,9 +599,11 @@ class TestUsers2(UsersCommonCase):
     def test_write_group_ids_performance(self):
         contact_creation_group = self.env.ref("base.group_partner_manager")
         self.assertNotIn(contact_creation_group, self.user_internal.group_ids)
+        # Process any tracking message at flush for cleaner queryCount
+        self.flush_tracking()
 
-        # all modules: 23, base: 10; nightly: +1
-        with self.assertQueryCount(24):
+        # all modules: 51, base: 17; nightly: +1
+        with self.assertQueryCount(52):
             self.user_internal.write({
                 "group_ids": [Command.link(contact_creation_group.id)],
             })
@@ -547,21 +618,13 @@ class TestUsers2(UsersCommonCase):
             'user_ids': [],
         })
 
-        # ACL
-        self.env['ir.model.access'].create({
+        # access
+        self.env['ir.access'].create({
             'name': 'Allow user profile update',
             'model_id': self.env['ir.model']._get('res.users').id,
             'group_id': group_portal_user_manager.id,
-            'perm_write': True,
-        })
-
-        # Rules
-        self.env['ir.rule'].create({
-            'name': 'Allow updates by Portal Managers on PORTAL users (only)',
-            'model_id': self.env['ir.model']._get('res.users').id,
-            'groups': [group_portal_user_manager.id],
-            'domain_force': [('share', '=', True)],
-            'perm_write': True,
+            'operation': 'u',
+            'domain': [('share', '=', True)],
         })
 
         # Users
@@ -624,6 +687,10 @@ class TestUsers2(UsersCommonCase):
         portal.partner_id.with_user(user).write({
             'name': 'New name for you'
         })
+
+    def flush_tracking(self):
+        self.env.flush_all()
+        self.cr.flush()
 
 
 @tagged('at_install', '-post_install')  # LEGACY at_install
@@ -735,8 +802,7 @@ class TestApiKeys(UsersCommonCase):
         cls.env['ir.config_parameter'].set_bool('base.enable_programmatic_api_keys', True)
         UsersApiKeys = cls.env['res.users.apikeys'].with_user(cls.user_internal)
         cls.tomorrow = datetime.now() + timedelta(days=1)
-        cls.unscoped_key = UsersApiKeys._generate(None, 'Key without a scope', cls.tomorrow)
-        cls.scoped_key = UsersApiKeys._generate('scope', 'Key with a scope', cls.tomorrow)
+        cls.api_key = UsersApiKeys._generate('scope', 'Key ', cls.tomorrow)
 
     def test_programmatic_apikey_management_is_deactivated_by_default(self):
         self.env['ir.config_parameter'].set_bool('base.enable_programmatic_api_keys', None)
@@ -744,59 +810,43 @@ class TestApiKeys(UsersCommonCase):
         # Attempting to create a key raises an error
         with self.assertRaisesRegex(UserError, 'Programmatic API keys are not enabled'):
             self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-                self.unscoped_key, None, 'Another key without a scope', self.tomorrow)
+                self.api_key, 'scope', 'Another key', self.tomorrow)
 
         # Attempting to revoke a key raises an error
         with self.assertRaisesRegex(UserError, 'Programmatic API keys are not enabled'):
-            self.env['res.users.apikeys'].with_user(self.user_internal).revoke(self.unscoped_key)
+            self.env['res.users.apikeys'].with_user(self.user_internal).revoke(self.api_key)
 
     def test_generate_apikey_is_limited(self):
-        # create 8 new keys, which makes 10 keys in total for user_internal
-        for i in range(8):
+        # create 9 new keys, which makes 10 keys in total for user_internal
+        for i in range(9):
             self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-                self.unscoped_key, None, 'Another key without a scope', self.tomorrow)
+                self.api_key, 'scope', 'Another key', self.tomorrow)
 
         with self.assertRaisesRegex(UserError, 'Limit of 10 API keys is reached'):
             self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-                self.unscoped_key, None, 'Another key without a scope', self.tomorrow)
+                self.api_key, 'scope', 'Another key', self.tomorrow)
 
         # This ICP can change the limit
         self.env['ir.config_parameter'].set_int('base.programmatic_api_keys_limit', 11)
         self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-            self.unscoped_key, None, 'Another key without a scope', self.tomorrow)
-
-    def test_generate_apikey_raises_when_creating_unscoped_key_from_scoped_key(self):
-        # Creating an unscoped key from a scoped key raises an error
-        with self.assertRaisesRegex(UserError, 'The provided API key is invalid or does not belong to the current user'):
-            self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-                self.scoped_key, None, 'Another key without a scope', self.tomorrow)
+            self.api_key, 'scope', 'Another key', self.tomorrow)
 
     def test_generate_apikey_raises_when_creating_key_from_differently_scoped_key(self):
         # Creating a key with a different scope raises an error
         with self.assertRaisesRegex(UserError, 'The provided API key is invalid or does not belong to the current user'):
             self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-                self.scoped_key, 'other', 'Another key with another scope', self.tomorrow)
+                self.api_key, 'other', 'Another key with another scope', self.tomorrow)
 
     def test_generate_apikey_accepts_creating_key_from_identically_scoped_key(self):
         # Creating a key with the same scope doesn't raise
         self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-            self.scoped_key, 'scope', 'Another key with a scope', self.tomorrow)
-
-    def test_generate_apikey_accepts_creating_scoped_key_from_unscoped_key(self):
-        # Creating a key with a scope from an unscoped key doesn't raise
-        self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-            self.unscoped_key, 'scope', 'Another key with a scope', self.tomorrow)
-
-    def test_generate_apikey_accepts_creating_unscoped_key_from_unscoped_key(self):
-        # Creating an unscoped key from another unscoped key doesn't raise
-        self.env['res.users.apikeys'].with_user(self.user_internal).generate(
-            self.unscoped_key, None, 'Another key without a scope', self.tomorrow)
+            self.api_key, 'scope', 'Another key with same scope', self.tomorrow)
 
     def test_generate_apikey_checks_ownership(self):
         # Check that an API key cannot be generated from another user's API key
         with self.assertRaisesRegex(UserError, 'The provided API key is invalid or does not belong to the current user'):
             self.env['res.users.apikeys'].with_user(SUPERUSER_ID).generate(
-                self.unscoped_key, None, 'Another key without a scope', self.tomorrow)
+                self.api_key, 'scope', 'Another key', self.tomorrow)
 
 
 class TestResUsersForm(TransactionCase):

@@ -205,9 +205,9 @@ class Environment(Mapping[str, "BaseModel"]):
         return self.transaction.cache
 
     @property
-    def _access_context(self):
+    def _access_context(self) -> tuple:
         """Return the context values used by the access caches."""
-        return (self.uid, *self['ir.rule']._compute_domain_context_values())
+        return (self.uid, *self['ir.access']._get_access_context())
 
     @functools.cached_property
     def _access_cache(self):
@@ -306,7 +306,7 @@ class Environment(Mapping[str, "BaseModel"]):
     def website(self) -> BaseModel:
         """Return the current website (as an instance).
 
-        :returns: current website (possibly empty) - sudoed
+        :returns: current website (possibly empty)
         :rtype: :class:`website record<~odoo.addons.base.models.website.Website>`
         """
         return self['website'].browse(self.context.get('website_id'))
@@ -777,6 +777,8 @@ class Transaction:
                 self.ormcaches__[name] = CacheLayer(data)
             if _logger_signaling.isEnabledFor(logging.DEBUG):
                 changes += "[Registry - %s -> %s]" % (registry_sequence, db_registry_sequence)
+            # rebind all environments to the new registry
+            self.clear()
         # Check if the model caches must be invalidated.
         else:
             invalidated = set()
@@ -810,9 +812,7 @@ class Transaction:
 
     def _reset_registry_change(self):
         """ When the registry was invalidated, re-setup models. """
-        if not self._registry_invalidated:
-            return
-
+        assert not self.field_data, "Transaction must be cleared"
         env = self.default_env or next(iter(self.envs), None)
         if env is None:
             raise RuntimeError("resetting registry changes, but no cursor found!")
@@ -846,11 +846,7 @@ class Transaction:
             _logger_signaling.debug('Invalidating %r model cache from %s', cache_name, frame_str)
 
         for name in _CACHES_BY_KEY.get(cache_name, ()):
-            # rebuild a new cache with the correct number of layers
-            cache = LRU(_REGISTRY_CACHES[name])
-            for _ in range(len(self._state_stack__) + 1):
-                cache = CacheLayer(cache)
-            self.ormcaches__[name] = cache
+            self.ormcaches__[name] = CacheLayer(None)
 
     @deprecated("Since 20.0, renamed to invalidate_access_cache")
     def clear_access_cache(self, model_name: str = '') -> None:
@@ -911,7 +907,9 @@ class Transaction:
         # get the registry and rebuild the stack of states
         new_registry = Registry(self.registry.db_name)
         if self.registry is new_registry:
-            self._reset_registry_change()
+            if self._registry_invalidated:
+                self.clear()  # clear existing data if any
+                self._reset_registry_change()
         else:
             self.registry = new_registry
             self._registry_invalidated = 0
@@ -955,14 +953,14 @@ class Transaction:
         names = set()
         if self._registry_invalidated:
             names.add('registry')
-        for name, (seq, registry_data) in self._registry_caches__.items():
-            data = self.ormcaches__[name].parent
-            if data is registry_data:
+        for name, (seq, _registry_data) in self._registry_caches__.items():
+            layer = self.ormcaches__[name]
+            if layer.parent is not None:
                 continue  # not invalidated
             if name in _CACHES_BY_KEY:
                 names.add(name)
-            push_caches[name] = (seq + 1, data)
-        registry._signal_changes(cr, names)
+            layer.parent = LRU(_REGISTRY_CACHES[name])
+            push_caches[name] = (seq + 1, layer.parent)
 
         # Propagate the cache to the registry after the commit.
         # We lock the registry so that another transaction cannot start checking
@@ -974,6 +972,8 @@ class Transaction:
         else:
             lock = nullcontext()
         with lock:
+            # signal changes just before committing to consume the sequence as late as possible
+            registry._signal_changes(cr, names)
             # commit
             yield
 
@@ -1033,8 +1033,10 @@ class Transaction:
 
         # merge into the parent layer
         for name, layer in self.ormcaches__.items():
+            if layer.parent is None:
+                # now, the parent layer invalidates the cache
+                layer.parent = state.ormcaches__[name] = CacheLayer(None)
             layer.update_parent()
-            state.ormcaches__[name] = layer.parent  # patch the parent if invalidated
         self.ormcaches__ = state.ormcaches__
 
     def restore_state(self):
@@ -1071,9 +1073,9 @@ class Transaction:
             name: CacheLayer(data)
             for name, data in parent_ormcaches.items()
         }
-        if self._registry_invalidated != registry_invalidated:
+        if self._registry_invalidated and self._registry_invalidated != registry_invalidated:
             self._reset_registry_change()
-            self._registry_invalidated = registry_invalidated
+        self._registry_invalidated = registry_invalidated
 
 
 class TransactionState(typing.NamedTuple):
@@ -1088,7 +1090,7 @@ class CacheLayer(MutableMapping):
     """ Layered mapping for caches. """
     __slots__ = ('data', 'parent')
 
-    def __init__(self, parent: MutableMapping):
+    def __init__(self, parent: MutableMapping | None):
         self.parent = parent
         self.data = LRU(self.count)
 
@@ -1096,16 +1098,19 @@ class CacheLayer(MutableMapping):
         value = self.data.get(key, SENTINEL)
         if value is not SENTINEL:
             return value
-        return self.parent[key]
+        if self.parent is not None:
+            return self.parent[key]
+        raise KeyError(key)
 
     def __iter__(self):
         keys = self.data.keys()
-        yield from OrderedSet(self.parent.keys()) - keys
+        if self.parent is not None:
+            yield from OrderedSet(self.parent.keys()) - keys
         yield from keys
 
     def __len__(self):
         # approximation
-        return len(self.data) + len(self.parent)
+        return len(self.data) + len(self.parent or ())
 
     def __setitem__(self, key, value):
         self.data[key] = value
@@ -1130,16 +1135,21 @@ class CacheLayer(MutableMapping):
         See `odoo.tests.common.flushing_cursor()`.
         """
         self.data.clear()
-        self.parent = {}
+        if self.parent is not None:
+            self.parent = {}
 
     def update_parent(self):
         """Move the data from this layer to the parent."""
+        if self.parent is None:
+            return
         self.parent.update(self.data)
         self.data.clear()
 
     def __str__(self):
         items = [len(self.data)]
         parent = self.parent
+        if parent is None:
+            parent = ()
         while isinstance(parent, CacheLayer):
             items.append(len(parent.data))
             parent = parent.parent
@@ -1345,7 +1355,7 @@ class Cache:
             sql_id = query.table.id
             sql_field = query.table[field.name]
             query.add_where(SQL("%s IN %s", sql_id, tuple(ids)))
-            env.cr.execute(query.select(sql_id, sql_field))
+            env.execute_query(SQL("%s", query.select(sql_id, sql_field), to_flush=()))  # execute without flush
 
             # compare returned values with corresponding values in cache
             for id_, value in env.cr.fetchall():

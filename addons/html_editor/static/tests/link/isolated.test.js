@@ -5,8 +5,7 @@ import { descendants } from "@html_editor/utils/dom_traversal";
 import { tick } from "@odoo/hoot-mock";
 import { getContent, setSelection } from "../_helpers/selection";
 import { cleanLinkArtifacts } from "../_helpers/format";
-import { animationFrame, pointerDown, pointerUp, queryOne } from "@odoo/hoot-dom";
-import { processThroughNormalize } from "../_helpers/dispatch";
+import { animationFrame, pointerDown, pointerUp, queryOne, waitFor } from "@odoo/hoot-dom";
 import { nodeSize } from "@html_editor/utils/position";
 import { expectElementCount } from "../_helpers/ui_expectations";
 
@@ -195,6 +194,7 @@ describe("should position the cursor outside the link", () => {
         );
         await animationFrame(); // selection change
         await pointerUp(el);
+        await waitFor("p a:not(.o_link_in_selection)");
         expect(getContent(el)).toBe(
             '<p>\ufeff<a href="http://test.test/">\ufefftest\ufeff</a>\ufeff[]</p>'
         );
@@ -237,7 +237,7 @@ describe("should zwnbsp-pad simple text link", () => {
                 // set the selection via the parent
                 setSelection({ anchorNode: p, anchorOffset: 1 });
                 // insert the zwnbsp again
-                processThroughNormalize(editor);
+                editor.shared.dom.normalize();
             },
             contentAfterEdit: '<p>a\ufeff[]<a href="#/">\ufeffbc\ufeff</a>\ufeffd</p>',
         });
@@ -254,7 +254,7 @@ describe("should zwnbsp-pad simple text link", () => {
                 setSelection({ anchorNode: a, anchorOffset: 0 });
                 await tick();
                 // insert the zwnbsp again
-                processThroughNormalize(editor);
+                editor.shared.dom.normalize();
             },
             contentAfterEdit:
                 '<p>a\ufeff<a href="http://test.test/" class="o_link_in_selection">\ufeff[]bc\ufeff</a>\ufeffd</p>',
@@ -276,7 +276,7 @@ describe("should zwnbsp-pad simple text link", () => {
                 setSelection({ anchorNode: a, anchorOffset: 1 });
                 await tick();
                 // insert the zwnbsp again
-                processThroughNormalize(editor);
+                editor.shared.dom.normalize();
             },
             contentAfterEdit:
                 '<p>a\ufeff<a href="http://test.test/" class="o_link_in_selection">\ufeffb[]c\ufeff</a>\ufeffd</p>',
@@ -294,7 +294,7 @@ describe("should zwnbsp-pad simple text link", () => {
                 setSelection({ anchorNode: a, anchorOffset: 1 });
                 await tick();
                 // insert the zwnbsp again
-                processThroughNormalize(editor);
+                editor.shared.dom.normalize();
             },
             contentAfterEdit:
                 '<p>a\ufeff<a href="http://test.test/" class="o_link_in_selection">\ufeffbc[]\ufeff</a>\ufeffd</p>',
@@ -311,7 +311,7 @@ describe("should zwnbsp-pad simple text link", () => {
                 setSelection({ anchorNode: p, anchorOffset: 2 });
                 await tick();
                 // insert the zwnbsp again
-                processThroughNormalize(editor);
+                editor.shared.dom.normalize();
             },
             contentAfterEdit: '<p>a\ufeff<a href="#/">\ufeffbc\ufeff</a>\ufeff[]d</p>',
         });
@@ -337,9 +337,9 @@ test("should zwnbsp-pad inline nav-link", async () => {
 test("should not zwnbsp-pad link with block fontawesome", async () => {
     await testEditor({
         contentBefore:
-            '<p>a<a href="http://test.test/">[]<i style="display: flex;" class="fa fa-star"></i></a>b</p>',
+            '<p>a<a href="http://test.test/">[]<i style="display: flex;" class="oi oi-filled" data-icon="star"></i></a>b</p>',
         contentBeforeEdit:
-            '<p>a<a href="http://test.test/">\ufeff[]<i style="display: flex;" class="fa fa-star" contenteditable="false">\u200b</i>\ufeff</a>b</p>',
+            '<p>a<a href="http://test.test/">\ufeff[]<i style="display: flex;" class="oi oi-filled" data-icon="star" contenteditable="false">\u200b</i>\ufeff</a>b</p>',
     });
 });
 

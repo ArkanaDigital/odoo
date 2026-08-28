@@ -37,13 +37,11 @@ class AccountMoveLine(models.Model):
 
         group_taxes_query_list = []
         for group_tax in group_taxes:
-            children_taxes = group_tax.children_tax_ids
+            children_taxes = group_tax.children_tax_ids.filtered(lambda tax: tax.is_base_affected)
             if not children_taxes:
                 continue
 
-            children_taxes_in_query = SQL(','.join('%s' for dummy in children_taxes),
-                                          *children_taxes.ids)
-            group_taxes_query_list.append(SQL('WHEN tax.id = %s THEN ARRAY[%s]', group_tax.id, children_taxes_in_query))
+            group_taxes_query_list.append(SQL('WHEN tax.id = %s THEN %s', group_tax.id, children_taxes.ids))
 
         if group_taxes_query_list:
             group_taxes_query = SQL('''UNNEST(CASE %s ELSE ARRAY[tax.id] END)''', SQL(' ').join(group_taxes_query_list))

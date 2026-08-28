@@ -307,6 +307,12 @@ class AccountPayment(models.Model):
 
     def _prepare_move_liquidity_lines(self, default_values):
         self.ensure_one()
+
+        if not self.outstanding_account_id:
+            raise UserError(_(
+                "You can't create a new payment without an outstanding payments/receipts account set either on the company or the %(payment_method)s payment method in the %(journal)s journal.",
+                payment_method=self.payment_method_line_id.name, journal=self.journal_id.display_name))
+
         return [{
             'name': default_values['name'],
             'date_maturity': self.date,
@@ -340,11 +346,6 @@ class AccountPayment(models.Model):
             }
         '''
         self.ensure_one()
-
-        if not self.outstanding_account_id:
-            raise UserError(_(
-                "You can't create a new payment without an outstanding payments/receipts account set either on the company or the %(payment_method)s payment method in the %(journal)s journal.",
-                payment_method=self.payment_method_line_id.name, journal=self.journal_id.display_name))
 
         # Compute a default label to set on the journal items.
         line_name = ''.join(x[1] for x in self._get_aml_default_display_name_list() if x[1])
@@ -804,9 +805,14 @@ class AccountPayment(models.Model):
             else:
                 pay.reconciled_invoices_type = 'invoice'
 
+    @api.depends('payment_type', 'partner_type')
     def _compute_payment_receipt_title(self):
-        """ To override in order to change the title displayed on the payment receipt report """
-        self.payment_receipt_title = _('Payment Receipt')
+        for pay in self:
+            pay.payment_receipt_title = self.env._("Payment Receipt")
+            if pay.payment_type == 'outbound' and pay.partner_type == 'supplier':
+                pay.payment_receipt_title = self.env._("Remittance Advice")
+            elif (pay.payment_type == 'outbound' and pay.partner_type == 'customer') or (pay.payment_type == 'inbound' and pay.partner_type == 'supplier'):
+                pay.payment_receipt_title = self.env._("Refund Confirmation")
 
     @api.depends('partner_id', 'amount', 'date', 'payment_type')
     def _compute_duplicate_payment_ids(self):

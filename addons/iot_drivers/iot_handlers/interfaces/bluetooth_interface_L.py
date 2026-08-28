@@ -116,7 +116,13 @@ class BtManager(Thread):
         self._pairing_agent = _register_pairing_agent()
         dm = GattBtManager(adapter_name='hci0')
         for device in dm.devices():
-            if device.is_connected():
+            try:
+                is_connected = device.is_connected()
+            except dbus.exceptions.DBusException as e:
+                if e.get_dbus_name() != 'org.freedesktop.DBus.Error.UnknownObject':
+                    raise
+                continue
+            if is_connected:
                 identifier = f"bt_{device.mac_address}"
                 _logger.debug("Already connected device found at startup: %s alias=%s", identifier, device.alias())
                 device.manager = dm
@@ -125,7 +131,7 @@ class BtManager(Thread):
             dm.start_discovery()
             dm.run()
         except NotReady:
-            _logger.error("Bluetooth adapter not ready. Set `is_adapter_powered` to `True` or run 'echo power on | sudo bluetoothctl'")
+            _logger.warning("Bluetooth adapter not ready. Set `is_adapter_powered` to `True` or run 'echo power on | sudo bluetoothctl'")
 
 
 class BTInterface(Interface):

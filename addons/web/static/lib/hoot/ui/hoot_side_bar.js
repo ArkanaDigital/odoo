@@ -1,6 +1,6 @@
 /** @odoo-module */
 
-import { Component, computed, plugin, props, signal, types as t, useEffect, xml } from "@odoo/owl";
+import { Component, computed, signal, t, useEffect, usePlugin, useProps, xml } from "@odoo/owl";
 import { Suite } from "../core/suite";
 import { createUrlFromId } from "../core/url";
 import { lookup, parseQuery, T_NULL, TestReporting } from "../hoot_utils";
@@ -28,11 +28,12 @@ export class HootSideBarSuite extends Component {
     static template = xml`
         <t t-if="this.props.hasSuites">
             <i
-                class="fa fa-chevron-right text-xs transition"
+                class="oi text-xs transition"
                 t-att-class="{
                     'rotate-90': this.props.unfolded,
                     'opacity-25': !this.props.reporting.failed and !this.props.reporting.tests
                 }"
+                data-icon="chevron_right"
             />
         </t>
         <span t-ref="this.rootRef" t-att-class="this.getClassName()" t-out="this.props.name" />
@@ -44,8 +45,8 @@ export class HootSideBarSuite extends Component {
     `;
 
     // Props & plugins
-    props = props({
-        "multi?": t.number(),
+    props = useProps({
+        multi: t.number().optional(),
         name: t.string(),
         hasSuites: t.boolean(),
         reporting: t.instanceOf(TestReporting),
@@ -54,22 +55,18 @@ export class HootSideBarSuite extends Component {
     });
 
     // Reactive values
-    rootRef = signal(null, { type: t.ref(HTMLSpanElement) });
+    rootRef = signal.ref(HTMLSpanElement);
 
     setup() {
-        let wasSelected = false;
-        useEffect(
-            (selected) => {
-                if (selected && !wasSelected) {
-                    this.rootRef().scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                    });
-                }
-                wasSelected = selected;
-            },
-            () => [this.props.selected]
-        );
+        useEffect(() => {
+            if (!this.props.selected || !this.rootRef()) {
+                return;
+            }
+            this.rootRef().scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+        });
     }
 
     getClassName() {
@@ -97,7 +94,7 @@ export class HootSideBarCounter extends Component {
     `;
 
     // Props & plugins
-    props = props({
+    props = useProps({
         reporting: t.instanceOf(TestReporting),
         statusFilter: t.or([t.string(), T_NULL]),
     });
@@ -144,7 +141,7 @@ export class HootSideBar extends Component {
                         t-att-title="this.hideEmpty() ? 'Show all suites' : 'Hide other suites'"
                         t-on-click.stop="this.toggleHideEmpty"
                     >
-                        <i t-attf-class="fa fa-{{ this.hideEmpty() ? 'eye' : 'eye-slash' }}" />
+                        <i class="oi" t-att-data-icon="this.hideEmpty() ? 'visibility' : 'visibility_off'" />
                     </button>
                 </t>
                 <t t-set="expanded" t-value="this.unfoldedSuites().length === this.runner.suites.size" />
@@ -154,7 +151,7 @@ export class HootSideBar extends Component {
                     t-attf-title="{{ expanded ? 'Collapse' : 'Expand' }} all"
                     t-on-click.stop="() => this.toggleExpand(expanded)"
                 >
-                    <i t-attf-class="fa fa-{{ expanded ? 'compress' : 'expand' }}" />
+                    <i class="oi" t-att-data-icon="expanded ? 'close_fullscreen' : 'expand_content'" />
                 </button>
             </form>
             <ul class="overflow-x-hidden overflow-y-auto" t-ref="this.suitesListRef">
@@ -197,11 +194,11 @@ export class HootSideBar extends Component {
 
     // Props & plugins
     runner = getRunnerPlugin();
-    ui = plugin(UiPlugin);
+    ui = usePlugin(UiPlugin);
 
     // Reactive values
-    searchInputRef = signal(null, { type: t.ref(HTMLInputElement) });
-    suitesListRef = signal(null, { type: t.ref(HTMLUListElement) });
+    searchInputRef = signal.ref(HTMLInputElement);
+    suitesListRef = signal.ref(HTMLUListElement);
     filter = signal("", { type: t.string() });
     hideEmpty = signal(false, { type: t.boolean() });
     unfoldedIds = signal.Set(new Set(["fake_ID"]), { type: t.string() }); // fake ID used to render on start
@@ -209,9 +206,9 @@ export class HootSideBar extends Component {
 
     setup() {
         this.runner.beforeAll(() => {
-            const singleRootSuite = this.runner.rootSuites.filter(
-                (suite) => suite.currentJobs.length
-            );
+            const singleRootSuite = this.runner
+                .rootSuites()
+                .filter((suite) => suite.currentJobs.length);
 
             // As the runner might have registered suites after the initial render,
             // with those suites not being read by this component yet, it will
@@ -255,7 +252,7 @@ export class HootSideBar extends Component {
             }
         } else {
             unfoldedIds = this.unfoldedIds();
-            rootSuites = this.runner.rootSuites;
+            rootSuites = this.runner.rootSuites();
         }
 
         // Computing unfolded suites

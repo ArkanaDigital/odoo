@@ -23,7 +23,8 @@ from odoo.fields import Domain
 from odoo.http import request
 from odoo.modules.module import Manifest, MissingDependency
 from odoo.tools import SQL, BinaryBytes, config
-from odoo.tools.misc import file_open, get_flag, topological_sort
+from odoo.tools.business_data import get_flag
+from odoo.tools.misc import file_open, topological_sort
 from odoo.tools.parse_version import parse_version
 from odoo.tools.translate import (
     TranslationImporter,
@@ -159,10 +160,12 @@ XML_DECLARATION = (
 class IrModuleModule(models.Model):
     _name = 'ir.module.module'
     _rec_name = "shortdesc"
-    _rec_names_search = ['name', 'shortdesc', 'summary']
+    _rec_names_search = ('name', 'shortdesc', 'summary')
     _description = "Module"
     _order = 'application desc,sequence,name'
     _allow_sudo_commands = False
+    _clear_cache_name = 'stable'      # cache to clear on create/write/update
+    _clear_cache_on_fields = ('name', 'state')
 
     @classmethod
     def get_module_info(cls, name):
@@ -251,6 +254,7 @@ class IrModuleModule(models.Model):
     @api.depends('icon')
     def _get_icon_image(self):
         self.icon_image = ''
+        self.icon_flag = ''
         for module in self:
             if not module.id:
                 continue
@@ -336,12 +340,6 @@ class IrModuleModule(models.Model):
         for module in self:
             if module.state in ('installed', 'to upgrade', 'to remove', 'to install'):
                 raise UserError(_('You are trying to remove a module that is installed or will be installed.'))
-
-    def unlink(self):
-        res = super().unlink()
-        if self:
-            self.env.transaction.invalidate_ormcache('stable')
-        return res
 
     def _get_modules_to_load_domain(self):
         """ Domain to retrieve the modules that should be loaded by the registry. """
@@ -646,6 +644,7 @@ class IrModuleModule(models.Model):
         self.env.cr.commit()
         modules.registry.Registry.new(self.env.cr.dbname, update_module=True)
         self.env.cr.rollback()
+        assert (self.env.transaction.default_env or self.env).registry is self.env.transaction.registry, "env is bound correctly to the transaction's registry"
         if request:
             assert request.env.transaction is self.env.transaction, "request on another transaction than the model"
             request.registry = request.env.registry
@@ -997,6 +996,22 @@ class IrModuleModule(models.Model):
                     _logger.info('module %s: no translation for language %s', module_name, lang)
 
         translation_importer.save(overwrite=overwrite)
+
+    @api.model
+    def _load_non_installed_modules_manifest_terms(self, langs):
+        """Load module manifest translations for all non-installed modules."""
+
+        if not langs or (len(langs) == 1 and langs[0] in ('en_US', 'en')):
+            return
+
+        for module in self.search([('state', '!=', 'installed')]):
+            manifest = Manifest.for_addon(module.name, display_warning=False)
+            if not manifest:
+                continue
+            translations_by_field = manifest.get_translations(langs)
+            if not translations_by_field:
+                continue
+            module.write(translations_by_field)
 
     @api.model
     def _extract_resource_attachment_translations(self, module, lang):

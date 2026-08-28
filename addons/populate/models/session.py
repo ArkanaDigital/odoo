@@ -10,9 +10,10 @@ import secrets
 import sys
 import time
 from abc import ABC, abstractmethod
+from ast import literal_eval
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
@@ -27,12 +28,14 @@ from psycopg2.errors import (
 
 from odoo import SUPERUSER_ID, api, fields, models, modules
 from odoo.exceptions import ConcurrencyError, LockError, UserError, ValidationError
+from odoo.fields import Domain
 from odoo.http.retrying import retrying
 from odoo.modules.registry import Registry
-from odoo.tools import SQL, config, str2bool
+from odoo.tools import SQL, config, profiler, str2bool
 
+from ..utils.profiling import POPULATE_PROFILE_SESSION_KEY, get_profile_session_name
 from ..utils.seed import derive_seed_from
-from .job import execution_scope
+from .job import get_execution_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -47,6 +50,7 @@ PG_EXCEPTIONS_TO_RETRY = (
 )
 POPULATE_SESSION_LOCK_NAMESPACE = 'odoo.populate.session.running'
 
+_logger = logging.getLogger(__name__)
 _worker_logger = logging.getLogger('odoo.addons.populate.worker')
 
 
@@ -70,7 +74,7 @@ class Session(models.Model):
     seed = fields.Integer("Seed", default=lambda _: max(secrets.randbits(31) - 1, 0))
     scaling_factor = fields.Float("Scaling Factor")
     worker_count = fields.Integer("Number of parallel workers that will run jobs at the same time", default=1)
-    blueprint_id = fields.Many2one('populate.blueprint', required=True)
+    blueprint_id = fields.Many2one('populate.blueprint', required=True, ondelete='cascade')
     job_ids = fields.One2many('populate.job', inverse_name='session_id', domain=[('parent_id', '=', False)])
 
     @api.constrains('job_ids')
@@ -86,6 +90,14 @@ class Session(models.Model):
     @property
     def is_parallel(self) -> bool:
         return self.worker_count > 1
+
+    @property
+    def is_profiling(self) -> bool:
+        return POPULATE_PROFILE_SESSION_KEY in self.env.context
+
+    @property
+    def profile_session_name(self) -> str | None:
+        return self.env.context.get(POPULATE_PROFILE_SESSION_KEY)
 
     @property
     def pending_jobs(self):
@@ -154,41 +166,55 @@ class Session(models.Model):
 
         scaling_factor = self.scaling_factor or 1
         vals_list = []
-        write_target_counts = defaultdict(lambda: defaultdict(int))  # {ref | None: {model_name: count}}
-        for index, model in enumerate(self.blueprint_id.definition):
-            model_name = model['name']
-            ref, _, ref_relation = (part or None for part in model.get('ref', '').partition('.'))
+        created_counts_by_ref = defaultdict(lambda: defaultdict(int))  # {ref | None: {model_name: count}}
+        for index, block in enumerate(self.blueprint_id.definition):
+            model_name = block['model']
+            operation = block['operation']
+            source_ref = block.get('id') if operation == 'create' else block.get('ref')
+            ref, _, ref_relation = (part or None for part in (source_ref or '').partition('.'))
             vals = {
                 'model_name': model_name,
-                'instructions': model['fields'],
+                'operation': operation,
+                'instructions': {
+                    'fields': block.get('fields', {}),
+                    'values': block.get('values', {}),
+                    'args': block.get('args', {}),
+                },
                 'session_id': self.id,
                 'seed': derive_seed_from(self.seed, index),
             }
-            if 'count' in model:
-                factor = scaling_factor if model.get('scale', True) else 1
-                vals['record_count'] = math.floor(model['count'] * factor)
+            if operation == 'function':
+                vals['method_name'] = block['name']
+            if source_ref:
+                vals['ref'] = source_ref
+            if 'count' in block:
+                factor = scaling_factor if block.get('scale', True) else 1
+                vals['record_count'] = max(math.floor(block['count'] * factor), 1)
 
-            vals.update(**{k: v for k, v in model.items() if k in ('type', 'ref', 'parallel', 'context')})
+            vals.update(**{k: v for k, v in block.items() if k in ('parallel', 'context', 'domain', 'batched')})
 
-            defaults = self.env['populate.job'].default_get(['type', 'record_count'])
-            is_create = vals.get('type', defaults['type']) == 'create'
+            defaults = self.env['populate.job'].default_get(['operation', 'record_count'])
 
-            if is_create:
-                write_target_counts[ref][model_name] += vals.get('record_count', defaults['record_count'])
+            if operation == 'create':
+                created_counts_by_ref[ref][model_name] += vals.get('record_count', defaults['record_count'])
             else:
-                # Compute write job record_count:
+                # Compute target job record_count for write/function blocks:
                 # - with 'ref': count from the matching 'create' job
                 # - without 'ref': existing DB records + all preceding 'create' jobs for this model
                 if ref:
-                    assert ref in write_target_counts, f"Create 'refs' should be present before its' writes, missing: {ref}"
+                    assert ref in created_counts_by_ref, f"Create 'refs' should be present before targeted jobs, missing: {ref}"
                     if ref_relation:
                         # The count of the corecords is unknown at creation time.
                         vals['record_count'] = None
                     else:
-                        vals['record_count'] = write_target_counts[ref][model_name]
+                        vals['record_count'] = created_counts_by_ref[ref][model_name]
                 else:
-                    existing = self.env[model_name].with_context(active_test=False).search_count([])
-                    from_creates = write_target_counts[None][model_name]
+                    domain = Domain(literal_eval(vals['domain'])) if vals.get('domain') else Domain.TRUE
+                    existing = self.env[model_name].with_context(active_test=False).search_count(domain)
+                    from_creates = sum(
+                        counts_by_model.get(model_name, 0)
+                        for counts_by_model in created_counts_by_ref.values()
+                    )
                     total = existing + from_creates
                     if total > 0:
                         vals['record_count'] = total
@@ -354,7 +380,7 @@ class ParallelExecutor(JobExecutor):
             assert job.exists()
 
             if job.context:
-                job = job.with_context(job.context)
+                job = job.with_context(**job.context)
 
             self._execute_with_retry(job)
 
@@ -390,7 +416,7 @@ class ParallelExecutor(JobExecutor):
         """
         for job in jobs:
             if job.child_ids and job.parallel:
-                with execution_scope(job):
+                with get_execution_scope(job):
                     context = dict(job.env.context)
                     json.dumps(context)  # safety
                     futures = {
@@ -420,7 +446,7 @@ class ParallelExecutor(JobExecutor):
                 self._execute_with_retry(job)
 
 
-def start_populate(session: Session):
+def start_populate(session: Session, *, profile: bool = False):
     """Execute a single populate session.
 
     This function is intentionally kept outside the ``populate.session`` model
@@ -430,6 +456,7 @@ def start_populate(session: Session):
     If the session was previously interrupted, only pending jobs are executed.
 
     :param session: Singleton ``populate.session`` to run.
+    :param profile: Whether to save profiler entries for this invocation.
     """
 
     # We do not allow starting multiple sessions at once
@@ -441,6 +468,10 @@ def start_populate(session: Session):
         ))
 
     assert session.job_ids, "A created session should have jobs instantiated"
+
+    if profile:
+        profile_session = profiler.make_session(get_profile_session_name(session))
+        session = session.with_context(**{POPULATE_PROFILE_SESSION_KEY: profile_session})
 
     try:
         with populate_session_lock(session):
@@ -459,8 +490,30 @@ def start_populate(session: Session):
             with executor:
                 executor.execute(session.pending_jobs)
 
+            vacuum_analyze(session)  # Update statistics
+
     except LockError as exc:
         raise UserError(session.env._("Session %(session_id)s is already running.", session_id=session.id)) from exc
+
+
+def vacuum_analyze(session: Session):
+    """Run PostgreSQL maintenance after a successful populate session."""
+    if modules.module.current_test:
+        _logger.info("Skipping VACUUM ANALYZE after populate session %d during tests", session.id)
+        return
+
+    start_time = time.time()
+
+    _logger.info("Running VACUUM ANALYZE after populate session %d", session.id)
+    with closing(session.env.registry.cursor()) as cr:
+        # PostgreSQL forbids VACUUM inside a transaction block.
+        cr._cnx.autocommit = True
+        cr.execute("VACUUM ANALYZE")
+
+    _logger.info(
+        "VACUUM ANALYZE after populate session %(session_id)d completed in %(time).2fs",
+        {'session_id': session.id, 'time': time.time() - start_time},
+    )
 
 
 @contextmanager

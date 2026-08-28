@@ -1,10 +1,20 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component, onWillUpdateProps, proxy } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillUpdateProps,
+    proxy,
+    signal,
+    t,
+    usePlugin,
+    useProps,
+} from "@odoo/owl";
 import { CheckBox } from "@web/core/checkbox/checkbox";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 import { Domain } from "@web/core/domain";
 import { DomainSelector } from "@web/core/domain_selector/domain_selector";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
+import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { _t } from "@web/core/l10n/translation";
 import { ModelSelector } from "@web/core/model_selector/model_selector";
 import { SelectMenu } from "@web/core/select_menu/select_menu";
@@ -83,6 +93,25 @@ const PROPERTY_PARAMETERS = new Set(
     Object.values(PROPERTIES_INFO).flatMap((info) => info.parameters)
 );
 
+export const propertyDefinitionProps = {
+    fieldName: t.string(),
+    readonly: t.boolean().optional(),
+    canChangeDefinition: t.boolean().optional(),
+    propertyDefinition: t.any().optional(),
+    context: t.object(),
+    isNewlyCreated: t.boolean().optional(),
+    // index and number of properties, to hide the move arrows when needed
+    propertiesSize: t.number(),
+    // events
+    onChange: t.function().optional(),
+    onDelete: t.function().optional(),
+    onDiscard: t.function().optional(),
+    onAdd: t.function().optional(),
+    // prop needed by the popover service
+    close: t.function().optional(),
+    record: t.object().optional(),
+};
+
 export class PropertyDefinition extends Component {
     static template = "web.PropertyDefinition";
     static components = {
@@ -97,27 +126,15 @@ export class PropertyDefinition extends Component {
         PropertyTags,
         SelectMenu,
     };
-    static props = {
-        fieldName: { type: String },
-        readonly: { type: Boolean, optional: true },
-        canChangeDefinition: { type: Boolean, optional: true },
-        propertyDefinition: { optional: true },
-        context: { type: Object },
-        isNewlyCreated: { type: Boolean, optional: true },
-        // index and number of properties, to hide the move arrows when needed
-        propertiesSize: { type: Number },
-        // events
-        onChange: { type: Function, optional: true },
-        onDelete: { type: Function, optional: true },
-        // prop needed by the popover service
-        close: { type: Function, optional: true },
-        record: { type: Object, optional: true },
-    };
+    props = useProps(propertyDefinitionProps);
+
+    propertyDefinitionRef = signal.ref();
+
+    debugMode = usePlugin(DebugModePlugin);
 
     setup() {
         this.orm = useService("orm");
 
-        this.propertyDefinitionRef = useRef("propertyDefinition");
         this.addDialog = useOwnedDialogs();
 
         const defaultDefinition = {
@@ -146,14 +163,9 @@ export class PropertyDefinition extends Component {
         // update the state and fetch needed information
         onWillUpdateProps((newProps) => this._syncStateWithProps(newProps.value));
 
-        useLayoutEffect((event) => {
+        onMounted(() => {
             // focus the property label, when we open the property definition
-            if (this.labelFocused) {
-                // focus it only once
-                return;
-            }
-            this.labelFocused = true;
-            const labelInput = this.propertyDefinitionRef.el.querySelectorAll("input")[0];
+            const labelInput = this.propertyDefinitionRef()?.querySelectorAll("input")[0];
             if (labelInput) {
                 if (this.props.isNewlyCreated) {
                     labelInput.select();
@@ -162,6 +174,18 @@ export class PropertyDefinition extends Component {
                 }
             }
         });
+
+        useHotkey(
+            "control+enter",
+            () => {
+                document.activeElement?.blur();
+                setTimeout(() => {
+                    this.props.onAdd();
+                });
+            },
+            { bypassEditableProtection: true }
+        );
+        useHotkey("escape", () => this.props.onDiscard());
     }
 
     /* --------------------------------------------------------
@@ -211,6 +235,14 @@ export class PropertyDefinition extends Component {
         return (this.state.propertyDefinition.tags || []).map((tag) => tag[0]);
     }
 
+    get currentPropertyDefinitionTitle() {
+        return this.props.isNewlyCreated ? _t("Add Property Field") : _t("Update Property Field");
+    }
+
+    get currentPrimaryActionName() {
+        return this.props.isNewlyCreated ? _t("Add") : _t("Update");
+    }
+
     /**
      * Return an unique ID to be used in the DOM.
      *
@@ -225,21 +257,6 @@ export class PropertyDefinition extends Component {
      * -------------------------------------------------------- */
 
     /**
-     * We changed the string of the property.
-     *
-     * @param {event} event
-     */
-    onPropertyLabelChange(event) {
-        const newString = event.target.value;
-        const propertyDefinition = {
-            ...this.state.propertyDefinition,
-            string: newString,
-        };
-        this.props.onChange(propertyDefinition);
-        this.state.propertyDefinition = propertyDefinition;
-    }
-
-    /**
      * Pressed enter on the property label close the definition.
      *
      * @param {event} event
@@ -249,20 +266,6 @@ export class PropertyDefinition extends Component {
             return;
         }
         this.props.close();
-    }
-
-    /**
-     * We changed the default value of the property.
-     *
-     * @param {object} newDefault
-     */
-    onDefaultChange(newDefault) {
-        const propertyDefinition = {
-            ...this.state.propertyDefinition,
-            default: newDefault,
-        };
-        this.props.onChange(propertyDefinition);
-        this.state.propertyDefinition = propertyDefinition;
     }
 
     /**
@@ -366,77 +369,10 @@ export class PropertyDefinition extends Component {
         });
     }
 
-    /**
-     * We renamed / created / removed a selection option.
-     *
-     * @param {array} newOptions
-     */
-    onSelectionOptionChange(newOptions) {
+    onAttributeChange(name, newValue) {
         const propertyDefinition = {
             ...this.state.propertyDefinition,
-            selection: newOptions,
-        };
-        this.props.onChange(propertyDefinition);
-        this.state.propertyDefinition = propertyDefinition;
-    }
-
-    /**
-     * @param {Event & { target: HTMLInputElement }} ev
-     */
-    onSuffixChange(ev) {
-        const propertyDefinition = {
-            ...this.state.propertyDefinition,
-            suffix: ev.target.value,
-        };
-        this.props.onChange(propertyDefinition);
-        this.state.propertyDefinition = propertyDefinition;
-    }
-
-    /**
-     * We renamed / created / removed tags.
-     *
-     * @param {array} newTags
-     */
-    onTagsChange(newTags) {
-        const propertyDefinition = {
-            ...this.state.propertyDefinition,
-            tags: newTags,
-        };
-        this.props.onChange(propertyDefinition);
-        this.state.propertyDefinition = propertyDefinition;
-    }
-
-    /**
-     * We activate / deactivate the property in the kanban view.
-     *
-     * @param {boolean} newValue
-     */
-    onViewInKanbanChange(newValue) {
-        const propertyDefinition = {
-            ...this.state.propertyDefinition,
-            view_in_cards: newValue,
-        };
-        this.props.onChange(propertyDefinition);
-        this.state.propertyDefinition = propertyDefinition;
-    }
-
-    /**
-     * Ensure the section below the separator is folded/unfolded by default
-     * @param {boolean} checked
-     */
-    onFoldByDefaultChange(checked) {
-        const propertyDefinition = {
-            ...this.state.propertyDefinition,
-            fold_by_default: checked,
-        };
-        this.props.onChange(propertyDefinition);
-        this.state.propertyDefinition = propertyDefinition;
-    }
-
-    onCurrencyFieldUpdate(path) {
-        const propertyDefinition = {
-            ...this.state.propertyDefinition,
-            currency_field: path,
+            [name]: newValue,
         };
         this.props.onChange(propertyDefinition);
         this.state.propertyDefinition = propertyDefinition;
@@ -488,18 +424,19 @@ export class PropertyDefinition extends Component {
      * Update the number of records that match the current domain.
      */
     async _updateMatchingRecordsCount() {
+        let matchingRecordsCount;
         if (this.state.resModel && this.state.resModel.length) {
             const domainList = new Domain(this.state.propertyDefinition.domain || "[]").toList();
-
-            const result = await this.orm.call(
-                this.state.propertyDefinition.comodel,
-                "search_count",
-                [domainList]
-            );
-
-            this.state.matchingRecordsCount = result;
-        } else {
-            this.state.matchingRecordsCount = undefined;
+            try {
+                matchingRecordsCount = await this.orm.call(
+                    this.state.propertyDefinition.comodel,
+                    "search_count",
+                    [domainList]
+                );
+            } catch {
+                // An invalid domain shows no record count.
+            }
         }
+        this.state.matchingRecordsCount = matchingRecordsCount;
     }
 }

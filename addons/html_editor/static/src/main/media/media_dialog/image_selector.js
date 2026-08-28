@@ -1,5 +1,4 @@
-import { proxy } from "@odoo/owl";
-import { useRef } from "@web/owl2/utils";
+import { proxy, signal, usePlugin } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { rpc } from "@web/core/network/rpc";
 import { KeepLast } from "@web/core/utils/concurrency";
@@ -7,14 +6,16 @@ import { DEFAULT_PALETTE } from "@html_editor/utils/color";
 import { getCSSVariableValue, getHtmlStyle } from "@html_editor/utils/formatting";
 import { Attachment, FileSelector, IMAGE_EXTENSIONS, IMAGE_MIMETYPES } from "./file_selector";
 import { isSrcCorsProtected } from "@html_editor/utils/image";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 export class AutoResizeImage extends Attachment {
     static template = "html_editor.AutoResizeImage";
+
+    image = signal.ref();
+    container = signal.ref();
+
     setup() {
         super.setup();
-
-        this.image = useRef("auto-resize-image");
-        this.container = useRef("auto-resize-image-container");
 
         this.state = proxy({
             loaded: false,
@@ -22,22 +23,22 @@ export class AutoResizeImage extends Attachment {
     }
 
     async onImageLoaded() {
-        if (!this.image.el) {
+        if (!this.image()) {
             // Do not fail if already removed.
             return;
         }
         if (this.props.onLoaded) {
-            await this.props.onLoaded(this.image.el);
-            if (!this.image.el) {
+            await this.props.onLoaded(this.image());
+            if (!this.image()) {
                 // If replaced by colored version, aspect ratio will be
                 // computed on it instead.
                 return;
             }
         }
-        const aspectRatio = this.image.el.offsetWidth / this.image.el.offsetHeight;
+        const aspectRatio = this.image().offsetWidth / this.image().offsetHeight;
         const width = aspectRatio * this.props.minRowHeight;
-        this.container.el.style.flexGrow = width;
-        this.container.el.style.flexBasis = `${width}px`;
+        this.container().style.flexGrow = width;
+        this.container().style.flexBasis = `${width}px`;
         this.state.loaded = true;
     }
 }
@@ -62,6 +63,8 @@ export class ImageSelector extends FileSelector {
         AutoResizeImage,
     };
 
+    debugMode = usePlugin(DebugModePlugin);
+
     setup() {
         super.setup();
 
@@ -82,7 +85,7 @@ export class ImageSelector extends FileSelector {
             "Uploaded image's format is not supported. Try with: " + IMAGE_EXTENSIONS.join(", ")
         );
         this.allLoadedText = _t("All images have been loaded");
-        this.showOptimizedOption = this.env.debug;
+        this.showOptimizedOption = this.debugMode.isActive();
         this.MIN_ROW_HEIGHT = 128;
 
         this.fileMimetypes = IMAGE_MIMETYPES.join(",");
@@ -148,7 +151,7 @@ export class ImageSelector extends FileSelector {
         // mode. Worst, it leads to bugs: it might fetch only optimized images
         // when clicking on "load more" which will look like it's bugged as no
         // images will appear on screen (they all will be hidden).
-        if (!this.env.debug) {
+        if (!this.debugMode.isActive()) {
             const subDomain = [false];
 
             // Particular exception: if the edited image is an optimized
@@ -383,7 +386,7 @@ export class ImageSelector extends FileSelector {
     /**
      * Utility method used by the MediaDialog component.
      */
-    static async createElements(selectedMedia, { orm }) {
+    static async createElements(selectedMedia, { orm, document = window.document } = {}) {
         // Create all media-library attachments.
         const toSave = Object.fromEntries(
             selectedMedia

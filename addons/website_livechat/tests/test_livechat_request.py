@@ -1,10 +1,10 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from odoo.addons.base.tests.common import HttpCaseWithUserDemo
 from odoo.addons.website_livechat.tests.common import TestLivechatCommon
+from odoo.tests import HttpCase, new_test_user
 
 
-class TestLivechatRequestHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
+class TestLivechatRequestHttpCase(HttpCase, TestLivechatCommon):
     def test_livechat_request_complete_flow(self):
         self._clean_livechat_sessions()
 
@@ -117,3 +117,11 @@ class TestLivechatRequestHttpCase(HttpCaseWithUserDemo, TestLivechatCommon):
             cookies={guest._cookie_name: guest._format_auth_cookie()},
         )
         self.assertEqual(chat_request.channel_member_ids.guest_id, guest)
+
+    def test_send_chat_request_does_not_join_channel(self):
+        agent = new_test_user(self.env, login="outside_agent", groups="im_livechat.im_livechat_group_user")
+        self.assertNotIn(agent, self.livechat_channel.user_ids)
+        self.visitor.with_user(agent).action_send_chat_request()
+        chat_request = self.env["discuss.channel"].search([("livechat_visitor_id", "=", self.visitor.id)])
+        self.assertEqual(chat_request.livechat_agent_partner_ids, agent.partner_id)
+        self.assertNotIn(agent, self.livechat_channel.user_ids)

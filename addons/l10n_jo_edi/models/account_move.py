@@ -5,13 +5,12 @@ from werkzeug.urls import url_encode
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 from odoo.tools import BinaryBytes
-from odoo.tools.sql import column_exists, create_column
 
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
 
-    l10n_jo_edi_uuid = fields.Char(string="Invoice UUID", copy=False, compute="_compute_l10n_jo_edi_uuid", store=True)
+    l10n_jo_edi_uuid = fields.Char(string="Invoice UUID", copy=False, compute="_compute_l10n_jo_edi_uuid", store=True, init_storage=lambda model: None)
     l10n_jo_edi_qr = fields.Char(string="QR", copy=False)
 
     l10n_jo_edi_is_needed = fields.Boolean(
@@ -55,6 +54,9 @@ class AccountMove(models.Model):
             ('local', 'Local'),
             ('export', 'Export'),
             ('development', 'Development Area'),
+            ('transit', 'Transit'),
+            ('foreign', 'Foreign Trade'),
+            ('freezone', 'Free Zone Transfer'),
         ],
         string="Invoice Type",
         precompute=True,
@@ -63,11 +65,6 @@ class AccountMove(models.Model):
         tracking=True,
         help="Invoice Types as per the Income and Sales Tax Department for JoFotara",
     )
-
-    def _auto_init(self):
-        if not column_exists(self.env.cr, 'account_move', 'l10n_jo_edi_uuid'):
-            create_column(self.env.cr, 'account_move', 'l10n_jo_edi_uuid', 'char')
-        return super()._auto_init()
 
     @api.depends("country_code", "move_type")
     def _compute_l10n_jo_edi_is_needed(self):
@@ -156,6 +153,9 @@ class AccountMove(models.Model):
             'local': '0',
             'export': '1',
             'development': '2',
+            'transit': '3',
+            'foreign': '4',
+            'freezone': '5',
         }.get(self.l10n_jo_edi_invoice_type, '0')
 
     def _get_invoice_payment_method_code(self):
@@ -241,6 +241,8 @@ class AccountMove(models.Model):
             error_msgs.append(_("Please select a payment method before submission."))
         if not self.l10n_jo_edi_invoice_type:
             error_msgs.append(_("Please select an invoice type before submitting this invoice to JoFotara."))
+        if self.l10n_jo_edi_invoice_type in ('transit', 'foreign', 'freezone') and self.company_id.l10n_jo_edi_taxpayer_type != 'sales':
+            error_msgs.append(_("To issue the selected Invoice type, please set the Taxpayer Type to 'Registered in the sales tax' by going to Accounting > Configuration > Settings > Electronic Invoicing (Jordan)"))
 
         customer = self.partner_id
         has_non_digit_vat(customer, 'customer', error_msgs)

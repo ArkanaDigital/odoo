@@ -9,6 +9,7 @@ from freezegun import freeze_time
 
 
 class TestOverviewGraph(BaseCommon):
+
     @freeze_time("2024-06-06 11:00")
     def test_date_category_utc(self):
         self.env.user.tz = "UTC"

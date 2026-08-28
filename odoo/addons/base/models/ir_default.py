@@ -42,11 +42,23 @@ class IrDefault(models.Model):
                 raise ValidationError(self.env._("Invalid value in Default Value field. Expected type '%(field_type)s' for '%(model_name)s.%(field_name)s'.",
                                         field_type=record.field_id.ttype, model_name=model_name, field_name=record.field_id.name))
 
+    def _check_accessible_field_id(self):
+        # using current environment as function is called after checking
+        # permissions on the record
+        if self.env.su:
+            return
+        for record in self:
+            if field := record.field_id:
+                model = self.env[field.model]
+                model.check_field_access(model._fields[field.name], 'write')
+
     @api.model_create_multi
     def create(self, vals_list):
         # invalidate all company dependent fields since their fallback value in cache may be changed
         self.env.invalidate_all()
-        return super().create(vals_list)
+        new_defaults = super().create(vals_list)
+        new_defaults._check_accessible_field_id()
+        return new_defaults
 
     def write(self, vals):
         if self:
@@ -54,6 +66,7 @@ class IrDefault(models.Model):
             self.env.invalidate_all()
         new_default = super().write(vals)
         self.check_access('write')
+        self._check_accessible_field_id()
         return new_default
 
     def unlink(self):
@@ -162,27 +175,25 @@ class IrDefault(models.Model):
         """ Return the available default values for the given model (for the
             current user), as a dict mapping field names to values.
         """
-        cr = self.env.cr
         self.flush_model()
-        query = """ SELECT f.name, d.json_value
+        query = SQL(""" SELECT f.name, d.json_value
                     FROM ir_default d
                     JOIN ir_model_fields f ON d.field_id=f.id
                     WHERE f.model=%s
                         AND (d.user_id IS NULL OR d.user_id=%s)
                         AND (d.company_id IS NULL OR d.company_id=%s)
-                        AND {}
+                        AND %s
                     ORDER BY d.user_id, d.company_id, d.id
-                """
-        # self.env.company is empty when there is no user (controllers with auth=None)
-        params = [model_name, self.env.uid, self.env.company.id or None]
-        if condition:
-            query = query.format("d.condition=%s")
-            params.append(condition)
-        else:
-            query = query.format("d.condition IS NULL")
-        cr.execute(query, params)
+                """,
+                model_name,
+                self.env.uid,
+                # self.env.company is empty when there is no user (controllers with auth=None)
+                self.env.company.id or None,
+                SQL("d.condition=%s", condition) if condition else SQL("d.condition IS NULL")
+        )
+        rows = self.env.execute_query(query)
         result = {}
-        for row in cr.fetchall():
+        for row in rows:
             # keep the highest priority default for each field
             if row[0] not in result:
                 result[row[0]] = json.loads(row[1])

@@ -1,4 +1,4 @@
-import { Component, onMounted, onWillUnmount, proxy } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, proxy, types, usePlugin, useProps } from "@odoo/owl";
 
 import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
@@ -6,12 +6,14 @@ import { rpc } from "@web/core/network/rpc";
 import { useService } from "@web/core/utils/hooks";
 
 import { CONNECTION_TYPES } from "@mail/discuss/call/common/rtc_service";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 
 const PROTOCOLS_TEXT = { host: "HOST", srflx: "STUN", prflx: "STUN", relay: "TURN" };
 
 export class CallContextMenu extends Component {
-    static props = ["rtcSession", "close?"];
     static template = "discuss.CallContextMenu";
+
+    debugMode = usePlugin(DebugModePlugin);
 
     updateStatsTimeout;
     rtcConnectionTypes = CONNECTION_TYPES;
@@ -21,16 +23,19 @@ export class CallContextMenu extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
+        this.props = useProps({
+            rtcSession: types.instanceOf(this.store["discuss.channel.rtc.session"]),
+        });
         this.rtc = useService("discuss.rtc");
         this.state = proxy({
             downloadStats: {},
             uploadStats: {},
             producerStats: {},
             peerStats: {},
-            rangeVolume: this.volume,
+            rangeVolume: this.props.rtcSession.getEffectiveVolume(),
         });
         onMounted(() => {
-            if (!this.env.debug) {
+            if (!this.debugMode.isActive()) {
                 return;
             }
             this.updateStats();
@@ -108,10 +113,6 @@ export class CallContextMenu extends Component {
                 ? this.state.uploadStats.localCandidateType
                 : this.state.peerStats.localCandidateType;
         return this.formatProtocol(candidateType);
-    }
-
-    get volume() {
-        return this.store.settings.getVolume(this.props.rtcSession);
     }
 
     /**

@@ -10,7 +10,7 @@
             </div>
         </div>
         <div t-if="this.selfOrder.config._self_ordering_image_home_ids.length > 0" t-on-click="this.start" class="d-flex flex-column vh-100 align-items-center overflow-hidden">
-            <div id="carouselAutoplaying" t-custom-ref="carousel" class="carousel slide w-100 h-100">
+            <div id="carouselAutoplaying" t-ref="this.carouselRef" class="carousel slide w-100 h-100">
                 <div class="carousel-inner h-100 w-100">
                     <div 
                         t-foreach="this.selfOrder.config._self_ordering_image_home_ids"
@@ -39,8 +39,7 @@
                         <div class="col-12 col-md-6 col-lg-6 col-kiosk-p-12">
                             <a type="button"
                                t-on-click="this.clickMyOrder"
-                               class="btn btn-lg btn-secondary w-100 "
-                               style="border-color: #714B67">
+                               class="btn btn-lg btn-secondary w-100">
                                 <t t-if="this.draftOrder.length > 0">
                                     My Order
                                 </t>

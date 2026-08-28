@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 from odoo import fields, Command
 from odoo.addons.account.tests.common import AccountTestInvoicingCommon
-from odoo.tests import tagged
+from odoo.tests import Form, tagged
 from odoo.exceptions import UserError
 
 
 @tagged('post_install', '-at_install')
 class TestAccruedPurchaseOrders(AccountTestInvoicingCommon):
+
+    _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
     def setUpClass(cls):
@@ -227,3 +229,70 @@ class TestAccruedPurchaseOrders(AccountTestInvoicingCommon):
         ).new()
         with self.assertRaises(UserError, msg="An error should be raised if two different currencies are used for Accrued Expense Entry."):
             accrued_wizard._compute_move_vals()
+
+    def test_accrued_entries_with_discount(self):
+        purchase_order = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [
+                Command.create({
+                    'name': self.product_a.name,
+                    'product_id': self.product_a.id,
+                    'product_qty': 10.0,
+                    'uom_id': self.product_a.uom_id.id,
+                    'price_unit': 10.0,
+                    'tax_ids': False,
+                    'discount': 10,
+                }),
+            ],
+        })
+        purchase_order.button_confirm()
+        purchase_order.order_line.qty_received = 10
+        accrued_wizard = self.env['account.accrued.orders.wizard'].with_context(
+            active_model='purchase.order',
+            active_ids=purchase_order.ids,
+        ).create({
+            'account_id': self.account_revenue.id,
+        })
+        res = self.env['account.move'].search(accrued_wizard.create_entries()['domain']).line_ids
+        self.assertRecordValues(res, [
+            {'debit': 0.0, 'credit': 90.0},
+            {'debit': 90.0, 'credit': 0.0},
+            {'debit': 90.0, 'credit': 0.0},
+            {'debit': 0.0, 'credit': 90.0},
+        ])
+
+    def test_accrued_entries_with_no_date(self):
+        wizard_form = Form(self.wizard)
+        wizard_form.date = False
+        with self.assertRaises(AssertionError):
+            wizard_form.save()
+
+    def test_accrued_order_wizard_zero_total(self):
+        """
+        Test that setting a PO line quantity to 0 (resulting in a 0 total)
+        does not cause a ZeroDivisionError in the Accrued Expense Entry wizard.
+        """
+        purchase_order = self.env['purchase.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [
+                Command.create({
+                    'name': self.product_a.name,
+                    'product_id': self.product_a.id,
+                    'product_qty': 10.0,
+                    'price_unit': 100.0,
+                })
+            ]
+        })
+        purchase_order.button_confirm()
+        purchase_order.order_line.qty_received = 10.0
+        purchase_order.order_line.product_qty = 0.0
+
+        wizard = self.env['account.accrued.orders.wizard'].with_context({
+            'active_model': 'purchase.order',
+            'active_ids': purchase_order.ids,
+        }).create({
+            'account_id': self.company_data['default_account_payable'].id,
+        })
+
+        accrued_entry = wizard.create_entries()
+        self.assertTrue(accrued_entry)

@@ -89,7 +89,6 @@ class AccountPaymentRegister(models.TransientModel):
         readonly=True,
         store=False
     )
-    exchange_rate_currency_code = fields.Char(compute="_compute_exchange_rate")
 
     # == Fields given through the context ==
     line_ids = fields.Many2many('account.move.line', 'account_payment_register_move_line_rel', 'wizard_id', 'line_id',
@@ -970,10 +969,8 @@ class AccountPaymentRegister(models.TransientModel):
                     company=wizard.company_id,
                     date=wizard.payment_date,
                 )
-                wizard.exchange_rate_currency_code = target_currency.name
             else:
                 wizard.exchange_rate = 1.0
-                wizard.exchange_rate_currency_code = wizard.company_currency_id.name
 
     def _fetch_duplicate_reference(self, matching_states=('draft', 'posted')):
         """ Retrieve move ids for possible duplicates of payments. Duplicates moves:
@@ -1045,6 +1042,8 @@ class AccountPaymentRegister(models.TransientModel):
                 raise UserError(_("You can't create payments for entries belonging to different branches without access to parent company."))
             if len(set(available_lines.mapped('account_type'))) > 1:
                 raise UserError(_("You can't register payments for both inbound and outbound moves at the same time."))
+            if any(move.payment_state == 'blocked' for move in available_lines.move_id):
+                raise UserError(self.env._("You cannot register payments for blocked invoices."))
 
             res['line_ids'] = [(6, 0, available_lines.ids)]
 
@@ -1208,7 +1207,7 @@ class AccountPaymentRegister(models.TransientModel):
                 if payment.currency_id != lines.currency_id:
                     liquidity_lines, counterpart_lines, writeoff_lines = payment._seek_for_lines()
                     source_balance = abs(sum(lines.mapped('amount_residual')))
-                    if liquidity_lines[0].balance:
+                    if liquidity_lines[:1].balance:
                         payment_rate = liquidity_lines[0].amount_currency / liquidity_lines[0].balance
                     else:
                         payment_rate = 0.0
@@ -1284,7 +1283,7 @@ class AccountPaymentRegister(models.TransientModel):
                         ('reconciled', '=', False),
                     ])\
                     .reconcile()
-            lines.move_id.matched_payment_ids += payment
+            lines.move_id.matched_payment_ids = [Command.link(payment.id)]
 
     def _create_payments(self):
         self.ensure_one()

@@ -16,7 +16,6 @@ import { ImagePlugin } from "./image_plugin";
 import { IconPlugin } from "./icon_plugin";
 import { CoreBuilderActionPlugin } from "./core_builder_action_plugin";
 import { CompositeActionPlugin } from "./composite_action_plugin";
-import { CustomizeTabPlugin } from "./customize_tab_plugin";
 import { DisableSnippetsPlugin } from "./disable_snippets_plugin";
 import { DragAndDropPlugin } from "./drag_and_drop_plugin";
 import { DropZonePlugin } from "./drop_zone_plugin";
@@ -30,10 +29,12 @@ import { RemovePlugin } from "./remove_plugin";
 import { SavePlugin } from "./save_plugin";
 import { SaveSnippetPlugin } from "./save_snippet_plugin";
 import { SetupEditorPlugin } from "./setup_editor_plugin";
+import { SnippetPlugin } from "./snippet_plugin";
 import { VisibilityPlugin } from "./visibility_plugin";
 import { FieldChangeReplicationPlugin } from "./field_change_replication_plugin";
 import { BuilderContentEditablePlugin } from "./builder_content_editable_plugin";
 import { ImageFieldPlugin } from "@html_builder/plugins/image_field_plugin";
+import { ImageShapeOptionPlugin } from "@html_builder/plugins/image/image_shape_option_plugin";
 import { MonetaryFieldPlugin } from "@html_builder/plugins/monetary_field_plugin";
 import { DateTimeFieldPlugin } from "@html_builder/plugins/date_time_field_plugin";
 import { Many2OneOptionPlugin } from "@html_builder/plugins/many2one_option_plugin";
@@ -48,6 +49,7 @@ const mainEditorPluginsToRemove = [
     "MoveNodePlugin",
     "FontFamilyPlugin",
     "SelectionPlaceholderPlugin",
+    "ContrastPlugin",
     // Replaced plugins:
     "ColorUIPlugin",
     "ImagePlugin",
@@ -71,12 +73,12 @@ export const MAIN_PLUGINS = [
     IconPlugin,
     CompositeActionPlugin,
     CoreBuilderActionPlugin,
-    CustomizeTabPlugin,
     DisableSnippetsPlugin,
     DropZonePlugin,
     DropZoneSelectorPlugin,
     FieldChangeReplicationPlugin,
     ImageFieldPlugin,
+    ImageShapeOptionPlugin,
     Many2OneOptionPlugin,
     MonetaryFieldPlugin,
     DateTimeFieldPlugin,
@@ -84,6 +86,7 @@ export const MAIN_PLUGINS = [
     OverlayButtonsPlugin,
     SavePlugin,
     SetupEditorPlugin,
+    SnippetPlugin,
     VisibilityPlugin,
 ];
 

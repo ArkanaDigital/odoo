@@ -1,27 +1,25 @@
-import { useChildSubEnv, useLayoutEffect } from "@web/owl2/utils";
+import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { useChildRefs, useForwardRefsToParent, useScrollState } from "@mail/utils/common/hooks";
-import { Component, props, signal, types, useEffect, xml } from "@odoo/owl";
-import { useForwardRefToParent } from "@web/core/utils/hooks";
+import { Component, signal, t, useEffect, useProps, xml } from "@odoo/owl";
 
 export class Tabs extends Component {
     static template = "mail.Tabs";
 
     setup() {
-        this.props = props(
-            {
-                "direction?": types.selection(["h", "v"]),
-                "initialTabId?": types.or([types.string(), types.number()]),
-                "ref?": types.function(),
-                "slots?": types.object(),
-            },
-            { direction: "v" }
+        this.props = useProps({
+            direction: t.selection(["h", "v"]).optional("v"),
+            initialTabId: t.or([t.string(), t.number()]).optional(),
+        });
+        /** Root element, either owned by the parent (`ref` prop) or local. */
+        this.rootRef = useProps.static(
+            "ref",
+            t.signal(t.ref()).optional(() => signal.ref())
         );
         this.activeHeaderId = signal(this.props.initialTabId);
         this.headerRefs = useChildRefs();
         this.navRef = signal();
         this.scrollState = useScrollState(this.navRef);
-        useForwardRefToParent("ref");
-        useChildSubEnv({
+        useSubEnv({
             tabsContext: {
                 headerRefs: this.headerRefs,
                 isActive: (id) => this.activeHeaderId() === id,
@@ -42,7 +40,7 @@ export class Tabs extends Component {
      * @param {number} direction The direction to scroll (1 for forward, -1 for backward).
      */
     async scroll(direction) {
-        const navEl = this.navRef.el;
+        const navEl = this.navRef();
         if (this.props.direction === "v") {
             navEl?.scrollBy({ top: navEl?.clientHeight * direction, behavior: "smooth" });
         } else {
@@ -56,11 +54,10 @@ export class InternalTabHeader extends Component {
 
     setup() {
         super.setup(...arguments);
-        this.props = props({
-            headerRefs: types.object(),
-            id: types.or([types.string(), types.number()]),
-            "slots?": types.object(),
-            "title?": types.string(),
+        this.props = useProps({
+            headerRefs: t.instanceOf(Map),
+            id: t.or([t.string(), t.number()]),
+            title: t.string().optional(),
         });
         this.rootRef = signal();
         useForwardRefsToParent("headerRefs", (props) => props.id, this.rootRef);
@@ -88,10 +85,9 @@ export class TabHeader extends Component {
 
     setup() {
         super.setup(...arguments);
-        this.props = props({
-            id: types.any(),
-            "slots?": types.object(),
-            "title?": types.string(),
+        this.props = useProps({
+            id: t.any(),
+            title: t.string().optional(),
         });
     }
 }
@@ -101,10 +97,9 @@ export class TabPanel extends Component {
 
     setup() {
         super.setup();
-        this.props = props({
-            id: types.any(),
-            "onBecameVisible?": types.function([]),
-            "slots?": types.object(),
+        this.props = useProps({
+            id: t.any(),
+            onBecameVisible: t.function([]).optional(),
         });
         useLayoutEffect(
             (active) => {

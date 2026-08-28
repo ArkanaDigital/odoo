@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
+import { useLayoutEffect } from "@web/owl2/utils";
 import { _t } from "@web/core/l10n/translation";
 import { rpc } from "@web/core/network/rpc";
 import { useService } from "@web/core/utils/hooks";
@@ -8,7 +8,7 @@ import { KeepLast } from "@web/core/utils/concurrency";
 import { user } from "@web/core/user";
 import { useDebounced } from "@web/core/utils/timing";
 import { SearchMedia } from "./search_media";
-import { Component, xml, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillStart, proxy, signal, useListener, xml } from "@odoo/owl";
 
 export const IMAGE_MIMETYPES = [
     "image/jpg",
@@ -40,7 +40,7 @@ export const ATTACHMENT_FIELDS = [
 ];
 
 class RemoveButton extends Component {
-    static template = xml`<i class="fa fa-trash o_existing_attachment_remove position-absolute top-0 end-0 p-2 bg-white-25 cursor-pointer opacity-0 opacity-100-hover z-1 transition-base" t-att-title="this.removeTitle" role="img" t-att-aria-label="this.removeTitle" t-on-click="this.remove"/>`;
+    static template = xml`<i class="oi oi-filled o_existing_attachment_remove position-absolute top-0 end-0 p-2 bg-white-25 cursor-pointer opacity-0 opacity-100-hover z-1 transition-base" data-icon="delete" t-att-title="this.removeTitle" role="img" t-att-aria-label="this.removeTitle" t-on-click="this.remove"/>`;
     static props = ["model?", "remove"];
     setup() {
         this.removeTitle = _t("This file is attached to the current record.");
@@ -122,6 +122,10 @@ export class FileSelectorControlPanel extends Component {
         useMediaLibrary: { type: Boolean, optional: true },
         useUnsplash: { type: Boolean, optional: true },
     };
+
+    fileInput = signal.ref();
+    urlInputRef = signal.ref();
+
     setup() {
         this.state = proxy({
             showUrlInput: false,
@@ -132,13 +136,12 @@ export class FileSelectorControlPanel extends Component {
         });
         this.debouncedValidateUrl = useDebounced(this.props.validateUrl, 500);
 
-        this.fileInput = useRef("file-input");
-        const urlInputRef = useRef("urlInput");
+        const urlInputRef = this.urlInputRef;
 
         useLayoutEffect(
             () => {
                 if (this.state.showUrlInput) {
-                    urlInputRef.el.focus();
+                    urlInputRef().focus();
                 }
             },
             () => [this.state.showUrlInput]
@@ -174,16 +177,16 @@ export class FileSelectorControlPanel extends Component {
     }
 
     onClickUpload() {
-        this.fileInput.el.click();
+        this.fileInput().click();
     }
 
     async onChangeFileInput() {
-        const inputFiles = this.fileInput.el.files;
+        const inputFiles = this.fileInput().files;
         if (!inputFiles.length) {
             return;
         }
         await this.props.uploadFiles(inputFiles);
-        const fileInputEl = this.fileInput.el;
+        const fileInputEl = this.fileInput();
         if (fileInputEl) {
             fileInputEl.value = "";
         }
@@ -197,14 +200,14 @@ export class FileSelector extends Component {
     };
     static props = ["*"];
 
+    loadMoreButtonRef = signal.ref();
+    existingAttachmentsRef = signal.ref();
+
     setup() {
         this.notificationService = useService("notification");
         this.orm = useService("orm");
         this.uploadService = useService("upload");
         this.keepLast = new KeepLast();
-
-        this.loadMoreButtonRef = useRef("load-more-button");
-        this.existingAttachmentsRef = useRef("existing-attachments");
 
         this.state = proxy({
             attachments: [],
@@ -223,26 +226,22 @@ export class FileSelector extends Component {
             );
         });
 
-        this.debouncedOnScroll = useDebounced(this.updateScroll, 15);
-        this.debouncedScrollUpdate = useDebounced(this.updateScroll, 500);
+        this.debouncedOnScroll = useDebounced(this.updateScroll.bind(this), 15);
+        this.debouncedScrollUpdate = useDebounced(this.updateScroll.bind(this), 500);
 
-        useLayoutEffect(
-            (modalEl) => {
-                if (modalEl) {
-                    modalEl.addEventListener("scroll", this.debouncedOnScroll);
-                    return () => {
-                        modalEl.removeEventListener("scroll", this.debouncedOnScroll);
-                    };
-                }
-            },
-            () => [this.props.modalRef.el?.querySelector("main.modal-body")]
+        // The modal body is a structural part of the dialog, it is therefore
+        // only rendered along with the modal itself.
+        useListener(
+            () => this.props.modalRef()?.querySelector("main.modal-body"),
+            "scroll",
+            this.debouncedOnScroll
         );
 
         useLayoutEffect(
             () => {
                 // Updating the scroll button each time the attachments change.
                 // Hiding the "Load more" button to prevent it from flickering.
-                this.loadMoreButtonRef.el.classList.add("o_hide_loading");
+                this.loadMoreButtonRef().classList.add("o_hide_loading");
                 this.state.canScrollAttachments = false;
                 this.debouncedScrollUpdate();
             },
@@ -443,11 +442,11 @@ export class FileSelector extends Component {
      * fully visible or not.
      */
     updateScroll() {
-        const loadMoreTop = this.loadMoreButtonRef.el.getBoundingClientRect().top;
-        const modalEl = this.props.modalRef.el.querySelector("main.modal-body");
+        const loadMoreTop = this.loadMoreButtonRef().getBoundingClientRect().top;
+        const modalEl = this.props.modalRef().querySelector("main.modal-body");
         const modalBottom = modalEl.getBoundingClientRect().bottom;
         this.state.canScrollAttachments = loadMoreTop >= modalBottom;
-        this.loadMoreButtonRef.el.classList.remove("o_hide_loading");
+        this.loadMoreButtonRef().classList.remove("o_hide_loading");
     }
 
     /**
@@ -458,7 +457,7 @@ export class FileSelector extends Component {
      */
     isAttachmentHidden(attachmentEl) {
         const attachmentBottom = Math.round(attachmentEl.getBoundingClientRect().bottom);
-        const modalEl = this.props.modalRef.el.querySelector("main.modal-body");
+        const modalEl = this.props.modalRef().querySelector("main.modal-body");
         const modalBottom = modalEl.getBoundingClientRect().bottom;
         return attachmentBottom > modalBottom;
     }
@@ -468,9 +467,9 @@ export class FileSelector extends Component {
      * scrolls to the "Load more" button.
      */
     handleScrollAttachments() {
-        let scrollToEl = this.loadMoreButtonRef.el;
+        let scrollToEl = this.loadMoreButtonRef();
         const attachmentEls = [
-            ...this.existingAttachmentsRef.el.querySelectorAll(".o_existing_attachment_cell"),
+            ...this.existingAttachmentsRef().querySelectorAll(".o_existing_attachment_cell"),
         ];
         const firstHiddenAttachmentEl = attachmentEls.find((el) => this.isAttachmentHidden(el));
         if (firstHiddenAttachmentEl) {

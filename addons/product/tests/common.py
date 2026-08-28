@@ -6,6 +6,10 @@ from odoo.addons.uom.tests.common import UomCommon
 
 
 class ProductCommon(UomCommon):
+    _test_user_groups = (
+        'product.group_product_manager',
+    )
+    _test_user_name = 'Test Product Manager'
 
     @classmethod
     def setUpClass(cls):
@@ -156,3 +160,13 @@ class ProductVariantsCommon(ProductCommon):
                 ==
                 cls.color_attribute_green
         )
+        cls.custom_attribute = cls.env['product.attribute'].create({
+            'name': 'Custom',
+            'display_type': 'radio',
+            'create_variant': 'no_variant',
+        })
+        cls.custom_attribute_value = cls.env['product.attribute.value'].create({
+            'name': 'Custom',
+            'attribute_id': cls.custom_attribute.id,
+            'is_custom': True,
+        })

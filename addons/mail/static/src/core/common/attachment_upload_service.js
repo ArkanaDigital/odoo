@@ -106,23 +106,36 @@ export class AttachmentUploadService {
         this.resolveUploadByAttachmentId.delete(tmpId);
         this.uploadingAttachmentIds.delete(tmpId);
         this.targetsByTmpId.delete(tmpId);
-        this.store["ir.attachment"].get(tmpId)?.remove();
+        this.store["ir.attachment"].get(tmpId)?.delete();
     }
 
     getUploadURL(thread) {
         return "/mail/attachment/upload";
     }
 
-    async unlink(attachment) {
-        if (this.uploadingAttachmentIds.has(attachment.id)) {
-            const resolveUpload = this.resolveUploadByAttachmentId.get(attachment.id);
-            const abort = this.abortByAttachmentId.get(attachment.id);
-            this._cleanupUploading(attachment.id);
+    /**
+     * Cancel multiple uploads given a list of attachment records.
+     * @param {import("models").Attachment[]} attachments
+     */
+    cancelUploads(attachments) {
+        for (const att of attachments) {
+            const tmpId = att.id;
+            const resolveUpload = this.resolveUploadByAttachmentId.get(tmpId);
+            const abort = this.abortByAttachmentId.get(tmpId);
+            this._cleanupUploading(tmpId);
             resolveUpload();
             abort();
-            return;
         }
-        await attachment.remove();
+    }
+
+    /**
+     * Remove the given attachments, cancelling the uploads in progress and
+     * deleting the others on the server, all at once.
+     * @param {import("models").Attachment[]} attachments
+     * @param {Object} [options] see `removeAttachments`
+     */
+    async unlink(attachments, options) {
+        await this.store.removeAttachments(attachments, options);
     }
 
     async upload(thread, composer, file, options) {
@@ -151,13 +164,13 @@ export class AttachmentUploadService {
     }
 
     /**
-     * @param {import("models").Thread} thread
-     * @param {() => void} onFileUploaded
+     * @param {import("@odoo/owl").Signal<import("models").Thread>} thread
+     * @param {(thread: import("models").Thread) => void} onFileUploaded
      */
     onFileUploaded(thread, onFileUploaded) {
         this._fileUploadBus.addEventListener("UPLOAD", ({ detail }) => {
-            if (thread.eq(detail)) {
-                onFileUploaded();
+            if (thread()?.eq(detail)) {
+                onFileUploaded(detail);
             }
         });
     }
@@ -179,7 +192,6 @@ export class AttachmentUploadService {
             id: tmpId,
             mimetype: upload.type,
             name: upload.title,
-            resModel: upload.res_model,
             thread,
             extension: upload.title.split(".").pop(),
             uploading: true,

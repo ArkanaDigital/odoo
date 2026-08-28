@@ -31,6 +31,7 @@ export function hasLine({
     oldPrice,
     priceNoDiscount,
     attributeLine,
+    refundQty,
 } = {}) {
     let trigger = `.order-container .orderline${withClass}`;
     if (withoutClass) {
@@ -39,9 +40,15 @@ export function hasLine({
     if (productName) {
         trigger += `:has(.product-name:contains("${productName}"))`;
     }
+
+    const formatQty = (value) =>
+        parseFloat(value) % 1 === 0 ? parseInt(value, 10).toString() : value;
+
     if (quantity) {
-        quantity = parseFloat(quantity) % 1 === 0 ? parseInt(quantity).toString() : quantity;
-        trigger += `:has(.qty:contains("${quantity}"))`;
+        trigger += `:has(.qty:contains("${formatQty(quantity)}"))`;
+    }
+    if (refundQty) {
+        trigger += `:has(.qty .refund:contains("${formatQty(refundQty)}"))`;
     }
     if (price) {
         trigger += `:has(.price:contains("${price}"))`;
@@ -136,4 +143,30 @@ export function hasCustomerNote(note) {
             trigger: `.order-container .customer-note  div:contains("${note}")`,
         },
     ];
+}
+
+export function hasServiceFee(amount) {
+    return {
+        content: `order has service fee of '${amount}'`,
+        trigger: `:has(.product-name:contains("Service Fee")):has(.price:contains("${amount}"))`,
+    };
+}
+
+/**
+ * Tells a recomputed fee from a duplicated one. This step does not wait: assert
+ * the fee amount or the order total first.
+ */
+export function serviceFeeLineCountIs(count) {
+    return {
+        content: `order has exactly ${count} service fee line(s)`,
+        trigger: ".order-container",
+        run: ({ anchor }) => {
+            const found = [...anchor.querySelectorAll(".orderline .product-name")].filter((name) =>
+                name.textContent.includes("Service Fee")
+            ).length;
+            if (found !== count) {
+                throw new Error(`Expected ${count} service fee line(s), found ${found}.`);
+            }
+        },
+    };
 }

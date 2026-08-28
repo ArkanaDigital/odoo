@@ -5,7 +5,6 @@ import { setupEditor, testEditor } from "../_helpers/editor";
 import { unformat } from "../_helpers/format";
 import { getContent } from "../_helpers/selection";
 import { cleanHints } from "../_helpers/dispatch";
-import { MAIN_PLUGINS } from "@html_editor/plugin_sets";
 import { commit } from "../_helpers/user_actions";
 import { Plugin } from "@html_editor/plugin";
 import { waitFor } from "@odoo/hoot-dom";
@@ -26,10 +25,10 @@ describe("collapsed selection", () => {
     test("should insert html in an empty paragraph / empty editable", async () => {
         await testEditor({
             contentBefore: "<p>[]<br></p>",
-            stepFunction: insertHTML('<i class="fa fa-pastafarianism"></i>'),
+            stepFunction: insertHTML('<i class="oi" data-icon="pastafarianism"></i>'),
             contentAfterEdit:
-                '<p>\ufeff<i class="fa fa-pastafarianism" contenteditable="false">\u200b</i>\ufeff[]</p>',
-            contentAfter: '<p><i class="fa fa-pastafarianism"></i>[]</p>',
+                '<p>\ufeff<i class="oi" data-icon="pastafarianism" contenteditable="false">\u200b</i>\ufeff[]</p>',
+            contentAfter: '<p><i class="oi" data-icon="pastafarianism"></i>[]</p>',
         });
     });
 
@@ -37,10 +36,10 @@ describe("collapsed selection", () => {
         await testEditor({
             // This scenario is only possible with the allowInlineAtRoot option.
             contentBefore: "<p><br></p>[]",
-            stepFunction: insertHTML('<i class="fa fa-pastafarianism"></i>'),
+            stepFunction: insertHTML('<i class="oi" data-icon="pastafarianism"></i>'),
             contentAfterEdit:
-                '<p><br></p><i class="fa fa-pastafarianism" contenteditable="false">\u200b</i>[]',
-            contentAfter: '<p><br></p><i class="fa fa-pastafarianism"></i>[]',
+                '<p><br></p><i class="oi" data-icon="pastafarianism" contenteditable="false">\u200b</i>[]',
+            contentAfter: '<p><br></p><i class="oi" data-icon="pastafarianism"></i>[]',
             config: { allowInlineAtRoot: true },
         });
     });
@@ -48,20 +47,20 @@ describe("collapsed selection", () => {
     test("should insert html between two letters", async () => {
         await testEditor({
             contentBefore: "<p>a[]b</p>",
-            stepFunction: insertHTML('<i class="fa fa-pastafarianism"></i>'),
+            stepFunction: insertHTML('<i class="oi" data-icon="pastafarianism"></i>'),
             contentAfterEdit:
-                '<p>a\ufeff<i class="fa fa-pastafarianism" contenteditable="false">\u200b</i>\ufeff[]b</p>',
-            contentAfter: '<p>a<i class="fa fa-pastafarianism"></i>[]b</p>',
+                '<p>a\ufeff<i class="oi" data-icon="pastafarianism" contenteditable="false">\u200b</i>\ufeff[]b</p>',
+            contentAfter: '<p>a<i class="oi" data-icon="pastafarianism"></i>[]b</p>',
         });
     });
 
     test("should insert html in between naked text in the editable", async () => {
         await testEditor({
             contentBefore: "<p>a[]b</p>",
-            stepFunction: insertHTML('<i class="fa fa-pastafarianism"></i>'),
+            stepFunction: insertHTML('<i class="oi" data-icon="pastafarianism"></i>'),
             contentAfterEdit:
-                '<p>a\ufeff<i class="fa fa-pastafarianism" contenteditable="false">\u200b</i>\ufeff[]b</p>',
-            contentAfter: '<p>a<i class="fa fa-pastafarianism"></i>[]b</p>',
+                '<p>a\ufeff<i class="oi" data-icon="pastafarianism" contenteditable="false">\u200b</i>\ufeff[]b</p>',
+            contentAfter: '<p>a<i class="oi" data-icon="pastafarianism"></i>[]b</p>',
         });
     });
 
@@ -98,13 +97,13 @@ describe("collapsed selection", () => {
                 editor.shared.dom.insert(
                     parseHTML(
                         editor.document,
-                        '<p>unwrapped</p><div><i class="fa fa-circle-o-notch"></i></div><p>culprit</p><p>after</p>'
+                        '<p>unwrapped</p><div><i class="oi" data-icon="autorenew"></i></div><p>culprit</p><p>after</p>'
                     )
                 );
                 editor.shared.history.commit();
             },
             contentAfter:
-                '<p>contentunwrapped</p><div><i class="fa fa-circle-o-notch"></i></div><p>culprit</p><p>after[]</p>',
+                '<p>contentunwrapped</p><div><i class="oi" data-icon="autorenew"></i></div><p>culprit</p><p>after[]</p>',
         });
     });
 
@@ -394,7 +393,7 @@ describe("collapsed selection", () => {
             `<p class="first">[]?</p><p class="second">!</p>`,
             {
                 config: {
-                    Plugins: [...MAIN_PLUGINS, CustomPlugin],
+                    includePlugins: [CustomPlugin],
                 },
             }
         );
@@ -408,20 +407,20 @@ describe("not collapsed selection", () => {
     test("should delete selection and insert html in its place", async () => {
         await testEditor({
             contentBefore: "<p>[a]</p>",
-            stepFunction: insertHTML('<i class="fa fa-pastafarianism"></i>'),
+            stepFunction: insertHTML('<i class="oi" data-icon="pastafarianism"></i>'),
             contentAfterEdit:
-                '<p>\ufeff<i class="fa fa-pastafarianism" contenteditable="false">\u200b</i>\ufeff[]</p>',
-            contentAfter: '<p><i class="fa fa-pastafarianism"></i>[]</p>',
+                '<p>\ufeff<i class="oi" data-icon="pastafarianism" contenteditable="false">\u200b</i>\ufeff[]</p>',
+            contentAfter: '<p><i class="oi" data-icon="pastafarianism"></i>[]</p>',
         });
     });
 
     test("should delete selection and insert html in its place (2)", async () => {
         await testEditor({
             contentBefore: "<p>a[b]c</p>",
-            stepFunction: insertHTML('<i class="fa fa-pastafarianism"></i>'),
+            stepFunction: insertHTML('<i class="oi" data-icon="pastafarianism"></i>'),
             contentAfterEdit:
-                '<p>a\ufeff<i class="fa fa-pastafarianism" contenteditable="false">\u200b</i>\ufeff[]c</p>',
-            contentAfter: '<p>a<i class="fa fa-pastafarianism"></i>[]c</p>',
+                '<p>a\ufeff<i class="oi" data-icon="pastafarianism" contenteditable="false">\u200b</i>\ufeff[]c</p>',
+            contentAfter: '<p>a<i class="oi" data-icon="pastafarianism"></i>[]c</p>',
         });
     });
 
@@ -636,6 +635,25 @@ describe("not collapsed selection", () => {
             contentAfter: '<p><a href="#">link</a></p><p><a href="#">link</a>[]</p>',
         });
     });
+
+    test("should insert content without creating a new line at the start", async () => {
+        const { el, editor } = await setupEditor(
+            `<p>
+                <span>[abc</span>
+                <br>
+                <span>def]</span>
+            </p>`,
+            {}
+        );
+        editor.shared.dom.insert(
+            parseHTML(editor.document, "<div>123</div><div><br></div><div>456</div>")
+        );
+        expect(getContent(el)).toBe(
+            `<div class="o-paragraph">123</div><div class="o-paragraph"><br></div><div class="o-paragraph">456[]</div><p o-we-hint-text='Type "/" for commands' class="o-we-hint">
+                <span data-oe-zws-empty-inline="">\u200b</span><span data-oe-zws-empty-inline="">\u200b</span>
+            <br></p>`
+        );
+    });
 });
 
 test("Should create a list element around `li`", async () => {
@@ -676,4 +694,14 @@ test("Should create a list element around `li`", async () => {
             </div>
         `),
     });
+});
+
+test("Should return converted elements", async () => {
+    const { editor } = await setupEditor(`<ul><li>[]</li></ul>`);
+    const insertedNodes = editor.shared.dom.insert(
+        parseHTML(editor.document, "<span>first</span><p>second</p>")
+    );
+    expect(insertedNodes.length).toBe(2);
+    expect(insertedNodes[0].tagName).toBe("SPAN");
+    expect(insertedNodes[1].tagName).toBe("LI");
 });

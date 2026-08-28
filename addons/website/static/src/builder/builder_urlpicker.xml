@@ -2,7 +2,7 @@
 <templates xml:space="preserve">
 
     <t t-name="website.AutoCompleteBuilderUrlPicker" t-inherit="web.AutoComplete">
-        <xpath expr="//div[@t-custom-ref='root']" position="attributes">
+        <xpath expr="//div[@t-ref='this.root']" position="attributes">
             <attribute name="t-att-data-action-id">this.info.actionId</attribute>
             <attribute name="t-att-data-action-param">this.info.actionParam</attribute>
             <attribute name="t-att-data-action-value">this.info.actionValue</attribute>
@@ -12,15 +12,15 @@
             <attribute name="t-att-data-attribute-action">this.info.attributeAction</attribute>
             <attribute name="t-att-data-attribute-action-value">this.info.attributeActionValue</attribute>
         </xpath>
-        <xpath expr="//input[@t-custom-ref='input']" position="attributes">
-            <attribute name="t-attf-class" add="{{this.props.inputClass}}" separator=" "/>
+        <xpath expr="//input[@t-ref='this.inputRef']" position="attributes">
+            <attribute name="t-attf-class" add="{{this.builderProps.inputClass}}" separator=" "/>
         </xpath>
     </t>
 
     <t t-inherit="html_builder.BuilderUrlPicker" t-inherit-mode="extension">
         <xpath expr="//BuilderTextInputBase" position="replace">
             <AutoCompleteBuilderUrlPicker
-                t-props="this.props"
+                t-props="this.textInputBaseProps"
                 sources="this.sources"
                 value="this.state.value or ''"
                 input="this.urlRef"
@@ -29,7 +29,7 @@
                 onChange.bind="this.onChange"
             />
             <button class="btn" title="Preview this URL in a new tab" t-on-click="this.openPreviewUrl">
-                <i class="fa fa-fw fa-external-link"/>
+                <i class="oi oi-fw" data-icon="open_in_new"/>
             </button>
         </xpath>
     </t>

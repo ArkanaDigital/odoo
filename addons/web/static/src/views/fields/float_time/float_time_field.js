@@ -4,32 +4,28 @@ import { formatFloatTime } from "../formatters";
 import { useInputField } from "../input_field_hook";
 import { standardFieldProps } from "../standard_field_props";
 import { useNumpadDecimal } from "../numpad_decimal_hook";
-import { parseFloatTime } from "../parsers";
+import { DurationParseError, InvalidNumberError, parseFloatTime } from "../parsers";
 
-import { Component, proxy } from "@odoo/owl";
+import { Component, proxy, signal, t, useProps } from "@odoo/owl";
 import { usePopover } from "@web/core/popover/popover_hook";
+
+export const floatTimeFieldProps = {
+    ...standardFieldProps,
+    showSeconds: t.boolean().optional(),
+    numeric: t.boolean().optional(false),
+    unit: t.selection(["hours", "minutes", "seconds"]).optional("hours"),
+};
 
 export class FloatTimeField extends Component {
     static template = "web.FloatTimeField";
-    static props = {
-        ...standardFieldProps,
-        showSeconds: { type: Boolean, optional: true },
-        numeric: { type: Boolean, optional: true },
-        unit: {
-            type: [{ value: "hours" }, { value: "minutes" }, { value: "seconds" }],
-            optional: true,
-        },
-    };
-    static defaultProps = {
-        numeric: false,
-        unit: "hours",
-    };
+    props = useProps(floatTimeFieldProps);
+    numpadDecimalRef = signal.ref();
 
     setup() {
         this.inputFloatTimeRef = useInputField({
             getValue: () => this.formattedValue,
-            refName: "numpadDecimal",
-            parse: (v) => parseFloatTime(v, this.props.unit),
+            ref: this.numpadDecimalRef,
+            parse: (v) => this.parseValue(v),
         });
 
         this.state = proxy({
@@ -38,7 +34,7 @@ export class FloatTimeField extends Component {
         this.resultPopover = usePopover(DurationPopover, {
             position: "bottom",
         });
-        useNumpadDecimal();
+        useNumpadDecimal(this.numpadDecimalRef);
     }
 
     get formatOptions() {
@@ -51,29 +47,53 @@ export class FloatTimeField extends Component {
 
     onValueChange(ev) {
         const currentInput = ev.target.value;
-        this.state.formattedResult = formatFloatTime(
-            parseFloatTime(currentInput, this.props.unit),
-            this.formatOptions
-        );
-        if (currentInput === this.state.formattedResult && this.resultPopover.isOpen) {
+        const parsedValue = this.parseOrClosePopover(currentInput);
+
+        if (parsedValue || parsedValue === 0) {
+            this.state.formattedResult = formatFloatTime(parsedValue, this.formatOptions);
+            if (currentInput === this.state.formattedResult && this.resultPopover.isOpen) {
+                this.resultPopover.close();
+            } else if (currentInput !== this.state.formattedResult && !this.resultPopover.isOpen) {
+                this.resultPopover.open(this.inputFloatTimeRef(), {
+                    state: this.state,
+                });
+            }
+        } else {
             this.resultPopover.close();
-        } else if (currentInput !== this.state.formattedResult && !this.resultPopover.isOpen) {
-            this.resultPopover.open(this.inputFloatTimeRef.el, {
+        }
+    }
+
+    openPopover() {
+        const duration = this.parseOrClosePopover(this.inputFloatTimeRef().value);
+        if (duration || duration === 0) {
+            this.state.formattedResult = formatFloatTime(duration, this.formatOptions);
+            this.resultPopover.open(this.inputFloatTimeRef(), {
                 state: this.state,
             });
         }
     }
 
-    openPopover() {
-        const duration = parseFloatTime(this.inputFloatTimeRef.el.value, this.props.unit);
-        this.state.formattedResult = formatFloatTime(duration, this.formatOptions);
-        this.resultPopover.open(this.inputFloatTimeRef.el, {
-            state: this.state,
-        });
-    }
-
     closePopover() {
         this.resultPopover.close();
+    }
+
+    parseOrClosePopover(value) {
+        try {
+            return parseFloatTime(value, this.props.unit);
+        } catch (error) {
+            if (
+                [EvalError, InvalidNumberError, DurationParseError].every(
+                    (e) => !(error instanceof e)
+                )
+            ) {
+                throw error;
+            }
+            this.closePopover();
+        }
+    }
+
+    parseValue(value) {
+        return parseFloatTime(value, this.props.unit);
     }
 
     get formattedValue() {
@@ -84,10 +104,10 @@ export class FloatTimeField extends Component {
 
 class DurationPopover extends Component {
     static template = "web.DurationPopover";
-    static props = {
-        state: { type: Object, optional: true },
-        close: { type: Function, optional: true },
-    };
+    props = useProps({
+        state: t.object().optional(),
+        close: t.function().optional(),
+    });
 }
 
 export const floatTimeField = {

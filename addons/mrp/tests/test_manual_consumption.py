@@ -51,6 +51,17 @@ class TestTourManualConsumption(HttpCase):
 
 
 class TestManualConsumption(TestMrpCommon):
+    _test_user_groups = (
+        'product.group_product_manager',  # FIXME: use base.group_user
+        'mrp.group_mrp_manager',
+        'mrp.group_mrp_routings',  # view visibility (duration/workorder fields) granted to cls.env.user in Common
+        'mrp.group_mrp_byproducts',  # view visibility (byproducts) granted to mrp users in Common
+        'stock.group_stock_manager',  # setup: warehouse/route/rule/orderpoint/location/picking_type config in test bodies
+        'uom.group_uom',  # view visibility (uom_id) granted to cls.env.user in Common
+    )
+
+    _test_user_name = 'Test Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -378,3 +389,22 @@ class TestManualConsumption(TestMrpCommon):
         move = details_form.save()
         # Quantity was modified, so the move should be picked
         self.assertTrue(move.picked)
+
+    def test_manually_created_move_line_gets_production_id_on_done(self):
+        """
+        A `stock.move.line` added manually to a component move must
+        have `production_id` set.
+        """
+        bom = self.bom_4
+        mo = self.env['mrp.production'].create([{
+            'product_id': bom.product_id.id,
+            'product_qty': 1,
+            'bom_id': bom.id,
+        }])
+        move = mo.move_raw_ids[0]
+        self.env['stock.move.line'].create([{
+            'move_id': move.id,
+            'product_id': move.product_id.id,
+            'quantity': 1,
+        }])
+        self.assertEqual(move.move_line_ids.mapped('production_id').id, mo.id)

@@ -1,5 +1,6 @@
-import { render } from "@web/owl2/utils";
-import { Component, onWillStart, onWillUpdateProps } from "@odoo/owl";
+import { Component, onWillStart, onWillUpdateProps, t, usePlugin, useProps } from "@odoo/owl";
+import { hasTouch } from "@web/core/browser/feature_detection";
+import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { cloneTree, connector, isTree, TRUE_TREE } from "@web/core/tree_editor/condition_tree";
@@ -11,7 +12,7 @@ import { getResModel } from "@web/core/tree_editor/utils";
 import { areEquivalentTrees } from "@web/core/tree_editor/virtual_operators";
 import { useService } from "@web/core/utils/hooks";
 import { shallowEqual } from "@web/core/utils/objects";
-import { hasTouch } from "@web/core/browser/feature_detection";
+import { render } from "@web/owl2/utils";
 
 export class TreeEditor extends Component {
     static template = "web.TreeEditor";
@@ -20,25 +21,21 @@ export class TreeEditor extends Component {
         DropdownItem,
         TreeEditor,
     };
-    static props = {
-        tree: Object,
-        resModel: String,
-        update: Function,
-        getDefaultCondition: Function,
-        getPathEditorInfo: Function,
-        getOperatorEditorInfo: Function,
-        getDefaultOperator: Function,
-        readonly: { type: Boolean, optional: true },
-        slots: { type: Object, optional: true },
-        isDebugMode: { type: Boolean, optional: true },
-        defaultConnector: { type: [{ value: "&" }, { value: "|" }], optional: true },
-        isSubTree: { type: Boolean, optional: true },
-    };
-    static defaultProps = {
-        defaultConnector: "&",
-        readonly: false,
-        isSubTree: false,
-    };
+    props = useProps({
+        tree: t.object(),
+        resModel: t.string(),
+        update: t.function(),
+        getDefaultCondition: t.function(),
+        getPathEditorInfo: t.function(),
+        getOperatorEditorInfo: t.function(),
+        getDefaultOperator: t.function(),
+        readonly: t.boolean().optional(false),
+        isDebugMode: t.boolean().optional(),
+        defaultConnector: t.selection(["&", "|"]).optional("&"),
+        isSubTree: t.boolean().optional(false),
+    });
+
+    debugMode = usePlugin(DebugModePlugin);
 
     setup() {
         this.isTree = isTree;
@@ -89,7 +86,9 @@ export class TreeEditor extends Component {
     }
 
     get isDebugMode() {
-        return this.props.isDebugMode !== undefined ? this.props.isDebugMode : !!this.env.debug;
+        return this.props.isDebugMode !== undefined
+            ? this.props.isDebugMode
+            : this.debugMode.isActive();
     }
 
     notifyChanges() {

@@ -10,6 +10,8 @@ from lxml import etree
 @tagged('post_install', '-at_install', 'post_install_l10n')
 class TestSendAndPrintEdiGipuzkoa(TestEsEdiTbaiCommonGipuzkoa):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_post_and_cancel_invoice_tbai_success(self):
         invoice = self._create_posted_invoice()
         invoice_send_wizard = self._get_invoice_send_wizard(invoice)
@@ -216,6 +218,7 @@ class TestSendAndPrintEdiGipuzkoa(TestEsEdiTbaiCommonGipuzkoa):
                 'l10n_es_tbai_refund_reason': 'R4',
             })
             credit_note = self.env['account.move'].browse(reversal.refund_moves()['res_id'])
+            credit_note.l10n_es_original_invoice_credited = invoice.name or "INV/2026/00001"
             credit_note.action_post()
 
             self._get_invoice_send_wizard(credit_note).action_send_and_print()
@@ -223,3 +226,28 @@ class TestSendAndPrintEdiGipuzkoa(TestEsEdiTbaiCommonGipuzkoa):
         tbai_xml = credit_note.l10n_es_tbai_post_file.decode()
         value = etree.fromstring(tbai_xml).findtext(".//ImporteTotalFactura")
         self.assertEqual(value, '-4840.00')
+
+    def test_invoice_foreign_nif_desglose_tipo_operacion(self):
+        """Verify that an invoice for a Spanish customer with a VAT starting with 'N' is considered as a foreign customer."""
+
+        self.partner_a.write({
+            'country_id': self.env.ref('base.es').id,
+            'vat': 'N0011452J',
+        })
+        invoice = self._create_posted_invoice()
+
+        invoice_send_wizard = self._get_invoice_send_wizard(invoice)
+        with patch(
+            'odoo.addons.l10n_es_edi_tbai.models.l10n_es_edi_tbai_document.requests.Session.request',
+            return_value=self.mock_response_post_invoice_success,
+        ):
+            invoice_send_wizard.action_send_and_print()
+
+        self.assertEqual(invoice.l10n_es_tbai_state, 'sent')
+
+        xml_tree = etree.fromstring(invoice.l10n_es_tbai_post_file.decode())
+        desglose_operacion = xml_tree.xpath("//*[local-name()='TipoDesglose']/*[local-name()='DesgloseTipoOperacion']")
+        desglose_factura = xml_tree.xpath("//*[local-name()='TipoDesglose']/*[local-name()='DesgloseFactura']")
+
+        self.assertTrue(desglose_operacion)
+        self.assertFalse(desglose_factura)

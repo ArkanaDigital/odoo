@@ -5,10 +5,11 @@ import { ExpenseDocumentUpload, ExpenseDocumentDropZone } from "@hr_expense/mixi
 import { registry } from '@web/core/registry';
 import { useService } from '@web/core/utils/hooks';
 import { user } from "@web/core/user";
+import { rpc } from "@web/core/network/rpc";
 import { listView } from "@web/views/list/list_view";
 
 import { ListController } from "@web/views/list/list_controller";
-import { ListRenderer } from "@web/views/list/list_renderer";
+import { ListRenderer, listRendererProps } from "@web/views/list/list_renderer";
 import { onWillStart } from "@odoo/owl";
 
 export class ExpenseListController extends ExpenseDocumentUpload(ListController) {
@@ -20,8 +21,24 @@ export class ExpenseListController extends ExpenseDocumentUpload(ListController)
         this.actionService = useService('action');
 
         onWillStart(async () => {
-            this.userIsExpenseTeamApprover = await user.hasGroup("hr_expense.group_hr_expense_team_approver");
-            this.userIsAccountInvoicing = await user.hasGroup("account.group_account_invoice");
+            [this.userIsExpenseTeamApprover, this.userIsAccountInvoicing, this.userHasEmployee] =
+                await Promise.all([
+                    user.hasGroup("hr_expense.group_hr_expense_team_approver"),
+                    user.hasGroup("account.group_account_invoice"),
+                    rpc(
+                        "/web/dataset/call_kw/res.users/read",
+                        {
+                            model: "res.users",
+                            method: "read",
+                            args: [[user.userId], ["employee_id"]],
+                            kwargs: { context: user.context },
+                        },
+                        { cache: { type: "disk" } }
+                    ).then((r) => !!r?.[0]?.employee_id),
+                ]);
+            if (!this.userHasEmployee && !this.userIsExpenseTeamApprover) {
+                this.activeActions.create = false;
+            }
         });
     }
 
@@ -54,7 +71,10 @@ export class ExpenseListController extends ExpenseDocumentUpload(ListController)
                 additionalContext: {
                     dont_redirect_to_payments: 1,
                 },
-                onClose: async () => {
+                onClose: async (closeParams) => {
+                    if (closeParams?.noReload) {
+                        return;
+                    }
                     await this.model.root.load();
                     render(this, true);
                 }
@@ -64,7 +84,7 @@ export class ExpenseListController extends ExpenseDocumentUpload(ListController)
     }
 }
 
-export class ExpenseListRenderer extends ExpenseDocumentDropZone(ListRenderer) {
+export class ExpenseListRenderer extends ExpenseDocumentDropZone(ListRenderer, listRendererProps) {
     static template = "hr_expense.ListRenderer";
 }
 

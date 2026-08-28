@@ -26,15 +26,12 @@ class ProductWishlist(models.Model):
     )
     website_id = fields.Many2one("website", ondelete="cascade", required=True, index=True)
     active = fields.Boolean(default=True, required=True)
-    stock_notification = fields.Boolean(
-        compute="_compute_stock_notification", default=False, required=True
-    )
 
     @api.model
     def current(self):
         """Get all wishlist items that belong to current user or session,
         filter products that are unpublished."""
-        website = self.env["website"].get_current_website()
+        website = self.env.website
         if not request or not website:
             return self
 
@@ -46,15 +43,12 @@ class ProductWishlist(models.Model):
                 ("website_id", "=", website.id),
             ])
 
-        # TODO for /shop page, no need to check _is_add_to_cart_possible as it's only used to see
+        # TODO for /shop page, no need to check _has_ecommerce_sellable_variants as it's only used to see
         # whether the product is in the wishlist.
         return wish.filtered(
             lambda wish: (
-                (
-                    self.env.user.has_group("base.group_system")
-                    or wish.sudo().product_id.product_tmpl_id.website_published
-                )
-                and wish.sudo().product_id.product_tmpl_id._is_add_to_cart_possible()
+                wish.sudo().product_id._is_published()
+                and wish.sudo().product_id.product_tmpl_id._has_ecommerce_sellable_variants()
             )
         )
 
@@ -100,13 +94,3 @@ class ProductWishlist(models.Model):
             ),
             ("partner_id", "=", False),
         ]).unlink()
-
-    @api.depends("product_id", "partner_id")
-    def _compute_stock_notification(self):
-        for record in self:
-            record.stock_notification = record.product_id._has_stock_notification(record.partner_id)
-
-    def _inverse_stock_notification(self):
-        for record in self:
-            if record.stock_notification:
-                record.product_id.stock_notification_partner_ids += record.partner_id

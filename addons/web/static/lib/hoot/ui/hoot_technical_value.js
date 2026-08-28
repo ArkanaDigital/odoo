@@ -1,12 +1,11 @@
 /** @odoo-module */
 
-import { Component, xml as owlXml, props, signal, types as t, toRaw } from "@odoo/owl";
+import { Component, xml as owlXml, signal, t, toRaw, useProps } from "@odoo/owl";
 import { isNode, toSelector } from "@web/../lib/hoot-dom/helpers/dom";
 import { isInstanceOf, isIterable, isPromise } from "@web/../lib/hoot-dom/hoot_dom_utils";
 import { logger } from "../core/logger";
 import {
     getTypeOf,
-    isSafe,
     Markup,
     S_ANY,
     S_CIRCULAR,
@@ -123,7 +122,7 @@ export class HootTechnicalValue extends Component {
                 >
                     <t t-if="labelSize[1] > 0">
                         <i
-                            class="fa fa-caret-right"
+                            class="oi" data-icon="arrow_right"
                             t-att-class="{ 'rotate-90': this.isOpen() }"
                         />
                     </t>
@@ -181,8 +180,8 @@ export class HootTechnicalValue extends Component {
     `;
 
     // Props & plugins
-    props = props({
-        "value?": t.any(),
+    props = useProps({
+        value: t.any().optional(),
     });
 
     rawValue = toRaw(this.props.value);
@@ -225,11 +224,14 @@ export class HootTechnicalValue extends Component {
                 return null;
             }
         }
-        if (!isSafe(this.rawValue)) {
+        try {
+            // Spreading an "unsafe" string (i.e. throwing an error in `toString`)
+            // will trigger an error here, which we must catch.
+            const values = isIterable(this.rawValue) ? [...this.rawValue] : $keys(this.rawValue);
+            return values.length;
+        } catch {
             return 0;
         }
-        const values = isIterable(this.rawValue) ? [...this.rawValue] : $keys(this.rawValue);
-        return values.length;
     }
 
     isSpecialSymbol() {

@@ -15,6 +15,8 @@ from odoo.addons.sale.tests.common import SaleCommon
 
 @tagged("-at_install", "post_install")
 class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCommon):
+    _test_user_groups = None  # FIXME list needed groups
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -27,7 +29,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
             lambda line: line.payment_provider_id == cls.provider
         ).payment_account_id = cls.inbound_payment_method_line.payment_account_id
 
-        cls.sale_order.require_payment = True
+        cls.sale_order.prepayment_percent = 1.0
 
     @mute_logger("odoo.http", "werkzeug")
     def test_payment_amount_must_not_be_less_than_prepayment_amount(self):
@@ -170,7 +172,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
         - Two emails sent: SO confirmation and default invoice email template
         """
         # Set automatic invoice
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
 
         # Create the payment
         self.amount = self.sale_order.amount_total
@@ -198,7 +200,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
         - Two emails sent: SO confirmation and invoice email using the custom template
         """
         # Set automatic invoice
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
         custom_template = self.env["mail.template"].create({
             "name": "Custom Test Invoice Template",
             "model_id": self.env.ref("account.model_account_move").id,
@@ -238,7 +240,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
         - Two emails sent: SO confirmation and invoice email using the DEFAULT template
         """
         # Set automatic invoice
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
         custom_template = self.env["mail.template"].create({
             "name": "Custom Test Invoice Template",
             "model_id": self.env.ref("account.model_account_move").id,
@@ -266,9 +268,48 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
         self.assertEqual(len(self._new_mails), 2)
         self.assertTrue(self._new_mails.filtered(lambda x: "Invoice" in x.subject))
 
+    def test_partial_payments_generate_invoices_for_the_payment_amount(self):
+        self.env.company.sale_automatic_invoice = True
+        self.sale_order.action_confirm()
+
+        first_tx = self._create_transaction(
+            flow="direct",
+            amount=200.0,
+            sale_order_ids=self.sale_order.ids,
+            state="done",
+            reference="First partial payment",
+        )
+        with mute_logger("odoo.addons.sale.models.payment_transaction"):
+            self._run_post_processing(first_tx)
+        self.assertEqual(first_tx.invoice_ids.amount_total, 200.0)
+
+        second_tx = self._create_transaction(
+            flow="direct",
+            amount=300.0,
+            sale_order_ids=self.sale_order.ids,
+            state="done",
+            reference="Second partial payment",
+        )
+        with mute_logger("odoo.addons.sale.models.payment_transaction"):
+            self._run_post_processing(second_tx)
+        self.assertEqual(second_tx.invoice_ids.amount_total, 300.0)
+
+        third_tx = self._create_transaction(
+            flow="direct",
+            amount=225.0,
+            sale_order_ids=self.sale_order.ids,
+            state="done",
+            reference="Third partial payment",
+        )
+        with mute_logger("odoo.addons.sale.models.payment_transaction"):
+            self._run_post_processing(third_tx)
+        self.assertEqual(third_tx.invoice_ids.amount_total, 225.0)
+
+        self.assertEqual(sum(self.sale_order.invoice_ids.mapped("amount_total")), 725.0)
+
     def test_auto_done_and_auto_invoice(self):
         # Set automatic invoice
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
         # Lock the sale orders when confirmed
         self.group_user.implied_ids += self.env.ref("sale.group_auto_done_setting")
 
@@ -288,7 +329,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
 
     def test_so_partial_payment_no_invoice(self):
         # Set automatic invoice
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
 
         # Create the payment
         self.amount = self.sale_order.amount_total / 10.0
@@ -302,9 +343,17 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
         self.assertFalse(tx.invoice_ids)
         self.assertFalse(self.sale_order.invoice_ids)
 
+    def test_payment_does_not_confirm_order_pending_signature(self):
+        self.sale_order.require_signature = True
+        tx = self._create_transaction(
+            flow='redirect', sale_order_ids=[self.sale_order.id], state='done'
+        )
+        confirmed_orders = tx._check_amount_and_confirm_order()
+        self.assertFalse(confirmed_orders)
+
     def test_already_confirmed_so_payment(self):
         # Set automatic invoice
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
 
         # Confirm order before payment
         self.sale_order.action_confirm()
@@ -322,7 +371,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
     def test_invoice_is_final(self):
         """Test that invoice generated from a payment are always final."""
         # Set automatic invoice
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
 
         # Create the payment
         self.amount = self.sale_order.amount_total
@@ -405,6 +454,42 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
         self.assertEqual(len(second_invoice.transaction_ids), 1, msg=msg)
         self.assertEqual(second_invoice.transaction_ids.state, "pending", msg=msg)
 
+    def test_invoice_reconciled_when_payment_matched_before_invoicing(self):
+        """Test that a payment matched with the bank before the invoice exists is still reconciled
+        with the invoice at posting (the matched payment is 'reconciled', not 'paid').
+        """
+        self.amount = self.sale_order.amount_total
+        tx = self._create_transaction(
+            flow="redirect", sale_order_ids=[self.sale_order.id], state="done",
+        )
+        with mute_logger("odoo.addons.sale.models.payment_transaction"):
+            self._run_post_processing(tx)
+        payment = tx.payment_id
+
+        bank_journal = self.company_data["default_journal_bank"]
+        liquidity_line = payment.move_id.line_ids.filtered(
+            lambda line: line.account_id == payment.outstanding_account_id
+        )
+        statement_line = self.env["account.bank.statement.line"].create({
+            "payment_ref": payment.memo,
+            "journal_id": bank_journal.id,
+            "amount": payment.amount,
+            "date": payment.date,
+        })
+        suspense_line = statement_line.move_id.line_ids.filtered(
+            lambda line: line.account_id != bank_journal.default_account_id
+        )
+        suspense_line.account_id = liquidity_line.account_id
+        (suspense_line + liquidity_line).reconcile()
+
+        self.assertRecordValues(payment, [{"state": "reconciled", "is_reconciled": False}])
+
+        invoice = self.sale_order._create_invoices()
+        invoice.action_post()
+
+        self.assertEqual(invoice.payment_state, "paid")
+        self.assertTrue(payment.is_reconciled)
+
     def test_downpayment_confirm_sale_order_sufficient_amount(self):
         """Paying down payments can confirm an order if amount is enough."""
         self.sale_order.prepayment_percent = 0.1
@@ -427,7 +512,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
         the order and automatic invoice is checked.
         """
         self.sale_order.prepayment_percent = 0.2
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
 
         tx = self._create_transaction(
             flow="direct",
@@ -506,7 +591,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
             self.assertEqual(self.sale_order.state, "sale")
 
     def test_automatic_invoice_mail_author(self):
-        self.env["ir.config_parameter"].sudo().set_bool("sale.automatic_invoice", True)
+        self.env.company.sale_automatic_invoice = True
 
         portal_user = self.env["res.users"].create({
             "name": "Portal Customer",
@@ -536,6 +621,7 @@ class TestSalePayment(AccountPaymentCommon, MailCase, PaymentHttpCommon, SaleCom
                         },
                     )
                 ],
+                "require_signature": False,
             })
         )
 

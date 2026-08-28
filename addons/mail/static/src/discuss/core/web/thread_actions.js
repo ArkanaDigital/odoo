@@ -14,7 +14,7 @@ export const joinChannelAction = {
             channel_id: channel.id,
             user_ids: [store.self_user.id],
         }),
-    icon: "fa fa-fw fa-sign-in",
+    icon: "login",
     name: _t("Join Channel"),
     sequence: 20,
     sequenceGroup: ({ owner }) => (owner.isDiscussContent ? undefined : 5),
@@ -27,16 +27,16 @@ registerThreadAction("expand-discuss", {
         owner.props.chatWindow?.isOpen &&
         !store.env.services.ui.isSmall &&
         !owner.isDiscussSidebarChannelActions,
-    icon: "fa fa-fw fa-expand",
+    icon: "expand_content",
     name: _t("Open in Discuss"),
-    onSelected({ channel, owner, store }) {
+    onSelected({ channel, store }) {
         store.env.services.action.doAction(
             {
                 type: "ir.actions.client",
                 tag: "mail.action_discuss",
             },
             {
-                clearBreadcrumbs: owner.env.services["home_menu"]?.hasHomeMenu,
+                clearBreadcrumbs: true,
                 additionalContext: { active_id: channel.id },
             }
         );
@@ -58,7 +58,8 @@ registerThreadAction("advanced-settings", {
             target: "current",
         });
     },
-    icon: "fa fa-fw fa-gear",
+    icon: "settings",
+    iconClass: "oi-filled",
     name: _t("Advanced Settings"),
     sequence: 20,
     sequenceGroup: 30,

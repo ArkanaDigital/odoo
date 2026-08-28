@@ -6,7 +6,6 @@ from odoo.exceptions import AccessError, ValidationError
 from odoo.fields import Command
 from odoo.tools import SQL
 from odoo.tools.float_utils import float_round
-from odoo.tools.translate import html_translate
 import itertools
 
 from odoo.addons.base.models.res_company import company_default_for
@@ -190,10 +189,13 @@ class TestOrmMessage(models.Model):
             return []
         # retrieve all the messages that match with a specific SQL query
         self.flush_model(['body'])
-        query = """SELECT id FROM "%s" WHERE char_length("body") %s %%s""" % \
-                (self._table, operator)
-        self.env.cr.execute(query, (value,))
-        ids = [t[0] for t in self.env.cr.fetchall()]
+        rows = self.env.execute_query(SQL(
+            'SELECT id FROM %s WHERE char_length("body") %s %s',
+            SQL.identifier(self._table),
+            SQL(operator),  # pylint: disable=sql-injection
+            value,
+        ))
+        ids = [t[0] for t in rows]
         # return domain with an implicit AND
         return [('id', 'in', ids), (1, '=', 1)]
 
@@ -980,7 +982,7 @@ class TesOrmComputedInverseOne2manyLine(models.Model):
 
 class TestOrmModel_Binary(models.Model):
     _name = 'test_orm.model_binary'
-    _description = 'Test Image field'
+    _description = 'Test Binary field'
 
     binary = fields.Binary()
     binary_x_filename = fields.Char()
@@ -1251,6 +1253,16 @@ class TestOrmModel_Active_Field(models.Model):
         'test_orm.model_active_field',
         'model_active_field_relatives_rel', 'source_id', 'dest_id',
         context={'active_test': False},
+    )
+    a_relatives_ids = fields.Many2many(
+        'test_orm.model_active_field',
+        'model_active_field_relatives_rel', 'source_id', 'dest_id',
+        domain=[('name', '=ilike', 'a%')],
+    )
+    z_relatives_ids = fields.Many2many(
+        'test_orm.model_active_field',
+        'model_active_field_relatives_rel', 'source_id', 'dest_id',
+        domain=[('name', '=ilike', 'z%')],
     )
     parent_active = fields.Boolean(string='Active Parent', related='parent_id.active', store=True)
 
@@ -1696,7 +1708,7 @@ class TestOrmModelSome_Access(models.Model):
     b = fields.Integer()
     c = fields.Integer()
     d = fields.Integer(default=1, groups="base.group_erp_manager")
-    e = fields.Integer(default=1, groups="base.group_erp_manager,base.group_multi_company")
+    e = fields.Integer(default=1, groups="base.group_erp_manager,base.group_multi_company,base.group_portal")
     f = fields.Integer(groups="base.group_erp_manager,base.group_portal")
     g = fields.Integer(default=1, groups="base.group_erp_manager,base.group_multi_company,!base.group_portal")
     h = fields.Integer(default=1, groups="base.group_erp_manager,!base.group_portal")
@@ -1956,6 +1968,10 @@ class TestOrmPrecomputeEditable(models.Model):
     baz = fields.Char(compute='_compute_baz', precompute=True, store=True, readonly=False)
     baz2 = fields.Char(compute='_compute_baz2', precompute=True, store=True)
 
+    boo1 = fields.Char(compute='_compute_boos', precompute=True, store=True, readonly=False)
+    boo2 = fields.Char(compute='_compute_boos', precompute=True, store=True, readonly=False)
+    choo = fields.Char(compute='_compute_choo', precompute=True, store=True)
+
     @api.depends('foo')
     def _compute_bar(self):
         self.bar = "COMPUTED"
@@ -1970,6 +1986,16 @@ class TestOrmPrecomputeEditable(models.Model):
         # during the precomputation of bar
         for record in self:
             record.baz2 = record.baz
+
+    @api.depends('foo')
+    def _compute_boos(self):
+        self.boo1 = "COMPUTED"
+        self.boo2 = "COMPUTED"
+
+    @api.depends('boo2')
+    def _compute_choo(self):
+        for record in self:
+            record.choo = record.boo2
 
 
 class TestOrmPrecomputeReadonly(models.Model):
@@ -1997,7 +2023,7 @@ class TestOrmPrecomputeRequired(models.Model):
     _name = 'test_orm.precompute.required'
     _description = 'a model with precomputed required fields'
 
-    partner_id = fields.Many2one('res.partner', required=True)
+    partner_id = fields.Many2one('test_orm.partner', required=True)
     name = fields.Char(related='partner_id.name', precompute=True, store=True, required=True)
 
 
@@ -2094,62 +2120,6 @@ class TestOrmModifiedLinePositive(models.Model):
     def _compute_have_positive_line(self):
         for rec in self:
             rec.is_positive = sum(rec.line_ids.mapped('quantity')) > 0
-
-
-class TestOrmRelated_Translation_1(models.Model):
-    _name = 'test_orm.related_translation_1'
-    _description = 'A model to test translation for related fields'
-
-    name = fields.Char('Name', translate=True)
-    html = fields.Html('HTML', translate=html_translate)
-
-
-class TestOrmRelated_Translation_2(models.Model):
-    _name = 'test_orm.related_translation_2'
-    _description = 'A model to test translation for related fields'
-
-    related_id = fields.Many2one('test_orm.related_translation_1', string='Parent Model')
-    name = fields.Char('Name Related', related='related_id.name', readonly=False)
-    html = fields.Html('HTML Related', related='related_id.html', readonly=False)
-    computed_name = fields.Char('Name Computed', compute='_compute_name')
-    name_en = fields.Char('Name EN', compute='_compute_name_en')
-    computed_html = fields.Char('HTML Computed', compute='_compute_html')
-
-    @api.depends_context('lang')
-    @api.depends('related_id.name')
-    def _compute_name(self):
-        for record in self:
-            record.computed_name = record.related_id.name
-
-    @api.depends('name')
-    def _compute_name_en(self):
-        for record in self.with_context(lang='en_US'):
-            record.name_en = record.name
-
-    @api.depends_context('lang')
-    @api.depends('related_id.html')
-    def _compute_html(self):
-        for record in self:
-            record.computed_html = record.related_id.html
-
-
-class TestOrmRelated_Translation_3(models.Model):
-    _name = 'test_orm.related_translation_3'
-    _description = 'A model to test translation for related fields'
-
-    related_id = fields.Many2one('test_orm.related_translation_2', string='Parent Model')
-    name = fields.Char('Name Related', related='related_id.name', readonly=False)
-    html = fields.Html('HTML Related', related='related_id.html', readonly=False)
-
-
-class TestOrmRelated_Translation_4(models.Model):
-    _name = 'test_orm.related_translation_4'
-    _description = 'A model to test translation for inherited translated fields'
-    _inherits = {
-        'test_orm.related_translation_1': 'related_id',
-    }
-
-    related_id = fields.Many2one('test_orm.related_translation_1', string='Parent Model', required=True, ondelete='cascade')
 
 
 class TestOrmIndexed_Translation(models.Model):
@@ -2276,29 +2246,6 @@ class TestOrmCustomView(models.Model):
         self.env.cr.execute(query)
 
 
-class TestOrmCustomTable_Query(models.Model):
-    _name = 'test_orm.custom.table_query'
-    _description = "test_orm.custom.table_query"
-    _auto = False
-    _depends = {
-        'test_orm.any.tag': ['name'],
-        'test_orm.any.child': ['quantity'],
-    }
-
-    sum_quantity = fields.Integer()
-    tag_id = fields.Many2one('test_orm.any.tag')
-
-    @property
-    def _table_query(self):
-        return """
-            SELECT tag.id AS id, SUM(child.quantity) AS sum_quantity, tag.id AS tag_id
-            FROM test_orm_any_child AS child
-            JOIN test_orm_any_child_test_orm_any_tag_rel AS rel ON rel.test_orm_any_child_id = child.id
-            JOIN test_orm_any_tag AS tag ON tag.id = rel.test_orm_any_tag_id
-            GROUP BY tag.id
-        """
-
-
 class TestOrmCustomTable_Query_Sql(models.Model):
     _name = 'test_orm.custom.table_query_sql'
     _description = "test_orm.custom.table_query_sql"
@@ -2312,15 +2259,16 @@ class TestOrmCustomTable_Query_Sql(models.Model):
     tag_id = fields.Many2one('test_orm.any.tag')
 
     @property
-    def _table_query(self):
+    def _table_sql(self):
         return SQL(
-            """
+            """(
             SELECT tag.id AS id, SUM(child.quantity) AS sum_quantity, tag.id AS tag_id
             FROM test_orm_any_child AS child
             JOIN test_orm_any_child_test_orm_any_tag_rel AS rel ON rel.test_orm_any_child_id = child.id
             JOIN test_orm_any_tag AS tag ON tag.id = rel.test_orm_any_tag_id
             GROUP BY tag.id
-            """,
+            )""",
+            to_flush=super()._table_sql._sql_tuple[2],
         )
 
 
@@ -2370,7 +2318,7 @@ class Test_New_ViewStrId(models.Model):
     _name = 'test_orm.view.str.id'
     _description = 'test_orm.view.str.id'
     _auto = False
-    _table_query = "SELECT 'hello' AS id, 'test' AS name"
+    _table_sql = SQL("(SELECT 'hello' AS id, 'test' AS name)")
 
     name = fields.Char()
 
@@ -2443,3 +2391,30 @@ class TestCompanyDefaultFor(models.Model):
 
     credit_limit = fields.Float(company_dependent=True)
     partner_id = fields.Many2one('res.partner', company_dependent=True)
+
+
+class TestOrmOnchangeOrder(models.Model):
+    _name = _description = 'test_orm.onchange.order'
+
+    base = fields.Integer(default=1)
+    total = fields.Integer(compute='_compute_total')
+    line_ids = fields.One2many('test_orm.onchange.order.line', 'order_id')
+
+    # IMPORTANT: 'total' depends on `line_ids.subtotal' but does not use it!
+    @api.depends('base', 'line_ids.subtotal')
+    def _compute_total(self):
+        for order in self:
+            order.total = order.base * sum(order.line_ids.mapped('price'))
+
+
+class TestOrmOnchangeOrderLine(models.Model):
+    _name = _description = 'test_orm.onchange.order.line'
+
+    order_id = fields.Many2one('test_orm.onchange.order')
+    price = fields.Integer()
+    subtotal = fields.Integer(compute='_compute_subtotal', store=True)
+
+    @api.depends('order_id.base', 'price')
+    def _compute_subtotal(self):
+        for line in self:
+            line.subtotal = line.order_id.base * line.price

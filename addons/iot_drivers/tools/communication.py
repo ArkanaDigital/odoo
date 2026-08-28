@@ -1,10 +1,10 @@
 import logging
 import time
+import werkzeug
 
 from odoo.addons.iot_drivers import main
 from odoo.addons.iot_drivers.tools import helpers, system
 from odoo.addons.iot_drivers.tools.system import IS_WINDOWS, IOT_IDENTIFIER
-from odoo.addons.iot_drivers.server_logger import server_logger
 
 _logger = logging.getLogger(__name__)
 
@@ -41,8 +41,6 @@ def handle_message(message_type: str, communication_type: str, **kwargs: dict) -
             return {**base_response, **res}
         case 'server_clear':
             helpers.disconnect_from_server()
-            if server_logger:
-                server_logger.close()
         case 'server_update':
             system.update_conf({
                 'remote_server': kwargs['server_url']
@@ -67,6 +65,10 @@ def handle_message(message_type: str, communication_type: str, **kwargs: dict) -
                 'result': {'enabled': system.is_remote_debug_enabled()}
             }
         case "reset_password":
+            if communication_type != "ws":
+                raise werkzeug.exceptions.Forbidden(
+                    "Password generation is disabled once linked to an Odoo server"
+                )
             return {
                 **base_response,
                 'status': 'success',

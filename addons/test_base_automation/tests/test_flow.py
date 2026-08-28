@@ -376,33 +376,24 @@ else:
             filter_domain="[('deadline', '!=', False)]",
             _actions={
                 'state': 'mail_post',
-                'mail_post_method': 'email',
                 'template_id': self.test_mail_template_automation.id,
             },
         )
 
-        send_mail_count = 0
-
-        def _patched_send_mail(*args, **kwargs):
-            nonlocal send_mail_count
-            send_mail_count += 1
-
-        patcher = patch('odoo.addons.mail.models.mail_template.MailTemplate.send_mail', _patched_send_mail)
-        self.startPatcher(patcher)
-
         lead = self.env['base.automation.lead.thread.test'].create({
             'name': "Lead Test",
-            'user_id': self.user_root.id,
+            'user_id': self.user_admin.id,
         })
+
         self.addCleanup(lead.unlink)
         self.assertEqual(lead.priority, False)
         self.assertEqual(lead.deadline, False)
-        self.assertEqual(send_mail_count, 0)
+        self.assertEqual(len(lead.message_ids.mail_ids), 0)
 
         lead.write({'priority': True})
         self.assertEqual(lead.priority, True)
         self.assertNotEqual(lead.deadline, False)
-        self.assertEqual(send_mail_count, 1)
+        self.assertEqual(len(lead.message_ids.mail_ids), 1)
 
     def test_020_recursive(self):
         """ Check that a rule is executed recursively by a secondary change. """
@@ -1253,10 +1244,7 @@ class TestCompute(common.TransactionCase):
         automation = automation_form.save()
         self.assertEqual(automation.filter_pre_domain, False)
         self.assertEqual(automation.filter_domain, repr([('priority', '=', True), ('employee', '=', False)]))
-        self.assertSetEqual(set(automation.trigger_field_ids.ids), {
-            self.env.ref('test_base_automation.field_base_automation_lead_test__priority').id,
-            self.env.ref('test_base_automation.field_base_automation_lead_test__employee').id,
-        })
+        self.assertEqual(automation.trigger_field_ids.ids, [])
         self.assertEqual(automation.on_change_field_ids.ids, [])
 
         # Change the trigger fields will not change the domain
@@ -1267,8 +1255,6 @@ class TestCompute(common.TransactionCase):
         self.assertEqual(automation.filter_pre_domain, False)
         self.assertEqual(automation.filter_domain, repr([('priority', '=', True), ('employee', '=', False)]))
         self.assertItemsEqual(automation.trigger_field_ids.ids, [
-            self.env.ref('test_base_automation.field_base_automation_lead_test__priority').id,
-            self.env.ref('test_base_automation.field_base_automation_lead_test__employee').id,
             self.env.ref('test_base_automation.field_base_automation_lead_test__tag_ids').id
         ])
         self.assertEqual(automation.on_change_field_ids.ids, [])
@@ -1278,9 +1264,14 @@ class TestCompute(common.TransactionCase):
         automation = automation_form.save()
         self.assertEqual(automation.filter_pre_domain, False)
         self.assertEqual(automation.filter_domain, False)
-        self.assertEqual(automation.trigger_field_ids.ids, [
-            self.env.ref('test_base_automation.field_base_automation_lead_test__tag_ids').id
-        ])
+        self.assertEqual(automation.trigger_field_ids.ids, [self.env.ref('test_base_automation.field_base_automation_lead_test__tag_ids').id])
+        self.assertEqual(automation.on_change_field_ids.ids, [])
+
+        automation.trigger = "on_stage_set"
+        automation = automation_form.save()
+        self.assertEqual(automation.filter_pre_domain, False)
+        self.assertEqual(automation.filter_domain, False)
+        self.assertEqual(automation.trigger_field_ids.ids, [self.env.ref('test_base_automation.field_base_automation_lead_test__stage_id').id])
         self.assertEqual(automation.on_change_field_ids.ids, [])
 
     def test_automation_form_view_time_triggers(self):
@@ -1347,11 +1338,11 @@ class TestCompute(common.TransactionCase):
         self.assertEqual(automation_form.name, context.get('default_name'))
         self.assertEqual(automation_form.model_id.id, context.get('default_model_id'))
         self.assertEqual(automation_form.trigger, context.get('default_trigger'))
-        self.assertEqual(automation_form.trigger_field_ids.ids, default_trigger_field_ids,
-            'trigger_field_ids should match the fields in the default filter domain.')
+        self.assertEqual(automation_form.trigger_field_ids.ids, [],
+            'trigger_field_ids should staty empty by default')
 
-        automation_form.trigger = 'on_stage_set'
-        self.assertNotEqual(automation_form.trigger_field_ids.ids, default_trigger_field_ids,
+        automation_form.trigger = 'on_state_set'
+        self.assertEqual(automation_form.trigger_field_ids.ids, default_trigger_field_ids,
             'When user changes trigger, the trigger_field_ids field should be updated')
 
     def test_inversion(self):
@@ -1619,7 +1610,7 @@ class TestCompute(common.TransactionCase):
         f.evaluation_type = "value"
         f.update_path = "child_ids"
         self.assertEqual(f.update_m2m_operation, "add")
-        self.assertEqual(f.value_field_to_show, "resource_ref")
+        self.assertEqual(f.value_field_to_show, "x2many")
         f.resource_ref = f"res.partner,{bs_partner.id}"
         action = f.save()
 

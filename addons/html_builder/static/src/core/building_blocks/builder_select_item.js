@@ -1,6 +1,5 @@
-import { useRef } from "@web/owl2/utils";
-import { Component, markup, onMounted, xml } from "@odoo/owl";
-import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
+import { Component, markup, onMounted, signal, t, useProps, xml } from "@odoo/owl";
+import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import {
     clickableBuilderComponentProps,
     useActionInfo,
@@ -11,39 +10,40 @@ import { BuilderSelectableWrapperComponent } from "./builder_selectable_wrapper_
 
 const builderSelectItemProps = {
     ...clickableBuilderComponentProps,
-    title: { type: String, optional: true },
-    label: { type: String, optional: true },
-    className: { type: String, optional: true },
-    slots: { type: Object, optional: true },
+    title: t.string().optional(),
+    label: t.string().optional(),
+    className: t.string().optional(),
 };
 
 export class BuilderSelectItemInternal extends Component {
-    static template = "html_builder.BuilderSelectItemInternal";
-    static props = { ...builderSelectItemProps };
-    static defaultProps = {
-        className: "",
-    };
     static components = { BuilderComponent };
+    static template = "html_builder.BuilderSelectItemInternal";
+
+    props = useProps({
+        ...builderSelectItemProps,
+        className: t.string().optional(""),
+    });
+
+    itemRef = signal.ref();
 
     setup() {
         if (!this.env.selectableContext) {
             throw new Error("BuilderSelectItem must be used inside a BuilderSelect component.");
         }
-        this.info = useActionInfo();
-        const item = useRef("item");
+        this.info = useActionInfo(this.props);
         let label = "";
         const getLabel = () => {
             // todo: it's not clear why the item.el?.innerHTML is not set at in
             // some cases. We fallback on a previously set value to circumvent
             // the problem, but it should be investigated.
-
-            label = this.props.label || (item.el ? markup(item.el.innerHTML) : "") || label || "";
+            const itemEl = this.itemRef();
+            label = this.props.label || (itemEl ? markup(itemEl.innerHTML) : "") || label || "";
             return label;
         };
 
         onMounted(getLabel);
 
-        const { state, operation } = useSelectableItemComponent(this.props.id, {
+        const { state, operation } = useSelectableItemComponent(this.props, {
             getLabel,
         });
         this.state = state;
@@ -78,16 +78,12 @@ export class BuilderSelectItemInternal extends Component {
 }
 
 export class BuilderSelectItem extends BuilderSelectableWrapperComponent {
+    static components = { BuilderSelectItemInternal };
     static template = xml`
         <BuilderSelectItemInternal t-props="this.forwardedProps">
             <t t-call-slot="default"/>
         </BuilderSelectItemInternal>
         `;
-    static components = { BuilderSelectItemInternal };
-    static props = {
-        ltrRtlMapping: { type: String, optional: true },
-        isLabelLinkedToContent: { type: Boolean, optional: true },
-        slots: { type: Object, optional: true },
-        ...builderSelectItemProps,
-    };
+
+    props = useProps(builderSelectItemProps);
 }

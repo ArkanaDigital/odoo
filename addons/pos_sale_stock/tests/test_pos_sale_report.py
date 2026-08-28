@@ -6,6 +6,8 @@ from odoo.addons.pos_sale.tests.test_pos_sale_report import TestPoSSaleReport
 
 class TestPoSSaleStockReport(TestPoSSaleReport, TestPosStockCommon, TestPosStockHttpCommon):
 
+    _test_user_groups = None  # FIXME list needed groups
+
     def test_different_shipping_address(self):
         product_0 = self.create_product('Product 0', self.categ_basic, 0.0, 0.0)
         sale_order = self.env['sale.order'].sudo().create({
@@ -36,7 +38,7 @@ class TestPoSSaleStockReport(TestPoSSaleReport, TestPosStockCommon, TestPosStock
         orders.append(self.create_ui_order_data([(self.product0, 3)]))
         self.env['pos.order'].sync_from_ui(orders)
 
-        session.action_pos_session_closing_control()
+        session.close_session_from_ui()
 
         reports = self.env['sale.report'].sudo().search([('product_id', '=', self.product0.id)], order='id', limit=2)
         self.assertEqual(reports[0].warehouse_id.id, self.config.picking_type_id.warehouse_id.id)
@@ -59,7 +61,7 @@ class TestPoSSaleStockReport(TestPoSSaleReport, TestPosStockCommon, TestPosStock
         order = self.env['pos.order'].sync_from_ui(orders)
         order = self.env['pos.order'].browse(order['pos.order'][0]['id'])
 
-        session.action_pos_session_closing_control()
+        session.close_session_from_ui()
 
         report = self.env['sale.report'].sudo().search([('product_id', '=', self.product0.id)], order='id')
 
@@ -76,10 +78,3 @@ class TestPoSSaleStockReport(TestPoSSaleReport, TestPosStockCommon, TestPosStock
 
         self.assertEqual(sum(report.mapped('qty_to_deliver')), 0)
         self.assertEqual(sum(report.mapped('qty_delivered')), 8)
-
-    def test_sale_stock_report_select(self):
-        select_statement = self.env['sale.report']._select_pos()
-        pos_currency_rate = self.env['sale.report']._case_value_or_one('pos.currency_rate')
-        account_currency_table = self.env['sale.report']._case_value_or_one('account_currency_table.rate')
-        untaxed_delivered_amount = f"(CASE WHEN pos.account_move IS NOT NULL THEN SUM(l.price_unit * l.qty_delivered) ELSE 0 END) / MIN({pos_currency_rate}) * {account_currency_table}"
-        self.assertTrue(untaxed_delivered_amount in select_statement)

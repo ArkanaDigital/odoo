@@ -8,6 +8,7 @@ from odoo.fields import Domain
 from odoo.http import request
 from odoo.tools import format_amount, file_open
 from odoo.addons.account.controllers.portal import PortalAccount
+from odoo.exceptions import UserError
 from datetime import timedelta, datetime
 
 _logger = logging.getLogger(__name__)
@@ -71,7 +72,6 @@ class PosController(PortalAccount):
         domain = [
                 ('state', 'in', ['opening_control', 'opened']),
                 ('user_id', '=', request.session.uid),
-                ('rescue', '=', False)
                 ]
         if config_id and request.env['pos.config'].sudo().browse(int(config_id)).exists():
             domain = Domain.AND([domain, [('config_id', '=', int(config_id))]])
@@ -84,22 +84,15 @@ class PosController(PortalAccount):
         if not pos_session and config_id:
             domain = [
                 ('state', 'in', ['opening_control', 'opened']),
-                ('rescue', '=', False),
                 ('config_id', '=', int(config_id)),
             ]
             pos_session = request.env['pos.session'].sudo().search(domain, limit=1)
 
-        if not pos_config or not pos_config.active or pos_config.has_active_session and not pos_session:
+        if not pos_config or not pos_config.active or pos_config.current_session_id and not pos_session:
             return request.redirect('/odoo/action-point_of_sale.action_client_pos_menu')
 
-        if not pos_config.has_active_session:
-            # Acquire an row-level lock on the pos_config record to prevent race conditions
-            # This prevents multiple concurrent processes from creating duplicate POS sessions
-            request.env.cr.execute(
-                "SELECT id FROM pos_config WHERE id = %s FOR UPDATE NOWAIT",
-                (pos_config.id,)
-            )
-            pos_config.open_ui()
+        if not pos_config.current_session_id:
+            pos_config.open_session_if_not_opened()  # Create a session after doing the necessary checks.
             pos_session = request.env['pos.session'].sudo().search(domain, limit=1)
 
         # The POS only works in one company, so we enforce the one of the session in the context
@@ -204,7 +197,7 @@ class PosController(PortalAccount):
         pos_order = pos_order.with_company(pos_order.company_id).with_context(allowed_company_ids=pos_order.company_id.ids)
 
         # If the order was already invoiced, return the invoice directly by forcing the access token so that the non-connected user can see it.
-        if pos_order.account_move and pos_order.account_move.is_sale_document():
+        if pos_order.is_singly_invoiced:
             return request.redirect('/my/invoices/%s?access_token=%s' % (pos_order.account_move.id, pos_order.account_move._portal_ensure_token()))
 
         if not request.env['res.company']._with_locked_records(pos_order, allow_raising=False):
@@ -241,13 +234,14 @@ class PosController(PortalAccount):
             })
             if not form_values.get('invalid_fields'):
                 return self._get_invoice(partner, invoice_values, pos_order, additional_invoice_fields, kwargs)
+            raise UserError(_(
+                "Message: %(messages)s\nPlease update the %(invalid_fields)s",
+                messages=form_values.get('messages'),
+                invalid_fields=form_values.get('invalid_fields'),
+            ))
 
         elif user_is_connected:
             return self._get_invoice(partner, {}, pos_order, additional_invoice_fields, kwargs)
-
-        # Most of the time, the country of the customer will be the same as the order. We can prefill it by default with the country of the company.
-        if 'country' not in form_values:
-            form_values['country'] = pos_order_country
 
         # Prefill the customer extra values if there is any and an user is connected
         if partner:
@@ -261,8 +255,17 @@ class PosController(PortalAccount):
             else:
                 form_values['partner_address'] = partner.contact_address
 
+        address_form_vals = self._prepare_address_form_values(partner, **kwargs)
+        # Most of the time, the country of the customer will be the same as the order. We can prefill it by default with the country of the company.
+        if not address_form_vals.get('country'):
+            address_form_vals['country'] = pos_order_country
+
+        # In POS most of the time user isn't logged in & the customer will be the same as the partner
+        if not address_form_vals.get('current_partner'):
+            address_form_vals['current_partner'] = partner
+
         return request.render("point_of_sale.ticket_validation_screen", {
-            **self._prepare_address_form_values(partner, **kwargs),
+            **address_form_vals,
             'partner': partner,
             'address_url': f'/my/account?redirect=/pos/ticket/validate?access_token={access_token}',
             'user_is_connected': user_is_connected,

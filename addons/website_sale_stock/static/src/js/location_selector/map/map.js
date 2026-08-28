@@ -1,7 +1,7 @@
 /*global L*/
 
-import { useLayoutEffect, useRef } from "@web/owl2/utils";
-import { Component } from '@odoo/owl';
+import { useLayoutEffect } from "@web/owl2/utils";
+import { Component, onMounted, onWillUnmount, signal } from "@odoo/owl";
 import { renderToString } from '@web/core/utils/render';
 
 export class Map extends Component {
@@ -11,28 +11,22 @@ export class Map extends Component {
             type: Array,
             element: {
                 type: Object,
-                values: {
-                    type: Object,
-                    shape: {
-                        id: String,
-                        name: String,
-                        openingHours: {
-                            type: Object,
-                            values: {
-                                type: Array,
-                                element: String,
-                                optional: true,
-                            },
-                        },
-                        street: String,
-                        city: String,
-                        zip_code: String,
-                        state: { type: String, optional: true },
-                        country_code: String,
-                        additional_data: { type: Object, optional: true },
-                        latitude: String,
-                        longitude: String,
+                shape: {
+                    id: [String, Number],
+                    name: String,
+                    opening_hours: {
+                        type: Object,
+                        values: { type: Array, element: String },
                     },
+                    street: String,
+                    city: String,
+                    zip_code: String,
+                    state: { type: String, optional: true },
+                    country_code: String,
+                    additional_data: { type: Object, optional: true },
+                    distance: { type: Number, optional: true },
+                    latitude: [String, Number],
+                    longitude: [String, Number],
                 },
             },
         },
@@ -40,30 +34,28 @@ export class Map extends Component {
         setSelectedLocation: Function,
     };
 
+    mapRef = signal.ref();
+
     setup() {
         this.leafletMap = null;
         this.markers = [];
-        this.mapRef = useRef('map');
 
         // Create the map.
-        useLayoutEffect(
-            () => {
-                this.leafletMap = L.map(this.mapRef.el, {
-                    zoom: 13,
-                });
-                this.leafletMap.attributionControl.setPrefix(
-                    '<a href="https://leafletjs.com" title="A JavaScript library for interactive maps">Leaflet</a>'
-                );
-                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19,
-                    attribution: "&copy; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a>"
-                }).addTo(this.leafletMap);
-                return () => {
-                    this.leafletMap.remove();
-                }
-            },
-            () => []
-        );
+        onMounted(() => {
+            this.leafletMap = L.map(this.mapRef(), {
+                zoom: 13,
+            });
+            this.leafletMap.attributionControl.setPrefix(
+                '<a href="https://leafletjs.com" title="A JavaScript library for interactive maps">Leaflet</a>'
+            );
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: "&copy; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a>"
+            }).addTo(this.leafletMap);
+        });
+        onWillUnmount(() => {
+            this.leafletMap.remove();
+        });
 
         // Update the size of the map.
         useLayoutEffect(

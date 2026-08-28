@@ -1,20 +1,19 @@
-import { useRef } from "@web/owl2/utils";
 import {
     applyObjectPropertyDifference,
     getEmbeddedProps,
+    StateChangeManager,
     useEditableDescendants,
     useEmbeddedState,
-    StateChangeManager,
 } from "@html_editor/others/embedded_component_utils";
-import { Component, xml, proxy } from "@odoo/owl";
+import { Component, proxy, signal, xml } from "@odoo/owl";
 
 export class Counter extends Component {
     static props = ["*"];
     static template = xml`
-        <span t-custom-ref="root" class="counter" t-on-click="this.increment">Counter:<t t-out="this.state.value"/></span>`;
+        <span t-ref="this.ref" class="counter" t-on-click="this.increment">Counter:<t t-out="this.state.value"/></span>`;
 
     state = proxy({ value: 0 });
-    ref = useRef("root");
+    ref = signal.ref();
 
     increment() {
         this.state.value++;
@@ -23,31 +22,31 @@ export class Counter extends Component {
 
 export const EmbeddedWrapperMixin = (editableDescendantName) =>
     class extends Component {
-        static props = ["*"];
-        static template = xml`<t><div class="${editableDescendantName}" t-custom-ref="${editableDescendantName}"/></t>`;
+        static template = xml`<t><div class="${editableDescendantName}" t-ref="this.descendantRefs.${editableDescendantName}"/></t>`;
 
         setup() {
-            useEditableDescendants(this.props.host);
+            this.descendantRefs = useEditableDescendants().refs;
         }
     };
 
 export class EmbeddedWrapper extends Component {
-    static props = ["*"];
     static template = xml`
         <t>
-            <div t-if="this.editableDescendants.shallow" class="shallow" t-custom-ref="shallow"/>
+            <div t-if="this.editableDescendants.shallow" class="shallow" t-ref="this.descendantRefs.shallow"/>
             <div t-if="!this.state.switch">
-                <div class="deep" t-custom-ref="deep"/>
+                <div class="deep" t-ref="this.descendantRefs.deep"/>
             </div>
             <div t-else="">
                 <div class="switched">
-                    <div class="deep" t-custom-ref="deep"/>
+                    <div class="deep" t-ref="this.descendantRefs.deep"/>
                 </div>
             </div>
         </t>`;
 
     setup() {
-        this.editableDescendants = useEditableDescendants(this.props.host);
+        const { descendants, refs } = useEditableDescendants();
+        this.editableDescendants = descendants;
+        this.descendantRefs = refs;
         this.state = proxy({
             switch: false,
         });

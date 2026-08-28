@@ -1,3 +1,4 @@
+import { untrack } from "@odoo/owl";
 import { clamp } from "@web/core/utils/numbers";
 import { omit } from "@web/core/utils/objects";
 import { closestScrollableX, closestScrollableY } from "@web/core/utils/scrolling";
@@ -59,7 +60,7 @@ function pointerInsideElementOffset(pointer, elementRect) {
  * @property {Record<string, any>} [defaultParams]
  * Setup hooks
  * @property {{
- *  addListener: typeof import("@odoo/owl")["useExternalListener"];
+ *  addListener: typeof import("@odoo/owl")["useListener"];
  *  setup: typeof import("@odoo/owl")["useLayoutEffect"];
  *  teardown: typeof import("@odoo/owl")["onWillUnmount"];
  *  throttle: typeof import("./timing")["useThrottleForAnimation"];
@@ -75,7 +76,7 @@ function pointerInsideElementOffset(pointer, elementRect) {
  * @property {(params: DraggableBuildHandlerParams) => any} onWillStartDrag
  *
  * @typedef DraggableHookContext
- * @property {{ el: HTMLElement | null }} ref
+ * @property {import("@web/core/utils/hooks").Ref} ref the container ref.
  * @property {string | null} [elementSelector=null]
  * @property {string | null} [ignoreSelector=null]
  * @property {string | null} [fullSelector=null]
@@ -138,7 +139,7 @@ const DEFAULT_ACCEPTED_PARAMS = {
     allowDisconnected: [Boolean], // do not use, introduced for stable versions, to challenge in master
     enable: [Boolean, Function],
     preventDrag: [Function],
-    ref: [Object],
+    ref: [Function],
     elements: [String],
     handle: [String, Function],
     ignore: [String, Function],
@@ -480,6 +481,12 @@ export function makeDraggableHook(hookParams) {
             if (prop in params) {
                 if (prop === "enable") {
                     computedParams[prop] = toFunction(params[prop]);
+                } else if (prop === "ref") {
+                    // Resolve the ref with `untrack` so this dependency never subscribes
+                    // the host component's render to the ref signal. Otherwise
+                    // `getReturnValue` would call the signal in a tracked context,
+                    // causing an extra re-render when the ref is set on mount.
+                    computedParams[prop] = untrack(params[prop]);
                 } else if (
                     allAcceptedParams[prop].length === 1 &&
                     allAcceptedParams[prop][0] === Function
@@ -595,7 +602,7 @@ export function makeDraggableHook(hookParams) {
                 }
 
                 dom.addClass(document.body, "pe-none", "user-select-none");
-                for (const iframe of getIframes(params.ref.el)) {
+                for (const iframe of getIframes(ctx.ref())) {
                     dom.addClass(iframe, "pe-none", "user-select-none");
                 }
 
@@ -648,7 +655,7 @@ export function makeDraggableHook(hookParams) {
                 const iframes =
                     el && params.iframeSelector ? el.querySelectorAll(params.iframeSelector) : [];
                 yield* iframes;
-                if (params.iframeWindow && el === params.ref.el) {
+                if (params.iframeWindow && el === ctx.ref()) {
                     yield params.iframeWindow.frameElement;
                 }
             }
@@ -747,6 +754,20 @@ export function makeDraggableHook(hookParams) {
              */
             const onPointerCancel = () => {
                 dragEnd(null);
+            };
+
+            /**
+             * Document "visibilitychange" event handler.
+             * Cancels the drag sequence as soon as the tab is no longer visible:
+             * pointer and keyboard states (e.g. "Control" being released) cannot
+             * be tracked while the document is hidden, which would lead to
+             * inconsistent behaviors when returning to the tab.
+             * @param {Event} ev
+             */
+            const onVisibilityChange = (ev) => {
+                if (ev.target.visibilityState === "hidden") {
+                    dragEnd(null);
+                }
             };
 
             /**
@@ -980,7 +1001,7 @@ export function makeDraggableHook(hookParams) {
              */
             const willStartDrag = (target) => {
                 ctx.current.element = target.closest(ctx.elementSelector);
-                ctx.current.container = ctx.ref.el;
+                ctx.current.container = ctx.ref();
 
                 cleanup.add(() => (ctx.current = {}));
                 state.willDrag = true;
@@ -993,7 +1014,7 @@ export function makeDraggableHook(hookParams) {
                         passive: false,
                         noAddedStyle: true,
                     });
-                    for (const iframe of getIframes(ctx.ref.el)) {
+                    for (const iframe of getIframes(ctx.ref())) {
                         dom.addListener(iframe.contentWindow, "touchmove", safePrevent, {
                             passive: false,
                             noAddedStyle: true,
@@ -1067,7 +1088,7 @@ export function makeDraggableHook(hookParams) {
                         };
                     }
 
-                    if (!ctx.ref.el) {
+                    if (!ctx.ref()) {
                         return;
                     }
 
@@ -1126,6 +1147,7 @@ export function makeDraggableHook(hookParams) {
                 addListener(_window, useMouseEvents ? "mouseup" : "pointerup", onPointerUp);
                 addListener(_window, "pointercancel", onPointerCancel);
                 addListener(_window, "keydown", onKeyDown, { capture: true });
+                addListener(_window.document, "visibilitychange", onVisibilityChange);
             }
 
             function initEl(el, addListener) {
@@ -1146,7 +1168,7 @@ export function makeDraggableHook(hookParams) {
                     });
                 }
             }
-            // Effect depending on the `ref.el` to add triggering pointer events listener.
+            // Effect depending on the container element to add triggering pointer events listener.
             setupHooks.setup(
                 (el) => {
                     if (el) {
@@ -1156,7 +1178,7 @@ export function makeDraggableHook(hookParams) {
                         return cleanup;
                     }
                 },
-                () => [ctx.ref.el]
+                () => [untrack(ctx.ref)]
             );
 
             setupHooks.setup(
@@ -1189,7 +1211,7 @@ export function makeDraggableHook(hookParams) {
                         }
                         return cleanup;
                     },
-                    () => [...getIframes(params.ref.el)]
+                    () => [...getIframes(untrack(ctx.ref))]
                 );
             }
 

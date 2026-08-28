@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import http
+from odoo.fields import Command
 from odoo.tests import tagged
 
 from odoo.addons.sale_loyalty.tests.common import TestSaleCouponNumbersCommon
@@ -11,6 +12,14 @@ from odoo.addons.website_sale_loyalty.controllers.main import WebsiteSale
 
 @tagged("-at_install", "post_install")
 class TestSaleCouponApplyPending(TestSaleCouponNumbersCommon, WebsiteSaleCommon):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -19,9 +28,9 @@ class TestSaleCouponApplyPending(TestSaleCouponNumbersCommon, WebsiteSaleCommon)
         cls.coupon_program = cls.env["loyalty.program"].create({
             "name": "One Free Product",
             "program_type": "coupons",
-            "rule_ids": [(0, 0, {"minimum_qty": 2})],
+            "rule_ids": [Command.create({"minimum_qty": 2})],
             "reward_ids": [
-                (0, 0, {"reward_type": "product", "reward_product_id": cls.largeCabinet.id})
+                Command.create({"reward_type": "product", "reward_product_id": cls.largeCabinet.id})
             ],
         })
         cls.env["loyalty.generate.wizard"].with_context(active_id=cls.coupon_program.id).create({

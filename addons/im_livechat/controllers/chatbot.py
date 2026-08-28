@@ -75,25 +75,33 @@ class LivechatChatbotScriptController(http.Controller):
         if not next_step:
             # sudo - discuss.channel: marking the channel as closed as part of the chat bot flow
             discuss_channel.sudo().livechat_end_dt = fields.Datetime.now()
-            step_message = next(
+            step_message = next((
                 # sudo - chatbot.message.id: visitor can access chat bot messages.
                 m.mail_message_id for m in discuss_channel.sudo().chatbot_message_ids
                 if m.script_step_id == current_step
                 and m.mail_message_id.author_id == chatbot.operator_partner_id
-            )
-            store.add_model_values(
-                "ChatbotStep",
-                lambda res: (
-                    res.attr("id", (current_step.id, step_message.id)),
-                    res.attr("scriptStep", current_step.id),
-                    res.attr("message", step_message.id),
-                    res.attr("isLast", True),
-                ),
-            )
+            ), request.env['mail.message'])
+            if current_step:
+                store.add_model_values(
+                    "ChatbotStep",
+                    lambda res: (
+                        res.attr("id", (current_step.id, step_message.id)),
+                        res.attr("scriptStep", current_step.id),
+                        res.attr("message", step_message.id),
+                        res.attr("isLast", True),
+                    ),
+                )
             store.resolve_data_request()
             return None
         # sudo: discuss.channel - updating current step on the channel is allowed
         discuss_channel.sudo().chatbot_current_step_id = next_step.id
+        # Send the current step on the awaited response store as well: it is otherwise
+        # only broadcast by the channel write() over a separate bus channel that the
+        # client chatbot flow does not await, so it may not have arrived yet when the
+        # next step trigger fails and the client reads it to decide whether to show the
+        # retry banner.
+        # sudo: chatbot.script.step - visitor can access the current step of their channel
+        store.add(discuss_channel.sudo(), ["chatbot_current_step_id"])
         step_data = next_step._process_step(discuss_channel)
         posted_message = step_data["message"]
         store.add(posted_message, "_store_message_fields")

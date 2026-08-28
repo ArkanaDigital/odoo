@@ -401,11 +401,6 @@ test("link preview request is only made when message contains URL", async () => 
     await press("Enter");
     await contains(".o-mail-Message:has(:text('Hello, this message does not contain any link'))");
     await expect.waitForSteps([]);
-    await insertText(".o-mail-Composer-input", "#");
-    await click(".o-mail-NavigableList-item:text('Sales')");
-    await press("Enter");
-    await contains(".o-mail-Message:has(:text('Sales'))");
-    await expect.waitForSteps([]);
     await insertText(".o-mail-Composer-input", "https://www.odoo.com");
     await press("Enter");
     await expect.waitForSteps(["/mail/link_preview"]);
@@ -444,12 +439,12 @@ test("youtube and gdrive videos URL are embed", async () => {
     ]);
     await start();
     await openDiscuss(channelId);
-    await click(".o-mail-LinkPreviewVideo[data-provider=google-drive] .fa-play");
+    await click(".o-mail-LinkPreviewVideo[data-provider=google-drive] [data-icon='play_arrow']");
     await contains(
         "iframe[data-src='https://drive.google.com/file/d/195a8fSNxwmkfs9sDS7OCB2nX03iFr21P/preview']",
         { parent: [".o-mail-LinkPreviewVideo[data-provider=google-drive]"] }
     );
-    await click(".o-mail-LinkPreviewVideo[data-provider=youtube] .fa-play");
+    await click(".o-mail-LinkPreviewVideo[data-provider=youtube] [data-icon='play_arrow']");
     await contains("iframe[data-src='https://www.youtube.com/embed/9bZkp7q19f0?autoplay=1']", {
         parent: [".o-mail-LinkPreviewVideo[data-provider=youtube]"],
     });

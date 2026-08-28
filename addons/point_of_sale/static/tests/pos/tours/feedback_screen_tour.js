@@ -6,12 +6,10 @@ import * as ProductScreen from "@point_of_sale/../tests/pos/tours/utils/product_
 import * as Chrome from "@point_of_sale/../tests/pos/tours/utils/chrome_util";
 import * as FeedbackScreen from "@point_of_sale/../tests/pos/tours/utils/feedback_screen_util";
 import * as NumberPopup from "@point_of_sale/../tests/generic_helpers/number_popup_util";
-import * as Order from "@point_of_sale/../tests/generic_helpers/order_widget_util";
 import * as Numpad from "@point_of_sale/../tests/generic_helpers/numpad_util";
 import * as OfflineUtil from "@point_of_sale/../tests/generic_helpers/offline_util";
 import { registry } from "@web/core/registry";
 import { inLeftSide } from "@point_of_sale/../tests/pos/tours/utils/common";
-import { negateStep } from "@point_of_sale/../tests/generic_helpers/utils";
 
 registry.category("web_tour.tours").add("FeedbackScreenTour", {
     steps: () =>
@@ -21,7 +19,7 @@ registry.category("web_tour.tours").add("FeedbackScreenTour", {
             OfflineUtil.setOfflineMode(),
             ProductScreen.addOrderline("Letter Tray", "10", "5"),
             ProductScreen.clickPartnerButton(),
-            ProductScreen.clickCustomer("Partner Full"),
+            ProductScreen.clickCustomer("APartner Full"),
             ProductScreen.clickPayButton(),
             PaymentScreen.clickPaymentMethod("Bank"),
             PaymentScreen.validateButtonIsHighlighted(true),
@@ -107,6 +105,8 @@ registry.category("web_tour.tours").add("FeedbackScreenTour", {
             inLeftSide([
                 { ...ProductScreen.clickLine("Desk Pad")[0], isActive: ["mobile"] },
                 ...ProductScreen.addCustomerNote("Test customer note"),
+                ...ProductScreen.clickSelectedLine("Desk Pad"),
+                ...ProductScreen.addCustomerNote("Global Note"),
             ]),
             ProductScreen.clickPayButton(),
             PaymentScreen.clickPaymentMethod("Bank"),
@@ -122,6 +122,12 @@ registry.category("web_tour.tours").add("FeedbackScreenTour", {
                                 text: "Test customer note",
                             },
                         ],
+                    },
+                ],
+                cssRules: [
+                    {
+                        css: ".order-general-customer-note",
+                        text: "Global Note",
                     },
                 ],
             }),
@@ -146,50 +152,13 @@ registry.category("web_tour.tours").add("FeedbackScreenTour", {
                     {
                         name: "Desk Pad",
                         price_unit: "19", // use baseprice with discount
+                        no_discount_price: 20,
                     },
                 ],
                 total_amount: "19.00",
             }),
             FeedbackScreen.clickNextOrder(),
             OfflineUtil.setOnlineMode(),
-        ].flat(),
-});
-
-registry.category("web_tour.tours").add("FeedbackScreenDiscountWithPricelistTour", {
-    steps: () =>
-        [
-            Chrome.startPoS(),
-            Dialog.confirm("Open Register"),
-            ProductScreen.addOrderline("Test Product", "1"),
-            ProductScreen.clickPriceList("special_pricelist"),
-            inLeftSide(Order.hasLine({ productName: "Test Product", price: "6.30" })),
-            ProductScreen.clickPayButton(),
-            PaymentScreen.clickPaymentMethod("Cash"),
-            PaymentScreen.clickValidate(),
-            FeedbackScreen.isShown(),
-            FeedbackScreen.checkTicketData({
-                orderlines: [
-                    {
-                        name: "Test Product",
-                        line_price: "6.30",
-                    },
-                ],
-            }),
-
-            FeedbackScreen.clickNextOrder(),
-            ProductScreen.addOrderline("Test Product", "1"),
-            inLeftSide([
-                { ...ProductScreen.clickLine("Test Product")[0], isActive: ["mobile"] },
-                Numpad.click("Price"),
-                Numpad.isActive("Price"),
-                Numpad.click("9"),
-            ]),
-            ProductScreen.clickPayButton(),
-            PaymentScreen.clickPaymentMethod("Cash"),
-            PaymentScreen.clickValidate(),
-            FeedbackScreen.checkTicketData({
-                is_discount: false,
-            }),
         ].flat(),
 });
 
@@ -228,84 +197,6 @@ registry.category("web_tour.tours").add("OrderPaidInCash", {
         ].flat(),
 });
 
-registry.category("web_tour.tours").add("point_of_sale.test_printed_receipt_tour", {
-    steps: () =>
-        [
-            Chrome.startPoS(),
-            Dialog.confirm("Open Register"),
-            ProductScreen.addOrderline("Desk Pad", "1", "5"),
-            ProductScreen.clickPayButton(),
-            PaymentScreen.clickPaymentMethod("Bank"),
-            PaymentScreen.clickValidate(),
-            FeedbackScreen.isShown(),
-            FeedbackScreen.checkTicketData(
-                {
-                    orderlines: [
-                        {
-                            name: "Desk Pad",
-                        },
-                    ],
-                },
-                true
-            ),
-            FeedbackScreen.checkTicketData(
-                {
-                    cssRules: [
-                        {
-                            css: "[name='simplified_receipt_label']",
-                            text: "Receipt",
-                            negation: false,
-                        },
-                    ],
-                },
-                false,
-                true
-            ),
-        ].flat(),
-});
-
-const getReceiptLogoSteps = (expectedData) =>
-    [
-        Chrome.startPoS(),
-        Dialog.confirm("Open Register"),
-        ProductScreen.addOrderline("Desk Pad", "1", "5"),
-        ProductScreen.clickPayButton(),
-        PaymentScreen.clickPaymentMethod("Bank"),
-        PaymentScreen.clickValidate(),
-        FeedbackScreen.isShown(),
-        FeedbackScreen.checkTicketData(
-            {
-                logo: expectedData.logo,
-                contact_info: expectedData.contact_info,
-            },
-            false
-        ),
-    ].flat();
-
-registry.category("web_tour.tours").add("point_of_sale.test_receipt_company_logo_tour", {
-    steps: () =>
-        getReceiptLogoSteps({
-            logo: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-            contact_info: "123456789",
-        }),
-});
-
-registry.category("web_tour.tours").add("point_of_sale.test_receipt_no_logo_tour", {
-    steps: () =>
-        getReceiptLogoSteps({
-            logo: false,
-            contact_info: "123456789",
-        }),
-});
-
-registry.category("web_tour.tours").add("point_of_sale.test_receipt_custom_logo_tour", {
-    steps: () =>
-        getReceiptLogoSteps({
-            logo: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mnk5+dQAwAEsgKVw6M+4wAAAABJRU5ErkJggg==",
-            contact_info: "555-999",
-        }),
-});
-
 registry.category("web_tour.tours").add("test_auto_validate_force_done", {
     steps: () =>
         [
@@ -322,40 +213,5 @@ registry.category("web_tour.tours").add("test_auto_validate_force_done", {
             },
             PaymentScreen.clickForceDoneButton(),
             FeedbackScreen.isShown(),
-        ].flat(),
-});
-
-registry.category("web_tour.tours").add("test_automatic_receipt_printing", {
-    steps: () =>
-        [
-            {
-                content:
-                    "Change feedback feedbackScreenAutoSkipDelay to 0.5 seconds to not slow down the tests too much.",
-                trigger: "body",
-                run: () => {
-                    posmodel.feedbackScreenAutoSkipDelay = 500;
-                },
-            },
-            Chrome.startPoS(),
-            Dialog.confirm("Open Register"),
-            ProductScreen.clickDisplayedProduct("Desk Organizer"),
-            ProductScreen.clickPayButton(),
-            PaymentScreen.clickPaymentMethod("Bank"),
-            PaymentScreen.clickValidate(),
-            FeedbackScreen.isShown(),
-            FeedbackScreen.isContinueEnabled(),
-            FeedbackScreen.isTransitioning(),
-            FeedbackScreen.clickScreen(),
-            FeedbackScreen.isTransitioning().map(negateStep),
-            FeedbackScreen.clickNextOrder(),
-            ProductScreen.isShown(),
-            ProductScreen.clickDisplayedProduct("Desk Organizer"),
-            ProductScreen.clickPayButton(),
-            PaymentScreen.clickPaymentMethod("Bank"),
-            PaymentScreen.clickValidate(),
-            FeedbackScreen.isShown(),
-            FeedbackScreen.isContinueEnabled(),
-            FeedbackScreen.isTransitioning(),
-            ProductScreen.isShown(),
         ].flat(),
 });

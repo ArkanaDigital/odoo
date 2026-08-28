@@ -16,6 +16,15 @@ _logger = logging.getLogger(__name__)
 
 @tagged("post_install", "-at_install")
 class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsiteUser):
+    _test_user_groups = (
+        'base.group_user',
+        'product.group_product_manager',
+        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+        'website.group_website_designer',  # website config + website.rewrite
+    )
+
+    _test_user_name = 'Test Sales & Product Manager'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -68,8 +77,7 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
 
         if cls.env["ir.module.module"]._get("payment_custom").state == "installed":
             transfer_provider = cls.env.ref("payment.payment_provider_transfer")
-            transfer_provider.write({"state": "enabled", "is_published": True})
-            transfer_provider._transfer_ensure_pending_msg_is_set()
+            transfer_provider.is_published = True
 
     def test_01_admin_shop_tour(self):
         self.start_tour(
@@ -88,7 +96,7 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
         self.start_tour("/shop", "website_sale.basic_shop_flow", login="admin")
 
     def test_03_demo_checkout(self):
-        self.partner_demo.write(self.dummy_partner_address_values)
+        self.partner_demo.sudo().write(self.dummy_partner_address_values)
         if self.env["ir.module.module"]._get("payment_custom").state != "installed":
             self.skipTest("Transfer provider is not installed")
 
@@ -98,9 +106,9 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
         if self.env["ir.module.module"]._get("payment_custom").state != "installed":
             self.skipTest("Transfer provider is not installed")
 
-        self.env.company.country_id = self.country_us
-        tax_group = self.env["account.tax.group"].create({"name": "Tax 15%"})
-        tax = self.env["account.tax"].create({
+        self.env.company.sudo().country_id = self.country_us
+        tax_group = self.env["account.tax.group"].sudo().create({"name": "Tax 15%"})
+        tax = self.env["account.tax"].sudo().create({
             "name": "Tax 15%",
             "amount": 15,
             "type_tax_use": "sale",
@@ -115,7 +123,7 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
             "invoice_policy": "delivery",
         })
         self.product_product_7.taxes_id = [tax.id]
-        self.env["res.config.settings"].create({
+        self.env["res.config.settings"].sudo().create({
             "auth_signup_uninvited": "b2c",
             "show_line_subtotals_tax_selection": "tax_excluded",
         }).execute()
@@ -127,35 +135,6 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
             login="admin",
         )
         self.start_tour("/shop/cart", "website_sale.complete_flow_2", login="admin")
-
-    def test_05_google_analytics_tracking(self):
-        # Data for google_analytics_view_item
-        attribute = self.env["product.attribute"].create({
-            "name": "Color",
-            "sequence": 10,
-            "display_type": "color",
-            "value_ids": [Command.create({"name": "Red"}), Command.create({"name": "Pink"})],
-        })
-        self.env["product.template"].create({
-            "name": "Colored T-Shirt",
-            "standard_price": 500,
-            "list_price": 750,
-            "type": "consu",
-            "website_published": True,
-            "attribute_line_ids": [
-                Command.create({"attribute_id": attribute.id, "value_ids": attribute.value_ids})
-            ],
-        })
-        self.env.ref("base.default_website").write({"google_analytics_key": "G-XXXXXXXXXXX"})
-        self.start_tour("/shop?search=Colored T-Shirt", "website_sale.google_analytics_view_item")
-        # Data for google_analytics_add_to_cart
-        self.env["product.template"].create({
-            "name": "Basic Shirt",
-            "standard_price": 500,
-            "type": "consu",
-            "website_published": True,
-        })
-        self.start_tour("/shop?search=Basic Shirt", "website_sale.google_analytics_add_to_cart")
 
     def test_06_public_user_shop_repair(self):
         """Public user purchasing repair service products in website shop."""

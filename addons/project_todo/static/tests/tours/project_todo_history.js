@@ -2,27 +2,40 @@ import { registry } from "@web/core/registry";
 import { stepUtils } from "@web_tour/tour_utils";
 
 const baseDescriptionContent = "Test project todo history version";
-const descriptionField = `div.note-editable.odoo-editor-editable div.o-paragraph`;
+const descriptionField = `div.note-editable.odoo-editor-editable .o-paragraph`;
 function changeDescriptionContentAndSave(newContent) {
     const newText = `${baseDescriptionContent} ${newContent}`;
     return [
         {
             // force focus on editable so editor will create initial p (if not yet done)
+            content: "focus in editable",
             trigger: "div.note-editable.odoo-editor-editable",
             run: "click",
         },
         {
+            content: "change html field content",
             trigger: descriptionField,
-            run: `editor ${newText} && click body`,
+            run: `editor ${newText}`,
         },
         {
-            trigger: "button.o_form_button_save",
+            content: "focus in editable",
+            trigger: "div.note-editable.odoo-editor-editable",
             run: "click",
         },
         {
-            content: "Wait the form is saved",
-            trigger: ".o_form_saved",
+            content: "ensure edition is done",
+            trigger: `div.note-editable.odoo-editor-editable .o-paragraph:contains(${newText})`,
         },
+        {
+            content: "focus out to force blur on the html_field",
+            trigger: ".o_form_renderer",
+            run: "click",
+        },
+        {
+            content: "wait for record to be flagged dirty",
+            trigger: ".o_form_dirty",
+        },
+        ...stepUtils.saveForm(),
     ];
 }
 
@@ -46,25 +59,23 @@ registry.category("web_tour.tours").add("project_todo_history_tour", {
         content: "Go back to kanban view of todos. this step is added because it takes some time to save the changes, so it's a sort of timeout to wait a bit for the save",
         trigger: ".o_back_button a",
         run: "click",
-    },
-    {
+    }, {
         content: "Open Test Todo",
         trigger: ".o_kanban_view .o_kanban_record:contains(Test History Todo)",
         run: "click",
-    },
-    {
+    }, {
+        content: "ensure record is loaded",
+        trigger: `div.note-editable.odoo-editor-editable .o-paragraph:contains(${baseDescriptionContent} 3)`,
+    }, {
         content: "Open History Dialog",
-        trigger: ".o_form_view .o_cp_action_menus i.fa-cog",
+        trigger: ".o_form_view .o_cp_action_menus button[aria-label='Actions menu']",
         run: "click",
-    },
-    {
+    }, {
         trigger: ".dropdown-menu",
-    },
-    {
+    }, {
         content: "Open History Dialog",
-        trigger: ".o_menu_item i.fa-history",
+        trigger: ".o_menu_item i[data-icon='history']",
         run: "click",
-
     }, {
         trigger: ".modal .html-history-dialog.html-history-loaded",
     }, {

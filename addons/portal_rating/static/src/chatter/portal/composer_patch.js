@@ -1,5 +1,7 @@
 import { proxy } from "@odoo/owl";
+import { PortalChatterPlugin } from "@portal/chatter/portal/portal_chatter_plugin";
 import { Composer } from "@mail/core/common/composer";
+import { useMaybePlugin } from "@mail/utils/common/hooks";
 
 import { patch } from "@web/core/utils/patch";
 import { rpc } from "@web/core/network/rpc";
@@ -11,18 +13,11 @@ const DEFAULT_STAR_RATING = 4;
 patch(Composer.prototype, {
     setup() {
         super.setup(...arguments);
+        this.portalChatterPlugin = useMaybePlugin(PortalChatterPlugin);
         this.MAX_STAR_RATING = MAX_STAR_RATING;
         this.portalState = proxy({
             hoveredRatingValue: undefined,
             ratingValue: DEFAULT_STAR_RATING,
-            /** @deprecated: use 'hoveredRatingValue' instead */
-            get starValue() {
-                return this.hoveredRatingValue;
-            },
-            /** @deprecated: use 'hoveredRatingValue' instead */
-            set starValue(val) {
-                this.hoveredRatingValue = val;
-            },
         });
     },
 
@@ -92,12 +87,15 @@ patch(Composer.prototype, {
         }
     },
 
+    get displayRating() {
+        return this.portalChatterPlugin?.displayRating() ?? false;
+    },
+
     get postData() {
         const postData = super.postData;
-        if (this.env.displayRating && !this.message) {
+        if (this.displayRating && !this.message) {
             postData.rating_value = this.portalState.ratingValue;
         }
-        this.portalState.ratingValue = DEFAULT_STAR_RATING;
         return postData;
     },
 });

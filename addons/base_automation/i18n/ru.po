@@ -5,15 +5,15 @@
 # Translators:
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
 # "Anastasiia Koroleva (koan)" <koan@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 17.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:37+0000\n"
-"PO-Revision-Date: 2025-11-09 15:11+0000\n"
+"POT-Creation-Date: 2026-07-26 19:09+0000\n"
+"PO-Revision-Date: 2026-06-19 18:30+0000\n"
 "Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
-"Language-Team: Russian <https://translate.odoo.com/projects/odoo-19/"
+"Language-Team: Russian <https://translate.odoo.com/projects/odoo-master/"
 "base_automation/ru/>\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -22,15 +22,18 @@ msgstr ""
 "Plural-Forms: nplurals=4; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<12 || n%100>14) ? 1 : n%10==0 || (n%10>=5 && n%10<=9) || "
 "(n%100>=11 && n%100<=14)? 2 : 3);\n"
-"X-Generator: Weblate 5.12.2\n"
+"X-Generator: Weblate 2026.6.1\n"
 
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid ""
 "\"\n"
 "                (ID:"
 msgstr ""
+"\"\n"
+"                (ID:"
 
 #. module: base_automation
 #. odoo-javascript
@@ -94,34 +97,39 @@ msgstr ""
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_kanban
-msgid "<i class=\"fa fa-2x fa-arrow-right text-primary\" title=\"Actions\"/>"
-msgstr "<i class=\"fa fa-2x fa-arrow-right text-primary\" title=\"Actions\"/>"
+msgid ""
+"<i class=\"oi oi-2x text-primary\" data-icon=\"arrow_forward\" "
+"title=\"Actions\"/>"
+msgstr ""
+"<i class=\"oi oi-2x text-primary\" data-icon=\"arrow_forward\" "
+"title=\"Actions\"/>"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
 msgid ""
-"<i class=\"fa fa-info-circle\"/> The default target record getter will work "
-"out-of-the-box for any webhook coming from another Odoo instance."
+"<i class=\"oi\" data-icon=\"info\"/> The default target record getter will "
+"work out-of-the-box for any webhook coming from another Odoo instance."
 msgstr ""
-"<i class=\"fa fa-info-circle\"/> Получатель целевой записи по умолчанию "
+"<i class=\"oi\" data-icon=\"info\"/> Получатель целевой записи по умолчанию "
 "будет работать для любого веб-крючка, приходящего от другого экземпляра Odoo."
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
 msgid ""
-"<i class=\"fa fa-warning\"/> Automation rules triggered by UI changes will "
-"be executed <em>every time</em> the watched fields change, <em>whether you "
-"save or not</em>."
+"<i class=\"oi\" data-icon=\"warning\"/> Automation rules triggered by UI "
+"changes will be executed <em>every time</em> the watched fields change, "
+"<em>whether you save or not</em>."
 msgstr ""
-"<i class=\"fa fa-warning\"/> Правила автоматизации, вызванные изменениями "
-"пользовательского интерфейса, будут выполняться <em>каждый раз, когда</em> "
-"изменяются наблюдаемые поля, независимо от <em>того, сохраняете вы их или "
-"нет</em>."
+"<i class=\"oi\" data-icon=\"warning\"/> Правила автоматизации, вызванные "
+"изменениями пользовательского интерфейса, будут выполняться <em>каждый раз, "
+"когда</em> изменяются наблюдаемые поля, независимо от <em>того, сохраняете "
+"вы их или нет</em>."
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_server_action_form
+#, fuzzy
 msgid "<span class=\"o_stat_text\">Automation</span>"
-msgstr ""
+msgstr "<span class=\"o_stat_text\">Автоматизация</span>"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
@@ -160,8 +168,9 @@ msgstr "Оформление задачи-исключения"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__activity_plans_ids
+#, fuzzy
 msgid "Activity Plans"
-msgstr ""
+msgstr "Планы активностей"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__activity_state
@@ -285,20 +294,25 @@ msgstr "Задержка"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__trg_date_range_mode
+#, fuzzy
 msgid "Delay mode"
-msgstr ""
+msgstr "Режим задержки"
 
 #. module: base_automation
 #. odoo-python
 #: code:addons/base_automation/models/base_automation.py:0
+#, fuzzy
 msgid ""
 "Delay must be positive. Set 'Delay mode' to 'Before' to negate the delay."
 msgstr ""
+"Задержка должна быть положительной. Установите «Режим задержки» на «До», "
+"чтобы сделать задержку отрицательной."
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__trg_date_range_type
+#, fuzzy
 msgid "Delay unit"
-msgstr ""
+msgstr "Единица измерения задержки"
 
 #. module: base_automation
 #. odoo-javascript
@@ -371,13 +385,9 @@ msgstr "Подписчики"
 #. module: base_automation
 #. odoo-python
 #: code:addons/base_automation/models/base_automation.py:0
+#, fuzzy
 msgid "Following child actions have warnings: %(children)s"
-msgstr ""
-
-#. module: base_automation
-#: model:ir.model.fields,help:base_automation.field_base_automation__activity_type_icon
-msgid "Font awesome icon e.g. fa-tasks"
-msgstr "Иконка Font awesome, например, fa-tasks"
+msgstr "Следующие дочерние действия имеют предупреждения: %(children)s"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__model_is_mail_thread
@@ -443,10 +453,13 @@ msgstr ""
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
+#, fuzzy
 msgid ""
 "If renewed, update the secret URL in the third-party app that calls this "
 "webhook."
 msgstr ""
+"При продлении обновите секретный URL в стороннем приложении, которое "
+"вызывает этот вебхук."
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_search
@@ -499,6 +512,11 @@ msgstr ""
 "только модели с функцией обсуждения."
 
 #. module: base_automation
+#: model:ir.model.fields,help:base_automation.field_base_automation__activity_type_icon
+msgid "Material Symbols icon e.g. checklist"
+msgstr ""
+
+#. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__message_has_error
 msgid "Message Delivery error"
 msgstr "Ошибка доставки сообщения"
@@ -527,8 +545,8 @@ msgstr "Название модели"
 #. odoo-python
 #: code:addons/base_automation/models/ir_actions_server.py:0
 msgid ""
-"Model of action %(action_name)s should match the one from automated rule %"
-"(rule_name)s."
+"Model of action %(action_name)s should match the one from automated rule "
+"%(rule_name)s."
 msgstr ""
 "Модель действия %(action_name)s должна совпадать с моделью из "
 "автоматического правила %(rule_name)s."
@@ -612,13 +630,15 @@ msgstr "В архиве"
 
 #. module: base_automation
 #: model:ir.model.fields.selection,name:base_automation.selection__base_automation__trigger__on_create
+#, fuzzy
 msgid "On create"
-msgstr ""
+msgstr "При создании"
 
 #. module: base_automation
 #: model:ir.model.fields.selection,name:base_automation.selection__base_automation__trigger__on_create_or_write
+#, fuzzy
 msgid "On create and edit"
-msgstr ""
+msgstr "При создании и редактировании"
 
 #. module: base_automation
 #: model:ir.model.fields.selection,name:base_automation.selection__base_automation__trigger__on_unlink
@@ -652,8 +672,9 @@ msgstr "На веб-крючке"
 
 #. module: base_automation
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__previous_domain
+#, fuzzy
 msgid "Previous Domain"
-msgstr ""
+msgstr "Предыдущий домен"
 
 #. module: base_automation
 #: model:ir.model.fields.selection,name:base_automation.selection__base_automation__trigger__on_priority_set
@@ -694,13 +715,15 @@ msgstr "Запланированные действия"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
+#, fuzzy
 msgid "Scheduled action"
-msgstr ""
+msgstr "Запланированное действие"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
+#, fuzzy
 msgid "Secret URL"
-msgstr ""
+msgstr "Секретная ссылка"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
@@ -750,8 +773,9 @@ msgstr "Server Action"
 
 #. module: base_automation
 #: model_terms:ir.ui.view,arch_db:base_automation.view_base_automation_form
+#, fuzzy
 msgid "Set an explicit name"
-msgstr ""
+msgstr "Задать явное имя"
 
 #. module: base_automation
 #: model:ir.model.fields,help:base_automation.field_base_automation__trg_selection_field_id
@@ -820,8 +844,8 @@ msgstr "Целевая модель действий %(action_names)s отлич
 #. odoo-python
 #: code:addons/base_automation/models/base_automation.py:0
 msgid ""
-"The \"%(trigger_value)s\" %(trigger_label)s can only be used with the \"%"
-"(state_value)s\" action type"
+"The \"%(trigger_value)s\" %(trigger_label)s can only be used with the "
+"\"%(state_value)s\" action type"
 msgstr ""
 "Знак \"%(trigger_value)s\" %(trigger_label)s можно использовать только с "
 "типом действия \"%(state_value)s\""
@@ -838,16 +862,20 @@ msgstr ""
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid ""
 "The error occurred during the execution of the automation rule\n"
 "                \""
 msgstr ""
+"Ошибка произошла во время выполнения правила автоматизации\n"
+"                \""
 
 #. module: base_automation
 #. odoo-python
 #: code:addons/base_automation/models/base_automation.py:0
+#, fuzzy
 msgid "The scheduled action for Automation Rules seems to have vanished."
-msgstr ""
+msgstr "Запланированное действие для правил автоматизации, похоже, исчезло."
 
 #. module: base_automation
 #: model:ir.model.fields,help:base_automation.field_base_automation__record_getter
@@ -923,8 +951,9 @@ msgstr "Используйте календарь"
 
 #. module: base_automation
 #: model:ir.model.fields,help:base_automation.field_base_automation__url
+#, fuzzy
 msgid "Use this URL in the third-party app to call this webhook."
-msgstr ""
+msgstr "Используйте этот URL в стороннем приложении для вызова этого вебхука."
 
 #. module: base_automation
 #: model:ir.model.fields.selection,name:base_automation.selection__base_automation__trigger__on_user_set
@@ -959,16 +988,6 @@ msgstr "Журнал вебзацепа"
 #: model:ir.model.fields,field_description:base_automation.field_base_automation__webhook_uuid
 msgid "Webhook UUID"
 msgstr "UUID вебхука"
-
-#. module: base_automation
-#: model:ir.model.fields,field_description:base_automation.field_base_automation__website_message_ids
-msgid "Website Messages"
-msgstr "Сообщения с вебсайта"
-
-#. module: base_automation
-#: model:ir.model.fields,help:base_automation.field_base_automation__website_message_ids
-msgid "Website communication history"
-msgstr "История общений с сайта"
 
 #. module: base_automation
 #: model:ir.model.fields,help:base_automation.field_base_automation__trg_date_calendar_id
@@ -1012,8 +1031,10 @@ msgstr ""
 #. module: base_automation
 #. odoo-javascript
 #: code:addons/base_automation/static/src/base_automation_error_dialog.xml:0
+#, fuzzy
 msgid "You can ask an administrator to disable or fix this automation."
 msgstr ""
+"Вы можете попросить администратора отключить или исправить эту автоматизацию."
 
 #. module: base_automation
 #. odoo-python
@@ -1039,5 +1060,6 @@ msgstr "действие не определено..."
 #. module: base_automation
 #. odoo-python
 #: code:addons/base_automation/models/base_automation.py:0
+#, fuzzy
 msgid "path"
-msgstr ""
+msgstr "путь"

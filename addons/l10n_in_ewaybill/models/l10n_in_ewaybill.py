@@ -130,7 +130,7 @@ class L10nInEwaybill(models.Model):
         ("error", "Error")],
         string="Blocking Level", readonly=True)
 
-    content = fields.Json(compute='_compute_content')
+    content = fields.Binary(compute='_compute_content')
     cancel_reason = fields.Selection(selection=[
         ("1", "Duplicate"),
         ("2", "Data Entry Mistake"),
@@ -257,7 +257,7 @@ class L10nInEwaybill(models.Model):
                 ewaybill_json = ewaybill._ewaybill_generate_direct_json()
             else:
                 ewaybill_json = {}
-            ewaybill.content = ewaybill_json
+            ewaybill.content = BinaryBytes(json.dumps(ewaybill_json).encode())
 
     @api.depends('name', 'state')
     def _compute_display_name(self):
@@ -325,6 +325,7 @@ class L10nInEwaybill(models.Model):
             self._check_gst_treatment,
             self._check_transporter,
             self._check_state,
+            self._check_pincode,
         ]
         for get_error_message in methods_to_check:
             error_message.extend(get_error_message())
@@ -354,6 +355,14 @@ class L10nInEwaybill(models.Model):
             error_message.append(_(
                 "An E-waybill cannot be generated for a %s move.",
                 dict(self.env['account.move']._fields['state']._description_selection(self.env))[self.account_move_id.state]
+            ))
+        return error_message
+
+    def _check_pincode(self):
+        error_message = []
+        if self.partner_ship_from_id.zip == self.partner_ship_to_id.zip and not self.distance:
+            error_message.append(self.env._(
+                "Set a valid distance when the dispatch and delivery pincodes are the same.",
             ))
         return error_message
 
@@ -494,8 +503,9 @@ class L10nInEwaybill(models.Model):
         cancel_json_vals = {
             'ewbNo': int(self.name),
             'cancelRsnCode': int(self.cancel_reason),
-            'cancelRmrk': self.cancel_remarks,
         }
+        if self.cancel_remarks:
+            cancel_json_vals['cancelRmrk'] = self.cancel_remarks
         return cancel_json_vals
 
     def _ewaybill_cancel(self):
@@ -657,13 +667,18 @@ class L10nInEwaybill(models.Model):
                         "Addr1": lambda p: p.street and p.street[:120] or "",
                         "Addr2": lambda p: p.street2 and p.street2[:120] or "",
                         "Place": lambda p: p.city and p.city[:50] or "",
-                        "Pincode": lambda p: int(p.zip) if p.country_id.code == "IN" else 999999,
+                        "Pincode": lambda p: p.zip and int(p.zip) if p.country_id.code == "IN" else 999999,
                     }.items(),
                     partner_detail={'from': self.partner_ship_from_id, 'to': self.partner_ship_to_id}.items()
                 ),
-                "actToStateCode": self._get_partner_state_code(self.partner_ship_to_id),
-                "actFromStateCode": self._get_partner_state_code(self.partner_ship_from_id),
+                "actToStateCode": self.partner_ship_to_id.country_id.code != "IN" and 97 or self._get_partner_state_code(self.partner_ship_to_id),
+                "actFromStateCode": self.partner_ship_from_id.country_id.code != "IN" and 97 or self._get_partner_state_code(self.partner_ship_from_id),
         }
+        match self.type_id.sub_type:
+            case "Export":
+                ewaybill_json['toGstin'] = "URP"
+            case "Import":
+                ewaybill_json['fromGstin'] = "URP"
         return ewaybill_json
 
     def _prepare_ewaybill_transportation_json_payload(self):
